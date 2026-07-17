@@ -989,8 +989,11 @@ const storage={
      置く。ブラウザから直接 R2 は叩かず、Cloudflare Workers のプロキシ API を経由する
      （Firebase ID トークン検証・laynaAccess 参照・プレフィックス制限をサーバー側で行う）。 */
   _r2:{
-    endpoint(){try{return (localStorage.getItem('laycat_r2_endpoint')||'').replace(/\/$/,'')||null}catch(_){return null}},
-    setEndpoint(url){try{if(url)localStorage.setItem('laycat_r2_endpoint',String(url).replace(/\/$/,''));else localStorage.removeItem('laycat_r2_endpoint')}catch(_){}},
+    /* endpoint の正規化：https:// が無ければ付ける（ユーザーが workers.dev のホスト名だけ貼っても動くように）。
+       正規化しないと fetch(ep+path) が相対URLになり、現在ページのオリジン(github.io)に投げられて 405 になる。 */
+    _norm(u){u=String(u||'').trim().replace(/\/$/,'');if(!u)return '';if(!/^https?:\/\//i.test(u))u='https://'+u;return u},
+    endpoint(){try{const u=this._norm(localStorage.getItem('laycat_r2_endpoint')||'');return u||null}catch(_){return null}},
+    setEndpoint(url){try{const u=this._norm(url);if(u)localStorage.setItem('laycat_r2_endpoint',u);else localStorage.removeItem('laycat_r2_endpoint')}catch(_){}},
     async _token(){try{return (window.__laynaFB&&window.__laynaFB.getIdToken)?await window.__laynaFB.getIdToken():null}catch(_){return null}},
     async _fetch(method,path,body,contentType){
       const ep=this.endpoint();if(!ep)throw new Error('R2 endpoint 未設定');
@@ -1956,12 +1959,16 @@ async function createSubmitBlock(){
   if(!blocks.length){toast('少なくとも1つのブロックに動画を追加してください');return}
   const pid=subS.projectId;
   const proot=getNode(pid);
-  if(!proot||!proot.folderName){toast('保存先フォルダが未設定のため提出できません。プロジェクト設定でフォルダを指定してください');return}
+  const isR2=proot&&proot.storageBackend==='r2';
+  if(!isR2&&(!proot||!proot.folderName)){toast('保存先フォルダが未設定のため提出できません。プロジェクト設定でフォルダを指定してください');return}
   /* A: 提出前にフォルダの書き込み権限をユーザー操作内で確保する。
      権限が切れている（再接続が必要）状態のまま提出すると、動画が保存されず「中身の無いサブミット」ができてしまうため、
-     ここで requestPermission（対話）を通し、取れなければ提出を中断する。 */
-  const ph=await storage.projRoot(pid,true);
-  if(!ph){toast('保存先フォルダに接続できません。ヘッダ左の保存先表示から再接続してから、もう一度提出してください。');return}
+     ここで requestPermission（対話）を通し、取れなければ提出を中断する。
+     R2 プロジェクトはフォルダハンドル不要のためスキップ。 */
+  if(!isR2){
+    const ph=await storage.projRoot(pid,true);
+    if(!ph){toast('保存先フォルダに接続できません。ヘッダ左の保存先表示から再接続してから、もう一度提出してください。');return}
+  }
   const name=subGenName(pid);
   const subId=newId('sub');
   const blockComment=(subS.blockComment||'').trim();
@@ -2439,6 +2446,7 @@ function buildTaskTabs(root){
 /* 保存先フォルダ未設定の警告バナー（動画はフォルダにしか保存できないため） */
 function folderWarnBanner(root){
   if(!root||root.folderName)return null;
+  if(root.storageBackend==='r2')return null; /* R2 プロジェクトはフォルダ不要 */
   const b=el('div','folder-warn');
   b.appendChild(elIco('span','wi','film',''));
   const tx=el('div','wtx');
@@ -3040,7 +3048,8 @@ function renderHome(s){
     const meta=el('div','proj-meta');
     const pb=projBadge(r);const bd=el('span','proj-badge',pb.label);bd.style.color=pb.color;bd.style.borderColor=hexA(pb.color,.5);bd.style.background=hexA(pb.color,.12);meta.appendChild(bd);
     if(r.passHash||r.enc)meta.appendChild(el('span','proj-badge','🔒 保護'));
-    if(!r.folderName)meta.appendChild(el('span','proj-badge proj-nofolder','⚠ フォルダ未設定'));
+    if(r.storageBackend==='r2')meta.appendChild(el('span','proj-badge','☁ R2'));
+    else if(!r.folderName)meta.appendChild(el('span','proj-badge proj-nofolder','⚠ フォルダ未設定'));
     meta.appendChild(el('span','proj-cnt',childrenOf(r.id).length+' 項目'));
     if(ev)meta.appendChild(el('span','proj-upd','更新 '+fmt(ev.time)));
     body.appendChild(meta);
@@ -4076,7 +4085,7 @@ function openRename(node){
           p.onclick=pickTh;p.ondragover=e=>{e.preventDefault();p.classList.add('drag')};p.ondragleave=()=>p.classList.remove('drag');
           p.ondrop=e=>{e.preventDefault();p.classList.remove('drag');setTh([...(e.dataTransfer.files||[])][0])};
           thHost.appendChild(p);
-          if(!node.folderName)thHost.appendChild(el('div','form-label','（保存先フォルダ設定時のみ保存されます）'));
+          if(!node.folderName&&node.storageBackend!=='r2')thHost.appendChild(el('div','form-label','（保存先フォルダ設定時のみ保存されます）'));
         }
       }
       renderTh();
@@ -4206,7 +4215,8 @@ function openRename(node){
       /* プロジェクトサムネイル：新規画像は元のまま thumbnails/ に保存し、トリミングは crop で保持 */
       if(!node.parentId){
         if(projThumbFile){
-          if(!node.folderName){toast('サムネイルは保存先フォルダ設定時のみ保存されます');}
+          const canSaveThumb=(node.storageBackend==='r2')||!!node.folderName;
+          if(!canSaveThumb){toast('サムネイルは保存先設定時のみ保存されます');}
           else{try{const ext=(projThumbFile.name.match(/\.[^.]+$/)||['.jpg'])[0];const ref=await storage.putMedia('thumbnails',newId('media')+ext,projThumbFile,{projectId:node.id});if(ref)node.thumbnail=ref}catch(_){}}
         }
         if(projCropWidget&&node.thumbnail)node.thumbCrop=projCropWidget.getCrop();
