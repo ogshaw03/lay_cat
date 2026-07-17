@@ -8,9 +8,22 @@
 - コミットメッセージ・PR本文も日本語で書く。
 
 ## プロジェクト概要
-- `laycat.html` … 単一ファイルの HTML アプリ（LayCAT）。レビュー／進行管理ツール（ShotGrid ライク）。バニラ JS・ビルド工程なし。（旧ファイル名 `Layna.html` は互換用リダイレクトスタブとして残置）
+- `laycat.html` … 単一ファイルの HTML アプリ（LayCAT・**Beta＝本番**）。レビュー／進行管理ツール（ShotGrid ライク）。バニラ JS・ビルド工程なし。他ユーザーが利用するため安易に触らない。
+- `laycat_dev.html` … 開発版（**Dev**）。日常の開発コミットはこちらに対して行う。
 - 画像などのアセットは、単一HTMLの自己完結性を保つため **base64 データURI としてインライン埋め込み**する。
 - `docs/` … 設計メモ（プラグイン構想、アクセス制御、比較再生の同期方針 など）。
+
+## 開発 / Beta 運用（OGREF 準拠）
+- **`laycat.html` = Beta**（本番、他ユーザー利用）／**`laycat_dev.html` = Dev**（開発テスト用）。
+- **通常の開発コミットは `laycat_dev.html` のみを編集する**（`laycat.html` は触らない）。
+- URL：Beta = `.../lay_cat/`（`index.html` → `laycat.html`）、Dev = `.../lay_cat/laycat_dev.html`。
+- `laycat_dev.html` の `APP_VERSION` は常に `'dev'` 固定。
+- ユーザーが **Beta 反映（パッチノート更新）** を指示したら：
+  1. `laycat_dev.html` の内容を `laycat.html` にそのままコピー（cp コマンド）。
+  2. コピー後、`laycat.html` 側で `APP_VERSION` を新しいバージョン（例：`beta v0.0.2`）に書き換える。
+  3. `PATCH_NOTES.md` に新バージョンを追記（`UPDATE_LOG.md` の未反映から抜粋）。
+  4. `UPDATE_LOG.md` の未反映を「反映済み beta vX.Y.Z」に移動してアーカイブ。
+  5. `laycat_dev.html` の `APP_VERSION` は `'dev'` のまま維持。
 
 ## 補足
 - バージョンは `laycat.html` 内の `APP_VERSION` で管理する。表記は `beta v0.0.1` から始まり、徐々に上げていく。
