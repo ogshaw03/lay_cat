@@ -30,6 +30,13 @@
 
 ## 将来対応（TODO）
 
+- **R2 バケット内を「作成者ユーザー」で階層化**（現状は全プロジェクトが `projects/` 直下にフラット）
+  - 候補構造：`users/<ownerEmail>/projects/<projectId>/...`
+  - 検討事項：他ユーザーとの共有をどう扱うか（owner 縛り vs laynaAccess 内なら誰でも）、既存 R2 データの移行手段、Worker 側の権限判定拡張、プロジェクト一覧の集約（他人所有プロジェクトの発見導線）
+- **R2 の楽観的ロック（ETag + If-Match）で完全同時保存の race を防ぐ**
+  - 現状 persist() は「読み→3-wayマージ→書き」だが、読みと書きの間に他ユーザーが書くと後勝ちで消える可能性がゼロではない
+  - R2 は ETag をサポート。GET で取得した ETag を PUT の If-Match ヘッダに載せ、412 Precondition Failed が返ったら再読み込み→再マージ→再 PUT のループにすれば完全同時保存も安全に処理できる
+- **R2 バケットの Versioning を有効化**（誤操作・バグでの上書き時に世代復元できるように）
 - **Firestore パスのプレフィックスを `layna` → `laycat` にリネーム**（今は稼働中データに影響するため保留）
   - 対象コレクション：`laynaAccess/config` / `laynaAccess/invited` / `laynaAccess/loggedUsers` / `laynaAccess/maintenance` / `laynaAccess/broadcast` / `laynaAccessInvites/{token}`
   - 必要作業：
