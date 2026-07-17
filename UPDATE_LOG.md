@@ -3,15 +3,27 @@
 このファイルは開発中の全変更を記録するログです。
 `PATCH_NOTES.md` はここから取捨選択して更新されます（運用方針は `CLAUDE.md` の「パッチノート運用」を参照）。
 
+セクション構成：
+- **未反映（次のパッチノート候補）** … まだ Beta（`laycat.html`）に入っていない項目。
+- **反映済み・パッチノート記載なし** … Beta には反映済みだが `PATCH_NOTES.md` には記載していない項目（バグ修正・運営限定変更・実験機能など）。次回パッチノート更新時に載せ替え候補になる。
+- **反映済み beta vX.Y.Z** … `PATCH_NOTES.md` に記載済みの項目（バージョンごとにアーカイブ）。
+
 ---
 
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+（現在なし）
+
+---
+
+## 反映済み・パッチノート記載なし（Beta 反映済み・PATCH_NOTES.md 未記載）
+
 - 再生範囲（OUT）到達時のクランプ精度を向上：timeupdate（100〜200ms間隔）ではプレイヘッドが範囲外に1F以上はみ出してからループ/停止していたが、requestAnimationFrame で毎フレーム監視するよう変更し、OUT に到達した瞬間にクランプするように改善（アノテウィンドウ・REEL 両方）。
 - 上記の追加バグ修正：ループ再生の2回目以降で監視 rAF が再スケジュールされず、OUT を素通りしていた不具合を修正。ループ時は監視を継続、停止時は監視終了。
 - 運営向けメンテナンス中バナー（画面上端のオレンジ帯）を半透明＋クリックスルーに変更。バナー背後の LayCAT UI が見えるようになり、メンテ告知は残しつつ通常操作を邪魔しないように改善。オレンジの濃さは .15 に薄めて背景をより見せる形に。
-- プロジェクトデータの保存先として Cloudflare R2（Workers プロキシ経由）を選択できるように準備。新規プロジェクト作成モーダルに「ローカルフォルダ / Cloudflare R2」のラジオを追加し、R2 選択時は Worker エンドポイント URL を入力する形。既存プロジェクトはローカルのまま（併用）。ストレージ抽象化（loadProject/saveProject/putMedia/delMedia/getURL/loadReels/saveReels/delProject）に R2 分岐を追加、r2:<projectId>|<path> という新プレフィックスで参照。Firebase ID トークンを Worker に渡して認可。docs/R2_SETUP.md と worker/laycat-r2-api.js を追加。※ Cloudflare 側のセットアップ（バケット作成・Worker デプロイ）が完了するまでは実利用不可。
+- プロジェクトデータの保存先として Cloudflare R2（Workers プロキシ経由）を選択できるように準備。新規プロジェクト作成モーダルに「ローカルフォルダ / Cloudflare R2」のラジオを追加し、R2 選択時は Worker エンドポイント URL を入力する形。既存プロジェクトはローカルのまま（併用）。ストレージ抽象化（loadProject/saveProject/putMedia/delMedia/getURL/loadReels/saveReels/delProject）に R2 分岐を追加、`r2:<projectId>|<path>` という新プレフィックスで参照。Firebase ID トークンを Worker に渡して認可。`docs/R2_SETUP.md` と `worker/laycat-r2-api.js` を追加。※ Cloudflare 側のセットアップ（バケット作成・Worker デプロイ）が完了するまでは実利用不可。
 
 ---
 

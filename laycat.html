@@ -983,7 +983,44 @@ const storage={
   supportsFolder(){return typeof window.showDirectoryPicker==='function'},
   useIdb(){this.mode='idb';try{localStorage.setItem('layna_mode','idb')}catch(_){}},
   /* ヘッダー表示：プロジェクトを開いていて専用フォルダ指定があればその名前、なければブラウザ内保存 */
-  folderLabel(){const cur=(DB&&state&&state.currentId)?getNode(state.currentId):null;const root=cur?rootOf(cur):null;if(root&&root.folderName)return root.folderName;return '⚠ フォルダ未設定';},
+  folderLabel(){const cur=(DB&&state&&state.currentId)?getNode(state.currentId):null;const root=cur?rootOf(cur):null;if(root){if(root.storageBackend==='r2')return '☁ R2';if(root.folderName)return root.folderName}return '⚠ フォルダ未設定';},
+  /* ---- R2 バックエンド ----
+     プロジェクトデータ（laycat.project.json）と動画・画像・reels.json を Cloudflare R2 に
+     置く。ブラウザから直接 R2 は叩かず、Cloudflare Workers のプロキシ API を経由する
+     （Firebase ID トークン検証・laynaAccess 参照・プレフィックス制限をサーバー側で行う）。 */
+  _r2:{
+    endpoint(){try{return (localStorage.getItem('laycat_r2_endpoint')||'').replace(/\/$/,'')||null}catch(_){return null}},
+    setEndpoint(url){try{if(url)localStorage.setItem('laycat_r2_endpoint',String(url).replace(/\/$/,''));else localStorage.removeItem('laycat_r2_endpoint')}catch(_){}},
+    async _token(){try{return (window.__laynaFB&&window.__laynaFB.getIdToken)?await window.__laynaFB.getIdToken():null}catch(_){return null}},
+    async _fetch(method,path,body,contentType){
+      const ep=this.endpoint();if(!ep)throw new Error('R2 endpoint 未設定');
+      const tok=await this._token();if(!tok)throw new Error('未ログイン（R2 認証に必要）');
+      const headers={authorization:'Bearer '+tok};
+      if(body!=null&&contentType)headers['x-laycat-content-type']=contentType;
+      return await fetch(ep+path,{method,headers,body});
+    },
+    async put(key,body,contentType){try{const r=await this._fetch('PUT','/api/r2/'+key,body,contentType||'application/octet-stream');return r.ok}catch(_){return false}},
+    async del(key){try{const r=await this._fetch('DELETE','/api/r2/'+key);return r.ok||r.status===404}catch(_){return false}},
+    async getBlob(key){try{const r=await this._fetch('GET','/api/r2/'+key);if(!r.ok)return null;return await r.blob()}catch(_){return null}},
+    async getJson(key){try{const r=await this._fetch('GET','/api/r2/'+key);if(!r.ok)return null;return await r.json()}catch(_){return null}},
+    async putJson(key,obj){return this.put(key,JSON.stringify(obj,null,2),'application/json')},
+    async purge(pid){try{const r=await this._fetch('DELETE','/api/r2/purge/projects/'+pid+'/');return r.ok}catch(_){return false}},
+    async ping(){try{const ep=this.endpoint();if(!ep)return false;const tok=await this._token();if(!tok)return false;/* 存在しないダミー key を GET し、404 が返ることで到達＋認証を確認 */const r=await fetch(ep+'/api/r2/projects/__ping__/nothing.json',{method:'GET',headers:{authorization:'Bearer '+tok}});return r.status===404||r.status===200}catch(_){return false}},
+  },
+  /* プロジェクトのバックエンドを返す：'r2' | 'folder'。既存プロジェクトは常に 'folder'。 */
+  _backend(id){
+    if(!id)return 'folder';
+    try{if(typeof REG!=='undefined'&&Array.isArray(REG)){const e=REG.find(x=>x.id===id);if(e&&e.backend==='r2')return 'r2'}}catch(_){}
+    try{const n=(typeof getNode==='function')?getNode(id):null;if(n){const r=rootOf(n);if(r&&r.storageBackend==='r2')return 'r2'}}catch(_){}
+    return 'folder';
+  },
+  /* 新規プロジェクトを R2 バックエンドとしてマーク（作成時のみ呼ぶ）。 */
+  setBackendR2(id){
+    try{if(typeof REG!=='undefined'&&Array.isArray(REG)){let e=REG.find(x=>x.id===id);if(!e){e={id,name:'',folderName:null};REG.push(e)}e.backend='r2'}}catch(_){}
+    try{const n=(typeof getNode==='function')?getNode(id):null;if(n){const r=rootOf(n);if(r)r.storageBackend='r2'}}catch(_){}
+  },
+  /* R2 か folder のどちらかで保存先が用意されているか（ローカル書き込み前の判定に使う）。 */
+  async hasStorageConfigured(id){if(this._backend(id)==='r2')return !!this._r2.endpoint();return this.hasFolderConfigured(id)},
   async _subdir(n,root,create){let dir=root;for(const p of String(n).split('/'))if(p)dir=await dir.getDirectoryHandle(p,{create:create!==false});return dir},
   /* プロジェクト別フォルダ（設定済みなら directory handle を返す） */
   projHandles:new Map(),
@@ -1053,6 +1090,12 @@ const storage={
   /* 暗号化封筒ならスタブ（名前だけの空プロジェクト）を返す。中身は解錠時に展開する */
   _encStub(p){return {v:3,id:p.id,name:p.name,nodes:[{id:p.id,parentId:null,name:p.name||'(保護されたプロジェクト)',type:'section',enc:1,passSalt:p.salt,createdAt:p.createdAt||nowIso(),versions:[]}],submits:[]}},
   async loadProject(id){
+    if(this._backend(id)==='r2'){
+      const parsed=await this._r2.getJson('projects/'+id+'/'+this._projFileName);
+      if(!parsed)return null;
+      if(parsed.enc){this._enc.set(id,parsed);return this._encStub(parsed)}
+      return parsed;
+    }
     const ph=await this.projRoot(id);
     let parsed=null;
     if(ph)parsed=await this._readProjFile(ph);
@@ -1064,10 +1107,14 @@ const storage={
   /* 現在フォルダ（またはlocalStorage）に保存されている実データを読む（暗号化なら復号）。
      保存前の競合検出・マージ用。鍵が無い暗号化プロジェクトや読めない場合は null。 */
   async readProjectData(id){
-    const ph=await this.projRoot(id);
     let parsed=null;
-    if(ph)parsed=await this._readProjFile(ph);
-    else parsed=this._ls('layna_proj_'+id);
+    if(this._backend(id)==='r2'){
+      parsed=await this._r2.getJson('projects/'+id+'/'+this._projFileName);
+    }else{
+      const ph=await this.projRoot(id);
+      if(ph)parsed=await this._readProjFile(ph);
+      else parsed=this._ls('layna_proj_'+id);
+    }
     if(!parsed)return null;
     if(parsed.enc){const key=projKey(id);if(!key)return null;try{const iv=_unhex(parsed.iv);const buf=await self.crypto.subtle.decrypt({name:'AES-GCM',iv},key,_unb64(parsed.ct));return JSON.parse(new TextDecoder().decode(buf))}catch(e){return null}}
     return parsed;
@@ -1075,6 +1122,7 @@ const storage={
   /* 競合時：現在フォルダにある内容（他者の版）をそのままバックアップファイルに退避（消失防止）。
      退避後に古いバックアップを間引き、フォルダが conflict ファイルで溢れないようにする。 */
   async backupCurrentProjectFile(id,tsLabel){
+    if(this._backend(id)==='r2')return; /* R2 は上位でオブジェクト履歴を持てるのでローカル退避はしない */
     const ph=await this.projRoot(id);if(!ph)return;
     try{let fh=null;for(const fn of [this._projFileName,this._projFileNameOld]){try{fh=await ph.getFileHandle(fn);break}catch(_){}}if(!fh)return;const txt=await (await fh.getFile()).text();
       await this._write(()=>ph,'laycat.project.conflict-'+tsLabel+'.json',txt);
@@ -1098,6 +1146,12 @@ const storage={
     /* 暗号化プロジェクトは封筒に変換してから書き込む（鍵が無ければ保存しない＝上書き防止） */
     let out=data;
     if(projectIsEncrypted(id)){out=await encryptProjectData(id,data);if(!out)return false}
+    if(this._backend(id)==='r2'){
+      if(!this._r2.endpoint()){toast('R2 endpoint 未設定のため保存できません');return false}
+      const ok=await this._r2.putJson('projects/'+id+'/'+this._projFileName,out);
+      if(!ok)toast('R2 へのプロジェクト保存に失敗しました（ネットワーク・認証を確認）');
+      return ok;
+    }
     const ph=await this.projRoot(id);
     if(ph){try{await this._write(()=>ph,this._projFileName,JSON.stringify(out,null,2));
       /* フォルダに保存できたら localStorage の複製は残さない（データはフォルダ側を正とする） */
@@ -1110,9 +1164,15 @@ const storage={
     if(!this._lsSet('layna_proj_'+id,out)){toast('プロジェクトデータの保存に失敗（容量超過）');return false}
     return true;
   },
-  async delProject(id){try{localStorage.removeItem('layna_proj_'+id)}catch(_){}try{await idbDel('kv','proj_'+id)}catch(_){}try{const ph=await this.projRoot(id);if(ph){try{await ph.removeEntry(this._projFileName)}catch(_){}try{await ph.removeEntry(this._projFileNameOld)}catch(_){}}}catch(_){}},
+  async delProject(id){try{localStorage.removeItem('layna_proj_'+id)}catch(_){}try{await idbDel('kv','proj_'+id)}catch(_){}try{const ph=await this.projRoot(id);if(ph){try{await ph.removeEntry(this._projFileName)}catch(_){}try{await ph.removeEntry(this._projFileNameOld)}catch(_){}}}catch(_){}if(this._backend(id)==='r2'){try{await this._r2.purge(id)}catch(_){}}},
   /* リール：プロジェクトフォルダ内 reels/reels.json に格納（共有可能）。フォルダ未設定なら localStorage */
   async loadReels(id){
+    if(this._backend(id)==='r2'){
+      const parsed=await this._r2.getJson('projects/'+id+'/reels/reels.json');
+      if(!parsed)return null;
+      if(parsed.enc)return await decryptReels(id,parsed);
+      return parsed;
+    }
     const ph=await this.projRoot(id);
     let parsed=null;
     if(ph){try{const dir=await ph.getDirectoryHandle('reels');const fh=await dir.getFileHandle('reels.json');parsed=JSON.parse(await (await fh.getFile()).text())}catch(e){}}
@@ -1125,6 +1185,10 @@ const storage={
     /* 暗号化プロジェクトはリールも暗号化（鍵が無ければ保存しない＝上書き防止） */
     let out=reels;
     if(projectIsEncrypted(id)){out=await encryptReels(id,reels);if(!out)return false}
+    if(this._backend(id)==='r2'){
+      if(!this._r2.endpoint())return false;
+      return await this._r2.putJson('projects/'+id+'/reels/reels.json',out);
+    }
     const ph=await this.projRoot(id);
     if(ph){try{await this._write(()=>this._subdir('reels',ph,true),'reels.json',JSON.stringify(out,null,2));
       try{localStorage.removeItem('layna_reels_'+id)}catch(_){}return true}catch(e){return false}}
@@ -1138,16 +1202,26 @@ const storage={
      フォルダ未設定なら保存できないため null を返す（呼び出し側で警告）。 */
   async putMedia(sub,fn,blob,opts){
     opts=opts||{};
-    if(opts.projectId){const ph=await this.projRoot(opts.projectId);if(ph){
-      try{await this._write(()=>this._subdir(sub,ph,true),fn,blob);return 'p:'+opts.projectId+'|'+sub+'/'+fn}
-      catch(e){toast('ファイルの保存に失敗しました。フォルダの接続・空き容量・書き込み権限を確認してください');return null}
-    }}
+    if(opts.projectId){
+      if(this._backend(opts.projectId)==='r2'){
+        if(!this._r2.endpoint()){toast('R2 endpoint 未設定のためアップロードできません');return null}
+        const key='projects/'+opts.projectId+'/'+sub+'/'+fn;
+        const ct=(blob&&blob.type)||'application/octet-stream';
+        const ok=await this._r2.put(key,blob,ct);
+        if(!ok){toast('R2 へのアップロードに失敗しました（ネットワーク・認証を確認）');return null}
+        return 'r2:'+opts.projectId+'|'+sub+'/'+fn;
+      }
+      const ph=await this.projRoot(opts.projectId);if(ph){
+        try{await this._write(()=>this._subdir(sub,ph,true),fn,blob);return 'p:'+opts.projectId+'|'+sub+'/'+fn}
+        catch(e){toast('ファイルの保存に失敗しました。フォルダの接続・空き容量・書き込み権限を確認してください');return null}
+      }
+    }
     return null;
   },
-  _parseRef(ref){if(ref.startsWith('p:')){const i=ref.indexOf('|');return{proj:ref.slice(2,i),path:ref.slice(i+1)}}return{proj:null,path:ref}},
+  _parseRef(ref){if(ref.startsWith('r2:')){const i=ref.indexOf('|');return{proj:ref.slice(3,i),path:ref.slice(i+1),backend:'r2'}}if(ref.startsWith('p:')){const i=ref.indexOf('|');return{proj:ref.slice(2,i),path:ref.slice(i+1),backend:'folder'}}return{proj:null,path:ref,backend:'folder'}},
   async _fileHandle(ref,create){const {proj,path}=this._parseRef(ref);const parts=path.split('/');const fn=parts.pop();let root=this.rootHandle;if(proj){root=await this.projRoot(proj);if(!root)return null}if(!root)return null;let dir=root;for(const p of parts)if(p)dir=await dir.getDirectoryHandle(p,{create:create===true});return{dir,fn};},
-  async delMedia(ref){if(!ref)return;try{if(ref.startsWith('idb:'))await idbDel('blobs',ref.slice(4));else{const h=await this._fileHandle(ref);if(h)await h.dir.removeEntry(h.fn)}}catch(e){}const u=this.urlCache.get(ref);if(u){URL.revokeObjectURL(u);this.urlCache.delete(ref)}},
-  async getURL(ref){if(!ref)return null;if(this.urlCache.has(ref)){const u=this.urlCache.get(ref);this.urlCache.delete(ref);this.urlCache.set(ref,u);return u}let blob=null;try{if(ref.startsWith('idb:'))blob=await idbGet('blobs',ref.slice(4));else{const h=await this._fileHandle(ref);if(h)blob=await (await h.dir.getFileHandle(h.fn)).getFile()}}catch(e){return null}if(!blob)return null;const url=URL.createObjectURL(blob);this.urlCache.set(ref,url);const LIM=this._urlCacheLimit||250;while(this.urlCache.size>LIM){const k=this.urlCache.keys().next().value;if(k===ref)break;const ou=this.urlCache.get(k);this.urlCache.delete(k);try{URL.revokeObjectURL(ou)}catch(_){}}return url},
+  async delMedia(ref){if(!ref)return;try{if(ref.startsWith('idb:'))await idbDel('blobs',ref.slice(4));else if(ref.startsWith('r2:')){const {proj,path}=this._parseRef(ref);await this._r2.del('projects/'+proj+'/'+path)}else{const h=await this._fileHandle(ref);if(h)await h.dir.removeEntry(h.fn)}}catch(e){}const u=this.urlCache.get(ref);if(u){URL.revokeObjectURL(u);this.urlCache.delete(ref)}},
+  async getURL(ref){if(!ref)return null;if(this.urlCache.has(ref)){const u=this.urlCache.get(ref);this.urlCache.delete(ref);this.urlCache.set(ref,u);return u}let blob=null;try{if(ref.startsWith('idb:'))blob=await idbGet('blobs',ref.slice(4));else if(ref.startsWith('r2:')){const {proj,path}=this._parseRef(ref);blob=await this._r2.getBlob('projects/'+proj+'/'+path)}else{const h=await this._fileHandle(ref);if(h)blob=await (await h.dir.getFileHandle(h.fn)).getFile()}}catch(e){return null}if(!blob)return null;const url=URL.createObjectURL(blob);this.urlCache.set(ref,url);const LIM=this._urlCacheLimit||250;while(this.urlCache.size>LIM){const k=this.urlCache.keys().next().value;if(k===ref)break;const ou=this.urlCache.get(k);this.urlCache.delete(k);try{URL.revokeObjectURL(ou)}catch(_){}}return url},
   /* 共有フォルダの同期遅延・オンラインオンリー対策：数回リトライして取得を試みる */
   async getURLRetry(ref,tries){tries=tries||4;for(let i=0;i<tries;i++){const u=await this.getURL(ref);if(u)return u;if(i<tries-1)await new Promise(r=>setTimeout(r,500*(i+1)))}return null;},
 };
@@ -1173,8 +1247,8 @@ function projectData(pid){
 function syncRegistryFromDb(){
   for(const root of childrenOf(null)){
     let e=REG.find(x=>x.id===root.id);
-    if(!e){e={id:root.id,name:root.name,folderName:root.folderName||null};REG.push(e)}
-    else{e.name=root.name;e.folderName=root.folderName||null}
+    if(!e){e={id:root.id,name:root.name,folderName:root.folderName||null,backend:root.storageBackend==='r2'?'r2':'folder'};REG.push(e)}
+    else{e.name=root.name;e.folderName=root.folderName||null;if(root.storageBackend==='r2')e.backend='r2'}
   }
 }
 /* 変更検知用キャッシュ（未変更のファイル書き込みを省略） */
@@ -3808,9 +3882,24 @@ function openProjectModal(){
     renderThumbHost();
     /* プロジェクト名 */
     const nameRow=frow('プロジェクト名','input');inner.appendChild(nameRow.r);
-    /* 保存先フォルダ */
+    /* 保存先の選択：ローカルフォルダ / Cloudflare R2 */
+    inner.appendChild(el('div','form-label','データ保存先'));
+    const backendWrap=el('div');backendWrap.style.cssText='display:flex;gap:16px;align-items:center;margin-bottom:6px;flex-wrap:wrap';
+    let backend='folder';
+    const mkRadio=(val,label,desc)=>{
+      const w=el('label');w.style.cssText='display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none';
+      const r=el('input');r.type='radio';r.name='projBackend_'+Math.random().toString(36).slice(2,7);r.value=val;if(val==='folder')r.checked=true;
+      r.onchange=()=>{if(r.checked){backend=val;updateBackendUI()}};
+      w.appendChild(r);w.appendChild(document.createTextNode(label));if(desc){const s=el('span','form-label',desc);s.style.margin='0 0 0 4px';s.style.color='var(--text3)';w.appendChild(s)}
+      backendWrap.appendChild(w);return r;
+    };
+    mkRadio('folder','ローカルフォルダ','（ファイルサーバー・Drive フォルダ）');
+    mkRadio('r2','Cloudflare R2','（サーバー保存・実験中）');
+    inner.appendChild(backendWrap);
+    /* ローカルフォルダ用 UI */
     let projFolderHandle=null;
-    inner.appendChild(el('div','form-label','保存先フォルダ（このプロジェクト専用。動画・画像・サムネイルを格納）'));
+    const folderBox=el('div');
+    folderBox.appendChild(el('div','form-label','保存先フォルダ（このプロジェクト専用。動画・画像・サムネイルを格納）'));
     if(storage.supportsFolder()){
       const fwrap=el('div');fwrap.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px';
       const fcur=el('span','form-label');fcur.style.margin='0';fcur.textContent='未指定（フォルダなしでは動画・サムネイルを保存できません）';
@@ -3818,22 +3907,45 @@ function openProjectModal(){
       fpick.onclick=async()=>{try{const h=await window.showDirectoryPicker({mode:'readwrite'});projFolderHandle=h;fcur.textContent='現在: '+h.name}catch(e){if(e&&e.name!=='AbortError')toast(pickerFailMsg(e))}};
       const fclr=el('button','btn btn-ghost btn-sm','解除');fclr.type='button';
       fclr.onclick=()=>{projFolderHandle=null;fcur.textContent='未指定（フォルダなしでは動画・サムネイルを保存できません）'};
-      fwrap.appendChild(fpick);fwrap.appendChild(fclr);fwrap.appendChild(fcur);inner.appendChild(fwrap);
+      fwrap.appendChild(fpick);fwrap.appendChild(fclr);fwrap.appendChild(fcur);folderBox.appendChild(fwrap);
     }else{
-      inner.appendChild(el('div','form-label','お使いのブラウザはフォルダ保存に未対応です（Chrome / Edge 推奨）。'));
+      folderBox.appendChild(el('div','form-label','お使いのブラウザはフォルダ保存に未対応です（Chrome / Edge 推奨）。'));
     }
+    inner.appendChild(folderBox);
+    /* R2 用 UI（Worker エンドポイント URL） */
+    const r2Box=el('div');r2Box.style.display='none';
+    r2Box.appendChild(el('div','form-label','Cloudflare Workers エンドポイント URL（初回のみ入力・以降は保持）'));
+    const r2In=el('input','form-input');r2In.type='text';r2In.placeholder='https://laycat-r2-api.xxxxx.workers.dev';
+    r2In.value=storage._r2.endpoint()||'';
+    r2Box.appendChild(r2In);
+    const r2Note=el('div','form-label');r2Note.style.color='var(--text3)';
+    r2Note.textContent='※ Firebase ログイン中のユーザーが R2 バケットにアクセスします。Worker 側で laynaAccess の許可判定が有効です。詳しくは docs/R2_SETUP.md を参照。';
+    r2Box.appendChild(r2Note);
+    inner.appendChild(r2Box);
+    function updateBackendUI(){folderBox.style.display=backend==='folder'?'':'none';r2Box.style.display=backend==='r2'?'':'none'}
+    updateBackendUI();
     /* 説明 */
     const descRow=frow('説明（任意）','textarea');inner.appendChild(descRow.r);
     const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=()=>{if(thumbUrl){try{URL.revokeObjectURL(thumbUrl)}catch(_){}}closeModal()};
     const save=el('button','btn btn-primary','プロジェクトを作成');
     save.onclick=async()=>{
       const name=nameRow.f.value.trim();if(!name)return toast('プロジェクト名を入力してください');
+      if(backend==='r2'){
+        const ep=(r2In.value||'').trim();
+        if(!ep)return toast('R2 Worker エンドポイント URL を入力してください');
+        storage._r2.setEndpoint(ep);
+      }
       const id=addNode(null,name,descRow.f.value.trim(),'section');
-      if(projFolderHandle){await storage.setProjRoot(id,projFolderHandle);getNode(id).folderName=projFolderHandle.name}
+      if(backend==='r2'){
+        storage.setBackendR2(id);
+      }else if(projFolderHandle){
+        await storage.setProjRoot(id,projFolderHandle);getNode(id).folderName=projFolderHandle.name;
+      }
       /* サムネイルは元画像をそのまま（サイズ変更なし）プロジェクトフォルダ直下 thumbnails/ に保存し、
          トリミングは crop パラメータ（node.thumbCrop）として別途保持 */
       if(thumbFile){
-        if(!projFolderHandle){toast('サムネイルは保存先フォルダ設定時のみ保存されます（プロジェクトは作成しました）');}
+        const canSaveThumb=(backend==='r2')||!!projFolderHandle;
+        if(!canSaveThumb){toast('サムネイルは保存先設定時のみ保存されます（プロジェクトは作成しました）');}
         else{try{const ext=(thumbFile.name.match(/\.[^.]+$/)||['.jpg'])[0];const ref=await storage.putMedia('thumbnails',newId('media')+ext,thumbFile,{projectId:id});if(ref){getNode(id).thumbnail=ref;getNode(id).thumbCrop=cropWidget?cropWidget.getCrop():{s:1,fx:0,fy:0}}}catch(_){}}
       }
       if(thumbUrl){try{URL.revokeObjectURL(thumbUrl)}catch(_){}}
@@ -4033,7 +4145,14 @@ function openRename(node){
       inner.appendChild(el('div','form-label','※ 何も選択しない場合は自動検出（最初に見つかったショット親フォルダ）を使用します。'));
       spSel={get:()=>spBoxes.filter(b=>b.checked).map(b=>b.value)};
       /* プロジェクト別の保存先フォルダ（ブラウザが使用するフォルダパス。サブミット等を格納） */
-      if(storage.supportsFolder()){
+      if(node.storageBackend==='r2'){
+        inner.appendChild(el('div','form-label','データ保存先'));
+        const rwrap=el('div');rwrap.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px';
+        const rcur=el('span','form-label');rcur.style.margin='0';rcur.textContent='☁ Cloudflare R2（endpoint: '+(storage._r2.endpoint()||'未設定')+'）';
+        const redit=el('button','btn btn-ghost btn-sm','endpoint 変更');redit.type='button';
+        redit.onclick=()=>{const cur=storage._r2.endpoint()||'';const nv=prompt('Cloudflare Workers エンドポイント URL',cur);if(nv==null)return;storage._r2.setEndpoint(nv.trim());rcur.textContent='☁ Cloudflare R2（endpoint: '+(storage._r2.endpoint()||'未設定')+'）'};
+        rwrap.appendChild(redit);rwrap.appendChild(rcur);inner.appendChild(rwrap);
+      }else if(storage.supportsFolder()){
         inner.appendChild(el('div','form-label','保存先フォルダ（このプロジェクト専用。動画・画像を格納。未指定ならブラウザ内保存）'));
         const fwrap=el('div');fwrap.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px';
         const fcur=el('span','form-label');fcur.style.margin='0';fcur.textContent=node.folderName?('現在: '+node.folderName):'未指定（ブラウザ内保存を使用）';
@@ -7144,6 +7263,10 @@ initApp();
   try{
     const app=initializeApp(firebaseConfig);const auth=getAuth(app);const provider=new GoogleAuthProvider();
     window.__laynaFB={login:()=>signInWithPopup(auth,provider),logout:()=>signOut(auth),
+      /* R2 プロキシ Worker へのリクエストで Authorization に載せる ID トークンを取得。
+         Firebase の getIdToken(false) は期限切れ間近なら自動更新するので、
+         呼び出し側は毎回叩いて OK（レイテンシは通常キャッシュで数ms）。 */
+      getIdToken:async()=>{try{const u=auth.currentUser;if(!u)return null;return await u.getIdToken(false)}catch(_){return null}},
       /* アクセス権設定を Firestore(laynaAccess/config) から読む。失敗時は null（access.json にフォールバック）。
          Firestore は動的 import なので、CDN 取得に失敗しても認証本体は壊れない。 */
       loadAccess:async()=>{try{
