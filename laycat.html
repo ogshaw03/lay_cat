@@ -4963,17 +4963,29 @@ function openReview(nodeId,versionId,opts){
     inBtn.onclick=()=>{const f=dispFrame();rangeIn=f;if(rangeOut!=null&&rangeOut<=rangeIn)rangeOut=null;_syncMediaLoop();drawTimeline()};
     outBtn.onclick=()=>{const f=dispFrame();rangeOut=f;if(rangeIn!=null&&rangeOut<=rangeIn)rangeIn=null;_syncMediaLoop();drawTimeline()};
     rangeClrBtn.onclick=()=>{rangeIn=null;rangeOut=null;_syncMediaLoop();drawTimeline()};
-    /* 再生中に OUT に到達したらループ or 停止（範囲設定時のみ） */
-    media.addEventListener('timeupdate',()=>{
+    /* 再生範囲：OUT に到達したらループ or 停止（時間で判定して 1F 超過を防ぐ）。
+       timeupdate は 100〜200ms 間隔なので毎フレーム rAF で監視する。 */
+    let _rangeRaf=0;
+    const _rangeWatch=()=>{
+      _rangeRaf=0;
       if(!_hasRange()||scrubbing||media.paused)return;
-      const cf=curFrame();
-      if(cf>=rangeOut){
-        if(loopBtn.classList.contains('active'))seekRT(rangeIn);
-        else{media.pause();seekRT(rangeOut)}
+      /* rangeOut フレーム開始時刻を超えたらクランプ（1F 分は含めない排他境界） */
+      const tOut=rangeOut/FPS;
+      if(media.currentTime>=tOut-0.0002){
+        if(loopBtn.classList.contains('active')){
+          media.currentTime=rangeIn/FPS+0.0001;
+          /* ループ時は監視を継続（次のOUT到達も捕まえる） */
+          _rangeRaf=requestAnimationFrame(_rangeWatch);
+        }else{
+          media.pause();seekRT(rangeOut);
+          /* pause で監視終了 */
+        }
+        return;
       }
-    });
-    media.addEventListener('play',()=>{playBtn.textContent='⏸';if(cmpOn&&bVid){try{bVid.pause()}catch(_){}syncBToA(true)}});
-    media.addEventListener('pause',()=>{playBtn.textContent='▶';if(cmpOn&&bVid){try{bVid.pause()}catch(_){}syncBToA(true)}snapToFrame()});
+      _rangeRaf=requestAnimationFrame(_rangeWatch);
+    };
+    media.addEventListener('play',()=>{playBtn.textContent='⏸';if(cmpOn&&bVid){try{bVid.pause()}catch(_){}syncBToA(true)}if(_hasRange()&&!_rangeRaf)_rangeRaf=requestAnimationFrame(_rangeWatch)});
+    media.addEventListener('pause',()=>{playBtn.textContent='▶';if(cmpOn&&bVid){try{bVid.pause()}catch(_){}syncBToA(true)}snapToFrame();if(_rangeRaf){cancelAnimationFrame(_rangeRaf);_rangeRaf=0}});
     prevBtn.onclick=()=>seekFrame(dispFrame()-1);
     nextBtn.onclick=()=>seekFrame(dispFrame()+1);
     fpsSel.onchange=async()=>{FPS=parseInt(fpsSel.value);v.fps=FPS;await persist();setupDuration();sync(true)};
@@ -6053,6 +6065,25 @@ function openReel(){
   const _hasRangeR=()=>RV.rangeIn!=null&&RV.rangeOut!=null&&RV.rangeOut>RV.rangeIn;
   const _gCur=()=>gOffset(reelUI.cur)+curF();
   const _gCurDisp=()=>gOffset(reelUI.cur)+dispF();
+  /* 再生範囲：OUT に到達したらループ or 停止。timeupdate だと 1F 超過してから発火するので毎フレーム rAF で監視 */
+  RV._rangeRaf=0;
+  const _rangeWatchR=()=>{
+    RV._rangeRaf=0;
+    if(!_hasRangeR()||RV.scrub||video.paused)return;
+    const gf=_gCur();
+    if(gf>=RV.rangeOut){
+      if(reelUI.loop){
+        gSeek(RV.rangeIn);
+        /* ループ時は監視を継続（次のOUT到達も捕まえる） */
+        RV._rangeRaf=requestAnimationFrame(_rangeWatchR);
+      }else{
+        video.pause();gSeek(RV.rangeOut);
+        /* pause で監視終了 */
+      }
+      return;
+    }
+    RV._rangeRaf=requestAnimationFrame(_rangeWatchR);
+  };
   /* 描画ツールは動画の上側、フレーム操作は下側 */
   const fbarTop=ce(d,'div','ctr');fbarTop.style.cssText='border-top:none;border-bottom:1px solid;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1';
   [drawB,brushS,presB,eraseB,eraseS,clrs,colorI,durS,ghostB,eyeB,traceB,layB,undoB,redoB,clrB].forEach(x=>fbarTop.appendChild(x));
@@ -6641,12 +6672,10 @@ function openReel(){
      （裏バッファの先読みで発火するイベントは e.target!==video で無視） */
   /* プール内の各 video 要素にイベントを配線（アクティブ要素のみ処理） */
   function attachVid(vd){
-    /* 再生範囲：OUT に到達したらループ or 停止 */
-    vd.addEventListener('timeupdate',e=>{if(e.target!==video)return;if(!_hasRangeR()||RV.scrub||video.paused)return;const gf=_gCur();if(gf>=RV.rangeOut){if(reelUI.loop)gSeek(RV.rangeIn);else{video.pause();gSeek(RV.rangeOut)}}});
     vd.addEventListener('seeked',e=>{if(e.target!==video)return;clearTimeout(RV.guard);RV.busy=false;if(RV.pend>=0){const p=RV.pend;RV.pend=-1;seekRTr(p)}});
     vd.addEventListener('loadedmetadata',e=>{if(e.target!==video)return;RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));fitAnno();RV.last=-1;if(RV.pendSeek!=null){const f=RV.pendSeek;RV.pendSeek=null;seekRTr(f)}});
-    vd.addEventListener('play',e=>{if(e.target!==video)return;play.textContent='⏸ 停止'});
-    vd.addEventListener('pause',e=>{if(e.target!==video)return;play.textContent='▶ 再生'});
+    vd.addEventListener('play',e=>{if(e.target!==video)return;play.textContent='⏸ 停止';if(_hasRangeR()&&!RV._rangeRaf)RV._rangeRaf=requestAnimationFrame(_rangeWatchR)});
+    vd.addEventListener('pause',e=>{if(e.target!==video)return;play.textContent='▶ 再生';if(RV._rangeRaf){cancelAnimationFrame(RV._rangeRaf);RV._rangeRaf=0}});
     vd.addEventListener('ended',e=>{
       if(e.target!==video)return;
       if(reelUI.cur<cs().length-1){reelUI.cur++;loadCur(true)}
