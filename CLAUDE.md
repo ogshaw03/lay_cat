@@ -17,17 +17,17 @@
 - **`laycat.html` = Beta**（本番、他ユーザー利用）／**`laycat_dev.html` = Dev**（開発テスト用）。
 - **通常の開発コミットは `laycat_dev.html` のみを編集する**（`laycat.html` は触らない）。
 - URL：Beta = `.../lay_cat/`（`index.html` → `laycat.html`）、Dev = `.../lay_cat/laycat_dev.html`。
-- `laycat_dev.html` の `APP_VERSION` は常に `'dev'` 固定。
+- `laycat_dev.html` の `APP_VERSION` は日付ベース（`YYYY.MM.DD.NNN`）で、dev コミットごとに末尾番号を上げる（詳細は上の「補足」参照）。
 - ユーザーが **Beta 反映（パッチノート更新）** を指示したら：
   1. `laycat_dev.html` の内容を `laycat.html` にそのままコピー（cp コマンド）。
   2. コピー後、`laycat.html` 側で `APP_VERSION` を新しいバージョン（例：`beta v0.0.2`）に書き換える。
   3. `PATCH_NOTES.md` に新バージョンを追記（`UPDATE_LOG.md` の未反映から抜粋）。
   4. `UPDATE_LOG.md` の未反映を「反映済み beta vX.Y.Z」に移動してアーカイブ。
-  5. `laycat_dev.html` の `APP_VERSION` は `'dev'` のまま維持。
+  5. `laycat_dev.html` の `APP_VERSION` は日付ベースのまま（触らない）。
 
 ## 補足
-- バージョンは `laycat.html` 内の `APP_VERSION` で管理する。表記は `beta v0.0.1` から始まり、徐々に上げていく。
-- **通常のコミットではバージョンは上げない**。パッチノート更新のタイミングでのみバージョンを上げる。
+- `laycat.html`（Beta）の `APP_VERSION` は `beta v0.0.1` から始まり、パッチノート更新のタイミングでのみ上げる。
+- `laycat_dev.html`（Dev）の `APP_VERSION` は日付ベース `YYYY.MM.DD.NNN`（例：`2026.07.17.139`）。**dev コミットごとに末尾番号を +1** して上げる（開発者／テスターが Dev の更新を確認するための識別子）。日付が変わったら末尾を `.001` からリセット。
 
 ## パッチノート運用
 - `PATCH_NOTES.md` はユーザーに見せる**確定パッチノート**。**通常の更新では追記しない**（全部書くときりがないため）。
