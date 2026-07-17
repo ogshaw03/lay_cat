@@ -30,9 +30,15 @@
 
 ## 将来対応（TODO）
 
-- **R2 バケット内を「作成者ユーザー」で階層化**（現状は全プロジェクトが `projects/` 直下にフラット）
-  - 候補構造：`users/<ownerEmail>/projects/<projectId>/...`
-  - 検討事項：他ユーザーとの共有をどう扱うか（owner 縛り vs laynaAccess 内なら誰でも）、既存 R2 データの移行手段、Worker 側の権限判定拡張、プロジェクト一覧の集約（他人所有プロジェクトの発見導線）
+- **R2 のアクセス制御を「プロジェクトメンバー方式」で実装**（既存の LayCAT のメンバー管理概念と整合）
+  - LayCAT 側：`root.owner` を新規追加（作成者メール自動セット）、既存 `root.members` はそのまま
+  - R2 側：プロジェクト直下に `_access.json`（平文で owner/members だけを持つ小さな JSON）を配置。laycat.project.json 本体は暗号化されていても _access.json は平文で維持する
+  - Worker：全 R2 操作の前に `_access.json` を読み、`token.email === owner || members に含まれる` なら許可、そうでなければ 403
+  - 初回作成：`_access.json` が無い場合のみ「新規作成」扱いで PUT を許可（作成者が自動 owner）
+  - owner 権限譲渡・メンバー編集は既存の LayCAT メンバー管理 UI から。編集時は `_access.json` も同時更新
+  - Worker のメモリキャッシュ（60秒）で毎リクエストの R2 GET レイテンシを緩和
+  - バケット構造は現状の `projects/<projectId>/` を維持（owner ディレクトリ階層化はしない。owner の変更や共有が楽なため）
+  - 既存のフォルダ運用プロジェクトはメンバー管理を書き込み判定に使っていないので、R2 運用時のみこの機構が動く形
 - **R2 の楽観的ロック（ETag + If-Match）で完全同時保存の race を防ぐ**
   - 現状 persist() は「読み→3-wayマージ→書き」だが、読みと書きの間に他ユーザーが書くと後勝ちで消える可能性がゼロではない
   - R2 は ETag をサポート。GET で取得した ETag を PUT の If-Match ヘッダに載せ、412 Precondition Failed が返ったら再読み込み→再マージ→再 PUT のループにすれば完全同時保存も安全に処理できる
