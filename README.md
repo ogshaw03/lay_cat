@@ -1,4 +1,4 @@
-# LayCAT（旧称：Layna）
+# LayCAT
 
 単一 HTML で動く、映像制作向けのレビュー／進行管理ツール（ShotGrid ライク）。
 動画・画像をアップロードしてディレクターがチェック（OK / リテイク / NG）し、ショット・工程ごとに進行を管理します。
@@ -8,10 +8,12 @@
 
 | 用途 | URL |
 | ---- | ---- |
-| **本体（LayCAT）** | https://ogshaw03.github.io/lay_cat/ |
+| **本体（LayCAT・Beta = 本番）** | https://ogshaw03.github.io/lay_cat/ |
+| **開発版（Dev・テスト用）** | https://ogshaw03.github.io/lay_cat/laycat_dev.html |
 | **アクセス管理コンソール** | https://ogshaw03.github.io/lay_cat/access-console.html |
 
 - ルートの `index.html` が本体 `laycat.html` へリダイレクトします（`?クエリ`・`#ハッシュ`はそのまま引き継ぐため、`#/r/…` 等の共有URLもそのまま使えます）。
+- **Dev（`laycat_dev.html`）** は開発テスト用の並行バージョンです。バージョン表記は日付ベース（`YYYY.MM.DD.NNN`）で dev コミットごとに更新されます。動作確認後、Beta（`laycat.html`）へ反映されます。
 - Chrome / Edge 推奨（フォルダ共有・接続に File System Access API を使用）。
 - アクセス管理コンソールは、ライブサイトにログインできるユーザー（許可メール／ドメイン）を管理する画面です（後述）。
 
