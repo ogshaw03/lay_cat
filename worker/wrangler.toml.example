@@ -1,0 +1,24 @@
+# このファイルは wrangler.toml のテンプレート。
+# 実際に使うときは worker/ をそのまま Cloudflare Workers プロジェクトのルートにコピーし、
+# 名前を wrangler.toml にリネームして値を埋める。
+
+name = "laycat-r2-api"
+main = "laycat-r2-api.js"
+compatibility_date = "2025-01-01"
+
+# R2 バケットのバインディング。ダッシュボードで作った bucket 名を書く。
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "laycat-projects"
+
+[vars]
+# Firebase Auth と Firestore のプロジェクトID
+FIREBASE_PROJECT_ID = "layna-app"
+
+# CORS 許可オリジン（カンマ区切り。* も可だが本番は避ける）
+ALLOW_ORIGIN = "https://ogshaw03.github.io"
+
+# 以下は wrangler secret put で登録:
+#   wrangler secret put FIREBASE_SERVICE_ACCOUNT
+#   （Firebase コンソールの Service accounts > Generate new private key で得た JSON を
+#    そのまま貼り付ける。改行はそのままで OK）
