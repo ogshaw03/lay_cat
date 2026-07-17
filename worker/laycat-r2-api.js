@@ -157,23 +157,70 @@ function fsField(doc, name) {
 }
 
 // _accessCache は VeryLow-cost で 60 秒だけ持つ（Worker インスタンス生存中のみ）
-let _accessCache = { at: 0, cfg: null, invited: null };
+let _accessCache = { at: 0, cfg: null, invited: null, json: null };
+
+// LayCAT 本体と同じく、GitHub Pages に置いた access.json をフォールバックとして参照する。
+// 本体の判定は「access.json → Firestore で上書き」の順なので、Worker 側でも両方参照する。
+async function loadAccessJson(env) {
+  try {
+    const origin = ((env.ALLOW_ORIGIN || '').split(',')[0] || '').trim().replace(/\/$/, '');
+    if (!origin) return null;
+    const r = await fetch(origin + '/lay_cat/access.json', { cf: { cacheTtl: 60 } });
+    if (!r.ok) {
+      // GitHub Pages のリポジトリ配下でない場合のフォールバック
+      const r2 = await fetch(origin + '/access.json', { cf: { cacheTtl: 60 } });
+      if (!r2.ok) return null;
+      return await r2.json();
+    }
+    return await r.json();
+  } catch (_) { return null; }
+}
+
 async function isAllowed(email, env) {
   if (!email) return false;
   const now = Date.now();
   if (!_accessCache.cfg || (now - _accessCache.at) > 60 * 1000) {
-    const cfg = await firestoreGetDoc(env, 'laynaAccess/config');
-    const invited = await firestoreGetDoc(env, 'laynaAccess/invited');
-    _accessCache = { at: now, cfg, invited };
+    const cfg = await firestoreGetDoc(env, 'laynaAccess/config').catch(() => null);
+    const invited = await firestoreGetDoc(env, 'laynaAccess/invited').catch(() => null);
+    const json = await loadAccessJson(env);
+    _accessCache = { at: now, cfg, invited, json };
   }
   const cfg = _accessCache.cfg;
   const invited = _accessCache.invited;
-  const authRequired = cfg ? fsField(cfg, 'authRequired') : true;
+  const json = _accessCache.json;
+
+  // Firestore 側の authRequired = false は明示的な認証オフ扱い
+  const authRequired = cfg ? fsField(cfg, 'authRequired') : (json ? json.authRequired : true);
   if (authRequired === false) return true;
-  const admins = (cfg && fsField(cfg, 'adminEmails')) || [];
-  const allowed = (cfg && fsField(cfg, 'allowedEmails')) || [];
-  const domains = (cfg && fsField(cfg, 'allowedDomains')) || [];
-  const invitedList = (invited && fsField(invited, 'emails')) || [];
+
+  // access.json と Firestore の許可リストを合算して評価（本体と同じ挙動）
+  const admins = [
+    ...((cfg && fsField(cfg, 'adminEmails')) || []),
+    ...((json && json.adminEmails) || []),
+  ];
+  const allowed = [
+    ...((cfg && fsField(cfg, 'allowedEmails')) || []),
+    ...((json && json.allowedEmails) || []),
+  ];
+  const domains = [
+    ...((cfg && fsField(cfg, 'allowedDomains')) || []),
+    ...((json && json.allowedDomains) || []),
+  ];
+  const invitedListRaw = (invited && invited.fields && invited.fields.emails);
+  const invitedList = [];
+  // laynaAccess/invited は emails マップ ({[key]: {email, ...}}) 形式で保存されているので Map 展開する
+  if (invitedListRaw && invitedListRaw.mapValue && invitedListRaw.mapValue.fields) {
+    for (const k of Object.keys(invitedListRaw.mapValue.fields)) {
+      const f = invitedListRaw.mapValue.fields[k];
+      if (f && f.mapValue && f.mapValue.fields && f.mapValue.fields.email) {
+        const e = f.mapValue.fields.email.stringValue;
+        if (e) invitedList.push(e);
+      }
+    }
+  } else if (Array.isArray(invitedListRaw)) {
+    invitedList.push(...invitedListRaw);
+  }
+
   const lower = email.toLowerCase();
   if (admins.map(x => (x || '').toLowerCase()).includes(lower)) return true;
   if (allowed.map(x => (x || '').toLowerCase()).includes(lower)) return true;
