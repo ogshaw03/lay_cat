@@ -18,6 +18,12 @@ FIREBASE_PROJECT_ID = "layna-app"
 # CORS 許可オリジン（カンマ区切り。* も可だが本番は避ける）
 ALLOW_ORIGIN = "https://ogshaw03.github.io"
 
+# ファイルサイズ上限（省略時のデフォルト: JSON=10MB, MEDIA=500MB, ANY=2GB）
+# バイト単位。用途に応じて上げ下げ可能。
+# MAX_JSON_BYTES = "10485760"        # 10 MB
+# MAX_MEDIA_BYTES = "524288000"      # 500 MB
+# MAX_ANY_BYTES = "2147483648"       # 2 GB（絶対上限・安全網）
+
 # 以下は wrangler secret put で登録:
 #   wrangler secret put FIREBASE_SERVICE_ACCOUNT
 #   （Firebase コンソールの Service accounts > Generate new private key で得た JSON を

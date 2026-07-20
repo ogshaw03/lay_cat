@@ -19,14 +19,38 @@
  *     または allowedDomains か、`laynaAccess/invited` に含まれるかを確認
  *   - key の先頭が `projects/<pid>/` に一致することを検証
  *
+ * ファイルサイズ上限（PUT 時に content-length で検査、超過は 413）:
+ *   - JSON 系（*.json）：MAX_JSON_BYTES（既定 10MB）
+ *   - それ以外（動画・画像・etc）：MAX_MEDIA_BYTES（既定 500MB）
+ *   - 絶対上限：MAX_ANY_BYTES（既定 2GB。安全網）
+ *
+ * 監査ログ:
+ *   全リクエスト（OPTIONS 除く）で method/path/email/status/duration を console.log
+ *   Cloudflare ダッシュボード → Workers → laycat-r2-api → Logs で追跡可能。
+ *
  * 環境変数（wrangler.toml or secret）:
  *   [vars]  FIREBASE_PROJECT_ID    Firebase の projectId
  *   [vars]  ALLOW_ORIGIN           カンマ区切り許可オリジン
+ *   [vars]  MAX_JSON_BYTES         JSON ファイルの最大サイズ（省略時 10MB）
+ *   [vars]  MAX_MEDIA_BYTES        メディアファイルの最大サイズ（省略時 500MB）
+ *   [vars]  MAX_ANY_BYTES          全ファイル共通の絶対上限（省略時 2GB）
  *   secret  FIREBASE_SERVICE_ACCOUNT  Firestore を読むための SA JSON（1行）
  *   binding R2                     R2 バケット
  */
 
 const KEY_PREFIX = 'projects/';
+const DEFAULT_MAX_JSON = 10 * 1024 * 1024;      // 10 MB
+const DEFAULT_MAX_MEDIA = 500 * 1024 * 1024;    // 500 MB
+const DEFAULT_MAX_ANY = 2 * 1024 * 1024 * 1024; // 2 GB
+
+function sizeLimitFor(env, key) {
+  const isJson = /\.json$/i.test(key);
+  const maxJson = parseInt(env.MAX_JSON_BYTES || '0', 10) || DEFAULT_MAX_JSON;
+  const maxMedia = parseInt(env.MAX_MEDIA_BYTES || '0', 10) || DEFAULT_MAX_MEDIA;
+  const maxAny = parseInt(env.MAX_ANY_BYTES || '0', 10) || DEFAULT_MAX_ANY;
+  const cat = isJson ? maxJson : maxMedia;
+  return Math.min(cat, maxAny);
+}
 
 // ---------- 公開鍵キャッシュ ----------
 let _keysCache = { at: 0, keys: null };
@@ -254,11 +278,25 @@ function json(env, req, obj, status) {
 // ---------- Router ----------
 export default {
   async fetch(req, env, ctx) {
-    if (req.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders(env, req) });
-    }
     const url = new URL(req.url);
     const path = url.pathname;
+    const start = Date.now();
+    let auditEmail = '-';
+    // 監査ログ：全リクエスト（OPTIONS 除く）で終端の直前に呼ぶ
+    // Cloudflare Workers Logs（ダッシュボード → Workers → Logs）で表示される
+    const audit = (status, extra) => {
+      try {
+        const dur = Date.now() - start;
+        const ex = extra ? ' ' + extra : '';
+        console.log('[audit] ' + new Date().toISOString() + ' ' + req.method + ' ' + path + ' email=' + auditEmail + ' status=' + status + ' dur=' + dur + 'ms' + ex);
+      } catch (_) {}
+    };
+    const respond = (resp, extra) => { audit(resp.status, extra); return resp; };
+
+    if (req.method === 'OPTIONS') {
+      // preflight は数が多いので audit 対象外（ノイズ抑制）
+      return new Response(null, { status: 204, headers: corsHeaders(env, req) });
+    }
 
     // 認証
     let payload;
@@ -267,13 +305,14 @@ export default {
       if (!auth.startsWith('Bearer ')) throw new Error('no bearer');
       payload = await verifyIdToken(auth.slice(7), env.FIREBASE_PROJECT_ID);
     } catch (e) {
-      return json(env, req, { error: 'unauthorized', detail: String(e.message || e) }, 401);
+      return respond(json(env, req, { error: 'unauthorized', detail: String(e.message || e) }, 401), 'auth_fail=' + String(e.message || e).slice(0, 40));
     }
+    auditEmail = (payload && payload.email) || '-';
     try {
       const ok = await isAllowed(payload.email, env);
-      if (!ok) return json(env, req, { error: 'forbidden' }, 403);
+      if (!ok) return respond(json(env, req, { error: 'forbidden' }, 403));
     } catch (e) {
-      return json(env, req, { error: 'access-check-failed', detail: String(e.message || e) }, 500);
+      return respond(json(env, req, { error: 'access-check-failed', detail: String(e.message || e) }, 500), 'access_err=' + String(e.message || e).slice(0, 40));
     }
 
     // /api/r2/list/projects/<pid>/
@@ -281,10 +320,10 @@ export default {
     if (m && req.method === 'GET') {
       const prefix = m[1];
       const list = await env.R2.list({ prefix });
-      return json(env, req, {
+      return respond(json(env, req, {
         objects: list.objects.map(o => ({ key: o.key, size: o.size, uploaded: o.uploaded })),
         truncated: list.truncated,
-      });
+      }), 'count=' + list.objects.length);
     }
 
     // /api/r2/purge/projects/<pid>/
@@ -300,36 +339,43 @@ export default {
         if (!list.truncated) break;
         cursor = list.cursor;
       }
-      return json(env, req, { deleted: total });
+      return respond(json(env, req, { deleted: total }), 'purged=' + total + ' prefix=' + prefix);
     }
 
     // /api/r2/projects/<pid>/<path>
     m = path.match(/^\/api\/r2\/(projects\/[^/]+\/.+)$/);
     if (m) {
       const key = m[1];
-      if (!key.startsWith(KEY_PREFIX)) return json(env, req, { error: 'invalid-key' }, 400);
+      if (!key.startsWith(KEY_PREFIX)) return respond(json(env, req, { error: 'invalid-key' }, 400));
 
       if (req.method === 'GET') {
         const obj = await env.R2.get(key);
-        if (!obj) return json(env, req, { error: 'not-found' }, 404);
+        if (!obj) return respond(json(env, req, { error: 'not-found' }, 404), 'key=' + key);
         const h = new Headers(corsHeaders(env, req));
         obj.writeHttpMetadata(h);
         if (!h.get('content-type')) h.set('content-type', 'application/octet-stream');
         h.set('etag', obj.httpEtag);
+        audit(200, 'key=' + key + ' size=' + obj.size);
         return new Response(obj.body, { status: 200, headers: h });
       }
       if (req.method === 'PUT') {
+        // ファイルサイズ検査：content-length ヘッダで事前に判断
+        const cl = parseInt(req.headers.get('content-length') || '0', 10);
+        const limit = sizeLimitFor(env, key);
+        if (cl > 0 && cl > limit) {
+          return respond(json(env, req, { error: 'payload-too-large', limit, size: cl }, 413), 'key=' + key + ' size=' + cl + ' limit=' + limit);
+        }
         const contentType = req.headers.get('x-laycat-content-type') || req.headers.get('content-type') || 'application/octet-stream';
         await env.R2.put(key, req.body, { httpMetadata: { contentType } });
-        return json(env, req, { ok: true, key });
+        return respond(json(env, req, { ok: true, key }), 'key=' + key + ' size=' + cl);
       }
       if (req.method === 'DELETE') {
         await env.R2.delete(key);
-        return json(env, req, { ok: true, key });
+        return respond(json(env, req, { ok: true, key }), 'key=' + key);
       }
-      return json(env, req, { error: 'method-not-allowed' }, 405);
+      return respond(json(env, req, { error: 'method-not-allowed' }, 405));
     }
 
-    return json(env, req, { error: 'not-found' }, 404);
+    return respond(json(env, req, { error: 'not-found' }, 404));
   },
 };
