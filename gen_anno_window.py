@@ -65,8 +65,8 @@ def gen_anno_window_crypto():
     draw.line([(0, top_h), (W, top_h)], fill=BORDER, width=1)
 
     x = 14
-    # タイトル
-    title = 'ga — ANM_EP03_C010_V004_0976'
+    # タイトル（サンプル・個人情報なし）
+    title = 'カット名 — v004'
     draw.text((x, 18), title, font=font(15), fill=TEXT)
     tw = draw.textbbox((0,0), title, font=font(15))[2]
     x += tw + 14
@@ -75,9 +75,9 @@ def gen_anno_window_crypto():
     draw.rounded_rectangle([x, 15, x+88, 39], radius=5, fill=st_bg)
     draw.text((x+10, 19), 'チェック待ち', font=font(12), fill=st_txt)
     x += 100
-    # by / date
-    draw.text((x, 19), 'by 小倉正太・2026/07/22 00:55', font=font(12), fill=TEXT2)
-    x += 240
+    # by / date（汎用表記）
+    draw.text((x, 19), 'by 作業者・00:55', font=font(12), fill=TEXT2)
+    x += 200
     # ステータス切替 select
     draw.rounded_rectangle([x, 12, x+130, 42], radius=8, fill=BG3, outline=BORDER, width=1)
     draw.text((x+12, 20), 'チェック待ち  ▾', font=font(13), fill=TEXT)
@@ -211,8 +211,8 @@ def gen_anno_window_crypto():
             mini = draw_crypto_scene(80, 45)
             img.paste(mini, (rx+22, y+56))
 
-    comment(main_y+60, '小倉正太', '00:57',
-            '青い車のマスクを抽出してください',
+    comment(main_y+60, '作業者', '00:57',
+            'この車のマスクを抽出してください',
             has_shot=True)
     comment(main_y+185, 'ディレクター', '01:12',
             'クリプトで確認、OK です',
