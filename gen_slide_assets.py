@@ -132,37 +132,33 @@ def gen_exr_alllayers():
     grid_x = (W - total_w)//2
     grid_y = 120
 
-    # (レイヤー技術名, 描画モード, 日本語ラベル, ひとこと説明)
+    # (レイヤー名, 描画モード, ひとこと説明)
     layers = [
-        ('beauty',        'beauty',        '完成映像',        '仕上がった状態'),
-        ('albedo',        'albedo',        '素の色',          '陰影なしの色'),
-        ('AO',            'ao',            '影の濃さ',        '接触部の陰り'),
-        ('diffuse_direct','diffuse_direct','光の当たり方',    '直接光の分'),
-        ('specular',      'specular',      'ハイライト',      '反射のツヤ'),
-        ('N',             'normal',        '面の向き',        '表面の角度情報'),
-        ('Z',             'depth',         '奥行き',          'カメラからの距離'),
-        ('P',             'position',      '3D 空間の位置',   'ワールド座標'),
-        ('UV',            'uv',            'テクスチャ座標',  '模様の貼付け位置'),
-        ('motion_vector', 'motion',        '動きの向き',      '次のコマへの動き'),
-        ('crypto_object', 'crypto',        'パーツ分離 (1)',  'オブジェクト単位'),
-        ('crypto_asset',  'crypto',        'パーツ分離 (2)',  'アセット単位'),
+        ('beauty',        'beauty',        '完成映像'),
+        ('albedo',        'albedo',        '素の色（陰影なし）'),
+        ('AO',            'ao',            '接触部の影'),
+        ('diffuse_direct','diffuse_direct','光の当たり方'),
+        ('specular',      'specular',      'ハイライト（ツヤ）'),
+        ('N',             'normal',        '面の向き'),
+        ('Z',             'depth',         '奥行き（カメラからの距離）'),
+        ('P',             'position',      '3D 空間の位置'),
+        ('UV',            'uv',            'テクスチャ座標'),
+        ('motion_vector', 'motion',        '動きの向き'),
+        ('crypto_object', 'crypto',        'オブジェクト単位のパーツ分離'),
+        ('crypto_asset',  'crypto',        'アセット単位のパーツ分離'),
     ]
 
-    for i, (name, mode, jp_name, jp_desc) in enumerate(layers):
+    for i, (name, mode, jp_desc) in enumerate(layers):
         col = i%cols; row = i//cols
         x = grid_x + col*(tile_w+gap); y = grid_y + row*(tile_h+gap)
         draw.rectangle([x,y,x+tile_w,y+tile_h], fill=CARD, outline=BORDER, width=1)
         prev = draw_scene(tile_w, prev_h, mode)
         img.paste(prev, (x,y))
         draw.line([(x,y+prev_h),(x+tile_w,y+prev_h)], fill=BORDER, width=1)
-        # 日本語ラベル（大）
-        draw.text((x+16, y+prev_h+12), jp_name, font=font(22), fill=TEXT)
-        # 説明（小）
-        draw.text((x+16, y+prev_h+48), jp_desc, font=font(14), fill=TEXT2)
-        # 技術名（右下・小さく）
-        bbox = draw.textbbox((0,0), name, font=font(11))
-        tw = bbox[2]-bbox[0]
-        draw.text((x+tile_w-tw-12, y+prev_h+72), name, font=font(11), fill=(120,120,140))
+        # レイヤー名（そのまま英語で大きく表示）
+        draw.text((x+16, y+prev_h+12), name, font=font(22), fill=TEXT)
+        # 日本語説明
+        draw.text((x+16, y+prev_h+50), jp_desc, font=font(15), fill=TEXT2)
 
     img.save('slides_assets/exr_alllayers.png', 'PNG', optimize=True)
     print('saved: slides_assets/exr_alllayers.png')
@@ -172,94 +168,108 @@ def gen_exr_alllayers():
 # ============================================================
 def gen_r2_diagram():
     W, H = 1600, 900
-    BG=(13,13,15); CARD=(30,30,38); BORDER=(70,70,85)
+    BG=(13,13,15); CARD=(30,30,38); CARD_HL=(40,40,52); BORDER=(75,75,90)
     TEXT=(242,243,247); TEXT2=(190,190,210); ACC=(165,107,240)
     CLOUD=(90,155,255); OK=(100,210,140); GRAY=(150,150,170)
+    ORANGE=(243,130,30)  # Cloudflare 系
     img = Image.new('RGB',(W,H),BG); draw = ImageDraw.Draw(img)
 
     # タイトル
-    draw.text((60, 40), 'クラウド保管に対応（ネット経由でチーム共有）', font=font(36), fill=TEXT)
-    draw.text((60, 92), '会社の PC でも、家でも、出張先でも。同じデータをブラウザだけで開けます。',
-              font=font(18), fill=TEXT2)
+    draw.text((60, 34), 'クラウドストレージ対応（プロジェクトデータをネット共有）', font=font(30), fill=TEXT)
+    draw.text((60, 78), 'ブラウザ → 受付係（Worker） → 保管庫（バケット）の 3 段階で安全にやりとり',
+              font=font(16), fill=TEXT2)
 
-    # 中央の巨大な雲アイコン
-    cx, cy = W//2, 360
-    # 雲：円を組み合わせて描画
-    r = 130
-    draw.ellipse([cx-r*1.8, cy-r*0.9, cx-r*0.6, cy+r*0.6], fill=CARD, outline=CLOUD, width=4)
-    draw.ellipse([cx-r*0.9, cy-r*1.3, cx+r*0.7, cy+r*0.4], fill=CARD, outline=CLOUD, width=4)
-    draw.ellipse([cx+r*0.3, cy-r*0.8, cx+r*1.8, cy+r*0.6], fill=CARD, outline=CLOUD, width=4)
-    draw.rectangle([cx-r*1.5, cy-r*0.1, cx+r*1.5, cy+r*0.6], fill=CARD, outline=BG, width=6)
-    draw.rectangle([cx-r*1.5, cy-r*0.1, cx+r*1.5, cy+r*0.6], fill=CARD, outline=CLOUD, width=4)
-    draw.line([(cx-r*1.5, cy-r*0.1), (cx+r*1.5, cy-r*0.1)], fill=CARD, width=6)
+    # 3 段階のボックス配置
+    # ①ユーザー ②Worker（受付・門番） ③バケット（保管庫）
+    box_y = 160
+    box_h = 380
+    # ボックス幅は 3 等分
+    b1_x, b1_w = 60,  380  # ユーザー
+    b2_x, b2_w = 610, 380  # Worker
+    b3_x, b3_w = 1160, 380 # バケット
 
-    # 雲の中央にラベル
-    txt = 'LayCAT クラウド保管庫'
-    bbox = draw.textbbox((0,0), txt, font=font(24))
-    tw = bbox[2]-bbox[0]
-    draw.text((cx-tw//2, cy-20), txt, font=font(24), fill=TEXT)
-    txt2 = '（プロジェクトのデータ）'
-    bbox = draw.textbbox((0,0), txt2, font=font(15))
-    tw = bbox[2]-bbox[0]
-    draw.text((cx-tw//2, cy+18), txt2, font=font(15), fill=TEXT2)
-
-    # 招待メンバー（左）
-    def draw_person(px, py, is_member, label, sub):
-        color = OK if is_member else (200, 100, 100)
-        # 頭
-        draw.ellipse([px-25, py-30, px+25, py+20], fill=color, outline=None)
-        # 体
-        draw.rounded_rectangle([px-40, py+15, px+40, py+80], radius=15, fill=color)
+    # ---- ① ユーザー（ブラウザ） ----
+    draw.rounded_rectangle([b1_x, box_y, b1_x+b1_w, box_y+box_h], radius=14, fill=CARD, outline=BORDER, width=2)
+    draw.text((b1_x+20, box_y+18), '👤 チームメンバー', font=font(22), fill=TEXT)
+    draw.text((b1_x+20, box_y+54), '（ブラウザで LayCAT を開く）', font=font(14), fill=TEXT2)
+    # 人アイコン 3 つ
+    persons = [('会社の PC から', OK), ('在宅で', OK), ('出張先で', OK)]
+    for i,(lab,col) in enumerate(persons):
+        py = box_y + 100 + i*90
+        # 頭＋体
+        draw.ellipse([b1_x+40, py, b1_x+80, py+40], fill=col)
+        draw.rounded_rectangle([b1_x+30, py+40, b1_x+90, py+80], radius=10, fill=col)
         # ラベル
-        bbox = draw.textbbox((0,0), label, font=font(18))
-        tw = bbox[2]-bbox[0]
-        draw.text((px-tw//2, py+95), label, font=font(18), fill=TEXT)
-        bbox = draw.textbbox((0,0), sub, font=font(13))
-        tw = bbox[2]-bbox[0]
-        draw.text((px-tw//2, py+123), sub, font=font(13), fill=TEXT2)
+        draw.text((b1_x+110, py+18), lab, font=font(18), fill=TEXT)
+        draw.text((b1_x+110, py+46), '同じプロジェクトを開ける', font=font(13), fill=TEXT2)
 
-    # 招待メンバー 3 人（左側）
-    m_labels = [('チームメンバー A', '会社の PC から'), ('チームメンバー B', '在宅から'), ('外注の作画さん', '自宅から')]
-    for i, (lab, sub) in enumerate(m_labels):
-        px = 260; py = 260 + i*160
-        draw_person(px, py, True, lab, sub)
-        # 矢印（メンバー → 雲）
-        draw.line([(px+50, py+30), (cx-r*1.8, py+30)], fill=OK, width=3)
-        # OK チェック
-        arrow_mid_x = (px+50 + cx-r*1.8)//2
-        draw.ellipse([arrow_mid_x-14, py+15, arrow_mid_x+14, py+43], fill=OK)
-        draw.text((arrow_mid_x-8, py+18), '✓', font=font(20), fill=(255,255,255))
+    # ---- ② Worker（受付・門番） ----
+    draw.rounded_rectangle([b2_x, box_y, b2_x+b2_w, box_y+box_h], radius=14, fill=CARD, outline=ORANGE, width=3)
+    draw.text((b2_x+20, box_y+18), '🚪 Worker（受付係）', font=font(22), fill=ORANGE)
+    draw.text((b2_x+20, box_y+54), 'Cloudflare の小さなサーバー', font=font(14), fill=TEXT2)
+    # 3 つの役割
+    roles = [
+        ('👥', '本人確認', 'ログイン中のユーザーか確認'),
+        ('🔑', 'メンバーチェック', 'そのプロジェクトの招待メンバーか判定'),
+        ('📏', 'ファイル検査', 'サイズ制限・アクセス履歴の記録'),
+    ]
+    for i,(ic,t,d) in enumerate(roles):
+        ry = box_y + 100 + i*90
+        draw.rounded_rectangle([b2_x+15, ry, b2_x+b2_w-15, ry+80], radius=8, fill=CARD_HL, outline=BORDER, width=1)
+        draw.text((b2_x+28, ry+22), ic, font=font(28), fill=ORANGE)
+        draw.text((b2_x+80, ry+16), t, font=font(17), fill=TEXT)
+        draw.text((b2_x+80, ry+46), d, font=font(13), fill=TEXT2)
 
-    # 招待されていない人（右）
-    npx, npy = W - 260, 420
-    draw_person(npx, npy, False, '関係ない人', '（他社・他プロジェクト）')
-    # 矢印（× で拒否）
-    draw.line([(cx+r*1.8, npy+30), (npx-50, npy+30)], fill=(200,100,100), width=3)
-    # × バツ
-    bx = (cx+r*1.8 + npx-50)//2
-    draw.ellipse([bx-18, npy+12, bx+18, npy+48], fill=(200,60,60))
-    draw.line([(bx-9, npy+21),(bx+9, npy+39)], fill=(255,255,255), width=4)
-    draw.line([(bx+9, npy+21),(bx-9, npy+39)], fill=(255,255,255), width=4)
-    # 「入れない」注記
-    draw.text((npx-70, npy+150), 'アクセス不可', font=font(15), fill=(220,120,120))
+    # ---- ③ バケット（保管庫） ----
+    draw.rounded_rectangle([b3_x, box_y, b3_x+b3_w, box_y+box_h], radius=14, fill=CARD, outline=CLOUD, width=2)
+    draw.text((b3_x+20, box_y+18), '🪣 バケット（保管庫）', font=font(22), fill=CLOUD)
+    draw.text((b3_x+20, box_y+54), 'Cloudflare R2（クラウドストレージ）', font=font(14), fill=TEXT2)
+    # 各プロジェクトを表現
+    projects = [
+        ('プロジェクト A', 'アニメ第1話'),
+        ('プロジェクト B', '短編CG'),
+        ('プロジェクト C', 'PV制作'),
+    ]
+    for i,(pn,pd) in enumerate(projects):
+        py = box_y + 100 + i*90
+        draw.rounded_rectangle([b3_x+15, py, b3_x+b3_w-15, py+80], radius=8, fill=CARD_HL, outline=BORDER, width=1)
+        # 鍵アイコン
+        draw.text((b3_x+28, py+22), '🔒', font=font(28), fill=OK)
+        draw.text((b3_x+80, py+13), pn, font=font(17), fill=TEXT)
+        draw.text((b3_x+80, py+38), pd, font=font(13), fill=TEXT2)
+        draw.text((b3_x+80, py+58), '動画・EXR・コメント履歴', font=font(11), fill=(140,140,160))
 
-    # 下部のメリット説明（3 つのカード）
-    footer_y = 640
+    # ---- 矢印 ----
+    # ① → ②
+    arr_y = box_y + box_h//2
+    draw.line([(b1_x+b1_w+5, arr_y),(b2_x-5, arr_y)], fill=ORANGE, width=4)
+    draw.polygon([(b2_x-5, arr_y),(b2_x-20, arr_y-10),(b2_x-20, arr_y+10)], fill=ORANGE)
+    draw.text((b1_x+b1_w+30, arr_y-42), 'アクセス要求', font=font(13), fill=TEXT2)
+
+    # ② → ③
+    draw.line([(b2_x+b2_w+5, arr_y),(b3_x-5, arr_y)], fill=OK, width=4)
+    draw.polygon([(b3_x-5, arr_y),(b3_x-20, arr_y-10),(b3_x-20, arr_y+10)], fill=OK)
+    draw.text((b2_x+b2_w+30, arr_y-42), '許可 OK → 実行', font=font(13), fill=TEXT2)
+
+    # ---- 下部：メリット説明 ----
+    footer_y = 590
     draw.line([(60, footer_y),(W-60, footer_y)], fill=BORDER, width=1)
     benefits = [
-        ('🌏', 'どこからでも見られる', '会社・自宅・出先どこでも同じデータ'),
-        ('🔒', '決まった人だけがアクセス', '招待されたメンバー以外は入れない'),
-        ('📊', '安全に保管', '容量制限＋アクセス履歴で守られる'),
+        ('🌏', 'どこからでも見られる', '会社・自宅・出先どこでも、同じデータをブラウザで開ける'),
+        ('🔒', '決まった人だけがアクセス', '招待されたメンバー以外は Worker で拒否'),
+        ('📊', '安全に保管・追跡可能', 'ファイルサイズ制限＋全アクセスの記録が残る'),
+        ('🔄', '従来のフォルダ運用と併用', 'プロジェクト単位でクラウド／フォルダを選べる'),
     ]
-    card_w = (W - 120 - 40) // 3
-    card_h = 170
-    for i, (icon, title, desc) in enumerate(benefits):
+    card_w = (W - 120 - 60) // 4
+    card_h = 200
+    for i,(ic, t, d) in enumerate(benefits):
         bx = 60 + i*(card_w + 20)
         by = footer_y + 30
         draw.rounded_rectangle([bx, by, bx+card_w, by+card_h], radius=14, fill=CARD, outline=BORDER, width=1)
-        draw.text((bx+30, by+22), icon, font=font(40), fill=ACC)
-        draw.text((bx+95, by+30), title, font=font(22), fill=TEXT)
-        draw.text((bx+30, by+95), desc, font=font(16), fill=TEXT2)
+        draw.text((bx+20, by+16), ic, font=font(34), fill=ACC)
+        draw.text((bx+20, by+66), t, font=font(17), fill=TEXT)
+        # 説明を wrap して 2 行に
+        draw.text((bx+20, by+102), d, font=font(12), fill=TEXT2)
 
     img.save('slides_assets/r2_architecture.png', 'PNG', optimize=True)
     print('saved: slides_assets/r2_architecture.png')
