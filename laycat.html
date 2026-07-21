@@ -8944,7 +8944,7 @@ function _wireSignals(){
   window.__laynaFB.subscribeSignals(
     d=>{const active=!!(d&&d.active),role=authUser&&authUser.role,msg=(d&&d.message)||'';
         if(role==='operator'||role==='admin'){_operMaintBanner(active,msg);return}
-        if(_maintActive&&!active){location.reload();return}
+        if(_maintActive&&!active){/* メンテ終了時：キャッシュバスターで最新版を強制取得 */location.href=location.pathname+'?_='+Date.now();return}
         _maintOverlay(active,msg);},
     d=>_showBroadcast(d||{})
   );
