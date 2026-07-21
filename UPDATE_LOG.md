@@ -109,6 +109,26 @@
   - Service Worker + IndexedDB で最終取得データをキャッシュ、オフラインでも閲覧可能に
   - 書き込みは online 時のみ（もしくはキューして復帰時に flush）
 
+### EXR フォーマット対応 Phase 2（多層 EXR ・特殊レイヤー可視化）
+
+現状の Phase 1（単一 EXR + 露出/ガンマ）では Three.js EXRLoader の制約で対応範囲が狭く、
+Cryptomatte / Multi-part / Deep EXR / UINT ピクセル型が読み込めない。VFX ワークフローでは
+Depth や Cryptomatte の確認が必須なので Phase 2 で本格対応する。
+
+- **ライブラリ選定**：openexr-wasm を第一候補（1〜2MB WASM・全機能ほぼ網羅）
+  - 代替案：自前パーサ実装 / Three.js EXRLoader 拡張
+  - まず PoC で CDN 経由（esm.sh）読み込みが可能か検証
+- **多層パース**：全チャンネル一覧（beauty.R/G/B, depth.Z, N.X/Y/Z, crypto00.* 等）
+- **チャンネル/レイヤー選択 UI**：ドロップダウン
+- **視覚化プリセット**：
+  - Beauty (RGB) — 既存の露出/ガンマ
+  - Depth (Z) — グレースケール + Near/Far 手動指定 + 疑似カラー（Turbo/Viridis）
+  - Normal (XYZ) — X→R, Y→G, Z→B マッピング（±1 を 0〜1 に正規化）
+  - Motion Vector — ヒートマップ
+  - Cryptomatte — ハッシュ→疑似カラー変換
+- **Cryptomatte 高度機能**（余裕あれば）：Alt+クリックで ID 表示、matte 抽出等
+- **見積もり**：最小限（多層読み取り+チャンネル選択）で 半日〜1日、視覚化プリセット含めた完全版で 2〜3日、Cryptomatte 本格対応で追加 1〜2日
+
 ### R2 以外
 
 - **Firestore パスのプレフィックスを `layna` → `laycat` にリネーム**（今は稼働中データに影響するため保留）
