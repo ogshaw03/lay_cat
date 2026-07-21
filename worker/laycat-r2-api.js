@@ -430,6 +430,50 @@ export default {
       }
     }
 
+    // /api/r2/mine — 自分がアクセスできる R2 プロジェクト一覧を返す
+    // バケット全体の projects/*/_access.json を LIST → 各 _access.json を読み、
+    // 自分が owner/member（or admin）に含まれるプロジェクトのメタを返す
+    if (path === '/api/r2/mine' && req.method === 'GET') {
+      const isAdminUser = await isAdminEmail(env, payload.email);
+      const me = String(payload.email || '').toLowerCase();
+      const results = [];
+      const seen = new Set();
+      let cursor = undefined;
+      // limit 1000 で反復。プロジェクト数が数千を超えるまで問題にならない想定
+      while (true) {
+        const list = await env.R2.list({ prefix: KEY_PREFIX, cursor, limit: 1000 });
+        // _access.json だけに絞る
+        const accessKeys = list.objects.filter(o => /^projects\/[^/]+\/_access\.json$/.test(o.key));
+        // 並列取得（負荷平準のため 10 並列まで）
+        for (let i = 0; i < accessKeys.length; i += 10) {
+          const batch = accessKeys.slice(i, i + 10);
+          const parsed = await Promise.all(batch.map(async o => {
+            const pid = o.key.match(/^projects\/([^/]+)\/_access\.json$/)[1];
+            if (seen.has(pid)) return null;
+            seen.add(pid);
+            try {
+              const obj = await env.R2.get(o.key);
+              if (!obj) return null;
+              const access = JSON.parse(await obj.text());
+              const isOwner = String(access.owner || '').toLowerCase() === me;
+              const isMember = (access.members || []).map(x => String(x || '').toLowerCase()).includes(me);
+              if (!isOwner && !isMember && !isAdminUser) return null;
+              return {
+                pid,
+                owner: access.owner || null,
+                members: access.members || [],
+                role: isOwner ? 'owner' : (isMember ? 'member' : 'admin'),
+              };
+            } catch (_) { return null; }
+          }));
+          for (const p of parsed) if (p) results.push(p);
+        }
+        if (!list.truncated) break;
+        cursor = list.cursor;
+      }
+      return respond(json(env, req, { projects: results }), 'count=' + results.length);
+    }
+
     // /api/r2/list/projects/<pid>/
     let m = path.match(/^\/api\/r2\/list\/(projects\/[^/]+\/.*)$/);
     if (m && req.method === 'GET') {
