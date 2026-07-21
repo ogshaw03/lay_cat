@@ -60,7 +60,21 @@
 
 - ~~**Worker にファイルサイズ上限を設定**~~ ✅ **実装済み**（要 Worker 再デプロイで反映）
 - ~~**監査ログ**（軽量版：console.log → Cloudflare Workers Logs）~~ ✅ **実装済み**（要 Worker 再デプロイで反映）
-- **監査ログ（永続版）**：現状は Cloudflare の Workers Logs（数日で消える）だけなので、長期保存が必要なら Firestore への append-only 記録に切り替える
+- **監査ログ（永続版＋ access-console 統合）**：現状は Cloudflare Workers Logs（保存期間限定）だけなので、長期保存と access-console からの閲覧を可能にする
+  - **保存先**：Firestore `laynaAudit/{autoId}` コレクション
+  - **書き込み**：Worker 側で `ctx.waitUntil()` を使い非同期記録（レスポンスに影響なし）
+  - **フィールド**：ts, method, path, email, status, duration, extra, ray（Cloudflare Ray ID）, ip, ua（不正調査用）
+  - **保持期間**：30日（Firestore TTL 設定）
+  - **access-console.html への追加**：「監査ログ」タブ／直近500件表示／フィルター（メール・ステータス・期間）／CSV エクスポート／リアルタイム更新（onSnapshot）
+  - **メタ監査**：監査ログ画面自体の閲覧履歴も別コレクションに記録（誰が監査ログを見たか）
+  - **前提**：まず運営側での NDA・プライバシーポリシー・利用規約整備が先。詳細な運営視点のセキュリティ議論は `docs/SECURITY_MEMO.md` 参照
+
+- **運営整備（サブスク展開前に必須）**：
+  - NDA テンプレート
+  - プライバシーポリシー（運営がデータにアクセス可能な範囲と目的を明示）
+  - 利用規約
+  - Tier 別サービス設計（一般 / 機密案件でプロジェクト暗号化必須 / ハイエンドで専用環境）
+  - 詳細は `docs/SECURITY_MEMO.md` 参照
 
 **データ整合性**
 
