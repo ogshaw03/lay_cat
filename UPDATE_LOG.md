@@ -54,9 +54,13 @@
   - GCP コンソール → IAM で該当 SA のロールを「Cloud Datastore ユーザー」または「Cloud Datastore 閲覧者」（read only で足りるなら）に絞る
   - 万が一 FIREBASE_SERVICE_ACCOUNT シークレットが流出した場合の被害範囲を限定
 
-- **R2 バケットの Versioning を有効化**
-  - Cloudflare ダッシュボード → R2 → laycat-projects → Settings → Object Versioning → Enable
-  - 誤操作・バグ・悪意による上書き/削除から世代単位で復旧可能に
+- **R2 バケットの Versioning を有効化**（**現状 UI からは操作不可・保留中**）
+  - Cloudflare の R2 は現状ダッシュボード UI からバージョニングを有効化する項目が無い（2026-07-21 確認時点）
+  - 代替案：
+    - **バケット ロック ルール**（削除・上書き防止の retention 設定）で保険は張れる
+    - **S3 API 経由**でバージョニング設定できる可能性あり（未検証）
+    - **自前でスケジュールドバックアップ Worker**：定期的に project.json を別プレフィックスにコピー
+  - 将来 Cloudflare が UI 対応したら再検討
 
 - ~~**Worker にファイルサイズ上限を設定**~~ ✅ **実装済み**（要 Worker 再デプロイで反映）
 - ~~**監査ログ**（軽量版：console.log → Cloudflare Workers Logs）~~ ✅ **実装済み**（要 Worker 再デプロイで反映）
