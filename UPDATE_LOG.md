@@ -14,7 +14,8 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-- **EXR Phase 2 Step 2：多層 EXR の任意レイヤーを描画対応**：カスタム EXR パーサ（`parseExrFull`）を追加し、ZIP/ZIPS/無圧縮の HALF/FLOAT スキャンライン EXR を全チャンネル解凍。EXR 表示ダイアログのレイヤードロップダウンで任意レイヤーを選択すると、R/G/B は通常のカラー、X/Y/Z は Normal（-1..1→0..1）、Z のみは Depth（log スケール グレースケール）、Y/A のみは輝度モノクロ、として自動判定して描画。UINT ピクセル型（Cryptomatte 等）は引き続き非対応で情報表示のみ。Tiled/Multipart/Deep/PIZ/PXR24/DWA も非対応。DecompressionStream API を利用してブラウザ標準の deflate で解凍。APP_VERSION: 2026.07.17.178
+- **EXR Phase 2 Step 2：多層 EXR の任意レイヤーを描画対応**：カスタム EXR パーサ（`parseExrFull`）を追加し、ZIP/ZIPS/無圧縮の HALF/FLOAT スキャンライン EXR を全チャンネル解凍。EXR 表示ダイアログのレイヤードロップダウンで任意レイヤーを選択すると、R/G/B は通常のカラー、X/Y/Z は Normal（-1..1→0..1）、Z のみは Depth（log スケール グレースケール）、Y/A のみは輝度モノクロ、として自動判定して描画。UINT ピクセル型（Cryptomatte 等）は引き続き非対応で情報表示のみ。Multipart/Deep/PIZ/PXR24/DWA も非対応。DecompressionStream API を利用してブラウザ標準の deflate で解凍。APP_VERSION: 2026.07.17.178
+- **EXR Tiled 対応（Nuke/Arnold 書き出し向け）**：Tiled EXR（ONE_LEVEL）を描画できるように `parseExrFull` を拡張。`tiles` 属性（tiledesc）をパースし、タイルごとに独立した ZIP チャンクとして解凍→データ窓の指定位置に転写。MIPMAP/RIPMAP レベルは引き続き非対応（VFX パイプラインではほぼ ONE_LEVEL のみのため）。あわせてレイヤー詳細のエラーメッセージを精査（ファイル全体のパース失敗と UINT 非対応を区別して表示）。APP_VERSION: 2026.07.17.179
 
 ---
 
