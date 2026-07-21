@@ -12,11 +12,17 @@
  *   GET     /api/r2/list/projects/<pid>/     → R2 LIST（prefix）
  *   DELETE  /api/r2/purge/projects/<pid>/    → R2 LIST→DELETE 全消し
  *
- * 認可:
+ * 認可（2段階）:
+ *   段階1：LayCAT グローバル許可（laynaAccess）
  *   - Authorization: Bearer <Firebase ID token>
  *   - トークンの aud/iss/exp/署名を検証（Firebase 公開鍵）
  *   - email が Firestore `laynaAccess/config.allowedEmails`
  *     または allowedDomains か、`laynaAccess/invited` に含まれるかを確認
+ *   段階2：プロジェクト単位 ACL（_access.json）
+ *   - projects/<pid>/_access.json を読み、{owner, members: [emails]} で判定
+ *   - owner または members に自分のメールが含まれていれば OK
+ *   - laynaAccess の adminEmails なら常時許可（admin エスカレーション：owner 不在時の緊急対応）
+ *   - _access.json が無い場合はブートストラップ（初回 PUT のみ許可、body に自分を owner として指定必須）
  *   - key の先頭が `projects/<pid>/` に一致することを検証
  *
  * ファイルサイズ上限（PUT 時に content-length で検査、超過は 413）:
@@ -39,6 +45,7 @@
  */
 
 const KEY_PREFIX = 'projects/';
+const ACCESS_JSON_NAME = '_access.json';
 const DEFAULT_MAX_JSON = 10 * 1024 * 1024;      // 10 MB
 const DEFAULT_MAX_MEDIA = 500 * 1024 * 1024;    // 500 MB
 const DEFAULT_MAX_ANY = 2 * 1024 * 1024 * 1024; // 2 GB
@@ -50,6 +57,89 @@ function sizeLimitFor(env, key) {
   const maxAny = parseInt(env.MAX_ANY_BYTES || '0', 10) || DEFAULT_MAX_ANY;
   const cat = isJson ? maxJson : maxMedia;
   return Math.min(cat, maxAny);
+}
+
+// ---------- プロジェクト ACL ----------
+// projects/<pid>/_access.json を読んで、そのプロジェクトの owner/members を判定する。
+// _access.json が無い場合は「未初期化プロジェクト」として、ブートストラップ許可の判定に使う。
+const _aclCache = new Map(); // pid -> { at, access }
+async function loadProjectAccess(env, pid) {
+  const cached = _aclCache.get(pid);
+  if (cached && (Date.now() - cached.at) < 30 * 1000) return cached.access;
+  const key = KEY_PREFIX + pid + '/' + ACCESS_JSON_NAME;
+  try {
+    const obj = await env.R2.get(key);
+    if (!obj) { _aclCache.set(pid, { at: Date.now(), access: null }); return null; }
+    const txt = await obj.text();
+    const parsed = JSON.parse(txt);
+    _aclCache.set(pid, { at: Date.now(), access: parsed });
+    return parsed;
+  } catch (_) {
+    _aclCache.set(pid, { at: Date.now(), access: null });
+    return null;
+  }
+}
+function invalidateProjectAccess(pid) { _aclCache.delete(pid); }
+
+// admin 判定：Firestore/access.json の adminEmails 合算（isAllowed と同じソース）
+async function isAdminEmail(env, email) {
+  if (!email) return false;
+  const now = Date.now();
+  // _accessCache は isAllowed 側で使っているグローバル。60秒キャッシュされている。
+  if (!_accessCache.cfg || (now - _accessCache.at) > 60 * 1000) {
+    _accessCache.cfg = await firestoreGetDoc(env, 'laynaAccess/config').catch(() => null);
+    _accessCache.invited = await firestoreGetDoc(env, 'laynaAccess/invited').catch(() => null);
+    _accessCache.json = await loadAccessJson(env);
+    _accessCache.at = now;
+  }
+  const admins = [
+    ...((_accessCache.cfg && fsField(_accessCache.cfg, 'adminEmails')) || []),
+    ...((_accessCache.json && _accessCache.json.adminEmails) || []),
+  ];
+  const lower = email.toLowerCase();
+  return admins.map(x => (x || '').toLowerCase()).includes(lower);
+}
+
+// 判定結果：
+//   { allowed: true, reason: 'owner'|'member'|'admin' }
+//   { allowed: false, reason: 'not-a-member' }
+//   { allowed: false, reason: 'no-access-json' } … 未初期化。ブートストラップ許可の判断は呼び出し側で
+async function checkProjectAcl(env, pid, email) {
+  const access = await loadProjectAccess(env, pid);
+  if (!access) return { allowed: false, reason: 'no-access-json' };
+  const lower = String(email || '').toLowerCase();
+  if (!lower) return { allowed: false, reason: 'no-email' };
+  if (String(access.owner || '').toLowerCase() === lower) return { allowed: true, reason: 'owner' };
+  const members = Array.isArray(access.members) ? access.members : [];
+  if (members.map(m => String(m || '').toLowerCase()).includes(lower)) return { allowed: true, reason: 'member' };
+  // admin エスカレーション：laynaAccess の adminEmails なら常時許可（owner 不在時の緊急対応用）
+  if (await isAdminEmail(env, email)) return { allowed: true, reason: 'admin' };
+  return { allowed: false, reason: 'not-a-member' };
+}
+
+// URL パスからプロジェクト ID を抽出（/api/r2/(list|purge)?/projects/<pid>/...）
+function extractPidFromPath(path) {
+  const m = path.match(/^\/api\/r2\/(?:list\/|purge\/)?projects\/([^/]+)\//);
+  return m ? m[1] : null;
+}
+
+// ブートストラップ判定：_access.json が無いプロジェクトへの初回書き込みを許可するか
+// - key が _access.json 自身であること
+// - body に owner=<自分のメール> が含まれていること（他人を owner に指定できないように）
+async function isBootstrapWrite(env, req, key, email) {
+  if (!/\/_access\.json$/.test(key)) return { ok: false, reason: 'not-access-json' };
+  if (req.method !== 'PUT') return { ok: false, reason: 'not-put' };
+  try {
+    const clone = req.clone();
+    const body = await clone.json();
+    const bodyOwner = String((body && body.owner) || '').toLowerCase();
+    if (bodyOwner !== String(email || '').toLowerCase()) {
+      return { ok: false, reason: 'owner-mismatch' };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: 'invalid-body' };
+  }
 }
 
 // ---------- 公開鍵キャッシュ ----------
@@ -315,6 +405,31 @@ export default {
       return respond(json(env, req, { error: 'access-check-failed', detail: String(e.message || e) }, 500), 'access_err=' + String(e.message || e).slice(0, 40));
     }
 
+    // プロジェクト単位の ACL チェック（R2 プロジェクトへのアクセスは owner/members のみ許可）
+    // /api/r2/... で pid を含む URL に対して事前判定する
+    const pid = extractPidFromPath(path);
+    let aclResult = null;
+    let willBootstrap = false;
+    if (pid) {
+      aclResult = await checkProjectAcl(env, pid, payload.email);
+      if (!aclResult.allowed) {
+        if (aclResult.reason === 'no-access-json') {
+          // 未初期化プロジェクト：_access.json の初回 PUT のみ許可（body に自分を owner として指定）
+          // それ以外の操作（他ファイルの GET/PUT/DELETE）は 403 で拒否
+          // これにより、任意の pid でプレフィックスを乗っ取ることを防ぐ
+          const keyM = path.match(/^\/api\/r2\/(projects\/[^/]+\/.+)$/);
+          const key = keyM ? keyM[1] : '';
+          const boot = await isBootstrapWrite(env, req, key, payload.email);
+          if (!boot.ok) {
+            return respond(json(env, req, { error: 'project-not-initialized', detail: boot.reason }, 403), 'pid=' + pid + ' bootstrap_fail=' + boot.reason);
+          }
+          willBootstrap = true;
+        } else {
+          return respond(json(env, req, { error: 'not-a-project-member', pid }, 403), 'pid=' + pid + ' acl=' + aclResult.reason);
+        }
+      }
+    }
+
     // /api/r2/list/projects/<pid>/
     let m = path.match(/^\/api\/r2\/list\/(projects\/[^/]+\/.*)$/);
     if (m && req.method === 'GET') {
@@ -339,6 +454,7 @@ export default {
         if (!list.truncated) break;
         cursor = list.cursor;
       }
+      if (pid) invalidateProjectAccess(pid); // プロジェクト消滅により ACL キャッシュも破棄
       return respond(json(env, req, { deleted: total }), 'purged=' + total + ' prefix=' + prefix);
     }
 
@@ -367,7 +483,9 @@ export default {
         }
         const contentType = req.headers.get('x-laycat-content-type') || req.headers.get('content-type') || 'application/octet-stream';
         await env.R2.put(key, req.body, { httpMetadata: { contentType } });
-        return respond(json(env, req, { ok: true, key }), 'key=' + key + ' size=' + cl);
+        // _access.json への書き込みなら ACL キャッシュを無効化（次回チェックで最新を読む）
+        if (/\/_access\.json$/.test(key) && pid) invalidateProjectAccess(pid);
+        return respond(json(env, req, { ok: true, key, bootstrap: willBootstrap || undefined }), 'key=' + key + ' size=' + cl + (willBootstrap ? ' bootstrap=1' : ''));
       }
       if (req.method === 'DELETE') {
         await env.R2.delete(key);

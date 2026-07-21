@@ -25,6 +25,12 @@
 - 運営向けメンテナンス中バナー（画面上端のオレンジ帯）を半透明＋クリックスルーに変更。バナー背後の LayCAT UI が見えるようになり、メンテ告知は残しつつ通常操作を邪魔しないように改善。オレンジの濃さは .15 に薄めて背景をより見せる形に。
 - プロジェクトデータの保存先として Cloudflare R2（Workers プロキシ経由）を選択できるように準備。新規プロジェクト作成モーダルに「ローカルフォルダ / Cloudflare R2」のラジオを追加し、R2 選択時は Worker エンドポイント URL を入力する形。既存プロジェクトはローカルのまま（併用）。ストレージ抽象化（loadProject/saveProject/putMedia/delMedia/getURL/loadReels/saveReels/delProject）に R2 分岐を追加、`r2:<projectId>|<path>` という新プレフィックスで参照。Firebase ID トークンを Worker に渡して認可。`docs/R2_SETUP.md` と `worker/laycat-r2-api.js` を追加。※ Cloudflare 側のセットアップ（バケット作成・Worker デプロイ）が完了するまでは実利用不可。
 - 上記に付随する Worker 修正：`isAllowed` に access.json フォールバックを追加。LayCAT 本体は「access.json → Firestore で上書き」の順で判定するのに Worker 側は Firestore 単体前提だったため、admin メールが access.json 側にしか無い状態で 403 forbidden になっていた不具合を修正。Firestore と access.json の adminEmails/allowedEmails/allowedDomains を合算して判定するように変更。`laynaAccess/invited` の emails マップ形式にも対応。
+- **R2 プロジェクトメンバー方式アクセス制御を実装**（R2 プロジェクトのみ対象・フォルダ運用は影響なし）：
+  - Worker：全 R2 操作の前に `projects/<pid>/_access.json` を読み、owner または members に含まれない場合は 403。laynaAccess の adminEmails は常時許可（admin エスカレーション）。_access.json が存在しない場合は初回 PUT のみブートストラップ許可（自分を owner として指定必須）。ACL キャッシュ 30 秒。
+  - LayCAT：R2 プロジェクト作成時に作成者を owner に自動セットし _access.json を即 PUT。persist で root.owner/members の変更を検知して _access.json を同期。既存のメンバー管理 UI からの変更も自動的に反映される（persist 経由）。
+  - フォルダ運用プロジェクトには一切影響なし（storageBackend==='r2' の分岐で制御）。
+  - APP_VERSION: 2026.07.17.156
+  - ※ Worker コード変更のため、Cloudflare ダッシュボードで再デプロイが必要。
 - **Worker のセキュリティ強化**：（1）ファイルサイズ上限を実装（PUT の content-length で検査、超過は 413 payload-too-large。デフォルト JSON=10MB / メディア=500MB / 絶対上限=2GB、環境変数で上書き可能）。悪意ユーザーによる無料枠枯渇攻撃を防ぐ。（2）監査ログを実装（全リクエストで method/path/email/status/duration を console.log。Cloudflare Workers Logs で追跡可能）。事故発生時の追跡・振り返り用。※ Worker コード変更のため、Cloudflare ダッシュボードで再デプロイが必要。
 
 ---
@@ -35,7 +41,8 @@
 
 **セキュリティ・アクセス制御**
 
-- **R2 のアクセス制御を「プロジェクトメンバー方式」で実装**（既存の LayCAT のメンバー管理概念と整合）
+- ~~**R2 のアクセス制御を「プロジェクトメンバー方式」で実装**~~ ✅ **実装済み**（要 Worker 再デプロイで反映）
+- （旧計画：以下は実装済みの内容の参考記録）
   - LayCAT 側：`root.owner` を新規追加（作成者メール自動セット）、既存 `root.members` はそのまま
   - R2 側：プロジェクト直下に `_access.json`（平文で owner/members だけを持つ小さな JSON）を配置。laycat.project.json 本体は暗号化されていても _access.json は平文で維持する
   - Worker：全 R2 操作の前に `_access.json` を読み、`token.email === owner || members に含まれる` なら許可、そうでなければ 403
