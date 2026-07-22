@@ -78,6 +78,55 @@
   .btn-ghost:hover{background:var(--bg3);border-color:var(--text3)}
   @keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
 
+  /* ========== GUIDE STRIP (トップ帯：はじめ方への誘導) ========== */
+  /* 最上部にフルワイド帯として表示。nav はこの下にスタック。 */
+  .guide-strip{
+    position:fixed;top:0;left:0;right:0;z-index:101;
+    background:linear-gradient(90deg,rgba(165,107,240,.28),rgba(92,199,239,.22));
+    border-bottom:1px solid rgba(165,107,240,.4);
+    backdrop-filter:blur(10px);
+    padding:9px 16px;text-decoration:none;
+  }
+  .guide-strip .inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;font-size:13.5px}
+  .guide-strip .tag{background:var(--gradPurple);color:#fff;padding:2px 10px;border-radius:20px;font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 4px 14px var(--purpleGlow)}
+  .guide-strip .msg{color:var(--text);font-weight:600}
+  .guide-strip .link{color:#fff;font-weight:700;text-decoration:underline;text-decoration-color:rgba(255,255,255,.5);text-underline-offset:3px;text-decoration-thickness:1.5px;transition:color .15s}
+  .guide-strip:hover .link{color:#fff;text-decoration-color:#fff}
+  .guide-strip .arrow{display:inline-block;transform:translateY(-1px);transition:transform .2s}
+  .guide-strip:hover .arrow{transform:translate(4px,-1px)}
+  /* nav は guide-strip の下に配置（上書き） */
+  nav{top:44px}
+  /* strip 分だけ body 全体を下げる（hero の min-height も自動で追従） */
+  body{padding-top:44px}
+  .hero{min-height:calc(100vh - 100px)}
+  @media(max-width:640px){
+    .guide-strip .msg{display:none}
+    .guide-strip{padding:8px 12px}
+    nav{top:40px}body{padding-top:40px}
+    .hero{min-height:calc(100vh - 96px)}
+  }
+
+  /* ========== HERO GUIDE PANEL（ヒーロー内のはじめ方カード） ========== */
+  .hero-guide{
+    margin-top:36px;max-width:520px;width:min(92vw,520px);
+    background:linear-gradient(135deg,rgba(165,107,240,.09),rgba(92,199,239,.09));
+    border:1px solid rgba(165,107,240,.32);border-radius:16px;
+    padding:20px 22px;display:flex;align-items:center;gap:16px;
+    text-decoration:none;color:var(--text);transition:all .2s;
+    animation:fadeUp 1.2s ease .4s both;
+  }
+  .hero-guide:hover{transform:translateY(-3px);border-color:rgba(165,107,240,.6);box-shadow:0 18px 48px rgba(165,107,240,.24)}
+  .hero-guide .hg-ico{
+    flex-shrink:0;width:52px;height:52px;border-radius:12px;
+    background:var(--gradPurple);display:flex;align-items:center;justify-content:center;
+    font-size:24px;box-shadow:0 8px 20px var(--purpleGlow);
+  }
+  .hero-guide .hg-body{flex:1;text-align:left}
+  .hero-guide .hg-t{font-weight:800;font-size:15px;line-height:1.4;margin-bottom:2px}
+  .hero-guide .hg-s{color:var(--text2);font-size:12.5px;line-height:1.5}
+  .hero-guide .hg-arrow{flex-shrink:0;font-size:22px;color:var(--text2);transition:transform .2s,color .2s}
+  .hero-guide:hover .hg-arrow{transform:translateX(4px);color:var(--text)}
+
   /* ========== KEY POINTS (何ができるか) ========== */
   .keypoints{background:var(--bg);padding-top:60px;padding-bottom:60px}
   .kp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
@@ -188,6 +237,16 @@
 </head>
 <body>
 
+<!-- ============ 最上部：はじめ方ガイドへの誘導帯 ============ -->
+<a href="guide.html" class="guide-strip">
+  <div class="inner">
+    <span class="tag">NEW</span>
+    <span class="msg">はじめてご利用の方へ ／</span>
+    <span class="msg">ステップバイステップの<span class="link">はじめ方ガイド</span>を用意しました</span>
+    <span class="arrow">→</span>
+  </div>
+</a>
+
 <!-- ============ NAV ============ -->
 <nav>
   <div class="inner">
@@ -215,8 +274,17 @@
   </p>
   <div class="cta-row">
     <a href="laycat.html" class="btn btn-primary">アプリを開く →</a>
+    <a href="guide.html" class="btn btn-ghost">はじめ方ガイド</a>
     <a href="#features" class="btn btn-ghost">できることを見る</a>
   </div>
+  <a href="guide.html" class="hero-guide">
+    <span class="hg-ico">🚀</span>
+    <div class="hg-body">
+      <div class="hg-t">初めての方はこちら</div>
+      <div class="hg-s">アクセス〜プロジェクト作成〜レビュー〜提出まで、順を追って解説したガイドがあります。</div>
+    </div>
+    <span class="hg-arrow">→</span>
+  </a>
 </section>
 
 <!-- ============ KEY POINTS ============ -->
