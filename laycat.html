@@ -2248,7 +2248,44 @@ function migrate(old){
 
 /* ---------- ツリー操作 ---------- */
 const getNode=id=>DB.nodes.find(n=>n.id===id)||null;
-const childrenOf=id=>DB.nodes.filter(n=>n.parentId===id).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+/* 子ノードの並び順：
+   - review どうし（ショット直下の工程）は「工程設定」（親を遡って最初に見つかった `section.stages` 配列）
+     の順序を優先。工程設定に載っていない工程は末尾に回し、その中では名前の自然順。
+     `stages` が見つからなければ従来どおり stageRankCmp（LAY→ANIM→…）にフォールバック。
+   - それ以外（プロジェクト/カテゴリ/ショット等）は名前の自然順ソート（"SC010" < "SC100" になるよう numeric:true）
+   - review と section が混在した場合は section を先に置く
+   ※ 以前は createdAt 昇順（作成順）だったが、ショット番号順に並べたい要望により変更 */
+const _nameCmp=(a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ja',{numeric:true,sensitivity:'base'});
+function _stageOrderFor(parentId){
+  let n=parentId?getNode(parentId):null;
+  while(n){
+    if(Array.isArray(n.stages)&&n.stages.length){
+      const idx=new Map();
+      n.stages.forEach((x,i)=>{const nm=(typeof x==='string'?x:((x&&x.name)||''));if(nm&&!idx.has(nm))idx.set(nm,i)});
+      if(idx.size)return idx;
+    }
+    n=n.parentId?getNode(n.parentId):null;
+  }
+  return null;
+}
+const childrenOf=id=>{
+  const kids=DB.nodes.filter(n=>n.parentId===id);
+  const stageIdx=_stageOrderFor(id);
+  return kids.sort((a,b)=>{
+    const ar=a.type==='review',br=b.type==='review';
+    if(ar&&br){
+      if(stageIdx){
+        const ia=stageIdx.has(a.name)?stageIdx.get(a.name):Infinity;
+        const ib=stageIdx.has(b.name)?stageIdx.get(b.name):Infinity;
+        if(ia!==ib)return ia-ib;
+        return _nameCmp(a,b); /* 両方とも工程設定外なら名前順 */
+      }
+      return stageRankCmp(a.name,b.name);
+    }
+    if(ar!==br)return ar?1:-1;
+    return _nameCmp(a,b);
+  });
+};
 function pathOf(id){const p=[];let n=getNode(id);while(n){p.unshift(n);n=n.parentId?getNode(n.parentId):null}return p}
 function descendants(id){const out=[];const walk=pid=>{for(const c of childrenOf(pid)){out.push(c);walk(c.id)}};walk(id);return out}
 /* プロジェクト（ルート）ごとのステータス定義。未設定はデフォルト4種 */
@@ -2345,8 +2382,29 @@ function thumbPh(doc){doc=doc||document;const w=doc.createElement('div');w.class
 let authUser=null; // {name,email,photo,role} when Google認証時
 const currentUser=()=>authUser?authUser.name:(($('#currentUser').value||'').trim()||'anonymous');
 function toast(m){const t=el('div','toast',m);document.body.appendChild(t);setTimeout(()=>t.remove(),2400)}
-/* 動画のデコード失敗（未対応コーデック）時にユーザーへ明示する。error.code 3=DECODE / 4=SRC_NOT_SUPPORTED のみ対象（ネットワーク要因の誤爆を防ぐ）。Maya書き出しのAnimation/ProRes等はブラウザで再生不可 */
-function attachCodecWarn(vid,host){if(!vid||vid._codecWarn)return;vid._codecWarn=true;vid.addEventListener('error',()=>{const er=vid.error;if(!(er&&(er.code===3||er.code===4)))return;const box=host||vid.parentElement;if(!box||box._codecBadge)return;box._codecBadge=true;try{const cs=getComputedStyle(box);if(cs.position==='static')box.style.position='relative'}catch(_){}const ov=el('div','codec-warn');ov.appendChild(el('div','cw-ic','⚠'));ov.appendChild(el('div','cw-tx','この動画はブラウザで再生できないコーデックの可能性があります（Animation / ProRes 等）。H.264 の mp4 / mov へ変換してください。'));box.appendChild(ov)})}
+/* 動画のデコード失敗（未対応コーデック）時にユーザーへ明示する。error.code 3=DECODE / 4=SRC_NOT_SUPPORTED のみ対象（ネットワーク要因の誤爆を防ぐ）。Maya書き出しのAnimation/ProRes等はブラウザで再生不可。
+   アップロード直後の src 差し替え・R2 URL 解決タイミングで一過性の code=4 が起きて誤爆する対策として、
+   (a) src が空のときは無視、(b) 一度でも loadedmetadata/canplay が来たら誤爆と判定して既存 badge も除去、
+   (c) error 発火から ~1.2s 遅延して、その間にロード成功があったら表示を取り消す。 */
+function attachCodecWarn(vid,host){
+  if(!vid||vid._codecWarn)return;vid._codecWarn=true;
+  const boxOf=()=>host||vid.parentElement;
+  const addBadge=()=>{const box=boxOf();if(!box||box._codecBadge)return;box._codecBadge=true;try{const cs=getComputedStyle(box);if(cs.position==='static')box.style.position='relative'}catch(_){}const ov=el('div','codec-warn');ov.appendChild(el('div','cw-ic','⚠'));ov.appendChild(el('div','cw-tx','この動画はブラウザで再生できないコーデックの可能性があります（Animation / ProRes 等）。H.264 の mp4 / mov へ変換してください。'));box.appendChild(ov)};
+  const clearBadge=()=>{const box=boxOf();if(!box)return;const ov=box.querySelector(':scope > .codec-warn');if(ov)ov.remove();box._codecBadge=false};
+  const markOk=()=>{vid._codecOk=true;clearBadge()};
+  vid.addEventListener('loadedmetadata',markOk);
+  vid.addEventListener('canplay',markOk);
+  vid.addEventListener('error',()=>{
+    const er=vid.error;if(!(er&&(er.code===3||er.code===4)))return;
+    if(!vid.getAttribute('src')&&!vid.currentSrc)return; /* src 未確定は無視 */
+    if(vid._codecOk)return;                              /* 一度でも読めていれば誤爆 */
+    setTimeout(()=>{
+      if(vid._codecOk)return;                             /* 猶予中にロード成功 → 出さない */
+      const er2=vid.error;if(!(er2&&(er2.code===3||er2.code===4)))return;
+      addBadge();
+    },1200);
+  });
+}
 function fmt(iso){if(!iso)return'';const d=new Date(iso);if(isNaN(d))return iso;const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'/'+p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())}
 
 /* ============================================================
@@ -2405,8 +2463,11 @@ async function boot(){
   try{const raw=localStorage.getItem('layna_loc');if(raw)_loc=JSON.parse(raw)}catch(_){}
   if(_loc){
     if(_loc.lastPageId&&getNode(_loc.lastPageId))state.lastPageId=_loc.lastPageId;
-    if(Array.isArray(_loc.openTasks))state.openTasks=_loc.openTasks.filter(id=>{const n=getNode(id);return n&&n.type==='review'});
-    if(Array.isArray(_loc.expanded))for(const id of _loc.expanded){if(getNode(id))state.expanded.add(id)}
+    /* openTasks / expanded は「未解決IDでも保持」。暗号化プロジェクト解錠前や R2 非同期取り込みで getNode が
+       まだ null を返す段階で消してしまうと、直後の _saveLocNow に空で上書きされて永続ロストするため、
+       ここでは中身検証せず生値を復元する。表示側（renderTabs）が解決できた ID だけを描画する。 */
+    if(Array.isArray(_loc.openTasks))state.openTasks=_loc.openTasks.slice(0,40);
+    if(Array.isArray(_loc.expanded))for(const id of _loc.expanded)state.expanded.add(id);
   }
   if(!applyHash(true)){
     let restored=false;
@@ -2626,25 +2687,74 @@ function scanMentionsForMe(){
       for(const c of (n.comments||[]))consider(c,c.author,c.text,n.id);
       if(n.type==='review')for(const v of (n.versions||[]))for(const note of ((v.review&&v.review.notes)||[]))consider(note,note.author,note.text,n.id);
     }
-    /* レビュー依頼：サブミット提出時、自分がチェック担当のカットを通知 */
+    /* レビュー依頼：サブミット提出時、自分がチェック担当のカットを通知。
+       「自分が提出したもの」の判定は、メールが取れる場合はメール（byEmail）で厳密に行い、
+       それ以外の環境（旧サブミット・未認証）だけ表示名フォールバック。
+       同姓同名のメンバーで名前だけの比較が誤って一致してチェック依頼が消えていた不具合対策。 */
+    const meEmail=(((authUser&&authUser.email)||'')+'').toLowerCase();
+    /* 「既に通知として存在するチェック依頼」は DB.notifications 側にあるかどうかで判定する。
+       localStorage seen だけに頼っていた従来方式は「seen キーが localStorage に残ったのに
+       DB.notifications への push は persist 失敗等で消えた」ケースで一度スキップされ始めると
+       二度と通知が出なくなる事故を起こしていた（メンションはコメント本文が変わって別キーが
+       生えるため気付きにくいが、チェック依頼は固定キーなので発症すると恒久的に静音化する）。 */
+    const existingRq=new Set();
+    for(const nn of (DB.notifications||[]))if(nn&&nn.rqKey)existingRq.add(nn.rqKey);
     for(const sb of (DB.submits||[])){
       if(!sb||sb.projectId!==root.id||!Array.isArray(sb.items))continue;
-      if((sb.by||'')===currentUser())continue; /* 自分が提出したものは通知しない */
+      const sbEmail=String(sb.byEmail||'').toLowerCase();
+      const sameSubmitter=(meEmail&&sbEmail)?(meEmail===sbEmail):((sb.by||'')===currentUser());
+      if(sameSubmitter)continue; /* 自分が提出したものは通知しない */
       for(const it of sb.items){
         const n=getNode(it.nodeId);if(!n||!n.reviewer)continue;
-        /* 「自分がチェック担当か」を、メンションと同じ基準（ID/メール一致 または 名前一致）で判定。
-           従来は me.ids（ID/メール）だけ見ており、名前でしか本人特定できない環境ではチェック依頼だけ漏れていた。 */
+        /* 「自分がチェック担当か」を、メンションと同じ基準（ID/メール一致 または 名前一致・大文字小文字無視）で判定。 */
         const rid=String(n.reviewer).toLowerCase();const rm=memberById(root,n.reviewer);
-        const mineRev=me.ids.has(rid)||(me.name&&rm&&String(rm.name||'').trim()===me.name)||(me.name&&String(n.reviewer).trim()===me.name);
+        const meNmLc=me.name?String(me.name).trim().toLowerCase():'';
+        const rmNmLc=rm?String(rm.name||'').trim().toLowerCase():'';
+        const revNmLc=String(n.reviewer||'').trim().toLowerCase();
+        const mineRev=me.ids.has(rid)||(meNmLc&&rmNmLc&&rmNmLc===meNmLc)||(meNmLc&&revNmLc===meNmLc);
         if(!mineRev)continue; /* 自分がチェック担当のときのみ */
-        const key='rq:'+selfTag+':'+sb.id+':'+it.nodeId;if(seen.has(key))continue;seen.add(key);
-        pending.push({title:'チェック依頼',text:(sb.by||'誰か')+'：'+(shotOf(n)?shotOf(n)+' / ':'')+n.name+'（'+(sb.name||'サブミット')+'）',nodeId:it.nodeId});
+        const key='rq:'+selfTag+':'+sb.id+':'+it.nodeId;
+        if(existingRq.has(key))continue;      /* 既に DB.notifications に入っている → スキップ */
+        if(seen.has(key)){continue}           /* 後方互換：旧 seen もチェック（読み込み時のみ有効・下で外す） */
+        seen.add(key);
+        pending.push({title:'チェック依頼',text:(sb.by||'誰か')+'：'+(shotOf(n)?shotOf(n)+' / ':'')+n.name+'（'+(sb.name||'サブミット')+'）',nodeId:it.nodeId,rqKey:key});
       }
     }
+    /* 既存の DB.notifications に該当キーが無くて localStorage seen だけ残っているものは、
+       次回以降のために seen 側からも取り除く（消えた通知を復活可能にする）。 */
+    for(const s of [...seen])if(s.startsWith('rq:')&&!existingRq.has(s)&&!pending.some(p=>p.rqKey===s))seen.delete(s);
+    /* タスクページ経由の直接アップロード（＝サブミットを作らない経路）でもチェック依頼通知を出す。
+       各タスクの版を走査し、自分がチェック担当のタスクに他者がアップした新規版を検知する。
+       重複抑止は上と同じで DB.notifications.rqKey ベース（'rq:v:...'）。 */
+    for(const n of descendants(root.id)){
+      if(!n||n.type!=='review'||!n.reviewer)continue;
+      const rid=String(n.reviewer).toLowerCase();const rm=memberById(root,n.reviewer);
+      const meNmLc=me.name?String(me.name).trim().toLowerCase():'';
+      const rmNmLc=rm?String(rm.name||'').trim().toLowerCase():'';
+      const revNmLc=String(n.reviewer||'').trim().toLowerCase();
+      const mineRev=me.ids.has(rid)||(meNmLc&&rmNmLc&&rmNmLc===meNmLc)||(meNmLc&&revNmLc===meNmLc);
+      if(!mineRev)continue;
+      for(const ver of (n.versions||[])){
+        if(!ver||!ver.id)continue;
+        if(ver.submitId)continue; /* サブミット経由（=上のループで拾う）は二重通知しない */
+        const uploader=String(ver.uploadedBy||'').trim();
+        const upperLc=uploader.toLowerCase();
+        /* 自分自身のアップロードは通知しない（byEmail 相当が版に無いため名前で比較） */
+        if(upperLc&&meNmLc&&upperLc===meNmLc)continue;
+        if(meEmail&&upperLc===meEmail)continue;
+        const key='rq:v:'+selfTag+':'+n.id+':'+ver.id;
+        if(existingRq.has(key))continue;
+        if(seen.has(key))continue;
+        seen.add(key);
+        pending.push({title:'チェック依頼',text:(uploader||'誰か')+'：'+(shotOf(n)?shotOf(n)+' / ':'')+n.name+'（'+(ver.name||'新規版')+'）',nodeId:n.id,rqKey:key});
+      }
+    }
+    /* 同じく旧 seen（rq:v:...）で DB に対応通知が無いキーは削除して復活を許可 */
+    for(const s of [...seen])if(s.startsWith('rq:v:')&&!existingRq.has(s)&&!pending.some(p=>p.rqKey===s))seen.delete(s);
   }
   _saveSeenMentions(seen);
   if(pending.length){if(!Array.isArray(DB.notifications))DB.notifications=[];
-    for(const p of pending.reverse())DB.notifications.unshift({id:newId('ntf'),title:p.title,text:p.text,time:nowIso(),read:false,nodeId:p.nodeId||null});
+    for(const p of pending.reverse())DB.notifications.unshift({id:newId('ntf'),title:p.title,text:p.text,time:nowIso(),read:false,nodeId:p.nodeId||null,rqKey:p.rqKey||null});
     if(DB.notifications.length>300)DB.notifications.length=300;
     updateNotifBadge();persist(); /* 通知を localStorage に保存（次回読込でも保持） */
     const pn=$('#notifPanel');if(pn&&!pn.classList.contains('hidden'))renderNotifPanel();
@@ -2925,7 +3035,10 @@ async function createSubmitBlock(){
     /* このショット工程のステータスを反映 */
     if(b.status)b.node.status=b.status;
   }
-  DB.submits.push({id:subId,projectId:pid,name,createdAt:nowIso(),by:currentUser(),comment:blockComment,items});
+  /* by は表示名（従来）。byEmail に認証メール（あれば）を別途保存し、
+     通知の「自分が提出したもの」判定を名前ではなくメールで厳密に行えるようにする
+     （同姓同名メンバーが混在してもチェック依頼が誤スキップされないため）。 */
+  DB.submits.push({id:subId,projectId:pid,name,createdAt:nowIso(),by:currentUser(),byEmail:((authUser&&authUser.email)||''),comment:blockComment,items});
   await persist();
   for(const b of blocks){if(b.thumbUrl){try{URL.revokeObjectURL(b.thumbUrl)}catch(_){}}}
   subS.blocks=[];subS.blockComment='';
@@ -3317,14 +3430,30 @@ function buildProjectTabsHead(root){
 }
 /* 下段：左サイドバー／ショットから開いたタスク（タスクページ）をタブとして複数並べる（ブラウザのタブ風） */
 function buildTaskTabs(root){
-  /* タスク（review）のみタブ表示。カテゴリ（section）は表示しない */
-  state.openTasks=(state.openTasks||[]).filter(id=>{const n=getNode(id);return n&&n.type==='review'&&rootOf(n)&&rootOf(n).id===root.id});
+  /* タスク（review）のみタブ表示。カテゴリ（section）は表示しない。
+     state.openTasks は破壊的にフィルタしない（暗号化解錠前や R2 非同期取り込みで getNode が
+     まだ null を返す ID をここで消すと _saveLocNow に空で書き戻されて永続ロストするため）。
+     表示用の可視リストを別で作り、本体（state.openTasks）は「明らかに別プロジェクトと確定した ID」
+     だけを取り除く方針にする。 */
+  const visible=[];
+  const cleaned=[];
+  for(const id of (state.openTasks||[])){
+    const n=getNode(id);
+    if(!n){cleaned.push(id);continue} /* 未解決＝データ未ロードの可能性を残して保持 */
+    if(n.type!=='review')continue;    /* review でない ID は元から間違い、除去 */
+    const rt=rootOf(n);
+    if(!rt){cleaned.push(id);continue} /* rootOf 不明も保持（親ツリー未マージの可能性） */
+    if(rt.id!==root.id){cleaned.push(id);continue} /* 別プロジェクトのタブは表示しないが保持 */
+    visible.push(id);
+    cleaned.push(id);
+  }
+  state.openTasks=cleaned;
   const strip=el('div','task-tabs');
-  if(!state.openTasks.length){
+  if(!visible.length){
     strip.appendChild(el('span','task-tabs-empty','左のツリーやショットからタスクを開くとタブで並びます'));
     return strip;
   }
-  for(const id of state.openTasks){
+  for(const id of visible){
     const n=getNode(id);if(!n)continue;
     const active=state.currentId===id;
     const tab=el('div','task-tab'+(active?' on':''));
@@ -3336,10 +3465,11 @@ function buildTaskTabs(root){
     const x=el('button','tt-close','✕');x.title='タブを閉じる';
     x.onclick=e=>{e.stopPropagation();
       const wasCur=state.currentId===id;
-      const idx=state.openTasks.indexOf(id);
-      state.openTasks=state.openTasks.filter(t=>t!==id);
+      const vidx=visible.indexOf(id); /* 「次のタブ」は表示中リスト（visible）で選ぶ ─ 別プロジェクト保持分に飛ばないように */
+      state.openTasks=(state.openTasks||[]).filter(t=>t!==id);
       if(wasCur){
-        const next=state.openTasks[idx]||state.openTasks[idx-1]||null;
+        const nextVisible=visible.filter(t=>t!==id);
+        const next=nextVisible[vidx]||nextVisible[vidx-1]||null;
         if(next){state.currentId=next;state.projTab='browse';for(const y of pathOf(next))state.expanded.add(y.id)}
         else{state.currentId=root.id;state.projTab='timeline'}
         render();syncHash();
@@ -3348,13 +3478,15 @@ function buildTaskTabs(root){
     tab.appendChild(x);
     strip.appendChild(tab);
   }
-  /* 列の最右：タスクタブを一括で閉じるボタン（開いているタブがある時のみ） */
+  /* 列の最右：タスクタブを一括で閉じるボタン（開いているタブがある時のみ）。
+     現プロジェクトの表示中タブだけを対象にし、別プロジェクトで温存している openTasks は残す */
   const clr=el('button','tt-clear','✕ すべて閉じる');
   clr.title='開いているタスクタブをすべて閉じる';
   clr.onclick=e=>{e.stopPropagation();
-    state.openTasks=[];
+    const vs=new Set(visible);
+    state.openTasks=(state.openTasks||[]).filter(t=>!vs.has(t));
     const cur=state.currentId?getNode(state.currentId):null;
-    if(cur&&cur.type==='review'){state.currentId=root.id;state.projTab='timeline';} /* タスクページ表示中ならプロジェクトのトップへ戻す */
+    if(cur&&cur.type==='review'&&vs.has(state.currentId)){state.currentId=root.id;state.projTab='timeline';}
     render();syncHash();
   };
   strip.appendChild(clr);
@@ -4538,11 +4670,18 @@ function buildVPlayer(media,vid){
   const play=el('button','vp-play','◐');play.title='再生 / 停止';
   const time=el('span','vp-time','0:00 / 0:00');
   const track=el('div','vp-track');
+  /* 音声：明示的に unmute。前回セッションの音量／ミュート状態を復元 */
+  try{vid.muted=false;const _lv=parseFloat(localStorage.getItem('layna_vol'));vid.volume=(isFinite(_lv)&&_lv>=0&&_lv<=1)?_lv:1;if(localStorage.getItem('layna_mute')==='1')vid.muted=true}catch(_){vid.volume=1}
+  const mute=el('button','vp-play','🔊');mute.title='ミュート切替';mute.style.fontSize='13px';
+  const _syncMute=()=>{mute.textContent=(vid.muted||vid.volume===0)?'🔇':'🔊'};
+  _syncMute();
+  mute.onclick=e=>{e.stopPropagation();vid.muted=!vid.muted;try{localStorage.setItem('layna_mute',vid.muted?'1':'0')}catch(_){}_syncMute()};
+  vid.addEventListener('volumechange',_syncMute);
   const ticks=el('div','ticks');for(let i=0;i<13;i++)ticks.appendChild(el('i'));
   const rail=el('div','rail');const fill=el('div','fill');const knob=el('div','knob');
   rail.appendChild(fill);rail.appendChild(knob);
   track.appendChild(ticks);track.appendChild(rail);
-  bar.appendChild(play);bar.appendChild(track);bar.appendChild(time);
+  bar.appendChild(play);bar.appendChild(track);bar.appendChild(time);bar.appendChild(mute);
   media.appendChild(center);media.appendChild(bar);
   function update(){
     const d=vid.duration||0,c=vid.currentTime||0,p=d?(c/d*100):0;
@@ -4822,6 +4961,11 @@ function logItem(node,v){
   if(v.type==='video'){
     const vid=el('video');vid.dataset.vref=v.file;if(v.thumb)vid.dataset.poster=v.thumb;
     vid.preload='metadata';vid.playsInline=true;
+    /* URL が urlCache に既にあるなら（例：アップロード直後）同期で src を設定する。
+       resolveThumbs 側で非同期に src を設定する経路を待たないので、
+       DOM 追加時点で既に「正しい blob URL」が入っている＝一過性 error が起きえない。 */
+    {const _cu=storage.urlCache.get(v.file);if(_cu){vid.src=_cu;vid.dataset.res='1'}
+     if(v.thumb){const _cp=storage.urlCache.get(v.thumb);if(_cp)vid.poster=_cp}}
     media.appendChild(vid);
     buildVPlayer(media,vid);
   }else{
@@ -4938,7 +5082,8 @@ async function _resolvePass(gen,attempt){
 function genThumbFromUrl(url){return new Promise(resolve=>{
   const vid=document.createElement('video');vid.preload='metadata';vid.muted=true;vid.playsInline=true;vid.src=url;
   let done=false;const finish=cv=>{if(done)return;done=true;try{vid.removeAttribute('src');vid.load()}catch(_){}resolve(cv?cv.toDataURL('image/jpeg',0.72):null)};
-  vid.onloadeddata=()=>{try{vid.currentTime=Math.min(1,(vid.duration||2)/2)}catch(_){finish(null)}};
+  /* サムネイルは 1 フレーム目（動画の頭）を採用。currentTime=0 だと seeked 未発火のブラウザがあるため 0.001 で強制シーク */
+  vid.onloadeddata=()=>{try{vid.currentTime=0.001}catch(_){finish(null)}};
   vid.onseeked=()=>{try{const w=vid.videoWidth,h=vid.videoHeight;if(!w||!h)return finish(null);const s=Math.min(1,640/w);const cv=document.createElement('canvas');cv.width=Math.round(w*s);cv.height=Math.round(h*s);cv.getContext('2d').drawImage(vid,0,0,cv.width,cv.height);finish(cv)}catch(_){finish(null)}};
   vid.onerror=()=>finish(null);
   setTimeout(()=>finish(null),20000);
@@ -6191,7 +6336,13 @@ async function uploadVersion(node,file,ui,opts){
     const sub=opts.sub||'media';const thumbSub=opts.sub?opts.sub+'/thumbnails':'thumbnails';const pm={projectId:opts.projectId};
     const mediaRef=await storage.putMedia(sub,id+ext,file,pm);
     if(!mediaRef){ui.prog.classList.add('hidden');toast('保存できませんでした。保存先フォルダの設定・接続・空き容量・書き込み権限を確認してください');return}
-    let thumbRef=null;if(thumbDataUrl){const blob=await(await fetch(thumbDataUrl)).blob();thumbRef=await storage.putMedia(thumbSub,id+'.jpg',blob,pm)}else if(!isVideo)thumbRef=mediaRef;
+    /* アップロード直後のレンダリングで storage.getURL が R2 から再ダウンロードし直すのを回避するため、
+       元 File からその場で blob URL を作って urlCache に投入する。
+       これで直後の resolveThumbs はネットワーク往復ゼロでキャッシュ URL を返し、
+       video 要素の src が「アップロード完了時点で確定 → 変わらない」状態になる。
+       結果、コーデック警告オーバーレイの一過性誤爆が根本的に発生しなくなる。 */
+    try{const bu=URL.createObjectURL(file);storage.urlCache.set(mediaRef,bu)}catch(_){}
+    let thumbRef=null;if(thumbDataUrl){const blob=await(await fetch(thumbDataUrl)).blob();thumbRef=await storage.putMedia(thumbSub,id+'.jpg',blob,pm);if(thumbRef){try{const tu=URL.createObjectURL(blob);storage.urlCache.set(thumbRef,tu)}catch(_){}}}else if(!isVideo)thumbRef=mediaRef;
     /* 名前：入力があればそれ、空欄なら動画のタイトル（拡張子なしのファイル名） */
     const vname=(opts.name&&opts.name.trim())||file.name.replace(/\.[^.]+$/,'');
     const version={id:newId('ver'),name:vname,type:isVideo?'video':'image',file:mediaRef,thumb:thumbRef,uploadedBy:currentUser(),uploadedAt:nowIso(),review:{status:'pending',notes:[]}};
@@ -6228,7 +6379,9 @@ function openUploadModal(node,file){
     });
   });
 }
-function genThumb(file){return new Promise(resolve=>{const isVideo=isVideoFile(file);const url=URL.createObjectURL(file);let _fin=false;const done=cv=>{if(_fin)return;_fin=true;URL.revokeObjectURL(url);resolve(cv?cv.toDataURL('image/jpeg',0.72):null)};const draw=(src,w,h)=>{const scale=Math.min(1,640/w);const cv=document.createElement('canvas');cv.width=Math.round(w*scale);cv.height=Math.round(h*scale);cv.getContext('2d').drawImage(src,0,0,cv.width,cv.height);return cv};if(isVideo){const vid=document.createElement('video');vid.preload='metadata';vid.muted=true;vid.src=url;vid.onloadeddata=()=>{try{vid.currentTime=Math.min(1,(vid.duration||2)/2)}catch(_){}}; vid.onseeked=()=>{try{done(draw(vid,vid.videoWidth,vid.videoHeight))}catch(_){done(null)}};vid.onerror=()=>done(null);setTimeout(()=>done(null),15000)/* seeked/onerror未発火の破損・未対応動画でPromiseが永久ペンディングになりアップロードがハングするのを防ぐ */}else{const img=new Image();img.onload=()=>done(draw(img,img.naturalWidth,img.naturalHeight));img.onerror=()=>done(null);img.src=url}})}
+function genThumb(file){return new Promise(resolve=>{const isVideo=isVideoFile(file);const url=URL.createObjectURL(file);let _fin=false;const done=cv=>{if(_fin)return;_fin=true;URL.revokeObjectURL(url);resolve(cv?cv.toDataURL('image/jpeg',0.72):null)};const draw=(src,w,h)=>{const scale=Math.min(1,640/w);const cv=document.createElement('canvas');cv.width=Math.round(w*scale);cv.height=Math.round(h*scale);cv.getContext('2d').drawImage(src,0,0,cv.width,cv.height);return cv};if(isVideo){const vid=document.createElement('video');vid.preload='metadata';vid.muted=true;vid.src=url;
+  /* サムネイルは 1 フレーム目（動画の頭）を採用。currentTime=0 だと seeked が発火しないブラウザがあるため 0.001 で強制的にシークさせる（実質フレーム 0） */
+  vid.onloadeddata=()=>{try{vid.currentTime=0.001}catch(_){}}; vid.onseeked=()=>{try{done(draw(vid,vid.videoWidth,vid.videoHeight))}catch(_){done(null)}};vid.onerror=()=>done(null);setTimeout(()=>done(null),15000)/* seeked/onerror未発火の破損・未対応動画でPromiseが永久ペンディングになりアップロードがハングするのを防ぐ */}else{const img=new Image();img.onload=()=>done(draw(img,img.naturalWidth,img.naturalHeight));img.onerror=()=>done(null);img.src=url}})}
 
 /* ============================================================
    FB画面（シンクスケッチ風）
@@ -6532,7 +6685,15 @@ function openReview(nodeId,versionId,opts){
   const stage=el('div','fb-stage');
   const wrap=el('div','fb-media-wrap');
   const media=isVideo?el('video'):el('img');
-  if(isVideo){media.playsInline=true;media.preload='auto';attachCodecWarn(media,wrap)}
+  if(isVideo){media.playsInline=true;media.preload='auto';
+    /* 明示的に音声を有効化（他所で muted=true になる副作用があった場合の保険）。
+       音量は前回セッションで使った値を localStorage から復元。 */
+    try{media.muted=false;const _lv=parseFloat(localStorage.getItem('layna_vol'));media.volume=(isFinite(_lv)&&_lv>=0&&_lv<=1)?_lv:1}catch(_){media.volume=1}
+    attachCodecWarn(media,wrap)}
+  /* URL キャッシュ済みなら同期で src を設定：src 未確定の一瞬に error が発火してコーデック警告が誤爆するのを回避。
+     アップロード直後は urlCache に元 File 由来の blob URL が投入済み（uploadVersion 内）なので、ここでヒットする。 */
+  {const _isExrPre=!isVideo&&(v.exr||isExrRef(v.file));const _srcRefPre=_isExrPre?(v.thumb||v.file):v.file;
+   const _cu=storage.urlCache.get(_srcRefPre);if(_cu)media.src=_cu;}
   /* ズーム/トラック用ラッパー（media/トレペ/キャンバスをまとめて変形） */
   const rotEl=el('div');rotEl.style.cssText='position:absolute;inset:0;transform-origin:center center';/* 画面回転用（クリスタ風 Shift+Space+ドラッグ） */
   wrap.appendChild(rotEl);
@@ -6566,6 +6727,17 @@ function openReview(nodeId,versionId,opts){
   const prevBtn=el('button','btn btn-ghost btn-sm','−1F');
   const nextBtn=el('button','btn btn-ghost btn-sm','+1F');
   const loopBtn=el('button','btn btn-ghost btn-sm tool active','🔁');loopBtn.title='ループ再生（既定 ON）';
+  /* 音量／ミュート（動画のときのみ表示）。ミュート状態と音量は localStorage で覚える */
+  const muteBtn=el('button','btn btn-ghost btn-sm','🔊');muteBtn.title='ミュート切替';
+  const volIn=el('input');volIn.type='range';volIn.min='0';volIn.max='1';volIn.step='0.01';volIn.style.width='90px';volIn.title='音量';
+  const _syncVolUi=()=>{if(!isVideo)return;muteBtn.textContent=(media.muted||media.volume===0)?'🔇':'🔊';volIn.value=String(media.muted?0:media.volume)};
+  if(isVideo){
+    try{const _mp=localStorage.getItem('layna_mute');if(_mp==='1')media.muted=true}catch(_){}
+    _syncVolUi();
+    muteBtn.onclick=()=>{media.muted=!media.muted;try{localStorage.setItem('layna_mute',media.muted?'1':'0')}catch(_){}_syncVolUi()};
+    volIn.oninput=()=>{const v=parseFloat(volIn.value);media.volume=isFinite(v)?v:1;if(media.volume>0&&media.muted){media.muted=false;try{localStorage.setItem('layna_mute','0')}catch(_){}}try{localStorage.setItem('layna_vol',String(media.volume))}catch(_){}_syncVolUi()};
+    media.addEventListener('volumechange',_syncVolUi);
+  }
   /* 再生範囲（IN/OUT）— タイムスライダで動かして＜＞で設定。設定範囲内でループ or 停止 */
   let rangeIn=null,rangeOut=null;
   const inBtn=el('button','btn btn-ghost btn-sm','＜');inBtn.title='現在フレームを再生範囲の開始（IN）に設定（ショートカット: , カンマ／Shift無しの＜キー）';
@@ -6619,7 +6791,7 @@ function openReview(nodeId,versionId,opts){
   tbTop.appendChild(eyeBtn);tbTop.appendChild(traceBtn);tbTop.appendChild(layBtn);tbTop.appendChild(undoBtn);tbTop.appendChild(redoBtn);tbTop.appendChild(clearBtn);
   stage.insertBefore(tbTop,mediaRow);
   /* 再生・ズーム系は下側 */
-  if(isVideo){ctr.appendChild(playBtn);ctr.appendChild(prevBtn);ctr.appendChild(nextBtn);ctr.appendChild(loopBtn);ctr.appendChild(inBtn);ctr.appendChild(outBtn);ctr.appendChild(rangeClrBtn);ctr.appendChild(frameLab);ctr.appendChild(fpsSel)}
+  if(isVideo){ctr.appendChild(playBtn);ctr.appendChild(prevBtn);ctr.appendChild(nextBtn);ctr.appendChild(loopBtn);ctr.appendChild(muteBtn);ctr.appendChild(volIn);ctr.appendChild(inBtn);ctr.appendChild(outBtn);ctr.appendChild(rangeClrBtn);ctr.appendChild(frameLab);ctr.appendChild(fpsSel)}
   ctr.appendChild(ziBtn);ctr.appendChild(zoBtn);ctr.appendChild(zoomLab);ctr.appendChild(zrBtn);ctr.appendChild(handBtn);ctr.appendChild(flipBtn);
   ctr.appendChild(help); /* 画面操作ヒント（右寄せ・2行2列） */
   stage.appendChild(ctr);
@@ -7275,6 +7447,8 @@ function openReview(nodeId,versionId,opts){
   (async()=>{
     const isExrItem=!isVideo&&(v.exr||isExrRef(v.file));
     const srcRef=isExrItem?(v.thumb||v.file):v.file;
+    /* 上部で urlCache 同期セット済みならスキップ（無駄な src 再代入 → loadstart 二重発火 → error 誤爆を避ける） */
+    if(media.src)return void setTimeout(fit,60);
     const url=await storage.getURLRetry(srcRef);
     if(url)media.src=url;
     else toast((isVideo?'動画':'画像')+'ファイルを読み込めませんでした（フォルダの同期待ち・接続を確認してください）');
