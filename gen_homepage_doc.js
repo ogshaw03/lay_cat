@@ -82,39 +82,58 @@ function image(path, w, h) {
   });
 }
 
-// カラー背景の 1 セル・1 段テーブル（callout / hero band）
+// ページ本文幅（DXA）：Letter 12240 - margin left/right 400*2 = 11440
+const CONTENT_W = 11440;
+
+const NO_BORDERS = {
+  top:    { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  left:   { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  right:  { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  insideVertical:   { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+};
+
+// カラー背景の 1 セル・1 段テーブル（DXA 固定幅で Google Docs 対策）
 function band(children, bg, height) {
   return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    borders: {
-      top: { style: BorderStyle.NONE, size: 0, color: bg },
-      bottom: { style: BorderStyle.NONE, size: 0, color: bg },
-      left: { style: BorderStyle.NONE, size: 0, color: bg },
-      right: { style: BorderStyle.NONE, size: 0, color: bg },
-      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: bg },
-      insideVertical: { style: BorderStyle.NONE, size: 0, color: bg },
-    },
+    width: { size: CONTENT_W, type: WidthType.DXA },
+    columnWidths: [ CONTENT_W ],
+    borders: NO_BORDERS,
     rows: [ new TableRow({
       height: height ? { value: height, rule: HeightRule.ATLEAST } : undefined,
       children: [ new TableCell({
+        width: { size: CONTENT_W, type: WidthType.DXA },
         shading: { type: ShadingType.CLEAR, fill: bg, color: 'auto' },
         margins: { top: 400, bottom: 400, left: 500, right: 500 },
         verticalAlign: VerticalAlign.CENTER,
+        borders: {
+          top: {style: BorderStyle.NONE, size: 0, color: 'FFFFFF'},
+          bottom: {style: BorderStyle.NONE, size: 0, color: 'FFFFFF'},
+          left: {style: BorderStyle.NONE, size: 0, color: 'FFFFFF'},
+          right: {style: BorderStyle.NONE, size: 0, color: 'FFFFFF'},
+        },
         children,
       }) ],
     }) ],
   });
 }
 
-// 3 列カードレイアウト（横並び）
+// 3 列カード（DXA 固定）
 function cards3(items) {
-  const cells = items.map(item => new TableCell({
-    width: { size: 33, type: WidthType.PERCENTAGE },
+  const colW = Math.floor(CONTENT_W / 3);
+  const widths = [colW, colW, CONTENT_W - colW*2];
+  const cells = items.map((item, i) => new TableCell({
+    width: { size: widths[i], type: WidthType.DXA },
     shading: { type: ShadingType.CLEAR, fill: item.bg||BG_LIGHT, color: 'auto' },
     margins: { top: 300, bottom: 300, left: 300, right: 300 },
     verticalAlign: VerticalAlign.TOP,
-    borders: { top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
-               left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE} },
+    borders: {
+      top: {style: BorderStyle.SINGLE, size: 30, color: 'FFFFFF'},
+      bottom: {style: BorderStyle.SINGLE, size: 30, color: 'FFFFFF'},
+      left: {style: BorderStyle.SINGLE, size: 30, color: 'FFFFFF'},
+      right: {style: BorderStyle.SINGLE, size: 30, color: 'FFFFFF'},
+    },
     children: [
       new Paragraph({ alignment: AlignmentType.CENTER,
                       children: [ tr(item.icon, { size: 40 }) ] }),
@@ -125,27 +144,28 @@ function cards3(items) {
     ],
   }));
   return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    columnWidths: [ 3000, 3000, 3000 ],
-    borders: {
-      top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
-      left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE},
-      insideHorizontal: {style: BorderStyle.NONE, size: 0, color: 'FFFFFF'},
-      insideVertical: {style: BorderStyle.SINGLE, size: 20, color: 'FFFFFF'},
-    },
+    width: { size: CONTENT_W, type: WidthType.DXA },
+    columnWidths: widths,
+    borders: NO_BORDERS,
     rows: [ new TableRow({ children: cells }) ],
   });
 }
 
-// 4 列カード
+// 4 列カード（DXA 固定）
 function cards4(items) {
-  const cells = items.map(item => new TableCell({
-    width: { size: 25, type: WidthType.PERCENTAGE },
+  const colW = Math.floor(CONTENT_W / 4);
+  const widths = [colW, colW, colW, CONTENT_W - colW*3];
+  const cells = items.map((item, i) => new TableCell({
+    width: { size: widths[i], type: WidthType.DXA },
     shading: { type: ShadingType.CLEAR, fill: item.bg||BG_LIGHT, color: 'auto' },
     margins: { top: 250, bottom: 250, left: 200, right: 200 },
     verticalAlign: VerticalAlign.TOP,
-    borders: { top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
-               left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE} },
+    borders: {
+      top: {style: BorderStyle.SINGLE, size: 24, color: 'FFFFFF'},
+      bottom: {style: BorderStyle.SINGLE, size: 24, color: 'FFFFFF'},
+      left: {style: BorderStyle.SINGLE, size: 24, color: 'FFFFFF'},
+      right: {style: BorderStyle.SINGLE, size: 24, color: 'FFFFFF'},
+    },
     children: [
       new Paragraph({ alignment: AlignmentType.CENTER,
                       children: [ tr(item.icon, { size: 36 }) ] }),
@@ -156,44 +176,40 @@ function cards4(items) {
     ],
   }));
   return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    columnWidths: [ 2500, 2500, 2500, 2500 ],
-    borders: {
-      top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
-      left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE},
-      insideHorizontal: {style: BorderStyle.NONE},
-      insideVertical: {style: BorderStyle.SINGLE, size: 16, color: 'FFFFFF'},
-    },
+    width: { size: CONTENT_W, type: WidthType.DXA },
+    columnWidths: widths,
+    borders: NO_BORDERS,
     rows: [ new TableRow({ children: cells }) ],
   });
 }
 
-// 2 列レイアウト（左：テキスト、右：画像 or その逆）
-function twoCol(leftChildren, rightChildren, ratio=[5000,5000]) {
+// 2 列（DXA 固定）：ratio は 0-100 の合計 100 前提
+function twoCol(leftChildren, rightChildren, ratio=[50,50]) {
+  const leftW = Math.floor(CONTENT_W * ratio[0] / 100);
+  const rightW = CONTENT_W - leftW;
   return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    columnWidths: ratio,
-    borders: {
-      top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
-      left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE},
-      insideHorizontal: {style: BorderStyle.NONE},
-      insideVertical: {style: BorderStyle.NONE},
-    },
+    width: { size: CONTENT_W, type: WidthType.DXA },
+    columnWidths: [leftW, rightW],
+    borders: NO_BORDERS,
     rows: [ new TableRow({ children: [
       new TableCell({
-        width: { size: (ratio[0]*100/(ratio[0]+ratio[1]))|0, type: WidthType.PERCENTAGE },
+        width: { size: leftW, type: WidthType.DXA },
         margins: { top: 100, bottom: 100, left: 100, right: 200 },
         verticalAlign: VerticalAlign.CENTER,
-        borders: { top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
-                   left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE} },
+        borders: {
+          top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
+          left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE}
+        },
         children: leftChildren,
       }),
       new TableCell({
-        width: { size: (ratio[1]*100/(ratio[0]+ratio[1]))|0, type: WidthType.PERCENTAGE },
+        width: { size: rightW, type: WidthType.DXA },
         margins: { top: 100, bottom: 100, left: 200, right: 100 },
         verticalAlign: VerticalAlign.CENTER,
-        borders: { top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
-                   left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE} },
+        borders: {
+          top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
+          left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE}
+        },
         children: rightChildren,
       }),
     ] }) ],
@@ -298,7 +314,7 @@ const children = [
       bullet('筆圧検知（環境設定で ON/OFF）'),
     ],
     imgOnly('slides_assets/exr_anno_crypto.png', 300, 169),
-    [4500, 5500]
+    [45, 55]
   ),
 
   h2('顔の向きガイド'),
