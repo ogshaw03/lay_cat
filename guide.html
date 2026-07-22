@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>はじめ方 — LayCAT</title>
-<meta name="description" content="LayCAT のはじめ方。3 ステップで動画レビューを始められます。">
+<meta name="description" content="LayCAT のはじめ方。画面スクショ付き・ステップバイステップ。">
 <link rel="icon" href="laycat_icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,23 +15,18 @@
     --border:#2a2a32; --border2:#3a3a46;
     --text:#eeeef2; --text2:#a0a0b0; --text3:#606070;
     --purple:#A56BF0; --purpleGlow:rgba(165,107,240,.4);
-    --blue:#5A9BFF; --blueGlow:rgba(90,155,255,.4);
-    --green:#5CB878; --amber:#f2c86b;
+    --blue:#5A9BFF; --green:#5CB878; --amber:#f2c86b;
     --grad:linear-gradient(135deg,#5CC7EF 0%,#7A5CFF 100%);
     --gradPurple:linear-gradient(135deg,#A56BF0 0%,#7A5CFF 100%);
   }
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   html{scroll-behavior:smooth}
-  body{
-    background:var(--bg);color:var(--text);
-    font-family:'Noto Sans JP','Inter',system-ui,sans-serif;
-    line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden;
-  }
+  body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP','Inter',system-ui,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
   a{color:inherit}
 
   /* NAV */
   nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,10,13,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:14px 24px}
-  nav .inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:24px}
+  nav .inner{max-width:1080px;margin:0 auto;display:flex;align-items:center;gap:24px}
   nav .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:16px;text-decoration:none;color:var(--text)}
   nav .brand img{height:26px}
   nav .links{margin-left:auto;display:flex;gap:24px;align-items:center}
@@ -39,93 +34,80 @@
   nav .links a:hover{color:var(--text)}
   nav .cta{padding:8px 18px;background:var(--gradPurple);color:#fff !important;border-radius:8px;font-weight:700;font-size:14px}
 
-  /* SECTIONS */
-  section{padding:70px 24px}
-  .container{max-width:1080px;margin:0 auto}
-  h1,h2,h3{letter-spacing:-.01em;line-height:1.25}
+  /* PAGE */
+  .page{max-width:820px;margin:0 auto;padding:110px 24px 80px}
 
   /* HERO */
-  .hero{padding:120px 24px 60px;text-align:center;background:radial-gradient(ellipse at top,rgba(122,92,255,.16),transparent 70%),var(--bg)}
-  .hero h1{font-size:clamp(32px,5vw,52px);font-weight:900;margin-bottom:14px}
-  .hero h1 b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-  .hero p{color:var(--text2);font-size:clamp(15px,1.8vw,18px);max-width:520px;margin:0 auto}
+  .doc-head{margin-bottom:36px;text-align:center}
+  .doc-head .lbl{display:inline-block;padding:5px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.12em;margin-bottom:14px}
+  .doc-head h1{font-size:clamp(28px,4.4vw,42px);font-weight:900;letter-spacing:-.02em;line-height:1.2;margin-bottom:10px}
+  .doc-head h1 b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .doc-head p{color:var(--text2);font-size:15px}
 
-  /* 3 STEPS */
-  .steps{padding:20px 24px 80px}
-  .steps-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:1080px;margin:0 auto}
-  @media(max-width:820px){.steps-grid{grid-template-columns:1fr}}
-  .step{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:32px 24px;text-align:center;transition:all .2s;position:relative;overflow:hidden}
-  .step:hover{border-color:var(--border2);transform:translateY(-3px)}
-  .step .n{position:absolute;top:14px;right:18px;font-size:60px;font-weight:900;color:var(--bg4);line-height:1;letter-spacing:-.03em;font-family:'Inter'}
-  .step .ico{font-size:52px;margin-bottom:14px;line-height:1;display:block}
-  .step h3{font-size:19px;font-weight:800;margin-bottom:8px}
-  .step p{color:var(--text2);font-size:14px;line-height:1.6}
-  .step .hint{margin-top:12px;font-size:12px;color:var(--text3)}
+  /* STEP */
+  .step{margin:44px 0;padding:24px 26px 26px;background:var(--bg2);border:1px solid var(--border);border-radius:18px;position:relative;overflow:hidden}
+  .step::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--gradPurple)}
+  .step .head{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+  .step .n{
+    flex-shrink:0;width:44px;height:44px;border-radius:50%;
+    background:var(--gradPurple);color:#fff;font-weight:900;font-size:20px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 8px 22px var(--purpleGlow);font-family:'Inter';
+  }
+  .step .t{font-size:22px;font-weight:800;letter-spacing:-.01em}
+  .step .sub{color:var(--text2);font-size:14px;margin-bottom:14px}
+  .step .sub b{color:var(--text)}
+  .step .todo{background:var(--bg3);border-left:3px solid var(--purple);border-radius:0 8px 8px 0;padding:12px 16px;margin:12px 0;font-size:14px;line-height:1.7}
+  .step .todo b{color:var(--purple);margin-right:6px;font-weight:800}
+  .step img.shot{width:100%;height:auto;display:block;border-radius:12px;border:1px solid var(--border);margin-top:14px;background:#000}
+  .step figcaption{text-align:center;color:var(--text3);font-size:12px;margin-top:6px}
 
-  /* SECTION TITLE */
-  .st{font-size:11px;font-weight:800;letter-spacing:.14em;color:var(--purple);text-transform:uppercase;margin-bottom:10px;text-align:center}
-  .sh{font-size:clamp(24px,3.6vw,36px);font-weight:900;text-align:center;margin-bottom:44px}
+  /* TIP INSIDE STEP */
+  .tip{margin-top:12px;padding:11px 16px;background:rgba(90,155,255,.07);border:1px solid rgba(90,155,255,.28);border-radius:8px;color:#c8dcff;font-size:13px;line-height:1.7}
+  .tip b{color:#7cb2ff}
+  .warn{margin-top:12px;padding:11px 16px;background:rgba(242,200,107,.07);border:1px solid rgba(242,200,107,.3);border-radius:8px;color:#efe4c8;font-size:13px;line-height:1.7}
+  .warn b{color:#f2c86b}
 
-  /* SCREEN GRID */
-  .screens{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
-  @media(max-width:820px){.screens{grid-template-columns:1fr}}
-  .scr{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:all .2s}
-  .scr:hover{border-color:var(--border2);transform:translateY(-2px)}
-  .scr img{width:100%;height:auto;display:block;aspect-ratio:16/10;object-fit:cover;background:#000}
-  .scr .cap{padding:12px 16px}
-  .scr .cap h4{font-size:15px;font-weight:800;margin-bottom:4px}
-  .scr .cap p{color:var(--text2);font-size:12.5px;line-height:1.5}
-
-  /* KEY OPS (レビュー画面の主な操作) */
-  .ops{display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:900px;margin:0 auto}
-  @media(max-width:700px){.ops{grid-template-columns:1fr}}
-  .op{display:flex;gap:14px;align-items:flex-start;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px 20px}
-  .op .oi{flex-shrink:0;width:44px;height:44px;border-radius:10px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:22px}
-  .op .ot h4{font-size:14.5px;font-weight:800;margin-bottom:3px}
-  .op .ot p{color:var(--text2);font-size:12.5px;line-height:1.6}
-
-  /* KEYBOARD */
-  .kb{max-width:760px;margin:24px auto 0;display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;padding:22px;background:var(--bg2);border:1px solid var(--border);border-radius:12px}
-  .kb .r{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2)}
-  kbd{background:var(--bg4);border:1px solid var(--border2);border-radius:5px;padding:2px 8px;font-family:'Inter',monospace;font-size:11.5px;color:var(--text);font-weight:700;box-shadow:0 2px 0 var(--border)}
-  .kb .r b{color:var(--text);margin-left:3px}
-
-  /* CHOICE (フォルダ vs クラウド) */
-  .ch{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:900px;margin:0 auto}
+  /* CHOICE INSIDE STEP */
+  .ch{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
   @media(max-width:640px){.ch{grid-template-columns:1fr}}
-  .ch .c{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px}
-  .ch .c h4{font-size:16px;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:8px}
-  .ch .c .tag{font-size:10px;font-weight:800;padding:2px 8px;border-radius:12px;background:var(--bg3);color:var(--text2);letter-spacing:.06em}
+  .ch .c{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .ch .c h4{font-size:13.5px;font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .ch .c .tag{font-size:10px;font-weight:800;padding:1px 7px;border-radius:12px;background:var(--bg4);color:var(--text2);letter-spacing:.05em}
   .ch .c ul{list-style:none;padding:0;margin:0}
-  .ch .c li{color:var(--text2);font-size:13.5px;padding:5px 0 5px 22px;position:relative}
+  .ch .c li{color:var(--text2);font-size:12.5px;padding:3px 0 3px 18px;position:relative}
   .ch .c li::before{content:'✓';position:absolute;left:0;color:var(--green);font-weight:800}
 
+  /* KEYBOARD */
+  .kb{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px 14px;padding:14px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:10px}
+  .kb .r{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text2)}
+  kbd{background:var(--bg4);border:1px solid var(--border2);border-radius:5px;padding:2px 7px;font-family:'Inter',monospace;font-size:11px;color:var(--text);font-weight:700;box-shadow:0 2px 0 var(--border)}
+  .kb .r b{color:var(--text);margin-left:3px}
+
   /* FAQ */
-  .faq{max-width:820px;margin:0 auto}
-  .faq details{background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;transition:border-color .15s}
+  .faq{margin-top:60px}
+  .faq h2{font-size:24px;font-weight:900;margin-bottom:16px;text-align:center}
+  .faq details{background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden}
   .faq details[open]{border-color:var(--border2)}
-  .faq summary{padding:16px 22px;cursor:pointer;font-weight:700;font-size:14.5px;list-style:none;display:flex;align-items:center;gap:12px}
+  .faq summary{padding:14px 20px;cursor:pointer;font-weight:700;font-size:14px;list-style:none;display:flex;align-items:center;gap:12px}
   .faq summary::-webkit-details-marker{display:none}
-  .faq summary::before{content:'＋';color:var(--text3);font-weight:400;transition:transform .2s}
+  .faq summary::before{content:'＋';color:var(--text3);font-weight:400}
   .faq details[open] summary::before{content:'−';color:var(--purple)}
-  .faq details p{padding:0 22px 18px 46px;color:var(--text2);font-size:13.5px;line-height:1.75}
+  .faq details p{padding:0 20px 16px 42px;color:var(--text2);font-size:13.5px;line-height:1.75}
+  .faq code{background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-family:'Inter',monospace;font-size:.88em;color:var(--text)}
 
-  /* CALLOUT */
-  .cout{max-width:820px;margin:22px auto 0;padding:14px 18px;background:rgba(242,200,107,.08);border:1px solid rgba(242,200,107,.32);border-radius:10px;color:#efe4c8;font-size:13.5px;line-height:1.7}
-  .cout b{color:#f2c86b}
-
-  /* FINAL CTA */
-  .final{padding:80px 24px;text-align:center;background:radial-gradient(ellipse at bottom,rgba(122,92,255,.12),transparent 70%)}
-  .final h2{font-size:clamp(24px,3.6vw,34px);font-weight:900;margin-bottom:12px}
-  .final p{color:var(--text2);margin-bottom:28px}
+  /* FINAL */
+  .final{margin-top:60px;padding:40px;text-align:center;background:linear-gradient(135deg,rgba(165,107,240,.1),rgba(92,199,239,.08));border:1px solid rgba(165,107,240,.32);border-radius:20px}
+  .final h2{font-size:24px;font-weight:900;margin-bottom:8px}
+  .final p{color:var(--text2);margin-bottom:22px;font-size:14px}
   .final .row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-  .btn{display:inline-flex;align-items:center;gap:8px;padding:14px 28px;font-size:15px;font-weight:700;border-radius:10px;text-decoration:none;transition:all .2s}
-  .btn-primary{background:var(--gradPurple);color:#fff;box-shadow:0 12px 40px var(--purpleGlow)}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:13px 26px;font-size:14px;font-weight:700;border-radius:10px;text-decoration:none;transition:all .2s}
+  .btn-primary{background:var(--gradPurple);color:#fff;box-shadow:0 10px 30px var(--purpleGlow)}
   .btn-primary:hover{transform:translateY(-2px)}
   .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border2)}
   .btn-ghost:hover{background:var(--bg3)}
 
-  footer{padding:32px 24px;border-top:1px solid var(--border);color:var(--text3);font-size:12px;text-align:center}
+  footer{padding:32px 24px;border-top:1px solid var(--border);color:var(--text3);font-size:12px;text-align:center;margin-top:40px}
   footer a{color:var(--text3)}
 </style>
 </head>
@@ -141,196 +123,163 @@
   </div>
 </nav>
 
-<!-- ============ HERO ============ -->
-<section class="hero">
-  <h1><b>3 ステップ</b>で始まります</h1>
-  <p>初めての方向けの、いちばん短い使い方ガイドです。</p>
-</section>
+<div class="page">
 
-<!-- ============ 3 STEPS ============ -->
-<section class="steps">
-  <div class="steps-grid">
-    <div class="step">
-      <span class="n">1</span>
-      <span class="ico">🖥️</span>
-      <h3>アプリを開く</h3>
-      <p>ブラウザで LayCAT を開くだけ。インストール不要。</p>
-      <div class="hint">Chrome / Edge 推奨</div>
+<div class="doc-head">
+  <span class="lbl">GETTING STARTED</span>
+  <h1><b>画面付き</b>ではじめ方ガイド</h1>
+  <p>上から順に画面通り進めれば、動画レビューまで到達できます。</p>
+</div>
+
+<!-- ============ STEP 1 ============ -->
+<div class="step">
+  <div class="head"><span class="n">1</span><span class="t">アプリを開く</span></div>
+  <p class="sub">ブラウザで下の URL を開くだけ。<b>Chrome / Edge 推奨</b>（フォルダを直接読み書きする機能が使えるため）。</p>
+  <div class="todo"><b>DO</b>→ <a href="laycat.html" style="color:var(--blue);text-decoration:underline">ここをクリックしてアプリを開く</a></div>
+  <div class="tip"><b>💡</b> インストール不要・登録不要。ブックマークしておくと便利です。</div>
+</div>
+
+<!-- ============ STEP 2 ============ -->
+<div class="step">
+  <div class="head"><span class="n">2</span><span class="t">「＋ 新規プロジェクト」を押す</span></div>
+  <p class="sub">最初はプロジェクトが 1 つもありません。左上の <b>「＋ 新規プロジェクト」</b> を押します。</p>
+  <img class="shot" src="slides_assets/guide_home.png" alt="ホーム画面">
+  <figcaption>ホーム画面 ─ ここから始まる</figcaption>
+</div>
+
+<!-- ============ STEP 3 ============ -->
+<div class="step">
+  <div class="head"><span class="n">3</span><span class="t">保存先を選んで「作成」</span></div>
+  <p class="sub">プロジェクト名を入力して、<b>保存先を選ぶ</b>のがポイント。</p>
+  <div class="ch">
+    <div class="c">
+      <h4>📁 ローカルフォルダ <span class="tag">推奨</span></h4>
+      <ul>
+        <li>PC のフォルダ / Google Drive 同期フォルダ</li>
+        <li>ログイン不要・追加費用なし</li>
+        <li>個人 & 小規模チーム向き</li>
+      </ul>
     </div>
-    <div class="step">
-      <span class="n">2</span>
-      <span class="ico">📁</span>
-      <h3>プロジェクトを作る</h3>
-      <p>「＋ プロジェクトを作成」からフォルダ or クラウドを選ぶ。</p>
-      <div class="hint">迷ったらフォルダで OK</div>
-    </div>
-    <div class="step">
-      <span class="n">3</span>
-      <span class="ico">🎬</span>
-      <h3>動画をアップして描き込む</h3>
-      <p>ショット → 工程を選んで「＋ 動画」で素材を追加。</p>
-      <div class="hint">H.264 の mp4 / mov 推奨</div>
+    <div class="c">
+      <h4>☁️ Cloudflare R2 <span class="tag">チーム</span></h4>
+      <ul>
+        <li>クラウド保存（どこからでもアクセス）</li>
+        <li>Google ログイン必須</li>
+        <li>本格運用向き</li>
+      </ul>
     </div>
   </div>
-  <div class="cout"><b>それだけ。</b>あとは触りながら覚えられます。以下は必要になったら参照するリファレンスです。</div>
-</section>
+  <img class="shot" src="slides_assets/guide_create_modal.png" alt="新規プロジェクト作成モーダル">
+  <figcaption>新規プロジェクト作成モーダル ─ 「ローカルフォルダ」を選ぶと安全</figcaption>
+  <div class="tip"><b>💡</b> 迷ったら「ローカルフォルダ」で OK。フォルダを指定 → 名前を入れる → 「プロジェクトを作成」を押す。</div>
+</div>
 
-<!-- ============ 主な画面 ============ -->
-<section>
-  <div class="container">
-    <div class="st">MAIN SCREENS</div>
-    <h2 class="sh">主な画面は 3 つ</h2>
-    <div class="screens">
-      <div class="scr">
-        <img src="slides_assets/pre_task.png" alt="タスク画面">
-        <div class="cap">
-          <h4>タスク画面</h4>
-          <p>動画を上げて、コメント・履歴を残す場所</p>
-        </div>
-      </div>
-      <div class="scr">
-        <img src="slides_assets/pre_review_anno.png" alt="レビュー画面">
-        <div class="cap">
-          <h4>レビュー画面</h4>
-          <p>フレームごとに描き込み・コメント</p>
-        </div>
-      </div>
-      <div class="scr">
-        <img src="slides_assets/prog.png" alt="進捗画面">
-        <div class="cap">
-          <h4>進捗画面</h4>
-          <p>ショット × 工程 × 担当者で全体を俯瞰</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
+<!-- ============ STEP 4 ============ -->
+<div class="step">
+  <div class="head"><span class="n">4</span><span class="t">カテゴリ・ショット・工程を作る</span></div>
+  <p class="sub">プロジェクトの中を「3 階層」で組み立てます：</p>
+  <div class="todo"><b>構造</b>→ プロジェクト ▸ カテゴリ（EP01 / SEQ_A 等） ▸ ショット（SC001, SC002…） ▸ 工程（LAY / ANIM / COMP 等）</div>
+  <ol style="padding-left:20px;color:var(--text2);font-size:14px;margin-top:6px">
+    <li style="margin-bottom:6px">まず <b>カテゴリ</b>（例：EP01）を追加</li>
+    <li style="margin-bottom:6px">カテゴリの設定で <b>工程テンプレート</b>（LAY / ANIM / COMP など）を登録</li>
+    <li>カテゴリの下に <b>ショット</b> を追加 → 工程が自動で全部作られる</li>
+  </ol>
+  <div class="tip"><b>💡</b> ショット名は <b><code>SC001</code>, <code>SC010</code></b> のようにゼロ埋めで。 数字順に並ぶようになります。</div>
+</div>
 
-<!-- ============ 保存先の選び方 ============ -->
-<section style="background:var(--bg2)">
-  <div class="container">
-    <div class="st">CHOOSE STORAGE</div>
-    <h2 class="sh">保存先を選ぶ</h2>
-    <div class="ch">
-      <div class="c">
-        <h4>📁 フォルダ運用 <span class="tag">個人・小規模</span></h4>
-        <ul>
-          <li>PC のフォルダ or Google Drive 同期フォルダに保存</li>
-          <li>ログイン不要・費用ゼロ</li>
-          <li>Chrome / Edge のみ対応</li>
-        </ul>
-      </div>
-      <div class="c">
-        <h4>☁️ クラウド運用（R2）<span class="tag">チーム</span></h4>
-        <ul>
-          <li>Cloudflare R2 に保存</li>
-          <li>Google ログイン必須</li>
-          <li>OS・ブラウザ問わずどこからでも</li>
-        </ul>
-      </div>
-    </div>
-    <div class="cout">迷ったら <b>フォルダ運用</b> から始めて、必要になったら R2 に切替。</div>
-  </div>
-</section>
+<!-- ============ STEP 5 ============ -->
+<div class="step">
+  <div class="head"><span class="n">5</span><span class="t">動画をアップロード</span></div>
+  <p class="sub">左サイドバーで <b>工程（タスク）</b> を選ぶと、右側にタスク画面が開く。右上の <b>「＋ 動画」</b> を押してファイルを選ぶだけ。</p>
+  <img class="shot" src="slides_assets/pre_task.png" alt="タスク画面">
+  <figcaption>タスク画面 ─ 右上の「＋ 動画」からアップ、下に版履歴が積み上がる</figcaption>
+  <div class="warn"><b>⚠️</b> Animation / ProRes のコーデックはブラウザで再生できません。<b>H.264 の mp4 / mov</b> で書き出してください。</div>
+</div>
 
-<!-- ============ レビュー画面の使い方 ============ -->
-<section>
-  <div class="container">
-    <div class="st">REVIEW SCREEN</div>
-    <h2 class="sh">レビュー画面でできること</h2>
-    <div class="ops">
-      <div class="op">
-        <div class="oi">✍️</div>
-        <div class="ot"><h4>描き込み</h4><p>ペン・消しゴム・トレペ・顔向きガイド。筆圧対応。</p></div>
-      </div>
-      <div class="op">
-        <div class="oi">💬</div>
-        <div class="ot"><h4>フレームコメント</h4><p>止めた位置にコメント。クリックで一発ジャンプ。</p></div>
-      </div>
-      <div class="op">
-        <div class="oi">⇄</div>
-        <div class="ot"><h4>比較モード</h4><p>2 動画を左右並べて同期再生。修正前後の確認に。</p></div>
-      </div>
-      <div class="op">
-        <div class="oi">◐</div>
-        <div class="ot"><h4>顔の向きガイド</h4><p>正中線と目印マーカーで 3D 的な向きを指示。</p></div>
-      </div>
-    </div>
-    <div class="kb">
-      <div class="r"><kbd>Space</kbd><b>再生</b></div>
-      <div class="r"><kbd>←</kbd><kbd>→</kbd><b>1 フレーム前後</b></div>
-      <div class="r"><kbd>,</kbd><b>IN</b></div>
-      <div class="r"><kbd>.</kbd><b>OUT</b></div>
-      <div class="r"><kbd>V</kbd><b>反転</b></div>
-      <div class="r"><kbd>Ctrl</kbd>+<kbd>Z</kbd><b>戻す</b></div>
-      <div class="r"><kbd>Space</kbd>+ドラッグ<b>パン</b></div>
-    </div>
+<!-- ============ STEP 6 ============ -->
+<div class="step">
+  <div class="head"><span class="n">6</span><span class="t">レビュー画面で描き込み・コメント</span></div>
+  <p class="sub">動画タイルの右上 <b>⤢ ボタン</b>（または動画クリック）でフル画面のレビュー画面が開きます。</p>
+  <img class="shot" src="slides_assets/pre_review_anno.png" alt="レビュー画面">
+  <figcaption>レビュー画面 ─ フレームを止めて描き込む・コメントする・オレンジ丸ボタンで判定</figcaption>
+  <div class="kb">
+    <div class="r"><kbd>Space</kbd><b>再生 / 停止</b></div>
+    <div class="r"><kbd>←</kbd><kbd>→</kbd><b>1 フレーム前後</b></div>
+    <div class="r"><kbd>,</kbd><b>IN 点</b></div>
+    <div class="r"><kbd>.</kbd><b>OUT 点</b></div>
+    <div class="r"><kbd>V</kbd><b>反転</b></div>
+    <div class="r"><kbd>Ctrl</kbd>+<kbd>Z</kbd><b>戻す</b></div>
+    <div class="r"><kbd>Space</kbd>+ドラッグ<b>パン</b></div>
   </div>
-</section>
+  <div class="tip"><b>💡</b> フレームコメントは、動画を止めた位置で右側の入力欄に書けばそのフレームに紐付きます。クリックで一発ジャンプ。</div>
+</div>
 
-<!-- ============ 提出と通知 ============ -->
-<section style="background:var(--bg2)">
-  <div class="container">
-    <div class="st">SUBMIT &amp; NOTIFY</div>
-    <h2 class="sh">提出とチェック依頼の流れ</h2>
-    <div class="ops">
-      <div class="op">
-        <div class="oi">📤</div>
-        <div class="ot"><h4>提出は「＋動画」だけで OK</h4><p>新版アップ → 自動で「チェック待ち」に。担当者に通知。</p></div>
-      </div>
-      <div class="op">
-        <div class="oi">👤</div>
-        <div class="ot"><h4>チェック担当を設定</h4><p>タスク上部の「チェック」で担当者を選ぶ。ここが未設定だと通知されません。</p></div>
-      </div>
-      <div class="op">
-        <div class="oi">🔔</div>
-        <div class="ot"><h4>通知はベルで確認</h4><p>右上の 🔔 を開くとメンション・チェック依頼が並ぶ。</p></div>
-      </div>
-      <div class="op">
-        <div class="oi">📦</div>
-        <div class="ot"><h4>まとめて出したい時はサブミット</h4><p>ヘッダの「サブミット」で複数ショットを一括提出。</p></div>
-      </div>
-    </div>
-  </div>
-</section>
+<!-- ============ STEP 7 ============ -->
+<div class="step">
+  <div class="head"><span class="n">7</span><span class="t">担当者を決める（＝通知の宛先）</span></div>
+  <p class="sub">タスク画面上部で <b>「作業」「チェック」担当</b> を選ぶ。<b>チェック担当が未設定だと通知が誰にも飛びません。</b></p>
+  <div class="todo"><b>DO</b>→ タスク画面上部の「チェック」プルダウンからメンバーを選ぶ</div>
+  <div class="warn"><b>⚠️</b> 事前にプロジェクト設定 → メンバー管理で、メンバーを Google のメールアドレスで登録しておいてください。</div>
+</div>
+
+<!-- ============ STEP 8 ============ -->
+<div class="step">
+  <div class="head"><span class="n">8</span><span class="t">新版アップ = 自動でチェック依頼</span></div>
+  <p class="sub">STEP 5 と同じ手順でもう一度動画をアップすると、<b>ステータスが自動で「チェック待ち」</b>に。担当者の 🔔 ベルに通知が飛びます。</p>
+  <img class="shot" src="slides_assets/check.png" alt="チェック待ち画面">
+  <figcaption>チェック待ち一覧 ─ 担当者がここで自分の未処理をまとめて確認</figcaption>
+  <div class="tip"><b>💡</b> 複数ショットを一度に提出したい時は、ヘッダの <b>「サブミット」</b> から束ねて出せます（「今週のレイアウト 8 カット提出」など）。</div>
+</div>
+
+<!-- ============ STEP 9 ============ -->
+<div class="step">
+  <div class="head"><span class="n">9</span><span class="t">進捗を見る</span></div>
+  <p class="sub">プロジェクトの <b>「進捗」タブ</b> で、ショット × 工程 × 担当者を横並びで俯瞰できます。</p>
+  <img class="shot" src="slides_assets/prog.png" alt="進捗ダッシュボード">
+  <figcaption>進捗ダッシュボード ─ 全カットのステータス分布と担当ごとの状況</figcaption>
+</div>
+
+<!-- ============ STEP 10 ============ -->
+<div class="step">
+  <div class="head"><span class="n">10</span><span class="t">通知を確認する</span></div>
+  <p class="sub">右上の 🔔 ベルアイコンを押すと通知パネルが開きます。<b>メンション</b>（@自分）と<b>チェック依頼</b>が並びます。</p>
+  <div class="tip"><b>💡</b> リアルタイム push ではないので、作業開始前に <b>🔔 → 「🗘 最新」</b> を押すか、ページをリロードしてください。</div>
+</div>
 
 <!-- ============ FAQ ============ -->
-<section>
-  <div class="container">
-    <div class="st">FAQ</div>
-    <h2 class="sh">よくあるつまずき</h2>
-    <div class="faq">
-      <details><summary>動画が再生できない</summary>
-        <p>Animation / ProRes などブラウザ非対応コーデックの可能性。<b>H.264 の mp4 / mov</b> に変換してから再アップしてください。</p>
-      </details>
-      <details><summary>音が出ない</summary>
-        <p>レビュー画面の 🔊 / 🔇 トグルと音量スライダを確認。ミュートや音量 0 になっていませんか。それでも出ない場合は元動画に音声トラックが無い可能性。</p>
-      </details>
-      <details><summary>チェック依頼の通知が来ない</summary>
-        <p>タスクの「チェック」担当者に自分が設定されているか確認。それから 🔔 の「🗘 最新」を押すか、アプリをリロードしてみてください。</p>
-      </details>
-      <details><summary>他人と共有したい（フォルダ運用）</summary>
-        <p>Google Drive / Dropbox の同期フォルダにプロジェクトを置き、共有相手にも同じフォルダを「フォルダを選ぶ」で開いてもらう。</p>
-      </details>
-      <details><summary>データはどこに？</summary>
-        <p>フォルダ運用：選んだフォルダの中の <code>laycat.project.json</code> と <code>media/</code>。R2 運用：Cloudflare R2 バケット。</p>
-      </details>
-      <details><summary>他人のアップに気づけない</summary>
-        <p>リアルタイム push は無いので、作業前に <b>🔔 → 「🗘 最新」</b> を押すか、アプリをリロードしてください。</p>
-      </details>
-    </div>
-  </div>
-</section>
+<div class="faq">
+  <h2>よくあるつまずき</h2>
+  <details><summary>動画が再生できない（コーデック警告）</summary>
+    <p>Animation / ProRes 等の非対応コーデックです。<b>H.264 の mp4 / mov</b> に変換してから再アップしてください。</p>
+  </details>
+  <details><summary>音が出ない</summary>
+    <p>レビュー画面の 🔊 / 🔇 ボタン と音量スライダを確認。ミュートや音量 0 になっていませんか。それでも出ない場合は元動画に音声トラックが無い可能性。</p>
+  </details>
+  <details><summary>チェック依頼の通知が来ない</summary>
+    <p>タスクの「チェック」担当者に自分が設定されているか確認。それから 🔔 の「🗘 最新」を押すか、アプリをリロード。</p>
+  </details>
+  <details><summary>他人と共有したい（フォルダ運用）</summary>
+    <p>Google Drive / Dropbox の同期フォルダにプロジェクトを置き、共有相手にも同じフォルダを「フォルダを選ぶ」で開いてもらいます。</p>
+  </details>
+  <details><summary>他人の更新に気づけない</summary>
+    <p>ライブ同期はしません。作業前に <b>🔔 → 「🗘 最新」</b> かリロードで最新を取り込んでください。</p>
+  </details>
+  <details><summary>データはどこに？</summary>
+    <p>フォルダ運用：選んだフォルダの <code>laycat.project.json</code> と <code>media/</code>。R2 運用：Cloudflare R2 のバケット。</p>
+  </details>
+</div>
 
 <!-- ============ FINAL ============ -->
-<section class="final">
-  <h2>あとは触るだけ。</h2>
-  <p>読むより 30 秒触ったほうが早いです。</p>
+<div class="final">
+  <h2>準備完了です</h2>
+  <p>あとは触るだけ。読むより 30 秒動かした方が早いです。</p>
   <div class="row">
     <a href="laycat.html" class="btn btn-primary">アプリを開く →</a>
-    <a href="intro.html" class="btn btn-ghost">紹介ページ</a>
+    <a href="intro.html" class="btn btn-ghost">紹介ページに戻る</a>
   </div>
-</section>
+</div>
+
+</div>
 
 <footer>
   <p>© LayCAT · <a href="https://ogshaw03.github.io/lay_cat/">https://ogshaw03.github.io/lay_cat/</a></p>
