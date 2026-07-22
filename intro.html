@@ -150,6 +150,11 @@
   .diff-text li::before{content:'';position:absolute;left:0;top:14px;width:6px;height:6px;background:var(--purple);border-radius:50%}
   .diff-block.blue .diff-text li::before{background:var(--blue)}
   .diff-media img{width:100%;height:auto;display:block;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+  /* 図面切替トグル（R2 セクション用） */
+  .toggle-row{display:flex;gap:6px;justify-content:center;margin-top:14px;padding:4px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;width:fit-content;margin-left:auto;margin-right:auto}
+  .toggle-row button{background:none;border:none;color:var(--text2);font-family:inherit;font-size:12px;font-weight:600;padding:6px 14px;border-radius:6px;cursor:pointer;transition:all .15s}
+  .toggle-row button.active{background:var(--gradPurple);color:#fff}
+  .toggle-row button:not(.active):hover{color:var(--text)}
   @media(max-width:820px){
     .diff-block{padding:32px 24px}
     .diff-inner{grid-template-columns:1fr;gap:24px}
@@ -413,7 +418,11 @@
           </ul>
         </div>
         <div class="diff-media">
-          <img src="slides_assets/r2_architecture.png" alt="クラウド構成図">
+          <img id="r2diag" src="slides_assets/r2_architecture.png" alt="クラウド構成図">
+          <div class="toggle-row">
+            <button id="r2simple" class="active" onclick="switchR2('simple')">シンプル版</button>
+            <button id="r2dev" onclick="switchR2('dev')">開発者向け詳細</button>
+          </div>
         </div>
       </div>
     </div>
@@ -491,6 +500,21 @@
 <footer>
   <p>© LayCAT · <a href="https://ogshaw03.github.io/lay_cat/">https://ogshaw03.github.io/lay_cat/</a> · <a href="https://github.com/ogshaw03/lay_cat">GitHub</a></p>
 </footer>
+
+<script>
+  function switchR2(kind){
+    var img = document.getElementById('r2diag');
+    var b1 = document.getElementById('r2simple');
+    var b2 = document.getElementById('r2dev');
+    if(kind === 'dev'){
+      img.src = 'slides_assets/r2_architecture_dev.png';
+      b1.classList.remove('active'); b2.classList.add('active');
+    } else {
+      img.src = 'slides_assets/r2_architecture.png';
+      b2.classList.remove('active'); b1.classList.add('active');
+    }
+  }
+</script>
 
 </body>
 </html>
