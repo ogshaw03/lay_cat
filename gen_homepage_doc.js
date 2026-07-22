@@ -1,293 +1,426 @@
 /**
- * LayCAT ホームページ風 Word ドキュメントを生成
- * プレゼンの内容を、ランディングページ的に読み物形式で構成
+ * LayCAT ホームページ風 Word ドキュメント（Rich Version）
+ * 画像・カラフルなカラーバンド・カード風レイアウトを多用したランディングページ風
  */
-const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
-        BorderStyle, PageOrientation, LevelFormat, ShadingType, PositionalTab,
-        PositionalTabAlignment, PositionalTabLeader, PageBreak,
-        UnderlineType } = require('docx');
+const { Document, Packer, Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType,
+        BorderStyle, PageOrientation, LevelFormat, ShadingType,
+        Table, TableRow, TableCell, WidthType, VerticalAlign, PageBreak,
+        HeightRule } = require('docx');
 const fs = require('fs');
 
-// カラー（LayCAT テーマ）
+// ========== カラーパレット ==========
 const PURPLE = 'A56BF0';
 const BLUE = '5A9BFF';
 const DARK = '1C1C22';
 const TEXT = '2C2C33';
 const MUTED = '6B6B7B';
+const BG_HERO = '111116';      // ダークヒーロー背景
 const BG_LIGHT = 'F5F5F8';
+const BG_ACCENT = 'F0EAFB';   // 淡い紫
+const BG_BLUE = 'E8F1FF';     // 淡い青
 const GREEN = '5CB878';
+const ORANGE = 'F5804A';
 
 // ========== ヘルパ ==========
-function hero(title, subtitle) {
-  return [
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 200, after: 100 },
-      children: [ new TextRun({ text: title, size: 72, bold: true, color: PURPLE }) ],
-    }),
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 300 },
-      children: [ new TextRun({ text: subtitle, size: 24, color: MUTED }) ],
-    }),
-  ];
+const font = (extra={}) => ({ font: { name: 'Meiryo', hint: 'eastAsia' }, ...extra });
+
+function tr(text, opts={}) {
+  return new TextRun({ text, size: opts.size||20, bold: !!opts.bold, italics: !!opts.italic,
+                       color: opts.color||TEXT, underline: opts.u?{type:'single'}:undefined });
 }
 
-function h1(text) {
+function p(text, opts={}) {
   return new Paragraph({
-    heading: HeadingLevel.HEADING_1,
-    spacing: { before: 600, after: 200 },
-    border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: PURPLE, space: 4 } },
-    children: [ new TextRun({ text, size: 32, bold: true, color: TEXT }) ],
+    spacing: { before: opts.before||0, after: opts.after||100 },
+    alignment: opts.align || AlignmentType.LEFT,
+    children: Array.isArray(text) ? text : [ tr(text, opts) ],
   });
 }
 
-function h2(text) {
+function h1(text, opts={}) {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_1,
+    spacing: { before: opts.before||500, after: opts.after||200 },
+    alignment: opts.align || AlignmentType.LEFT,
+    children: [ tr(text, { size: 40, bold: true, color: opts.color||DARK }) ],
+  });
+}
+
+function h2(text, color=PURPLE) {
   return new Paragraph({
     heading: HeadingLevel.HEADING_2,
-    spacing: { before: 400, after: 120 },
-    children: [ new TextRun({ text, size: 26, bold: true, color: PURPLE }) ],
+    spacing: { before: 350, after: 150 },
+    children: [ tr(text, { size: 28, bold: true, color }) ],
   });
 }
 
 function h3(text) {
   return new Paragraph({
     heading: HeadingLevel.HEADING_3,
-    spacing: { before: 300, after: 80 },
-    children: [ new TextRun({ text, size: 22, bold: true, color: BLUE }) ],
+    spacing: { before: 250, after: 100 },
+    children: [ tr(text, { size: 22, bold: true, color: TEXT }) ],
   });
 }
 
-function p(text, opts = {}) {
+function bullet(text, level=0, colorDot=BLUE) {
   return new Paragraph({
-    spacing: { after: opts.after || 120 },
-    alignment: opts.align || AlignmentType.LEFT,
-    children: [ new TextRun({ text, size: opts.size || 20, color: opts.color || TEXT, bold: !!opts.bold, italics: !!opts.italic }) ],
+    spacing: { after: 60 },
+    indent: { left: 320, hanging: 220 },
+    children: [
+      tr('●  ', { size: 18, bold: true, color: colorDot }),
+      tr(text, { size: 20, color: TEXT }),
+    ],
   });
 }
 
-function bullet(text, level = 0) {
-  return new Paragraph({
-    numbering: { reference: 'features', level },
-    spacing: { after: 80 },
-    children: [ new TextRun({ text, size: 20, color: TEXT }) ],
-  });
-}
-
-function quote(text) {
-  return new Paragraph({
-    spacing: { before: 200, after: 200 },
-    indent: { left: 400 },
-    border: { left: { style: BorderStyle.SINGLE, size: 24, color: PURPLE, space: 12 } },
-    children: [ new TextRun({ text, size: 24, italics: true, color: DARK }) ],
-  });
-}
-
-function callout(text, color = BLUE) {
+function image(path, w, h) {
+  const buf = fs.readFileSync(path);
   return new Paragraph({
     alignment: AlignmentType.CENTER,
-    spacing: { before: 300, after: 300 },
-    shading: { type: ShadingType.CLEAR, fill: BG_LIGHT, color: 'auto' },
-    children: [ new TextRun({ text, size: 26, bold: true, color }) ],
+    spacing: { before: 200, after: 200 },
+    children: [ new ImageRun({ data: buf, transformation: { width: w, height: h }, type: 'png' }) ],
   });
 }
 
-function divider() {
-  return new Paragraph({
-    spacing: { before: 400, after: 400 },
-    border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'CCCCCC', space: 1 } },
-    children: [],
+// カラー背景の 1 セル・1 段テーブル（callout / hero band）
+function band(children, bg, height) {
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.NONE, size: 0, color: bg },
+      bottom: { style: BorderStyle.NONE, size: 0, color: bg },
+      left: { style: BorderStyle.NONE, size: 0, color: bg },
+      right: { style: BorderStyle.NONE, size: 0, color: bg },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: bg },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: bg },
+    },
+    rows: [ new TableRow({
+      height: height ? { value: height, rule: HeightRule.ATLEAST } : undefined,
+      children: [ new TableCell({
+        shading: { type: ShadingType.CLEAR, fill: bg, color: 'auto' },
+        margins: { top: 400, bottom: 400, left: 500, right: 500 },
+        verticalAlign: VerticalAlign.CENTER,
+        children,
+      }) ],
+    }) ],
   });
 }
 
-function pageBreak() {
-  return new Paragraph({ children: [ new PageBreak() ] });
+// 3 列カードレイアウト（横並び）
+function cards3(items) {
+  const cells = items.map(item => new TableCell({
+    width: { size: 33, type: WidthType.PERCENTAGE },
+    shading: { type: ShadingType.CLEAR, fill: item.bg||BG_LIGHT, color: 'auto' },
+    margins: { top: 300, bottom: 300, left: 300, right: 300 },
+    verticalAlign: VerticalAlign.TOP,
+    borders: { top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
+               left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE} },
+    children: [
+      new Paragraph({ alignment: AlignmentType.CENTER,
+                      children: [ tr(item.icon, { size: 40 }) ] }),
+      new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 100, after: 100 },
+                      children: [ tr(item.title, { size: 22, bold: true, color: item.color||PURPLE }) ] }),
+      new Paragraph({ alignment: AlignmentType.CENTER,
+                      children: [ tr(item.desc, { size: 16, color: MUTED }) ] }),
+    ],
+  }));
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    columnWidths: [ 3000, 3000, 3000 ],
+    borders: {
+      top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
+      left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE},
+      insideHorizontal: {style: BorderStyle.NONE, size: 0, color: 'FFFFFF'},
+      insideVertical: {style: BorderStyle.SINGLE, size: 20, color: 'FFFFFF'},
+    },
+    rows: [ new TableRow({ children: cells }) ],
+  });
+}
+
+// 4 列カード
+function cards4(items) {
+  const cells = items.map(item => new TableCell({
+    width: { size: 25, type: WidthType.PERCENTAGE },
+    shading: { type: ShadingType.CLEAR, fill: item.bg||BG_LIGHT, color: 'auto' },
+    margins: { top: 250, bottom: 250, left: 200, right: 200 },
+    verticalAlign: VerticalAlign.TOP,
+    borders: { top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
+               left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE} },
+    children: [
+      new Paragraph({ alignment: AlignmentType.CENTER,
+                      children: [ tr(item.icon, { size: 36 }) ] }),
+      new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 80, after: 60 },
+                      children: [ tr(item.title, { size: 18, bold: true, color: item.color||PURPLE }) ] }),
+      new Paragraph({ alignment: AlignmentType.CENTER,
+                      children: [ tr(item.desc, { size: 14, color: MUTED }) ] }),
+    ],
+  }));
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    columnWidths: [ 2500, 2500, 2500, 2500 ],
+    borders: {
+      top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
+      left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE},
+      insideHorizontal: {style: BorderStyle.NONE},
+      insideVertical: {style: BorderStyle.SINGLE, size: 16, color: 'FFFFFF'},
+    },
+    rows: [ new TableRow({ children: cells }) ],
+  });
+}
+
+// 2 列レイアウト（左：テキスト、右：画像 or その逆）
+function twoCol(leftChildren, rightChildren, ratio=[5000,5000]) {
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    columnWidths: ratio,
+    borders: {
+      top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
+      left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE},
+      insideHorizontal: {style: BorderStyle.NONE},
+      insideVertical: {style: BorderStyle.NONE},
+    },
+    rows: [ new TableRow({ children: [
+      new TableCell({
+        width: { size: (ratio[0]*100/(ratio[0]+ratio[1]))|0, type: WidthType.PERCENTAGE },
+        margins: { top: 100, bottom: 100, left: 100, right: 200 },
+        verticalAlign: VerticalAlign.CENTER,
+        borders: { top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
+                   left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE} },
+        children: leftChildren,
+      }),
+      new TableCell({
+        width: { size: (ratio[1]*100/(ratio[0]+ratio[1]))|0, type: WidthType.PERCENTAGE },
+        margins: { top: 100, bottom: 100, left: 200, right: 100 },
+        verticalAlign: VerticalAlign.CENTER,
+        borders: { top: {style: BorderStyle.NONE}, bottom: {style: BorderStyle.NONE},
+                   left: {style: BorderStyle.NONE}, right: {style: BorderStyle.NONE} },
+        children: rightChildren,
+      }),
+    ] }) ],
+  });
+}
+
+function imgOnly(path, w, h) {
+  const buf = fs.readFileSync(path);
+  return [ new Paragraph({
+    alignment: AlignmentType.CENTER,
+    children: [ new ImageRun({ data: buf, transformation: { width: w, height: h }, type: 'png' }) ],
+  }) ];
+}
+
+function spacer() {
+  return new Paragraph({ spacing: { before: 200, after: 200 }, children: [] });
 }
 
 // ========== コンテンツ ==========
+const iconBuf = fs.readFileSync('laycat_icon.png');
+
 const children = [
-  // Hero
-  ...hero('LayCAT', '映像制作のためのレビュー ＆ 進行管理ツール'),
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { after: 200 },
-    children: [ new TextRun({ text: '動画への描き込み、進捗の見える化、チェックの割り振り、連続再生まで。', size: 20, color: TEXT }) ],
-  }),
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { after: 200 },
-    children: [ new TextRun({ text: '制作のやり取りを、これ 1 つで。', size: 20, color: TEXT }) ],
-  }),
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { after: 400 },
-    children: [ new TextRun({ text: 'ブラウザだけで動作 ／ インストール不要 ／ チーム共有対応', size: 18, color: MUTED, italics: true }) ],
-  }),
+  // ============ HERO BAND ============
+  band([
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 100 },
+      children: [ new ImageRun({ data: iconBuf, transformation: { width: 120, height: 120 }, type: 'png' }) ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 100 },
+      children: [ tr('LayCAT', { size: 88, bold: true, color: 'FFFFFF' }) ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 },
+      children: [ tr('映像制作のためのレビュー ＆ 進行管理ツール', { size: 26, color: 'CACADE' }) ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 100 },
+      children: [ tr('「ここ、こうして」が、すぐ伝わる。', { size: 36, bold: true, color: PURPLE }) ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 100 },
+      children: [ tr('描く・見る・共有。ブラウザ 1 つで。', { size: 20, color: '9A9AAA' }) ],
+    }),
+  ], BG_HERO, 2400),
 
-  callout('「もう少し右」を、絵で伝える。', PURPLE),
+  spacer(),
 
-  // ---- こんな悩みありませんか ----
-  h1('こんな悩み、ありませんか？'),
-  quote('「もう少し右」が伝わらない。修正の意図が、口頭やメールの往復ばかりでなかなか伝わらない。'),
-  quote('「どのカットが、どこまで？」進捗が見えず、Excel 管理や状況確認に手間がかかる。'),
-  quote('「誰が確認する番？」「最新版はどれ？」チェックの抜け漏れや、二度手間が起きやすい。'),
-  quote('動画やコメントが散らばり、探すのに時間がかかる。'),
-  callout('—— その悩み、LayCAT がまとめて解決します。', DARK),
+  // ============ 悩み提示 ============
+  h1('こんな悩み、ありませんか？', { align: AlignmentType.CENTER }),
 
-  // ---- LayCAT とは ----
-  h1('LayCAT とは'),
-  p('LayCAT は、映像制作の「指示・共有・チェック」を、ブラウザ 1 つで完結させるレビュー＆進行管理ツールです。'),
-  bullet('動画や画像を共有して、OK・リテイク・NG で判定できます。'),
-  bullet('動画のコマに直接描き込むアノテーションで、修正指示をそのまま伝えられます。'),
-  bullet('レイヤー・顔の向きガイドで、言葉にしづらい直しも的確に。'),
-  bullet('カットごとの進み具合が、ひと目でわかります。'),
-  bullet('作品ごとにフォルダへ保存してチームで共有。ブラウザだけで動作・インストール不要。'),
+  cards4([
+    { icon: '💬', title: '伝わらない', desc: '「もう少し右」が\n言葉じゃ伝わらない', color: ORANGE, bg: BG_LIGHT },
+    { icon: '❓', title: '見えない', desc: 'どのカットが\nどこまで進んでる？', color: ORANGE, bg: BG_LIGHT },
+    { icon: '🔀', title: 'ズレる', desc: '誰が確認する番？\n最新版はどれ？', color: ORANGE, bg: BG_LIGHT },
+    { icon: '🗂', title: '散らかる', desc: '動画やコメントが\nあちこちに散らばる', color: ORANGE, bg: BG_LIGHT },
+  ]),
 
-  // ---- 主な機能 ----
-  h1('主な機能'),
+  spacer(),
+
+  band([
+    new Paragraph({ alignment: AlignmentType.CENTER,
+      children: [ tr('その悩み、LayCAT がまとめて解決します。', { size: 28, bold: true, color: 'FFFFFF' }) ] }),
+  ], PURPLE, 900),
+
+  spacer(),
+
+  // ============ LayCAT とは ============
+  h1('LayCAT とは', { align: AlignmentType.CENTER }),
+  p('映像制作の「指示・共有・チェック」を、ブラウザ 1 つで完結させるレビュー＆進行管理ツールです。',
+    { align: AlignmentType.CENTER, size: 22, color: MUTED, after: 300 }),
+
+  cards3([
+    { icon: '🎬', title: '動画・画像レビュー', desc: 'OK / リテイク / NG で判定。\nコマに直接描き込み。', color: PURPLE, bg: BG_ACCENT },
+    { icon: '📊', title: '進捗の見える化', desc: 'エピソード別グラフを\n横並びで一望。', color: BLUE, bg: BG_BLUE },
+    { icon: '👥', title: 'チーム共有', desc: 'フォルダ or クラウドで\n1 つのデータを共同運用。', color: GREEN, bg: BG_LIGHT },
+  ]),
+
+  spacer(),
+
+  // ============ 主な機能 ============
+  h1('主な機能', { align: AlignmentType.CENTER }),
 
   h2('タスクページ — カットごとの作業画面'),
   p('1 つのカットの工程を開く、作業の中心画面です。'),
-  bullet('「＋ 動画」でアップロード。上げるたびに版（v1・v2…）が残ります。'),
-  bullet('動画ごとに、コメントや OK・リテイクの判定をやり取り。'),
-  bullet('ステータスや担当（作業・チェック）もここで設定できます。'),
+  bullet('「＋ 動画」でアップロード。上げるたびに版（v1・v2…）が残る'),
+  bullet('動画ごとに、コメントや OK・リテイクの判定をやり取り'),
+  bullet('ステータスや担当（作業・チェック）もここで設定'),
 
   h2('アノテーション — レイヤー機能'),
-  p('動画のコマに、直接「絵」で指示を描けます。'),
-  bullet('指示はレイヤーで分けられます（例：演出／作画／修正）。'),
-  bullet('レイヤーごとに、表示・非表示や削除ができます。'),
-  bullet('ブラシ・消しゴム・トレーシングペーパーなどを用意。'),
-  bullet('筆圧検知にも対応（環境設定で ON/OFF）。'),
+  twoCol(
+    [
+      p('動画のコマに、直接「絵」で指示を描けます。', { size: 20, after: 200 }),
+      bullet('指示はレイヤーで分けられる（演出／作画／修正）'),
+      bullet('レイヤーごとに表示・非表示や削除'),
+      bullet('ブラシ・消しゴム・トレーシングペーパー'),
+      bullet('筆圧検知（環境設定で ON/OFF）'),
+    ],
+    imgOnly('slides_assets/exr_anno_crypto.png', 300, 169),
+    [4500, 5500]
+  ),
 
-  h2('動画への埋め込み ＆ 顔の向きガイド'),
-  p('描いた指示はそのコマに保存され、再生すると自動で出ます。'),
-  bullet('コメント欄にも、縮小画像で残ります。'),
-  bullet('「顔の向きガイド」で、顔の向きを立体的に示せます。'),
-  bullet('ドラッグで、上下・左右・傾きを指定できます。'),
+  h2('顔の向きガイド'),
+  p('顔の向きを立体的に示せる独自機能。ドラッグで上下・左右・傾きを指定できます。コメント欄にはスクショが自動で残ります。'),
 
-  h2('進捗管理 — 複数グラフの同時表示'),
-  p('エピソードごとの円グラフを、横に並べて表示します。'),
-  bullet('「工程」と「ステータス」の 2 種類を切り替えられます。'),
-  bullet('担当者でしぼり込めます。'),
-  bullet('作品全体の進み具合が、ひと目でわかります。'),
-  bullet('ステータス別（チェック待ち・OK・リテイク・NG の割合）にも即切替可能。'),
-
-  h2('チェック待ち — 担当者一覧'),
-  p('チェック担当者ごとに、タブで分かれます。'),
-  bullet('自分が見る番のカットだけを表示できます。'),
-  bullet('残り件数がバッジでわかり、見落としを防げます。'),
-  bullet('一覧のまま、ステータスを変えられます。'),
+  h2('進捗管理'),
+  p('エピソードごとの円グラフを、横に並べて表示。工程／ステータスを切り替えて全体をひと目で把握。'),
+  bullet('担当者でしぼり込み可能'),
+  bullet('リテイクが多いエピソードのつまずきも一目'),
+  bullet('チェック待ちタブで、自分が見る番のカットだけを表示'),
 
   h2('REEL — カットをつなげて連続再生'),
-  p('複数のカットをつなげて、連続再生できます。'),
-  bullet('並べ替えて、通しのテンポを確認できます。'),
-  bullet('REEL で書いたコメント・アノテーションは、各カットのタスクページにそのまま反映。'),
-  bullet('つながり確認や試写に、そのまま使えます。'),
+  p('複数のカットをつなげて連続再生。REEL 上で書いたコメントは各カットのタスクページに反映されるので、つながり確認・試写・修正指示が 1 か所で完結します。'),
 
-  // ---- 差別化ポイント：EXR ----
-  h1('差別化ポイント ① EXR フォーマット対応'),
-  p('LayCAT は、CG レンダーの中間ファイル（.exr）を、専用ビューアなしでブラウザから直接プレビューできます。'),
-  p('通常この形式は Nuke や After Effects で開かないと中身が見えませんが、LayCAT は多層 EXR をブラウザ上でレイヤー切替＆可視化できます。監督や PD が CG ソフトを持たずに、レンダー出力の中身を確認・注釈できるのが強みです。', { after: 200 }),
+  spacer(),
+
+  // ============ EXR スポットライト ============
+  band([
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 100 },
+      children: [ tr('🎨 SPOTLIGHT', { size: 18, color: 'CACADE' }) ] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 },
+      children: [ tr('EXR フォーマット対応', { size: 40, bold: true, color: 'FFFFFF' }) ] }),
+    new Paragraph({ alignment: AlignmentType.CENTER,
+      children: [ tr('CG レンダーの中間ファイル（.exr）を、専用ビューアなしでブラウザで直接プレビュー。', { size: 20, color: 'CACADE' }) ] }),
+  ], BG_HERO, 1200),
+
+  spacer(),
+
+  image('slides_assets/exr_alllayers.png', 640, 420),
+
+  p('通常この形式は Nuke や After Effects で開かないと中身が見えませんが、LayCAT は多層 EXR をブラウザ上でレイヤー切替＆可視化できます。監督や PD が CG ソフトを持たずに、レンダー出力の中身を確認・注釈できます。',
+    { after: 300 }),
 
   h3('あらゆる AOV レイヤーを自動判定して可視化＋タイル一覧表示'),
   bullet('Beauty（RGB）／ Depth（黒白点・反転付き）／ Normal（XYZ）を自動判定'),
-  bullet('Motion Vector（動きの向き）／ UV パス／ Position パスも対応'),
+  bullet('Motion Vector ／ UV パス／ Position パスも対応'),
   bullet('Cryptomatte（オブジェクト／アセット分離）にも対応'),
   bullet('「🎨 全レイヤー」モーダルで、含まれる全レイヤーをタイル一覧で一望'),
   bullet('露出（EV）／ガンマ／Depth の黒白点／反転を、その場でスライダや数値入力で調整'),
-  bullet('主要レンダラー（Nuke／Arnold／Redshift／V-Ray など）の出力に対応（ZIP・シングルパート推奨）'),
+  bullet('主要レンダラー（Nuke／Arnold／Redshift／V-Ray など）の出力に対応'),
 
-  callout('CG チームは追加の書き出し作業なしで、レンダー完了直後の .exr をそのまま監督・PD に共有できます。', BLUE),
+  band([
+    new Paragraph({ alignment: AlignmentType.CENTER,
+      children: [ tr('CG チームは追加の書き出し作業なしで、レンダー完了直後の .exr をそのまま監督・PD に共有できます。',
+                     { size: 22, bold: true, color: 'FFFFFF' }) ] }),
+  ], BLUE, 900),
 
-  // ---- 差別化ポイント：R2 ----
-  h1('差別化ポイント ② クラウドストレージ対応'),
-  p('プロジェクトデータをクラウドストレージ（Cloudflare R2）に保存できるようになり、フォルダ運用に加えて「ネット経由でチーム共有」ができるようになりました。'),
+  spacer(),
 
-  h3('👤 チームメンバー'),
-  p('ブラウザで LayCAT を開くだけで、会社の PC でも、家でも、出張先でも、同じプロジェクトを開けます。'),
+  // ============ R2 スポットライト ============
+  band([
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 100 },
+      children: [ tr('☁ SPOTLIGHT', { size: 18, color: 'CACADE' }) ] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 },
+      children: [ tr('クラウドストレージ対応', { size: 40, bold: true, color: 'FFFFFF' }) ] }),
+    new Paragraph({ alignment: AlignmentType.CENTER,
+      children: [ tr('プロジェクトデータをネット共有。会社・自宅・出先どこからでも同じデータへ。', { size: 20, color: 'CACADE' }) ] }),
+  ], BG_HERO, 1200),
 
-  h3('🚪 Worker（受付係）'),
-  p('Cloudflare 上の小さなプログラムが、アクセスの受付を担当します。'),
-  bullet('本人確認：ログイン中のユーザーかどうかを確認'),
-  bullet('メンバーチェック：そのプロジェクトの招待メンバーか判定'),
-  bullet('ファイル検査・記録：サイズ制限とアクセス履歴の記録'),
+  spacer(),
 
-  h3('🪣 バケット（保管庫）'),
-  p('プロジェクトのデータは Cloudflare R2（クラウドストレージ）に安全に保管されます。動画・EXR・コメント履歴すべて。'),
+  image('slides_assets/r2_architecture.png', 640, 360),
 
-  h3('この構成のメリット'),
-  bullet('🌏 どこからでも見られる（会社・自宅・出先どこでもブラウザで開ける）'),
-  bullet('🔒 決まった人だけがアクセス（招待メンバー以外は自動的に拒否）'),
-  bullet('📊 安全に保管・追跡可能（ファイルサイズ制限＋全アクセスの記録）'),
-  bullet('🔄 従来のフォルダ運用と併用可能（プロジェクト単位でクラウド／フォルダを選べる）'),
+  p('「ブラウザ → 受付係（Worker） → 保管庫（バケット）」の 3 段構造で、招待メンバーだけが安全にプロジェクトデータへアクセスできます。'),
 
-  // ---- その他の主要画面 ----
-  h1('その他の主要画面'),
-  bullet('タイムライン — 更新履歴が時系列で集約'),
-  bullet('ショット一覧 — 全カットの最新版を一望'),
-  bullet('サブミット — 複数カットをまとめて提出'),
-  bullet('メッセージ機能 — @メンション・通知'),
-  bullet('比較再生 — A/B 同期再生（同じフレームで見比べ）'),
+  cards4([
+    { icon: '🌏', title: 'どこからでも', desc: '会社・自宅・出先どこでも\n同じデータをブラウザで', color: BLUE, bg: BG_BLUE },
+    { icon: '🔒', title: '決まった人だけ', desc: '招待メンバー以外は\n自動的に拒否', color: PURPLE, bg: BG_ACCENT },
+    { icon: '📊', title: '安全に保管', desc: 'サイズ制限＋\nアクセス履歴で追跡可能', color: GREEN, bg: BG_LIGHT },
+    { icon: '🔄', title: 'フォルダと併用', desc: 'プロジェクト単位で\nクラウド／フォルダ選択', color: ORANGE, bg: BG_LIGHT },
+  ]),
 
-  // ---- 導入のメリット ----
-  h1('まとめ — 導入のメリット'),
+  spacer(),
 
-  h3('そのまま指示できる'),
-  p('動画に直接描き込み、レイヤーと顔の向きガイドで、直しが言葉なしで伝わります。'),
+  // ============ その他の主要画面 ============
+  h1('そのほかの主要画面', { align: AlignmentType.CENTER }),
+  cards3([
+    { icon: '⏱', title: 'タイムライン', desc: '更新履歴を時系列で集約。誰がいつ何をしたかひと目で。', color: BLUE, bg: BG_BLUE },
+    { icon: '🎞', title: 'ショット一覧', desc: '全カットの最新版を一望。ホバーで動画プレビュー。', color: PURPLE, bg: BG_ACCENT },
+    { icon: '📤', title: 'サブミット', desc: '複数カットをまとめて提出。個別コメントも一括で。', color: GREEN, bg: BG_LIGHT },
+  ]),
 
-  h3('進捗が見える'),
-  p('グラフの同時表示と、担当者ごとのチェック待ちで、見落としを防げます。'),
+  spacer(),
 
-  h3('チームで回る'),
-  p('フォルダ共有 or クラウド共有で 1 つのデータを共同運用。REEL やサブミットでまとめて確認・提出できます。'),
+  // ============ 導入のメリット ============
+  h1('まとめ — 導入のメリット', { align: AlignmentType.CENTER }),
+  cards4([
+    { icon: '✎', title: 'そのまま指示', desc: '動画に直接描き込み、\n言葉なしで伝わる', color: PURPLE, bg: BG_ACCENT },
+    { icon: '📈', title: '進捗が見える', desc: 'グラフとチェック待ちで\n見落としを防止', color: BLUE, bg: BG_BLUE },
+    { icon: '🤝', title: 'チームで回る', desc: '1 つのデータで共同運用。\nまとめて確認・提出。', color: GREEN, bg: BG_LIGHT },
+    { icon: '⚡', title: '導入かんたん', desc: 'ブラウザだけで動作、\nインストール不要', color: ORANGE, bg: BG_LIGHT },
+  ]),
 
-  h3('導入がかんたん'),
-  p('ブラウザだけで動作・インストール不要。単一 HTML で完結し、パスワード保護にも対応。'),
+  spacer(),
 
-  divider(),
-
-  // ---- クロージング ----
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 400, after: 200 },
-    children: [ new TextRun({ text: '「ここ、こうして」が、すぐ伝わる。', size: 40, bold: true, color: DARK }) ],
-  }),
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { after: 200 },
-    children: [ new TextRun({ text: '描く・見る・共有。ブラウザ 1 つで。', size: 22, color: MUTED }) ],
-  }),
-  callout('LayCAT が、現場のやりとりを軽くします。', BLUE),
-
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 200, after: 200 },
-    children: [ new TextRun({ text: '公開 URL：https://ogshaw03.github.io/laycat/', size: 20, color: MUTED }) ],
-  }),
+  // ============ クロージング ============
+  band([
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 },
+      children: [ tr('「ここ、こうして」が、すぐ伝わる。', { size: 42, bold: true, color: 'FFFFFF' }) ] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 },
+      children: [ tr('描く・見る・共有。ブラウザ 1 つで。', { size: 22, color: 'CACADE' }) ] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 100 },
+      children: [ tr('LayCAT が、現場のやりとりを軽くします。', { size: 26, bold: true, color: PURPLE }) ] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 300 },
+      children: [ tr('https://ogshaw03.github.io/laycat/', { size: 20, color: '9A9AAA' }) ] }),
+  ], BG_HERO, 2400),
 ];
 
 const doc = new Document({
   creator: 'LayCAT',
-  title: 'LayCAT 紹介',
+  title: 'LayCAT 紹介ページ',
   description: '映像制作のためのレビュー＆進行管理ツール',
-  numbering: {
-    config: [{
-      reference: 'features',
-      levels: [
-        { level: 0, format: LevelFormat.BULLET, text: '●', alignment: AlignmentType.LEFT,
-          style: { paragraph: { indent: { left: 400, hanging: 220 } }, run: { color: BLUE, bold: true } } },
-      ],
-    }],
-  },
   styles: {
     default: {
-      document: { run: { font: { name: 'Meiryo', hint: 'eastAsia' }, size: 20 } },
+      document: { run: font() },
     },
   },
   sections: [{
     properties: {
       page: {
-        margin: { top: 900, right: 900, bottom: 900, left: 900 },
+        size: { width: 12240, height: 15840 }, // Letter
+        margin: { top: 400, right: 400, bottom: 400, left: 400 },
       },
     },
     children,
