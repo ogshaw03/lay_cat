@@ -2399,24 +2399,28 @@ async function boot(){
   }
   updateFolderStatus();initSizeBtns();updateNotifBadge();
   try{scanMentionsForMe()}catch(_){} /* 自分宛メンションを走査して通知（読込時） */
-  /* URL（ハッシュ）優先で画面を復元。無ければ localStorage、どちらも無ければホーム */
+  /* URL（ハッシュ）優先で画面を復元。無ければ localStorage、どちらも無ければホーム。
+     ハッシュ復元経路でもタスクタブ・展開ツリーは localStorage から復元したいので、applyHash より先に読み込む（#13a リロード継続） */
+  let _loc=null;
+  try{const raw=localStorage.getItem('layna_loc');if(raw)_loc=JSON.parse(raw)}catch(_){}
+  if(_loc){
+    if(_loc.lastPageId&&getNode(_loc.lastPageId))state.lastPageId=_loc.lastPageId;
+    if(Array.isArray(_loc.openTasks))state.openTasks=_loc.openTasks.filter(id=>{const n=getNode(id);return n&&n.type==='review'});
+    if(Array.isArray(_loc.expanded))for(const id of _loc.expanded){if(getNode(id))state.expanded.add(id)}
+  }
   if(!applyHash(true)){
     let restored=false;
-    try{
-      const raw=localStorage.getItem('layna_loc');
-      if(raw){const loc=JSON.parse(raw);
-        if(loc&&loc.lastPageId&&getNode(loc.lastPageId))state.lastPageId=loc.lastPageId;
-        if(loc&&loc.id&&getNode(loc.id)){
-          state.currentId=loc.id;
-          if(['timeline','progress','shots','submit','check','browse'].includes(loc.tab))state.projTab=loc.tab;
-          for(const n of pathOf(loc.id))state.expanded.add(n.id);
-          if(Array.isArray(loc.openTasks))state.openTasks=loc.openTasks.filter(id=>{const n=getNode(id);return n&&n.type==='review'}); /* リロードで開いていたタスクタブを復元 */
-          if(Array.isArray(loc.expanded))for(const id of loc.expanded){if(getNode(id))state.expanded.add(id)} /* 展開していたツリーを復元 */
-          render();syncHash();resolveThumbs();restored=true;
-        }
-      }
-    }catch(_){}
+    if(_loc&&_loc.id&&getNode(_loc.id)){
+      state.currentId=_loc.id;
+      if(['timeline','progress','shots','submit','check','browse'].includes(_loc.tab))state.projTab=_loc.tab;
+      for(const n of pathOf(_loc.id))state.expanded.add(n.id);
+      render();syncHash();resolveThumbs();restored=true;
+    }
     if(!restored){state.currentId=null;go(null)}
+  }else{
+    /* ハッシュ経路でも、いま開いたタスクノードがタブに含まれていなければ追加（末尾＝アクティブ扱い） */
+    const cn=state.currentId&&getNode(state.currentId);
+    if(cn&&cn.type==='review'){state.openTasks=(state.openTasks||[]).filter(x=>x!==cn.id);state.openTasks.push(cn.id);render()}
   }
 }
 /* ノードの種別・ステータス補完 */
