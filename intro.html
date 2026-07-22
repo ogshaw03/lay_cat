@@ -51,7 +51,7 @@
     pointer-events:none;
   }
   @keyframes drift{to{background-position:200px 200px,300px 300px,150px 150px}}
-  .hero .logo{width:96px;height:96px;border-radius:22px;box-shadow:0 20px 60px var(--purpleGlow);margin-bottom:24px;animation:fadeUp .8s ease}
+  .hero .logo{width:auto;height:auto;max-width:min(520px,86vw);max-height:280px;margin-bottom:40px;animation:fadeUp .8s ease;filter:drop-shadow(0 20px 60px var(--purpleGlow))}
   .hero h1{
     font-family:'Inter','Noto Sans JP',sans-serif;
     font-size:clamp(56px,10vw,120px);font-weight:900;letter-spacing:-.03em;
@@ -219,8 +219,7 @@
 
 <!-- ============ HERO ============ -->
 <section class="hero">
-  <img src="laycat_icon.png" alt="LayCAT" class="logo">
-  <h1>LayCAT</h1>
+  <img src="laycat_icon_login.png" alt="LayCAT" class="logo">
   <p class="tagline">映像制作のためのレビュー ＆ 進行管理ツール</p>
   <p class="catch">「ここ、こうして」が、すぐ伝わる。</p>
   <p class="sub">描く・見る・共有。ブラウザ 1 つで。</p>
@@ -297,6 +296,22 @@
 
     <div class="feature-row">
       <div class="feature-text">
+        <span class="label-sm">Task Page</span>
+        <h3>タスクページ — カットごとの作業画面</h3>
+        <p>1 つのカットの工程を開く、作業の中心画面。「＋ 動画」でアップロード、コメント・OK/リテイク判定、ステータス・担当まで、ここ 1 画面で完結します。</p>
+        <ul>
+          <li>アップするたびに版（v1・v2…）が残る</li>
+          <li>フレーム単位のコメントとアノテーション</li>
+          <li>作業・チェック担当をひと目で設定</li>
+        </ul>
+      </div>
+      <div class="feature-media">
+        <img src="slides_assets/pre_task.png" alt="タスクページ">
+      </div>
+    </div>
+
+    <div class="feature-row reverse">
+      <div class="feature-text">
         <span class="label-sm">Annotation</span>
         <h3>コマに直接描き込むアノテーション</h3>
         <p>動画のコマに、直接「絵」で指示を描けます。指示はレイヤーで分けられて、あとから編集・削除も。</p>
@@ -304,11 +319,25 @@
           <li>レイヤーで指示を分類（演出／作画／修正）</li>
           <li>ブラシ・消しゴム・トレーシングペーパー・ゴースト</li>
           <li>筆圧検知（環境設定で ON/OFF）</li>
-          <li>顔の向きガイドで立体的に指示できる独自機能</li>
         </ul>
       </div>
       <div class="feature-media">
-        <img src="slides_assets/exr_anno_crypto.png" alt="アノテウィンドウ">
+        <img src="slides_assets/pre_review_anno.png" alt="アノテーション・レイヤー">
+      </div>
+    </div>
+
+    <div class="feature-row">
+      <div class="feature-text">
+        <span class="label-sm">Face Guide</span>
+        <h3>動画埋め込み ＆ 顔の向きガイド</h3>
+        <p>描いた指示はそのコマに保存され、再生すると自動で出ます。「顔の向きガイド」で、顔の向きを立体的に示せる独自機能も。</p>
+        <ul>
+          <li>コメント欄にも縮小画像で残る</li>
+          <li>ドラッグで上下・左右・傾きを指定</li>
+        </ul>
+      </div>
+      <div class="feature-media">
+        <img src="slides_assets/canvas.png" alt="動画埋め込みと顔の向きガイド">
       </div>
     </div>
 
@@ -324,11 +353,26 @@
         </ul>
       </div>
       <div class="feature-media">
-        <div class="placeholder">📊 進捗グラフのイメージ</div>
+        <img src="slides_assets/prog.png" alt="進捗グラフ">
       </div>
     </div>
 
     <div class="feature-row">
+      <div class="feature-text">
+        <span class="label-sm">Review Queue</span>
+        <h3>チェック待ち — 担当者一覧</h3>
+        <p>チェック担当者ごとにタブで分かれ、自分が見る番のカットだけを表示できます。残り件数がバッジで見えて、見落としを防止。</p>
+        <ul>
+          <li>担当者タブで自分のチェック分だけ表示</li>
+          <li>一覧のままステータスを変更可能</li>
+        </ul>
+      </div>
+      <div class="feature-media">
+        <img src="slides_assets/check.png" alt="チェック待ち一覧">
+      </div>
+    </div>
+
+    <div class="feature-row reverse">
       <div class="feature-text">
         <span class="label-sm">Reel</span>
         <h3>REEL — カットをつなげて連続再生</h3>
@@ -339,7 +383,7 @@
         </ul>
       </div>
       <div class="feature-media">
-        <div class="placeholder">🎞 REEL のイメージ</div>
+        <img src="slides_assets/pre_reel.png" alt="REEL 連続再生">
       </div>
     </div>
   </div>
