@@ -2812,6 +2812,29 @@ function thumbPh(doc){doc=doc||document;const w=doc.createElement('div');w.class
 let authUser=null; // {name,email,photo,role} when Google認証時
 const currentUser=()=>authUser?authUser.name:(($('#currentUser').value||'').trim()||'anonymous');
 function toast(m){const t=el('div','toast',m);document.body.appendChild(t);setTimeout(()=>t.remove(),2400)}
+/* 任意の document／window に対してトーストを表示。REEL ポップアップから呼ぶ場合に使用。 */
+function toastIn(targetDoc,m,ms){
+  try{
+    const d=targetDoc||document;
+    const t=d.createElement('div');t.className='toast';t.textContent=m;
+    d.body.appendChild(t);
+    setTimeout(()=>{try{t.remove()}catch(_){}},ms||2400);
+  }catch(_){}
+}
+/* 動画の初回再生時にタブ／サイトミュート解除ヒントを 1 回だけ表示（ページ読み込みごとに 1 回） */
+let _tabMuteHintShown=false;
+function _maybeShowTabMuteHint(targetWin){
+  if(_tabMuteHintShown)return;
+  _tabMuteHintShown=true;
+  const msg='🔊 音が出ないときは、タブを右クリック →「サイトのミュートを解除」でオンにできます';
+  try{
+    if(targetWin&&targetWin.document&&targetWin!==window){
+      toastIn(targetWin.document,msg,3600);
+    }
+    /* メインウィンドウにも同時に出す（REEL のポップアップから呼ばれた場合でも見えるように） */
+    toastIn(document,msg,3600);
+  }catch(_){}
+}
 /* 動画のデコード失敗（未対応コーデック）時にユーザーへ明示する。error.code 3=DECODE / 4=SRC_NOT_SUPPORTED のみ対象（ネットワーク要因の誤爆を防ぐ）。Maya書き出しのAnimation/ProRes等はブラウザで再生不可。
    アップロード直後の src 差し替え・R2 URL 解決タイミングで一過性の code=4 が起きて誤爆する対策として、
    (a) src が空のときは無視、(b) 一度でも loadedmetadata/canplay が来たら誤爆と判定して既存 badge も除去、
@@ -7728,6 +7751,7 @@ function openReview(nodeId,versionId,opts){
     const _syncMediaLoop=()=>{media.loop=loopBtn.classList.contains('active')&&!_hasRange()};
     playBtn.onclick=()=>{
       if(media.paused){
+        _maybeShowTabMuteHint();
         /* 範囲設定時、プレイヘッドが範囲外なら IN にジャンプしてから再生 */
         if(_hasRange()){const cf=curFrame();if(cf<rangeIn||cf>=rangeOut){seekRT(rangeIn);setTimeout(()=>media.play(),0);return}}
         media.play();
@@ -8181,7 +8205,15 @@ function openReview(nodeId,versionId,opts){
   function doUndo(){if(_histIdx<=0)return;_histIdx--;_restore(_hist[_histIdx]);drawAll();drawTimeline();updSubmit();}
   function doRedo(){if(_histIdx>=_hist.length-1)return;_histIdx++;_restore(_hist[_histIdx]);drawAll();drawTimeline();updSubmit();}
   undoBtn.onclick=doUndo;redoBtn.onclick=doRedo;
-  clearBtn.onclick=()=>{pending=[];stroke=null;headActive=null;redoStack=[];drawAll();drawTimeline();updSubmit();_pushHist()};
+  clearBtn.onclick=()=>{
+    /* 現在フレームのアノテのみクリア。他フレームの未送信内容は保持。 */
+    const cf=isVideo?dispFrame():null;
+    if(isVideo){
+      pending=pending.filter(p=>(p.f!=null?p.f:cf)!==cf);
+      if(stroke&&(stroke.f!=null?stroke.f:cf)===cf)stroke=null;
+    }else{pending=[];stroke=null}
+    headActive=null;redoStack=[];drawAll();drawTimeline();updSubmit();_pushHist();
+  };
   buildLayerPanel();
 
   /* --- 再生同期（フレーム表示・そのフレームの描画・タイムライン） --- */
@@ -8286,6 +8318,21 @@ function openReview(nodeId,versionId,opts){
     if(e.key==='Escape')close();
     else if(isPlayable&&e.key==='ArrowLeft'){e.preventDefault();seekFrame(dispFrame()-1)}
     else if(isPlayable&&e.key==='ArrowRight'){e.preventDefault();seekFrame(dispFrame()+1)}
+    else if(isPlayable&&(e.key==='ArrowUp'||e.key==='ArrowDown')){
+      /* ↑↓ = アノテのあるフレーム間ジャンプ（pending＋確定ノート＋下書き）*/
+      e.preventDefault();
+      const cf=dispFrame();
+      const frames=new Set();
+      for(const p of pending)if(p.f!=null)frames.add(p.f);
+      for(const n of (v.review&&v.review.notes)||[])if(n.frame!=null&&((n.drawing&&n.drawing.length)||n.text))frames.add(n.frame);
+      for(const n of drafts)if(n.frame!=null)frames.add(n.frame);
+      const sorted=[...frames].sort((a,b)=>a-b);
+      if(!sorted.length){toast('アノテ／コメント付きのフレームがありません');return}
+      let target;
+      if(e.key==='ArrowUp'){target=sorted.find(x=>x>cf);if(target==null)target=sorted[0]}
+      else{const revs=sorted.slice().reverse();target=revs.find(x=>x<cf);if(target==null)target=sorted[sorted.length-1]}
+      seekFrame(target);
+    }
     /* Space の再生は fbKeyUpSpin（タップ時のみ）で処理。Space+ドラッグはパン等に使うためここでは扱わない */
   }
   document.addEventListener('keydown',onKey);
@@ -8730,12 +8777,13 @@ function openReel(){
    +'.fb-help.min .row{display:none}'
    +'.tlwrap{background:#141416;border-top:1px solid #2a2a2f;padding:8px 14px 12px;overflow-x:auto;flex-shrink:0}'
    +'.ruler{position:relative;height:18px;margin-bottom:4px}'
-   +'.track{display:flex;gap:2px;position:relative;min-height:64px}'
-   +'.clip{position:relative;flex-shrink:0;background:#1c1c1f;border:1px solid #3a3a42;border-radius:6px;padding:6px 8px;cursor:pointer;overflow:hidden;min-width:78px}'
+   +'.track{display:flex;gap:2px;position:relative;min-height:96px}'
+   +'.clip{position:relative;flex-shrink:0;background:#1c1c1f;border:1px solid #3a3a42;border-radius:6px;padding:4px 6px 5px;cursor:pointer;overflow:hidden;min-width:78px;display:flex;flex-direction:column;gap:3px}'
    +'.clip.cur{border-color:#e8e8ec;background:#232327}'
    +'.clip.unsent{border-color:#e0a63a}'
+   +'.clip .cth{width:100%;height:46px;background:#0a0a0c center/contain no-repeat;border-radius:3px;flex-shrink:0}'
    +'.clip .unsent-dot{position:absolute;top:3px;right:3px;min-width:14px;height:14px;padding:0 3px;box-sizing:border-box;background:#e0a63a;color:#1a1a1a;font-size:9px;font-weight:700;line-height:14px;text-align:center;border-radius:7px;z-index:2}'
-   +'.clip .nm{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px}'
+   +'.clip .nm{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
    +'.clip .du{font-family:monospace;font-size:10px;color:#5a5a6a}'
    +'.clip .ops{position:absolute;top:3px;right:4px;display:flex;gap:2px;opacity:0}'
    +'.clip:hover .ops{opacity:1}'
@@ -8949,6 +8997,8 @@ function openReel(){
     if(gf>=RV.rangeOut){
       if(reelUI.loop){
         gSeek(RV.rangeIn);
+        /* クリップを跨いだ場合 loadCur(false) のため video が pause しているので明示的に再生を継続 */
+        setTimeout(()=>{try{video.play().catch(()=>{})}catch(_){}},50);
         /* ループ時は監視を継続（次のOUT到達も捕まえる） */
         RV._rangeRaf=requestAnimationFrame(_rangeWatchR);
       }else{
@@ -9291,7 +9341,14 @@ function openReel(){
   eyeB.onclick=()=>{RV.eye=!RV.eye;eyeB.classList.toggle('on',RV.eye);drawAnno()};
   undoB.onclick=()=>{if(RV.histIdx<=0)return;RV.histIdx--;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent()};
   redoB.onclick=()=>{if(RV.histIdx>=RV.hist.length-1)return;RV.histIdx++;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent()};
-  clrB.onclick=()=>{RV.pending.splice(0,RV.pending.length);RV.stroke=null;drawAnno();drawFTL();updUnsent();_pushHistR()};
+  clrB.onclick=()=>{
+    /* 現在フレームのアノテのみクリア。他フレーム＆他クリップの未送信内容は保持。 */
+    const cf=dispF();
+    const kept=RV.pending.filter(p=>(p.f!=null?p.f:cf)!==cf);
+    RV.pending.splice(0,RV.pending.length,...kept);
+    if(RV.stroke&&(RV.stroke.f!=null?RV.stroke.f:cf)===cf)RV.stroke=null;
+    drawAnno();drawFTL();updUnsent();_pushHistR();
+  };
   /* 記入内容からノート配列を生成（描画は線ごとのフレームに分割）。レビューには push しない。
      レビューページ(record)と共通の buildFrameNotes を使用（ロジック分岐・フレームズレを防ぐ）。 */
   function buildNotes(c,curFrame){
@@ -9455,6 +9512,7 @@ function openReel(){
   play.onclick=()=>{
     if(!cs().length)return;
     if(video.paused){
+      try{_maybeShowTabMuteHint(reelWin)}catch(_){}
       if(reelUI.ended){reelUI.ended=false;reelUI.cur=0;loadCur(true);return}
       if(!video.src)loadCur(false);
       /* 範囲設定時、プレイヘッドが範囲外なら IN へジャンプしてから再生 */
@@ -9462,9 +9520,10 @@ function openReel(){
       video.play().catch(()=>{});
     }else video.pause();
   };
-  /* 再生範囲：IN / OUT / 解除 */
-  inB.onclick=()=>{const gf=_gCurDisp();RV.rangeIn=gf;if(RV.rangeOut!=null&&RV.rangeOut<=RV.rangeIn)RV.rangeOut=null;drawFTL()};
-  outB.onclick=()=>{const gf=_gCurDisp();RV.rangeOut=gf;if(RV.rangeIn!=null&&RV.rangeOut<=RV.rangeIn)RV.rangeIn=null;drawFTL()};
+  /* 再生範囲：IN / OUT / 解除。再生中に設定した場合は監視ループを即起動 */
+  const _kickRangeWatch=()=>{if(_hasRangeR()&&!video.paused&&!RV._rangeRaf)RV._rangeRaf=requestAnimationFrame(_rangeWatchR)};
+  inB.onclick=()=>{const gf=_gCurDisp();RV.rangeIn=gf;if(RV.rangeOut!=null&&RV.rangeOut<=RV.rangeIn)RV.rangeOut=null;drawFTL();_kickRangeWatch()};
+  outB.onclick=()=>{const gf=_gCurDisp();RV.rangeOut=gf;if(RV.rangeIn!=null&&RV.rangeOut<=RV.rangeIn)RV.rangeIn=null;drawFTL();_kickRangeWatch()};
   rangeClrB.onclick=()=>{RV.rangeIn=null;RV.rangeOut=null;drawFTL()};
   prev.onclick=()=>{if(!cs().length)return;reelUI.cur=Math.max(0,reelUI.cur-1);loadCur(true)};
   next.onclick=()=>{if(!cs().length)return;reelUI.cur=Math.min(cs().length-1,reelUI.cur+1);loadCur(true)};
@@ -9540,6 +9599,27 @@ function openReel(){
     if(e.key===' '||e.key==='Spacebar'){e.preventDefault();if(cs().length)play.onclick()} /* 再生/停止 */
     else if(e.key==='ArrowLeft'){e.preventDefault();pF.onclick()} /* 1フレーム戻る */
     else if(e.key==='ArrowRight'){e.preventDefault();nF.onclick()} /* 1フレーム進む */
+    else if(e.key==='ArrowUp'||e.key==='ArrowDown'){
+      /* ↑↓ = 全クリップを通したアノテフレーム間ジャンプ（グローバル F ベース） */
+      e.preventDefault();
+      const cs2=cs();if(!cs2.length)return;
+      const gCur=_gCurDisp();
+      const frames=new Set();
+      let off=0;
+      for(const c of cs2){
+        for(const p of (c.pending||[]))if(p.f!=null)frames.add(off+p.f);
+        for(const dr of (c.drafts||[]))if(dr.frame!=null)frames.add(off+dr.frame);
+        const vv=vOf(c);
+        if(vv)for(const n of vv.review.notes)if(n.frame!=null&&((n.drawing&&n.drawing.length)||n.text))frames.add(off+n.frame);
+        off+=clipFrames(c);
+      }
+      const sorted=[...frames].sort((a,b)=>a-b);
+      if(!sorted.length){try{toast('アノテ／コメント付きのフレームがありません')}catch(_){}return}
+      let target;
+      if(e.key==='ArrowUp'){target=sorted.find(x=>x>gCur);if(target==null)target=sorted[0]}
+      else{const revs=sorted.slice().reverse();target=revs.find(x=>x<gCur);if(target==null)target=sorted[sorted.length-1]}
+      gSeek(target);
+    }
   });
   reelUI.updTitle=updReelTitle; /* メインウィンドウから開いたときのタイトル更新用 */
   updReelTitle();
@@ -9553,6 +9633,16 @@ function openReel(){
     vd.addEventListener('pause',e=>{if(e.target!==video)return;play.textContent='▶ 再生';if(RV._rangeRaf){cancelAnimationFrame(RV._rangeRaf);RV._rangeRaf=0}});
     vd.addEventListener('ended',e=>{
       if(e.target!==video)return;
+      /* 再生範囲が設定されているクリップの末尾で切替えると range OUT を跨いでしまうので、
+         range 内なら次クリップに進む前に IN／OUT の判定を優先する */
+      if(_hasRangeR()){
+        const off=gOffset(reelUI.cur);const clipEnd=off+clipFrames(cs()[reelUI.cur]);
+        if(RV.rangeOut<=clipEnd){
+          if(reelUI.loop){gSeek(RV.rangeIn);setTimeout(()=>video.play().catch(()=>{}),50)}
+          else{video.pause();gSeek(RV.rangeOut)}
+          return;
+        }
+      }
       if(reelUI.cur<cs().length-1){reelUI.cur++;loadCur(true)}
       else if(reelUI.loop&&cs().length){reelUI.cur=0;loadCur(true)}
       else{reelUI.ended=true} /* リール終端：次の再生で先頭から再生 */
@@ -9576,6 +9666,14 @@ function openReel(){
       /* 動画ごとのフレーム＋全体フレームの両方を表示 */
       fLab.textContent='F '+f+'/'+(RV.total-1)+'　全体 '+(gOffset(reelUI.cur)+f)+'/'+(gTotal()-1);
       drawAnno();drawFTL();
+    }
+    /* 再生範囲：毎フレーム tick で判定（rAF 経由の _rangeWatchR が発火しないケースを冗長にカバー） */
+    if(!video.paused&&!RV.scrub&&_hasRangeR()){
+      const gf=_gCur();
+      if(gf>=RV.rangeOut){
+        if(reelUI.loop){gSeek(RV.rangeIn);setTimeout(()=>{try{video.play().catch(()=>{})}catch(_){}},50)}
+        else{video.pause();gSeek(RV.rangeOut)}
+      }
     }
     reelUI.raf=reelWin.requestAnimationFrame(tick);
   })();
@@ -9685,6 +9783,13 @@ function reelRender(){
     const b=ce(d,'div','clip'+(i===reelUI.cur?' cur':'')+(unsent?' unsent':''));
     b.style.width=Math.max(78,(c.dur||2)*reelUI.pxs)+'px';
     if(unsent){const dot=ce(d,'div','unsent-dot',String(unsent));dot.title='未保存 '+unsent+'件';b.appendChild(dot)}
+    /* サムネ：クリップ元動画の v.thumb（無ければ node.thumbnail）を表示 */
+    const cth=ce(d,'div','cth');b.appendChild(cth);
+    (function(){
+      const nd=getNode(c.nodeId);const v=nd&&(nd.versions||[]).find(x=>x.id===c.vId);
+      const ref=(v&&v.thumb)||(nd&&nd.thumbnail)||null;
+      if(ref)storage.getURL(ref).then(u=>{if(u)cth.style.backgroundImage='url("'+u+'")'}).catch(()=>{});
+    })();
     b.appendChild(ce(d,'div','nm',(i+1)+'. '+c.name));
     b.appendChild(ce(d,'div','du',fmtSec(c.dur)));
     const ops=ce(d,'div','ops');
