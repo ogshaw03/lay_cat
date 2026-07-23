@@ -148,6 +148,42 @@
   }
   p.section-lead{color:var(--text2);font-size:clamp(15px,1.7vw,18px);max-width:720px;margin-bottom:0}
 
+  /* ========== GALLERY（制作カット例） ========== */
+  .gallery{padding:64px 0 24px;background:var(--bg);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+  .gallery .container{max-width:1240px}
+  .gallery .gal-head{text-align:center;margin-bottom:28px}
+  .gallery .gal-head .kicker{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.18em;color:var(--text3);margin-bottom:8px}
+  .gallery .gal-head h2{font-size:clamp(22px,3vw,32px);font-weight:900;letter-spacing:-.01em}
+  .gallery .gal-head h2 b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .gallery .gal-head p{color:var(--text3);font-size:13px;margin-top:6px}
+  .gal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .gal-cell{position:relative;border-radius:10px;overflow:hidden;background:var(--bg3);border:1px solid var(--border);aspect-ratio:16/9}
+  .gal-cell img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s ease}
+  .gal-cell:hover img{transform:scale(1.03)}
+  .gal-cell .gal-cap{position:absolute;left:0;right:0;bottom:0;padding:16px 14px 10px;background:linear-gradient(to top,rgba(0,0,0,.68),transparent);color:#fff;font-size:12px;font-weight:700;letter-spacing:.02em;opacity:0;transition:opacity .25s ease}
+  .gal-cell:hover .gal-cap{opacity:1}
+  @media(max-width:820px){.gal-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:520px){.gal-grid{grid-template-columns:1fr}}
+
+  /* ========== WORKFLOW（1 カット 9 工程） ========== */
+  .workflow{padding:72px 0;background:var(--bg2)}
+  .workflow .wf-head{text-align:center;margin-bottom:36px}
+  .workflow .wf-head .label{margin-bottom:14px}
+  .workflow .wf-head h2{font-size:clamp(24px,3.4vw,36px);font-weight:900;letter-spacing:-.02em;margin-bottom:10px}
+  .workflow .wf-head h2 b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .workflow .wf-head p{color:var(--text2);font-size:14px;max-width:640px;margin:0 auto}
+  .wf-title{text-align:center;color:var(--text3);font-size:12px;letter-spacing:.15em;margin-bottom:14px;text-transform:uppercase}
+  .wf-title b{color:var(--text);letter-spacing:.05em;font-weight:800;text-transform:none;font-size:14px}
+  .wf-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:1080px;margin:0 auto}
+  .wf-cell{position:relative;border-radius:10px;overflow:hidden;background:var(--bg3);border:1px solid var(--border);aspect-ratio:16/9}
+  .wf-cell img{width:100%;height:100%;object-fit:cover;display:block}
+  .wf-cell .wf-num{position:absolute;top:8px;left:8px;width:26px;height:26px;border-radius:50%;background:var(--gradPurple);color:#fff;font-family:'Inter',monospace;font-weight:900;font-size:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+  .wf-cell .wf-lab{position:absolute;left:0;right:0;bottom:0;padding:10px 12px 8px;background:linear-gradient(to top,rgba(0,0,0,.78),transparent);color:#fff;font-size:12.5px;font-weight:700;letter-spacing:.02em}
+  .wf-foot{text-align:center;color:var(--text3);font-size:13px;max-width:720px;margin:24px auto 0;line-height:1.7}
+  .wf-foot b{color:var(--text)}
+  @media(max-width:820px){.wf-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:520px){.wf-grid{grid-template-columns:1fr}}
+
   /* ========== FEATURES ========== */
   .features{background:var(--bg2)}
   .feature-row{
@@ -285,6 +321,25 @@
     </div>
     <span class="hg-arrow">→</span>
   </a>
+</section>
+
+<!-- ============ GALLERY（制作カット例） ============ -->
+<section class="gallery">
+  <div class="container">
+    <div class="gal-head">
+      <span class="kicker">CUTS IN PRODUCTION</span>
+      <h2>日々の制作を、<b>LayCAT</b> が支えています。</h2>
+      <p>『七月の窓辺』── LayCAT で管理されている制作カットの一例。</p>
+    </div>
+    <div class="gal-grid">
+      <div class="gal-cell"><img src="slides_assets/gal_01.png" alt="桜と少女"><div class="gal-cap">SC001 / 春の登校</div></div>
+      <div class="gal-cell"><img src="slides_assets/gal_02.png" alt="海と少女"><div class="gal-cap">SC017 / 海の見える町</div></div>
+      <div class="gal-cell"><img src="slides_assets/gal_03.png" alt="夕陽と少女"><div class="gal-cap">SC042 / 夕暮れの丘</div></div>
+      <div class="gal-cell"><img src="slides_assets/gal_04.png" alt="夜明けの坂"><div class="gal-cap">SC003 / 夜明けの坂</div></div>
+      <div class="gal-cell"><img src="slides_assets/gal_05.png" alt="踏切と少女"><div class="gal-cap">SC028 / 踏切の光</div></div>
+      <div class="gal-cell"><img src="slides_assets/gal_06.png" alt="夕陽の二人"><div class="gal-cap">SC098 / 夕暮れのあとで</div></div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ KEY POINTS ============ -->
@@ -434,6 +489,33 @@
   </div>
 </section>
 
+<!-- ============ WORKFLOW（1 カット 9 工程） ============ -->
+<section class="workflow">
+  <div class="container">
+    <div class="wf-head">
+      <span class="label">Workflow</span>
+      <h2><b>1 カット</b>が完成するまで、<b>9 つの工程</b>。</h2>
+      <p>絵コンテから最終納品まで──ひとつのカットが積み重ねる工程を、LayCAT はまるごと管理します。</p>
+    </div>
+    <div class="wf-title">Sample cut ─ <b>『海が見える坂』SC001</b></div>
+    <div class="wf-grid">
+      <div class="wf-cell"><span class="wf-num">1</span><img src="slides_assets/stage_01_rough.png" alt="ラフコンテ"><div class="wf-lab">ラフコンテ</div></div>
+      <div class="wf-cell"><span class="wf-num">2</span><img src="slides_assets/stage_02_layout.png" alt="レイアウト"><div class="wf-lab">レイアウト</div></div>
+      <div class="wf-cell"><span class="wf-num">3</span><img src="slides_assets/stage_03_key.png" alt="原画"><div class="wf-lab">原画（線画完成）</div></div>
+      <div class="wf-cell"><span class="wf-num">4</span><img src="slides_assets/stage_04_base.png" alt="下塗り"><div class="wf-lab">下塗り</div></div>
+      <div class="wf-cell"><span class="wf-num">5</span><img src="slides_assets/stage_05_color.png" alt="彩色"><div class="wf-lab">彩色</div></div>
+      <div class="wf-cell"><span class="wf-num">6</span><img src="slides_assets/stage_06_finish.png" alt="仕上げ"><div class="wf-lab">仕上げ</div></div>
+      <div class="wf-cell"><span class="wf-num">7</span><img src="slides_assets/stage_07_precomp.png" alt="撮影前完成"><div class="wf-lab">撮影前完成</div></div>
+      <div class="wf-cell"><span class="wf-num">8</span><img src="slides_assets/stage_08_comp.png" alt="撮影（コンポジット）"><div class="wf-lab">撮影（コンポ）</div></div>
+      <div class="wf-cell"><span class="wf-num">9</span><img src="slides_assets/stage_09_final.png" alt="最終納品カット"><div class="wf-lab">最終納品カット</div></div>
+    </div>
+    <p class="wf-foot">
+      各工程で <b>版が積み上がり</b>、担当が変わり、チェックが入る。
+      LayCAT ではこの流れを 1 プロジェクト内で完結して追跡できます。
+    </p>
+  </div>
+</section>
+
 <!-- ============ DIFFERENTIATORS ============ -->
 <section class="diff">
   <div class="container">
@@ -441,7 +523,7 @@
       <span class="label">LayCAT の強み</span>
       <h2 class="section-title">「他のツールには無い」機能を、標準で。</h2>
       <p class="section-lead">
-        レビュー ＆ 進行管理ツールは多くありますが、LayCAT は「単一 HTML で動く軽さ」を保ちながら、
+        レビュー ＆ 進行管理ツールは多くありますが、LayCAT はブラウザだけで軽快に動きながら、
         EXR ネイティブ対応・クラウド共有まで揃えているのが特徴です。
       </p>
     </div>
