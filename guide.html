@@ -150,7 +150,7 @@
   <p class="sub">最初はプロジェクトが 1 つもありません。左上の <b>「＋ 新規プロジェクト」</b> を押します。</p>
   <img class="shot" src="slides_assets/guide_home.png" alt="ホーム画面">
   <figcaption>ホーム画面 ─ ここから始まる</figcaption>
-  <div class="warn"><b>⚠️ 作成直後に必ずメンバー登録を！</b> プロジェクトを作ったら、<b>すぐに「メンバー管理」を開いて参加メンバーを登録</b>してください。担当者ドロップダウン・＠メンション・通知の宛先はすべてこのメンバー名簿を元に動きます。未登録のまま運用を始めると、通知が誰にも飛ばない・担当を割り当てられない、といったトラブルが起きます。<br>作成完了時に <b>「まずはメンバーを登録しましょう」ダイアログ</b>が自動で開くので、そこから登録するのが最短です（あとで <a href="#projset" style="color:var(--blue);text-decoration:underline">プロジェクト設定 → ⑨ プロジェクトメンバー</a> からも開けます）。</div>
+  <div class="warn"><b>⚠️ 作成後すぐにメンバー登録を。</b> 未登録だと他の人はこのプロジェクトに参加できません。作成完了時にダイアログが自動で開きます（あとで <a href="#projset" style="color:var(--blue);text-decoration:underline">STEP 13</a> からも開けます）。</div>
   <a href="#projset" class="jump">⚙ 作ったプロジェクトのメンバー・ステータス・工程を整える → プロジェクト設定 <span class="arrow">↓</span></a>
 </div>
 
@@ -187,14 +187,14 @@
   <p class="sub">プロジェクトの中を「3 階層」で組み立てます：</p>
   <div class="todo"><b>構造</b>→ プロジェクト ▸ カテゴリ（EP01 / SEQ_A 等） ▸ ショット（SC001, SC002…） ▸ 工程（LAY / ANIM / COMP 等）</div>
   <ol style="padding-left:20px;color:var(--text2);font-size:14px;margin-top:6px">
-    <li style="margin-bottom:6px">先に <b>プロジェクト設定 → ②工程テンプレート</b> で「テンプレートA = LAY / ANIM / FIN」などを登録（<a href="#projset" style="color:var(--blue);text-decoration:underline">STEP 13</a> 参照）</li>
-    <li style="margin-bottom:6px">左サイドバーの <b>「＋ 追加」</b> ボタンから <b>カテゴリ</b>（例：EP01）を追加</li>
-    <li style="margin-bottom:6px">カテゴリの下に <b>ショット</b> を追加するとき、上部の <b>「工程テンプレートから選択：」プルダウン</b> でテンプレートを選び「このテンプレートを適用」を押す → 工程が一発で入る</li>
-    <li>「連番で複数作成」にチェックすれば、<code>SC001</code>〜<code>SC050</code> をまとめて作成することも可能</li>
+    <li style="margin-bottom:6px">先に <a href="#projset" style="color:var(--blue);text-decoration:underline">プロジェクト設定</a> で工程テンプレートを登録</li>
+    <li style="margin-bottom:6px"><b>「＋ 追加」</b>でカテゴリ（例：EP01）を作成</li>
+    <li style="margin-bottom:6px">その下にショットを追加、<b>「工程テンプレートから選択」</b>で一発適用</li>
+    <li>「連番で複数作成」で <code>SC001</code>〜<code>SC050</code> の一括作成も可能</li>
   </ol>
   <img class="shot" src="slides_assets/guide_add_item.png" alt="アイテムを追加モーダル">
-  <figcaption>アイテムを追加モーダル ─ 工程テンプレートから選ぶだけで工程が一発で入る</figcaption>
-  <div class="tip"><b>💡</b> ショット名は <b><code>SC001</code>, <code>SC010</code></b> のようにゼロ埋めで。 数字順に並ぶようになります。テンプレートを適用したあとも、下の一覧で工程を足したり削ったりして微調整できます。</div>
+  <figcaption>アイテムを追加 ─ テンプレートを選ぶだけで工程が入る</figcaption>
+  <div class="tip"><b>💡</b> ショット名は <code>SC001</code>, <code>SC010</code> とゼロ埋めで数字順に並びます。</div>
 </div>
 
 <!-- ============ STEP 5 ============ -->
@@ -203,9 +203,9 @@
   <p class="sub">左サイドバーで <b>工程（タスク）</b> を選ぶと、右側にタスク画面が開く。右上の <b>「＋ 動画」</b> を押してファイルを選ぶだけ。</p>
   <img class="shot" src="slides_assets/pre_task.png" alt="タスク画面">
   <figcaption>タスク画面 ─ 右上の「＋ 動画」からアップ、下に版履歴が積み上がる</figcaption>
-  <div class="tip"><b>💡</b> <b>ドラッグ&ドロップも OK</b>。デスクトップやエクスプローラーから動画ファイルをタスク画面にそのままドロップすると、同じように新しい版として追加されます。複数ファイルを一度にドロップしても順番に版として積まれます（EXR 連番なら 1 版にまとめて認識）。</div>
-  <div class="warn"><b>⚠️</b> Animation / ProRes のコーデックはブラウザで再生できません。<b>H.264 の mp4 / mov</b> で書き出してください。</div>
-  <a href="#submit" class="jump">📦 複数ショットを束ねて出したい → サブミットの使い方 <span class="arrow">↓</span></a>
+  <div class="tip"><b>💡</b> <b>ドラッグ&ドロップ</b>も OK。複数まとめてドロップ可、EXR 連番は 1 版にまとまります。</div>
+  <div class="warn"><b>⚠️</b> Animation / ProRes は再生不可。<b>H.264 の mp4 / mov</b> で書き出してください。</div>
+  <a href="#submit" class="jump">📦 複数ショットを束ねて出す → サブミット <span class="arrow">↓</span></a>
 </div>
 
 <!-- ============ STEP 6 ============ -->
@@ -223,8 +223,8 @@
     <div class="r"><kbd>Ctrl</kbd>+<kbd>Z</kbd><b>戻す</b></div>
     <div class="r"><kbd>Space</kbd>+ドラッグ<b>パン</b></div>
   </div>
-  <div class="tip"><b>💡</b> フレームコメントは、動画を止めた位置で右側の入力欄に書けばそのフレームに紐付きます。クリックで一発ジャンプ。</div>
-  <a href="#reel" class="jump">🎞 複数版を並べて連続再生したい → REEL の使い方 <span class="arrow">↓</span></a>
+  <div class="tip"><b>💡</b> フレームコメントは動画を止めた位置で入力欄に書けばそのフレームに紐付き、クリックで一発ジャンプできます。</div>
+  <a href="#reel" class="jump">🎞 複数版を連続再生する → REEL <span class="arrow">↓</span></a>
 </div>
 
 <!-- ============ STEP 7 ============ -->
@@ -232,7 +232,7 @@
   <div class="head"><span class="n">7</span><span class="t">担当者を決める（＝通知の宛先）</span></div>
   <p class="sub">タスク画面上部で <b>「作業」「チェック」担当</b> を選ぶ。<b>チェック担当が未設定だと通知が誰にも飛びません。</b></p>
   <div class="todo"><b>DO</b>→ タスク画面上部の「チェック」プルダウンからメンバーを選ぶ</div>
-  <div class="warn"><b>⚠️</b> 事前にプロジェクト設定 → メンバー管理で、メンバーを Google のメールアドレスで登録しておいてください。</div>
+  <div class="warn"><b>⚠️</b> 事前にメンバー管理でメンバー登録が必要です。</div>
 </div>
 
 <!-- ============ STEP 8 ============ -->
@@ -241,7 +241,7 @@
   <p class="sub">STEP 5 と同じ手順でもう一度動画をアップすると、<b>ステータスが自動で「チェック待ち」</b>に。担当者の 🔔 ベルに通知が飛びます。</p>
   <img class="shot" src="slides_assets/check.png" alt="チェック待ち画面">
   <figcaption>チェック待ち一覧 ─ 担当者がここで自分の未処理をまとめて確認</figcaption>
-  <div class="tip"><b>💡</b> 複数ショットを一度に提出したい時は、ヘッダの <b>「サブミット」</b> から束ねて出せます（「今週のレイアウト 8 カット提出」など）。</div>
+  <div class="tip"><b>💡</b> 複数ショットまとめて提出したい時はヘッダの <b>「サブミット」</b> から束ねて出せます。</div>
 </div>
 
 <!-- ============ STEP 9 ============ -->
@@ -256,7 +256,7 @@
 <div class="step">
   <div class="head"><span class="n">10</span><span class="t">通知を確認する</span></div>
   <p class="sub">右上の 🔔 ベルアイコンを押すと通知パネルが開きます。<b>メンション</b>（@自分）と<b>チェック依頼</b>が並びます。</p>
-  <div class="tip"><b>💡</b> リアルタイム push ではないので、作業開始前に <b>🔔 → 「🗘 最新」</b> を押すか、ページをリロードしてください。</div>
+  <div class="tip"><b>💡</b> リアルタイム push ではないので、作業前に <b>🔔 → 「🗘 最新」</b> か リロードを。</div>
 </div>
 
 <!-- ============ もっと使いこなす（見出し） ============ -->
@@ -269,93 +269,71 @@
 <!-- ============ STEP 11：REEL ============ -->
 <div class="step" id="reel">
   <div class="head"><span class="n">11</span><span class="t">REEL で複数版を連続再生する</span></div>
-  <p class="sub">複数ショットの最新版を <b>1 本の映像のように連続再生</b>できる機能。上映会・ラッシュチェック・カット並べ確認に。</p>
+  <p class="sub">複数ショットを <b>1 本の映像のように連続再生</b>。上映会・ラッシュチェック用。</p>
   <ol style="padding-left:20px;color:var(--text2);font-size:14px;margin-top:6px">
-    <li style="margin-bottom:6px">ヘッダ右上の <b>「REEL」ボタン</b> を押すと、別ウィンドウで空の REEL プレイヤーが開く</li>
-    <li style="margin-bottom:6px">メインウィンドウで任意の工程を開き、動画タイルまたはレビュー画面の <b>「▶ REELに送る」</b> ボタンを押すと、その版が REEL に追加される（複数を順番に送っていく）</li>
-    <li style="margin-bottom:6px">REEL ウィンドウ上部の <b>「Shot」メニュー → 「ショットを読み込み」</b> からタイル一覧で選んで一括追加も可能</li>
-    <li style="margin-bottom:6px">▶ 再生すると、追加順にシームレスにつながって再生される</li>
-    <li style="margin-bottom:6px">クリップの並び替え・削除は REEL ウィンドウ内のクリップ一覧から</li>
-    <li>REEL ウィンドウの <b>「File」メニュー</b> から名前を付けて保存すれば、次回以降ヘッダの REEL ボタンから呼び出せる</li>
+    <li style="margin-bottom:6px">ヘッダの <b>「REEL」</b> ボタン → 別ウィンドウで開く</li>
+    <li style="margin-bottom:6px">動画タイル or レビュー画面の <b>「▶ REELに送る」</b> で版を追加（複数可）</li>
+    <li style="margin-bottom:6px">REEL 内の <b>「Shot」→「ショットを読み込み」</b> で一括追加も可</li>
+    <li style="margin-bottom:6px">▶ 再生でシームレスに繋がって再生</li>
+    <li><b>「File」メニュー</b>で名前を付けて保存 → 次回もヘッダから呼び出し可</li>
   </ol>
   <img class="shot" src="slides_assets/pre_reel.png" alt="REEL 画面">
-  <figcaption>REEL 画面 ─ 別ウィンドウで開き、複数カットの版を並べて連続再生</figcaption>
-  <div class="tip"><b>💡</b> REEL で書いたフレームコメント・描き込みは <b>「まとめて記入」で対応する各版の履歴にそのまま反映</b>されます。上映会中に気づいた指摘を、あとから個別工程を開き直して書き直す必要がありません。逆に、<b>各工程ページからもそのショットを含む REEL に一発でジャンプ</b>できる（動画タイル上の 🎞 REEL バッジ）ので、行き来がシームレスです。範囲設定（IN/OUT）・ループ・音量も個別レビューと同じ操作。</div>
+  <figcaption>REEL 画面 ─ 複数カットを並べて連続再生</figcaption>
+  <div class="tip"><b>💡</b> REEL で書いた指摘は <b>「まとめて記入」で各版の履歴に反映</b>されます。逆に <b>各工程ページからも 🎞 REEL バッジで REEL に一発ジャンプ</b>できます。</div>
 </div>
 
 <!-- ============ STEP 12：サブミット ============ -->
 <div class="step" id="submit">
   <div class="head"><span class="n">12</span><span class="t">サブミットで複数ショットを束ねて出す</span></div>
-  <p class="sub">「今週のレイアウト <b>8 カット</b>まとめて提出」のように、<b>複数工程の版を 1 束にまとめて</b>チェック依頼を出す機能。1 通の通知でチェック担当が全体を把握できます。</p>
+  <p class="sub"><b>複数工程の版を 1 束にまとめて</b>チェック依頼。1 通の通知で全体を把握できます。</p>
   <ol style="padding-left:20px;color:var(--text2);font-size:14px;margin-top:6px">
-    <li style="margin-bottom:6px">ヘッダ右上の <b>「サブミット」ボタン</b> を押すと、そのプロジェクトのサブミット一覧モーダルが開く</li>
-    <li style="margin-bottom:6px">右上の <b>「＋ サブミット作成」</b> を押して作成画面へ</li>
-    <li style="margin-bottom:6px">上部の <b>「サブミットへのコメント」</b> 欄に提出メッセージを入力（オプション、各ショットの個別コメントとは別）</li>
-    <li style="margin-bottom:6px"><b>「＋ ショットを追加」</b> でショット × 工程を選ぶ（同じショットの複数工程・複数ショットを混ぜて OK）。各行でステータス（既定：チェック待ち）も変えられる</li>
-    <li style="margin-bottom:6px">下部の <b>「サブミットを作成」</b> を押すと、含めた全工程が <b>一括で「チェック待ち」</b> になり、チェック担当に <b>1 件の通知</b> が届く</li>
-    <li>サブミット名は <b>自動で <code>YYYYMMDD_001</code> 形式</b> で付きます（同日は連番）。手動入力は不要です</li>
+    <li style="margin-bottom:6px">ヘッダの <b>「サブミット」</b> → <b>「＋ サブミット作成」</b></li>
+    <li style="margin-bottom:6px"><b>「サブミットへのコメント」</b>に提出メッセージ（任意）</li>
+    <li style="margin-bottom:6px"><b>「＋ ショットを追加」</b>で対象を選ぶ（複数ショット・複数工程混在 OK）</li>
+    <li style="margin-bottom:6px"><b>「サブミットを作成」</b> → 全工程が一括で「チェック待ち」に、チェック担当に 1 通の通知</li>
+    <li>サブミット名は <code>YYYYMMDD_001</code> 形式で自動付与</li>
   </ol>
-  <div class="tip"><b>💡</b> 作成後は、プロジェクト画面の <b>「サブミット」タブ</b>（左サイドバー横のタブ）から履歴一覧を開けます。過去のサブミットを開けば、その時の版だけを絞り込んで確認可能。「先週のあの提出、何が入ってたっけ？」がすぐ辿れます。サブミット詳細画面の <b>「▶ まとめて REEL に送る」</b> ボタンで、その提出物をそのまま REEL で通し再生することもできます。</div>
-  <div class="warn"><b>⚠️</b> サブミットの「チェック」担当は、含めた各工程に設定されているチェック担当が対象。事前に <b>各工程にチェック担当を設定</b>しておいてください（STEP 7）。</div>
+  <div class="tip"><b>💡</b> プロジェクト画面の <b>「サブミット」タブ</b>で履歴を確認できます。詳細画面の <b>「▶ まとめて REEL に送る」</b>でそのまま連続再生も可。</div>
+  <div class="warn"><b>⚠️</b> チェック担当は各工程に設定した人が対象。事前に <b>各工程にチェック担当を</b>（STEP 7）。</div>
 </div>
 
 <!-- ============ STEP 13：プロジェクト設定 ============ -->
 <div class="step" id="projset">
   <div class="head"><span class="n">13</span><span class="t">プロジェクト設定（メンバー・ステータス・工程）</span></div>
-  <p class="sub">プロジェクトを作ったら、最初に <b>メンバー・ステータス・工程</b> の 3 つを整えておくと、以降の運用がスムーズです。全部このモーダル 1 つで完結します。</p>
+  <p class="sub">プロジェクトを作ったらまず整えたい <b>3 つ</b>：メンバー／ステータス／工程テンプレート。</p>
 
-  <div class="todo"><b>開き方</b>→ プロジェクトを開いた状態で、画面右上の <b>保存先チップ（📁 ○○）</b> か、左サイドバー上の <b>プロジェクト名</b> をクリック。設定モーダルは全部で 11 セクション（基本情報／工程テンプレート／サムネイル／進行状況／ステータス／工程バッジ色／進捗起点／保存先／メンバー／パスワード／危険な操作）に分かれています。以下では特に重要な 3 つを紹介します。</div>
+  <div class="todo"><b>開き方</b>→ 画面右上の <b>保存先チップ（📁 ○○）</b> か、左上の <b>プロジェクト名</b> をクリック。全 11 セクションから成るモーダルが開きます。</div>
 
-  <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">① 工程テンプレート（LAY / ANIM / COMP など）</h4>
+  <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">① 工程テンプレート</h4>
   <p style="color:var(--text2);font-size:14px;line-height:1.7">
-    「工程テンプレート」欄で、<b>このプロジェクトで使う工程セットを "テンプレート" として複数登録</b>できます
-    （例：「テンプレートA = LAY / ANIM / FIN / COMP」「テンプレートB（PV 用）= 絵コンテ / 原画 / 動画 / 仕上げ」）。
-    <b>「＋ 工程を追加」</b>で工程を追加、<b>「＋ テンプレートを追加」</b>で新しいテンプレートを作れます。
-    色は工程名から自動で割り当てられます（同じ名前なら常に同じ色）。
+    工程セットを <b>テンプレートとして複数登録</b>（例：テンプレートA = LAY / ANIM / FIN、テンプレートB = Blocking / Spline / Polish）。色は工程名から自動配色。
   </p>
   <img class="shot" src="slides_assets/guide_proj_tpl.png" alt="工程テンプレートセクション">
-  <figcaption>プロジェクト設定 ─ 工程テンプレートを塊で複数登録</figcaption>
-  <p style="color:var(--text2);font-size:14px;line-height:1.7;margin-top:12px">
-    ここで作ったテンプレートは、<b>カテゴリ（EP01 など）の「アイテムの設定」や「＋ アイテムを追加」画面から選んで適用</b>できます。
-    プルダウン →「このテンプレートを適用」を押すと、そのカテゴリの工程一覧に一発で展開されます。適用後も個別に工程を足したり削ったりできます。
+  <figcaption>工程テンプレートを塊で複数登録</figcaption>
+  <p style="color:var(--text2);font-size:14px;line-height:1.7;margin-top:10px">
+    アイテム追加やカテゴリ設定で <b>プルダウンから選ぶだけ</b>で工程が展開されます。適用後の個別編集も可能。
   </p>
-  <img class="shot" src="slides_assets/guide_cat_settings.png" alt="カテゴリのアイテム設定 ─ テンプレート適用プルダウン">
-  <figcaption>カテゴリの「アイテムの設定」 ─ プロジェクトで作ったテンプレートを選んで適用</figcaption>
+  <img class="shot" src="slides_assets/guide_cat_settings.png" alt="カテゴリ設定でテンプレート適用">
+  <figcaption>アイテム側 ─ テンプレートを選んで適用</figcaption>
 
-  <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">② ステータス定義（チェック待ち / OK / リテイク など）</h4>
+  <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">② ステータス定義</h4>
   <p style="color:var(--text2);font-size:14px;line-height:1.7">
-    「ステータス定義」欄で、そのプロジェクトで使うステータスの <b>ラベルと色</b> を編集できます。
-    <b>「＋ ステータスを追加」</b>で新規追加、左の色ボックスをクリックで色変更、「削除」で削除。
-    ここで決めたステータスが、進捗ダッシュボードやレビュー画面の判定ボタンにそのまま並びます。
+    このプロジェクトで使うステータスの <b>ラベルと色</b> を編集。ここで並べた順にレビュー画面の判定ボタンにも並びます。
   </p>
   <img class="shot" src="slides_assets/guide_proj_status.png" alt="ステータス定義セクション">
-  <figcaption>プロジェクト設定 ─ ステータス定義</figcaption>
-  <div class="warn"><b>⚠️</b> 先頭のステータスが「新規追加時の既定ステータス」になります。通常は<b>「チェック待ち」</b>相当を先頭に置いてください。</div>
+  <figcaption>ステータス定義</figcaption>
+  <div class="warn"><b>⚠️</b> 先頭が新規追加時の既定ステータスになります。「チェック待ち」相当を先頭に。</div>
 
   <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">③ メンバー管理</h4>
   <p style="color:var(--text2);font-size:14px;line-height:1.7">
-    設定モーダルの <b>「👥 メンバー管理を開く」</b> ボタンで、別ウィンドウのメンバー管理画面が開きます。
-    ここに登録したメンバーが、<b>作業担当・チェック担当のドロップダウン、＠メンションの候補</b>に出るようになります。
+    <b>「👥 メンバー管理を開く」</b>で別ウィンドウが開き、担当割り当て・＠メンション・通知の候補になるメンバーを登録します。
   </p>
   <img class="shot" src="slides_assets/guide_proj_members.png" alt="プロジェクトメンバーセクション">
-  <figcaption>プロジェクト設定 ─ メンバー管理を開く入口</figcaption>
+  <figcaption>設定モーダルのメンバー入口</figcaption>
   <img class="shot" src="slides_assets/guide_members.png" alt="メンバー管理ウィンドウ" style="margin-top:12px">
-  <figcaption>別ウィンドウで開くメンバー管理 ─ 名前・メール・色を編集</figcaption>
-  <ul style="padding-left:20px;color:var(--text2);font-size:14px;line-height:1.8;margin-top:8px">
-    <li><b>名前</b>：担当者ドロップダウンやメンション表示に使われる表示名</li>
-    <li><b>ID（メール）</b>：認証と一致する安定 ID。<b>Google ログイン運用時は必ずメールアドレスを入れる</b>ことで、その人だけがそのプロジェクトを開けます</li>
-    <li><b>色</b>：メンションチップ・アサインバッジの色</li>
-    <li><b>有効</b>：チェックを外すと、そのメンバーは候補から除外（履歴は残る）</li>
-  </ul>
-  <div class="tip"><b>💡</b> メンバー名簿は共有フォルダの <code>laycat.project.json</code> に保存されるので、<b>フォルダを共有している全員に自動で反映</b>されます。誰か 1 人が追加すれば、他の全員の LayCAT にも即反映（次回起動時）。</div>
-
-  <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">その他の設定</h4>
-  <ul style="padding-left:20px;color:var(--text2);font-size:14px;line-height:1.8">
-    <li><b>プロジェクトサムネイル</b>：ホーム画面のタイルに表示される画像。ドラッグ&拡大でトリミング範囲を調整</li>
-    <li><b>保存先フォルダ</b>：後から変更・解除も可能</li>
-    <li><b>パスワード保護</b>：プロジェクトの中身を AES-GCM で暗号化。設定するとフォルダの中身を第三者が読めなくなります（パスワードを紛失すると復号不可なので注意）</li>
-    <li><b>プロジェクトを削除</b>：プロジェクトとその配下データを一括削除</li>
-  </ul>
+  <figcaption>別ウィンドウ ─ 名前・メール・色を編集</figcaption>
+  <div class="warn"><b>⚠️ 未登録だと他の人はこのプロジェクトに参加できません。</b> Google ログイン運用時は必ずメールアドレスを入れてください。</div>
+  <div class="tip"><b>💡</b> メンバー名簿は共有フォルダの <code>laycat.project.json</code> に保存され、共有相手全員に自動反映されます。</div>
 </div>
 
 <!-- ============ FAQ ============ -->
