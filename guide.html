@@ -303,22 +303,20 @@
   <div class="head"><span class="n">13</span><span class="t">プロジェクト設定（メンバー・ステータス・工程）</span></div>
   <p class="sub">プロジェクトを作ったら、最初に <b>メンバー・ステータス・工程</b> の 3 つを整えておくと、以降の運用がスムーズです。全部このモーダル 1 つで完結します。</p>
 
-  <div class="todo"><b>開き方</b>→ プロジェクトを開いた状態で、画面右上の <b>保存先チップ（📁 ○○）</b> か、左サイドバー上の <b>プロジェクト名</b> をクリック</div>
-
-  <img class="shot" src="slides_assets/guide_proj_settings.png" alt="プロジェクト設定モーダル">
-  <figcaption>プロジェクト設定モーダル ─ この 1 画面で全部整える</figcaption>
+  <div class="todo"><b>開き方</b>→ プロジェクトを開いた状態で、画面右上の <b>保存先チップ（📁 ○○）</b> か、左サイドバー上の <b>プロジェクト名</b> をクリック。設定モーダルは全部で 11 セクション（基本情報／工程テンプレート／サムネイル／進行状況／ステータス／工程バッジ色／進捗起点／保存先／メンバー／パスワード／危険な操作）に分かれています。以下では特に重要な 3 つを紹介します。</div>
 
   <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">① 工程テンプレート（LAY / ANIM / COMP など）</h4>
   <p style="color:var(--text2);font-size:14px;line-height:1.7">
-    ②「工程テンプレート」欄で、<b>このプロジェクトで使う工程セットを "テンプレート" として複数登録</b>できます
+    「工程テンプレート」欄で、<b>このプロジェクトで使う工程セットを "テンプレート" として複数登録</b>できます
     （例：「テンプレートA = LAY / ANIM / FIN / COMP」「テンプレートB（PV 用）= 絵コンテ / 原画 / 動画 / 仕上げ」）。
     <b>「＋ 工程を追加」</b>で工程を追加、<b>「＋ テンプレートを追加」</b>で新しいテンプレートを作れます。
     色は工程名から自動で割り当てられます（同じ名前なら常に同じ色）。
   </p>
-  <p style="color:var(--text2);font-size:14px;line-height:1.7;margin-top:6px">
-    ここで作ったテンプレートは、<b>カテゴリ（EP01 など）の「アイテムの設定」から選んで適用</b>できます。
-    カテゴリ設定の「工程テンプレート」セクションでプルダウン →「このテンプレートを適用」を押すと、
-    そのカテゴリの工程一覧に一発で展開されます。適用後も個別に工程を足したり削ったりできます。
+  <img class="shot" src="slides_assets/guide_proj_tpl.png" alt="工程テンプレートセクション">
+  <figcaption>プロジェクト設定 ─ 工程テンプレートを塊で複数登録</figcaption>
+  <p style="color:var(--text2);font-size:14px;line-height:1.7;margin-top:12px">
+    ここで作ったテンプレートは、<b>カテゴリ（EP01 など）の「アイテムの設定」や「＋ アイテムを追加」画面から選んで適用</b>できます。
+    プルダウン →「このテンプレートを適用」を押すと、そのカテゴリの工程一覧に一発で展開されます。適用後も個別に工程を足したり削ったりできます。
   </p>
   <img class="shot" src="slides_assets/guide_cat_settings.png" alt="カテゴリのアイテム設定 ─ テンプレート適用プルダウン">
   <figcaption>カテゴリの「アイテムの設定」 ─ プロジェクトで作ったテンプレートを選んで適用</figcaption>
@@ -329,15 +327,19 @@
     <b>「＋ ステータスを追加」</b>で新規追加、左の色ボックスをクリックで色変更、「削除」で削除。
     ここで決めたステータスが、進捗ダッシュボードやレビュー画面の判定ボタンにそのまま並びます。
   </p>
+  <img class="shot" src="slides_assets/guide_proj_status.png" alt="ステータス定義セクション">
+  <figcaption>プロジェクト設定 ─ ステータス定義</figcaption>
   <div class="warn"><b>⚠️</b> 先頭のステータスが「新規追加時の既定ステータス」になります。通常は<b>「チェック待ち」</b>相当を先頭に置いてください。</div>
 
   <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">③ メンバー管理</h4>
   <p style="color:var(--text2);font-size:14px;line-height:1.7">
-    設定モーダル下部の <b>「👥 メンバー管理…」</b> ボタンで、別ウィンドウのメンバー管理画面が開きます。
+    設定モーダルの <b>「👥 メンバー管理を開く」</b> ボタンで、別ウィンドウのメンバー管理画面が開きます。
     ここに登録したメンバーが、<b>作業担当・チェック担当のドロップダウン、＠メンションの候補</b>に出るようになります。
   </p>
-  <img class="shot" src="slides_assets/guide_members.png" alt="メンバー管理ウィンドウ">
-  <figcaption>メンバー管理ウィンドウ ─ プロジェクトごとに独立</figcaption>
+  <img class="shot" src="slides_assets/guide_proj_members.png" alt="プロジェクトメンバーセクション">
+  <figcaption>プロジェクト設定 ─ メンバー管理を開く入口</figcaption>
+  <img class="shot" src="slides_assets/guide_members.png" alt="メンバー管理ウィンドウ" style="margin-top:12px">
+  <figcaption>別ウィンドウで開くメンバー管理 ─ 名前・メール・色を編集</figcaption>
   <ul style="padding-left:20px;color:var(--text2);font-size:14px;line-height:1.8;margin-top:8px">
     <li><b>名前</b>：担当者ドロップダウンやメンション表示に使われる表示名</li>
     <li><b>ID（メール）</b>：認証と一致する安定 ID。<b>Google ログイン運用時は必ずメールアドレスを入れる</b>ことで、その人だけがそのプロジェクトを開けます</li>
