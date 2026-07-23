@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+---
+
+## 反映済み beta v0.0.5（2026-07-23）
+
+### A. EXR 連番シーケンス対応（パッチノート掲載）
 - **EXR 連番シーケンス対応（ローカルフォルダ運用のみ）**：`＋ 動画` から複数 EXR を選択すると連番として認識してアップロードできる。命名パターン（`base.001.exr` 等）を自動検出し、同一ベースの連番グループを 1 版にまとめる。混在ファイルやパターン不一致は従来通り 1 件ずつアップ。
   - 実装：`groupExrSequence(files)` で連番判定 → 専用モーダル `openExrSeqUploadModal`（版名／FPS／コメント） → `uploadExrSequence` で全フレームを media/ に保存 → 版データは `type:'exr_seq'` + `frames:[{file,cache,name,frame}]` + `fps` で持つ。
   - R2 プロジェクトでは非対応（トースト警告して個別アップに促す）。
@@ -29,22 +34,12 @@
 - **EXR 連番のショートカットキー（Space / ← → / , . / X）を有効化**。`onKey` および `fbKeyUpSpin` のガードが `isVideo` に固定されていて seq では効かなかったのを `isPlayable = isVideo || isSeq` に変更。
 - **EXR 連番のスクラブ中は 1F 先プリフェッチをスキップ**。`renderSeqFrame` のプリフェッチ条件を `!ropts.noPrefetch && !scrubbing` に変更し、スクラブ中に非同期の EXR パース＋描画が JS スレッドを取り合うのを防ぐ。ドロップ時（`onpointerup`）で `scrubbing=false` 後の再呼び出しで通常通りプリフェッチが走る。
 - **EXR 連番：任意で「🎞 全キャッシュ」ボタンを追加**（アノテウィンドウ上部）。旧「🖼 サムネ更新」ボタンはレビュー画面から撤去。現在のレイヤー・露出・ガンマ設定で全フレームを順次デコードしてメモリキャッシュに投入。処理中は「キャッシュ中 N/M（クリックで中断）」表示、もう一度クリックで中断可能。LRU 上限（通常 60 F）は「全キャッシュ」実行時のみ `frames.length` に一時拡張されるので、全部溜まる。完了後は再生・スクラブが完全に途切れなく動く（AE の "Fully Cached" 相当）。
-- **アノテウィンドウが開かなくなる不具合を修正**：`isSeq` / `isPlayable` の宣言が openReview 関数内で使用箇所より後方にあり、TDZ（Temporal Dead Zone）で ReferenceError を発生させてウィンドウ全体が開けなくなっていた。宣言を関数冒頭（`isVideo` の直後）に移動して修正。
-- **Slack Incoming Webhook 通知（実験的）を廃止**：ユーザー判断で撤去。プロジェクト設定の Slack Webhook URL 入力欄・テスト送信ボタン、`notifySlackUpload` 関数、`uploadVersion` / `uploadExrSequence` の呼び出し、`slackWebhookRow` 変数を全て削除。既に保存済みの `root.slackWebhook` フィールドはプロジェクト JSON に残るが、参照するコードが無いので実害なし（次回書き出しで整理したい場合は別途 migration）。
+
+### B. 同時編集リスク低減 Phase 1/2/3（パッチノート掲載）
 - **同時編集リスク低減 Phase 1：サブミット JSON 分割保存**を実装。従来 `project.json` 内の `submits[]` 配列に全サブミットを詰めていた構造を、`submits/<subId>.json` の個別ファイル + `project.json.submitIds`（ID インデックス）に分割。別々のサブミットを並行編集しても衝突しなくなる。実装：`storage.loadSubmit / saveSubmit / delSubmit / loadAllSubmits`、暗号化封筒 `encryptSubmit / decryptSubmit`、保存時分割ヘルパー `saveProjectSplit`（変更検知＝`_saveCache.submit[pid][sid]`）、ロード時 hydrate（`_hydrateSubmits`）を追加。旧形式（`submits[]` 生データ）は次回保存で自動的に分割形式へ移行。R2 は Worker の `/purge` でまとめて掃除、フォルダは delProject 時に `submits/` ディレクトリを再帰削除。
 - **同時編集リスク低減 Phase 2：ショット JSON 分割保存**を実装。ショット単位（＝プロジェクトルート以外の `type='section'` で子が全て `review` のノード）で `shots/<shotId>.json` に「ショット本体 + 配下の全タスク」のフルデータを格納、`project.json` は骨格のみ（`nodes` は `versions/comments/_vtomb` を抜いた軽量版 + `shotIds` インデックス）に。別々のショットを並行編集しても衝突しなくなる。実装：`storage.loadShot / saveShot / delShot / loadAllShots`、`encryptShot / decryptShot`、`_isShotNodeForSave` / `_skeletonNode` ヘルパー、`saveProjectSplit` にショット分割を統合、`_hydrateShots` で並列ロード → nodes[] に Object.assign で復元。v:4 マーカーで新形式判定、v<4 のプロジェクトは boot 時に検出して初回移行モーダル `offerPhase2Migration` を表示（ユーザーが「移行を実行」→ persist で全プロジェクト再保存 → 自動分割）。delProject 時に `shots/` ディレクトリも掃除。
-- **プロジェクト作成直後にメンバー登録を強く促すダイアログを追加**：新規プロジェクト作成完了直後に「まずはメンバーを登録しましょう」モーダルを自動表示（[あとで登録する]／[👥 メンバー管理を開く]）。R2 の場合は「あなた 1 人だけがメンバーです」、フォルダの場合は「メンバーが未登録です」と状況に応じたメッセージ。プロジェクト設定モーダルの⑨プロジェクトメンバーセクションでも、メンバーが 0 件 or 自分だけの状態のときに黄色い警告バナー（⚠️）を出して再訪時にも忘れないようにする。担当者ドロップダウン・＠メンション・通知はすべてメンバー名簿を元に動くため、未登録運用による事故を防ぐ狙い。guide.html STEP 2 にも同趣旨の warn を追加。
-- **プロジェクト設定と工程テンプレート機能を分離**：
-  1. モーダルタイトルを、プロジェクトルート（`parentId===null`）の場合のみ「**プロジェクト設定**」に、それ以外（カテゴリ・工程）は従来通り「アイテムの設定」に分岐。
-  2. **工程テンプレートを「複数持てるテンプレート集合」に拡張**。プロジェクト設定の②工程テンプレートセクションで `stageTemplates=[{id,name,stages[]}...]` を編集（テンプレートA / テンプレートB / … と自由に増やせる）。既存の `root.stages` は初回オープン時に `projectStageTemplates` ヘルパーで「テンプレートA」として遅延移行、保存時は先頭テンプレートを `node.stages` にも同期して後方互換維持。
-  3. **カテゴリ（サブセクション）のアイテムの設定②工程テンプレート**にプルダウン＋「このテンプレートを適用」ボタンを追加。プロジェクトで作ったテンプレートを一発で展開でき、その後は個別に工程を足したり削ったりも可能。
-  4. **「＋ アイテムを追加」モーダルにも同じテンプレート適用プルダウン**を追加。新規カテゴリ／ショット作成時に、プロジェクトで定義した工程セットを即適用できる（従来は親フォルダの `stages` を初期値として個別編集するのみだった）。
-- **プロジェクト設定モーダルを 11 セクションに整理**（何の設定かひと目でわかるように）。従来は薄い `form-label` のラベルだけが縦に並んでいて、どこまでが 1 セクションか読み取りづらかったのを、番号付きの見出し（`.settings-section`）と絵文字アイコン、1〜2 行の補足文（`.settings-help`）を追加して整理：①基本情報／②工程テンプレート／③プロジェクトサムネイル／④プロジェクトの進行状況／⑤ステータス定義／⑥工程バッジの色／⑦進捗表示の起点フォルダ／⑧データの保存先／⑨プロジェクトメンバー／⑩パスワード保護／⑪危険な操作。メンバー管理ボタンも「👥 メンバー管理…」→「👥 メンバー管理を開く」に文言変更し primary スタイルに昇格。CSS で `border-top` によるセクション境界も可視化。
-- **はじめ方ガイド（`guide.html`）に プロジェクト設定 STEP 13 を追加**。STEP 2「＋ 新規プロジェクト」から `#projset` へのジャンプリンクを設置、STEP 13 では設定モーダルとメンバー管理ウィンドウの実スクショ付きで、工程テンプレート／ステータス定義／メンバー管理／その他（サムネ・保存先・パスワード・削除）を順に解説。
-- **はじめ方ガイド（`guide.html`）に REEL とサブミットの詳細ステップを追加**、また STEP 5「動画をアップロード」に <b>ドラッグ&ドロップでも追加可能</b>（複数ファイル・EXR 連番も対応）である旨を追記。STEP 5 / STEP 6 から新規 STEP 11（REEL の使い方）／STEP 12（サブミットの使い方）へのジャンプリンク（`#reel` / `#submit` アンカー）を設置。REEL は「複数ショットの最新版を 1 本の映像のように連続再生」ラッシュチェック用途を、サブミットは「複数タスクの版を 1 束にまとめてチェック依頼を出す」（1 通の通知でチェック担当が全体把握できる）用途を、5 ステップの手順＋ Tip ＋ Warn で解説。
-- **LP（`intro.html`）から GitHub リンクを削除**。FINAL CTA の「GitHub」ボタンを「はじめ方ガイド」ボタンに置換、フッターの `github.com/ogshaw03/lay_cat` リンクも削除。git ソースは基本的に非公開想定のため。
-- **同時編集リスク低減 Phase 3 Issue C：baseline チェック軽量化**。`storage.readProjectData(id,{skeletonOnly:true})` オプションを追加し、v:4（Phase 3 楽観ロック済み）プロジェクトの persist 内 baseline チェックでは shots/submits の並列ハイドレートをスキップして骨格 project.json のみ読み込む経路に切替。他者が追加した骨格ノードのみ `_unionSkeletonIntoDB` で DB に取り込み、既存ノードの版・アノテ・コメントは shots 単位の楽観ロックが吸収するので触らない。10 プロジェクト × 30 ショットのケースで persist 毎の I/O が「300 ファイル並列読込」→「10 ファイル」に削減される。v<4（未移行）プロジェクトは従来通りフル 3-way マージ経路。
 - **同時編集リスク低減 Phase 3：ショット／サブミット単位の楽観ロック（_rev）＋ 3-way マージ**を実装。同じショットを 2 人が同時に編集しても、保存直前にリモートを再読して `_rev` が進んでいたらファイル単位でマージし双方の追記（版・アノテ・コメント・工程追加）を保持。実装：`_loadedRev[pid]` に `{project, shots:{sid:rev}, submits:{sid:rev}}` を保持、`_hydrateShots/_hydrateSubmits/loadProject` がロード時に `_rev` を bucket に記録（`readProjectData` からの再読では上書きしないよう `recordRev:false` オプション付き）、`_saveShotWithLock/_saveSubmitWithLock` が保存直前に `loadShot/loadSubmit` で再読 → `remoteRev>knownRev` なら `_mergeShotFileInto/_mergeSubmitInto` で union し `_applyShotFileIntoDB/_applySubmitFileIntoDB` で DB にも反映してから書き込み → `_rev` を +1。`saveShot/saveSubmit/saveProject` を修正して暗号化封筒の外側に `_rev` を露出（次回起動時に読める）。同時に **Issue A**（暗号化プロジェクト解錠時にショット/サブミット個別ファイルがハイドレートされず版・コメントが空に見える不具合）と **Issue I**（暗号化かつ旧形式 v<4 のプロジェクトが分割移行モーダルに載らない不具合）を修正：`renderProjectLock` の submit で `decryptProject` 成功後に `_hydrateShots/_hydrateSubmits` を呼び、`res.data.v<4` なら `_migrationNeeded` に追加して `offerPhase2Migration()` を起動。マージが発生した保存には「ほかの人の更新をショット/サブミット単位で取り込みました」トーストを表示。
+- **同時編集リスク低減 Phase 3 Issue C：baseline チェック軽量化**。`storage.readProjectData(id,{skeletonOnly:true})` オプションを追加し、v:4（Phase 3 楽観ロック済み）プロジェクトの persist 内 baseline チェックでは shots/submits の並列ハイドレートをスキップして骨格 project.json のみ読み込む経路に切替。他者が追加した骨格ノードのみ `_unionSkeletonIntoDB` で DB に取り込み、既存ノードの版・アノテ・コメントは shots 単位の楽観ロックが吸収するので触らない。10 プロジェクト × 30 ショットのケースで persist 毎の I/O が「300 ファイル並列読込」→「10 ファイル」に削減される。v<4（未移行）プロジェクトは従来通りフル 3-way マージ経路。
 
 ---
 
@@ -57,13 +52,17 @@
 
 ## 反映済み・パッチノート記載なし（Beta 反映済み・PATCH_NOTES.md 未記載）
 
-- **【2026-07-22 Beta 反映 まとめ】** 以下の修正を beta v0.0.4（一部は据え置き）で反映。パッチノート記載対象は下記「反映済み beta v0.0.4」を参照：
-  - 左サイドバーのカテゴリ／ショットの並び順を作成順 → 名前順（自然順ソート）に変更。ショットナンバー（"SC001"→"SC010"→"SC100"）で上から並ぶ。
-  - ショット直下の工程の並び順を「工程設定（`section.stages` 配列の順）」に追従するよう変更。従来のハードコード `stageRankCmp` はフォールバック。
-  - 動画サムネイルのキャプチャ位置を「1 秒地点」→「1 フレーム目」に変更。
-  - 「チェック依頼」通知がチェック担当者に届かない不具合を修正：走査に「各タスクの新版アップロード」パスを追加（タスク直接アップの経路で通知が生成されるように）。重複抑止を `DB.notifications.rqKey` ベースへ切替。サブミット作成時に `byEmail` を保存し「自分の提出をスキップ」判定をメールで厳密化。担当者名比較の大文字小文字無視化。
-  - 動画プレイヤーに音量／ミュート切替を追加：FB オーバーレイに 🔊/🔇 トグル＋音量スライダ、タスクページタイルに 🔊/🔇 トグル。起動時に明示的に `muted=false`／`volume=1.0`。設定は localStorage で保存。
-  - はじめ方ガイド（`guide.html`）を新規作成（画面スクショ付き 10 ステップ構成）。`intro.html` の最上部に誘導帯・ヒーローにカード導線を追加。
+- **【2026-07-23 Beta v0.0.5 反映 まとめ】** 以下の項目は beta v0.0.5 で反映済みだが PATCH_NOTES.md には記載しない：
+  - **アノテウィンドウが開かなくなる不具合を修正**：`isSeq` / `isPlayable` の宣言が openReview 関数内で使用箇所より後方にあり、TDZ（Temporal Dead Zone）で ReferenceError を発生させてウィンドウ全体が開けなくなっていた。宣言を関数冒頭（`isVideo` の直後）に移動して修正。
+  - **Slack Incoming Webhook 通知（実験的）を廃止**：ユーザー判断で撤去。プロジェクト設定の Slack Webhook URL 入力欄・テスト送信ボタン、`notifySlackUpload` 関数、`uploadVersion` / `uploadExrSequence` の呼び出し、`slackWebhookRow` 変数を全て削除。既に保存済みの `root.slackWebhook` フィールドはプロジェクト JSON に残るが、参照するコードが無いので実害なし（次回書き出しで整理したい場合は別途 migration）。
+  - **プロジェクト作成直後にメンバー登録を強く促すダイアログを追加**：新規プロジェクト作成完了直後に「先にメンバーを登録」モーダルを自動表示（[あとで]／[👥 メンバー管理を開く]）。R2 の場合は「R2 プロジェクトはメンバーに追加した人だけがアクセス可能」、フォルダの場合は「担当割り当て・＠メンション・通知はメンバー名簿を元に動きます」と状況に応じたメッセージ。プロジェクト設定モーダルの⑨プロジェクトメンバーセクションでも、メンバーが 0 件 or 自分だけの状態のときに黄色い警告バナー（⚠️）を出して再訪時にも忘れないようにする。「未登録だと他の人はこのプロジェクトに参加できません」を明示。guide.html STEP 2 にも同趣旨の warn を追加。
+  - **プロジェクト設定と工程テンプレート機能を分離**：モーダルタイトルをプロジェクトルートの場合のみ「プロジェクト設定」に、それ以外は「アイテムの設定」に分岐。工程テンプレートを `stageTemplates=[{id,name,stages[]}]` の複数持ちに拡張（テンプレートA/B/…）、カテゴリのアイテム設定と「＋ アイテムを追加」モーダルにプルダウン＋「このテンプレートを適用」ボタンを追加。既存 `root.stages` は `projectStageTemplates` ヘルパーで「テンプレートA」として遅延移行。
+  - **プロジェクト設定モーダルを 11 セクションに整理**（何の設定かひと目でわかるように）。番号付き見出し（`.settings-section`）と絵文字アイコン、補足文（`.settings-help`）で整理：①基本情報／②工程テンプレート／③プロジェクトサムネイル／④プロジェクトの進行状況／⑤ステータス定義／⑥工程バッジの色／⑦進捗表示の起点フォルダ／⑧データの保存先／⑨プロジェクトメンバー／⑩パスワード保護／⑪危険な操作。メンバー管理ボタンを「👥 メンバー管理を開く」に文言変更＋ primary スタイルに昇格。
+  - **はじめ方ガイド（`guide.html`）に プロジェクト設定 STEP 13 を追加**。STEP 2「＋ 新規プロジェクト」から `#projset` へのジャンプリンクを設置、STEP 13 では設定モーダルとメンバー管理ウィンドウの実スクショ付きで、工程テンプレート／ステータス定義／メンバー管理／その他（サムネ・保存先・パスワード・削除）を順に解説。縦長スクショはセクション別に切り分け（`guide_proj_tpl.png` / `guide_proj_status.png` / `guide_proj_members.png`）。
+  - **はじめ方ガイド（`guide.html`）に REEL とサブミットの詳細ステップを追加**、また STEP 5「動画をアップロード」に **ドラッグ&ドロップでも追加可能**（複数ファイル・EXR 連番も対応）である旨を追記。STEP 5 → `#submit` / STEP 6 → `#reel` のジャンプリンクを設置。STEP 11（REEL）／STEP 12（サブミット）を新規追加。STEP 4 に「＋ アイテムを追加」時のテンプレート適用プルダウン説明を追加。ガイド全体の文字数を大幅圧縮。
+  - **LP（`intro.html`）から GitHub リンクを削除**。FINAL CTA の「GitHub」ボタンを「はじめ方ガイド」ボタンに置換、フッターの `github.com/ogshaw03/lay_cat` リンクも削除。「単一 HTML」表記も削除、hero desc から特定ツール名（Nuke/ShotGrid）を除去。「他のツールには無い機能」セクションに「📁 フォルダ運用」「🎞 まとめ再生（REEL⇄タスク双方向反映）」の 2 ブロックを追加。
+  - **ホーム画面ヘッダのアカウントアイコン左に「📖 はじめ方ガイド」ボタンを追加**：ホーム画面時のみ表示、guide.html を新規タブで開く。intro.html / guide.html の nav 左上ロゴを `laycat_icon.png` 単独表示に整理（テキスト重複解消）。
+
 - **メンテナンス終了時の自動リロードをキャッシュバスター付きに変更**（beta v0.0.3 ホットフィックス）：
   従来は `location.reload()`（普通リロード）で古い HTML が返る可能性があったが、
   `location.href=location.pathname+'?_='+Date.now()` に変更して 100% 最新版取得を保証。
@@ -93,7 +92,7 @@
   - LayCAT 側：`root.owner` を新規追加（作成者メール自動セット）、既存 `root.members` はそのまま
   - R2 側：プロジェクト直下に `_access.json`（平文で owner/members だけを持つ小さな JSON）を配置。laycat.project.json 本体は暗号化されていても _access.json は平文で維持する
   - Worker：全 R2 操作の前に `_access.json` を読み、`token.email === owner || members に含まれる` なら許可、そうでなければ 403
-  - 初回作成：`_access.json` が無い場合のみ「新規作成」扱いで PUT を許可（作成者が自動 owner）
+  - 初回作成：`_access.json` が無い場合のみ「新規作成」扱いで PUT を許可(作成者が自動 owner)
   - owner 権限譲渡・メンバー編集は既存の LayCAT メンバー管理 UI から。編集時は `_access.json` も同時更新
   - Worker のメモリキャッシュ（60秒）で毎リクエストの R2 GET レイテンシを緩和
   - バケット構造は現状の `projects/<projectId>/` を維持（owner ディレクトリ階層化はしない。owner の変更や共有が楽なため）
