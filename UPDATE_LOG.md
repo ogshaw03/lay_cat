@@ -25,6 +25,7 @@
 - **EXR 連番のレビュー画面 UI を mp4 と統一**：独自の下部スライダを廃止し、video で使っているタイムライン（canvas 版・フレーム目盛り・IN/OUT 範囲マーカー・プレイヘッド）と同じ UI をそのまま使うよう統合。プレイ／−1F／＋1F／ループ／IN／OUT／解除／fps セレクタ／タイムラインスクラブ すべて mp4 と同じ操作で使えるようになる。実装は `isPlayable = isVideo || isSeq` として `curFrame`/`dispFrame`/`seekRT`/`setupDuration`/`drawTimeline` を seq 対応、seq の再生は setInterval で FPS 毎にフレーム送り。範囲設定＆ループも video と同じ挙動。
 - **EXR 連番のレイヤー切替が再生後に beauty に戻る不具合を修正**：`drawTo(layer)` が seq の場合は `v.exrView.layer/exposure/gamma/depth` を更新した上で `renderSeqFrame(seqFrame)` に委譲するよう修正。フレームごとに `getExrParsed` → `drawLayerToCanvas` で選択レイヤーを描画するので、レイヤー切替 → 再生してもそのレイヤーで再生し続ける。
 - **EXR 連番のキャッシュ戦略を「アップロード時全 F 保存」から「再生時 1F 先だけプリフェッチ」に変更**：Adobe After Effects の RAM プレビューに近い方式。`uploadExrSequence` は EXR 実体保存のみに簡素化（アップ時間短縮）。`renderSeqFrame` は描画時に非同期でメモリキャッシュ（LRU 60 F）に格納し、成功時に 1F 先を `noPrefetch:true` でプリフェッチ（連鎖しない）。キャッシュキーにレイヤー・露出・ガンマ・depth を含めるので、設定変更で正しくキャッシュ無効化される。
+- **EXR 連番タイムラインにキャッシュ済みフレームの青ライン表示を追加**（REEL 準拠）。`drawTimeline` に seq 用の下段 1.5px 青ラインを追加し、現在の表示設定でキャッシュ済みのフレームだけ塗る。`renderSeqFrame` の成功時に `drawTimeline` を呼び直して即座に更新。レイヤー切替や露出/ガンマ変更でキャッシュが無効化されると自動的にラインが消える。
 
 ---
 
