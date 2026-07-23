@@ -495,6 +495,67 @@
       </div>
     </div>
 
+    <div class="diff-block" id="folder">
+      <div class="diff-inner">
+        <div class="diff-text">
+          <span class="label">📁 Folder</span>
+          <h3>フォルダ運用で、サーバーもアカウントも不要。</h3>
+          <p>
+            プロジェクトデータをローカルフォルダや Google Drive / NAS の共有フォルダに丸ごと置くだけで、
+            それがそのままチームの「1 つの正」になります。<b>サーバー構築・月額課金・運営者経由のデータ流出、すべて不要。</b>
+            他ツールがほぼ全てクラウド or 自社サーバー必須なのに対し、LayCAT はスタンドアロン運用が第一級市民です。
+          </p>
+          <ul>
+            <li>プロジェクトフォルダに <code>laycat.project.json</code> と <code>media/</code> が置かれるだけの素直な構造</li>
+            <li>Google Drive / Dropbox / OneDrive / NAS など任意の同期フォルダで OK</li>
+            <li>オフラインでも作業可能、同期が復活すれば自動で反映</li>
+            <li>Chrome / Edge の File System Access API で、ブラウザから直接フォルダを読み書き</li>
+            <li>クラウド運用（R2）とプロジェクト単位で共存させられる</li>
+          </ul>
+        </div>
+        <div class="diff-media" style="display:flex;align-items:center;justify-content:center;background:var(--bg3);aspect-ratio:16/9;">
+          <div style="text-align:center;color:var(--text2);padding:32px">
+            <div style="font-size:64px;line-height:1;margin-bottom:14px">📁</div>
+            <div style="font-family:'Inter',monospace;font-size:12px;color:var(--text);text-align:left;line-height:1.9;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px 18px;display:inline-block">
+              <div>📁 <b>MyProject/</b></div>
+              <div style="padding-left:20px">├── laycat.project.json</div>
+              <div style="padding-left:20px">├── 📁 media/</div>
+              <div style="padding-left:20px">├── 📁 shots/</div>
+              <div style="padding-left:20px">└── 📁 submits/</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="diff-block blue reverse" id="reel-sync">
+      <div class="diff-inner">
+        <div class="diff-text">
+          <span class="label blue">🎞 REEL ⇄ Task</span>
+          <h3>REEL で書いた指摘が、各タスクに自動反映。</h3>
+          <p>
+            REEL（複数ショット連続再生）でラッシュを流しながら書いたフレームコメント・アノテは、
+            <b>「まとめて記入」1 クリックで対応する各版の履歴にそのまま反映</b>されます。
+            上映会後に個別タスクを開き直して書き直す──あの二度手間が完全に消えます。
+            <b>逆方向にも各タスクページから REEL への一発ジャンプ</b>が用意されており、行き来がシームレス。
+          </p>
+          <ul>
+            <li>REEL の再生位置＝各版のフレーム位置に自動変換（アノテ座標／描画レイヤーまで完全同期）</li>
+            <li>1 セッションの指摘を N ショット分まとめて反映、通知もチェック担当に一括で飛ぶ</li>
+            <li>タスクページの動画タイルに 🎞 REEL バッジ ─ そのショットを含む REEL に即ジャンプ</li>
+            <li>フォルダ運用でもクラウド運用でも同じ挙動（クラウド固有機能ではない）</li>
+          </ul>
+          <p style="font-size:13px;color:var(--text3);margin-top:12px">
+            他ツールの Playlist / Presentation Mode で書いた指摘は基本「その場限り」の別チャネルに残るため、
+            元アセットへの反映に手動操作や追加ステップが必要。REEL 双方向同期は LayCAT 独自の設計です。
+          </p>
+        </div>
+        <div class="diff-media">
+          <img src="slides_assets/pre_reel.png" alt="REEL 画面 ─ 複数版を連続再生しながら直接アノテ・コメント">
+        </div>
+      </div>
+    </div>
+
   </div>
 </section>
 
