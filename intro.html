@@ -40,7 +40,7 @@
   }
   nav .inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:24px}
   nav .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:16px;text-decoration:none;color:var(--text)}
-  nav .brand img{height:26px}
+  nav .brand img{height:30px;width:auto;display:block}
   nav .links{margin-left:auto;display:flex;gap:24px;align-items:center}
   nav .links a{color:var(--text2);text-decoration:none;font-size:14px;font-weight:500;transition:color .15s}
   nav .links a:hover{color:var(--text)}
@@ -250,7 +250,7 @@
 <!-- ============ NAV ============ -->
 <nav>
   <div class="inner">
-    <a href="#" class="brand"><img src="laycat_icon.png" alt=""> LayCAT</a>
+    <a href="#" class="brand" aria-label="LayCAT"><img src="laycat_icon.png" alt="LayCAT"></a>
     <div class="links">
       <a href="#features">機能</a>
       <a href="#exr">EXR</a>
