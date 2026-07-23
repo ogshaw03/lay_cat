@@ -78,6 +78,11 @@
   .ch .c li{color:var(--text2);font-size:12.5px;padding:3px 0 3px 18px;position:relative}
   .ch .c li::before{content:'✓';position:absolute;left:0;color:var(--green);font-weight:800}
 
+  /* JUMP LINK（ステップ間ナビ） */
+  .jump{margin-top:14px;display:inline-flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(165,107,240,.1);border:1px solid rgba(165,107,240,.35);border-radius:8px;color:#e0d0ff;font-size:13px;font-weight:700;text-decoration:none;transition:all .15s}
+  .jump:hover{background:rgba(165,107,240,.18);transform:translateY(-1px)}
+  .jump .arrow{color:var(--purple);font-weight:900}
+
   /* KEYBOARD */
   .kb{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px 14px;padding:14px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:10px}
   .kb .r{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text2)}
@@ -193,7 +198,9 @@
   <p class="sub">左サイドバーで <b>工程（タスク）</b> を選ぶと、右側にタスク画面が開く。右上の <b>「＋ 動画」</b> を押してファイルを選ぶだけ。</p>
   <img class="shot" src="slides_assets/pre_task.png" alt="タスク画面">
   <figcaption>タスク画面 ─ 右上の「＋ 動画」からアップ、下に版履歴が積み上がる</figcaption>
+  <div class="tip"><b>💡</b> <b>ドラッグ&ドロップも OK</b>。デスクトップやエクスプローラーから動画ファイルをタスク画面にそのままドロップすると、同じように新しい版として追加されます。複数ファイルを一度にドロップしても順番に版として積まれます（EXR 連番なら 1 版にまとめて認識）。</div>
   <div class="warn"><b>⚠️</b> Animation / ProRes のコーデックはブラウザで再生できません。<b>H.264 の mp4 / mov</b> で書き出してください。</div>
+  <a href="#reel" class="jump">🎞 複数版を並べて連続再生したい → REEL の使い方 <span class="arrow">↓</span></a>
 </div>
 
 <!-- ============ STEP 6 ============ -->
@@ -212,6 +219,7 @@
     <div class="r"><kbd>Space</kbd>+ドラッグ<b>パン</b></div>
   </div>
   <div class="tip"><b>💡</b> フレームコメントは、動画を止めた位置で右側の入力欄に書けばそのフレームに紐付きます。クリックで一発ジャンプ。</div>
+  <a href="#submit" class="jump">📦 複数ショットを束ねて出したい → サブミットの使い方 <span class="arrow">↓</span></a>
 </div>
 
 <!-- ============ STEP 7 ============ -->
@@ -244,6 +252,44 @@
   <div class="head"><span class="n">10</span><span class="t">通知を確認する</span></div>
   <p class="sub">右上の 🔔 ベルアイコンを押すと通知パネルが開きます。<b>メンション</b>（@自分）と<b>チェック依頼</b>が並びます。</p>
   <div class="tip"><b>💡</b> リアルタイム push ではないので、作業開始前に <b>🔔 → 「🗘 最新」</b> を押すか、ページをリロードしてください。</div>
+</div>
+
+<!-- ============ もっと使いこなす（見出し） ============ -->
+<div style="margin:56px 0 8px;text-align:center">
+  <span class="lbl" style="display:inline-block;padding:5px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.12em">MORE</span>
+  <h2 style="font-size:26px;font-weight:900;letter-spacing:-.01em;margin-top:10px">もっと使いこなす</h2>
+  <p style="color:var(--text2);font-size:14px;margin-top:6px">よく使う 2 つの機能：<b>REEL</b>（連続再生）と <b>サブミット</b>（束ね提出）。</p>
+</div>
+
+<!-- ============ STEP 11：REEL ============ -->
+<div class="step" id="reel">
+  <div class="head"><span class="n">11</span><span class="t">REEL で複数版を連続再生する</span></div>
+  <p class="sub">複数ショットの最新版を <b>1 本の映像のように連続再生</b>できる機能。上映会・ラッシュチェック・カット並べ確認に。</p>
+  <ol style="padding-left:20px;color:var(--text2);font-size:14px;margin-top:6px">
+    <li style="margin-bottom:6px">プロジェクト画面上部の <b>「REEL」タブ</b> を開く</li>
+    <li style="margin-bottom:6px"><b>「＋ 新規リール」</b> を押して名前を入力（例：「EP01_ラッシュ_v03」）</li>
+    <li style="margin-bottom:6px">タスク画面の動画タイルを REEL パネルに <b>ドラッグ&ドロップ</b>、または「＋ この版を追加」で並べる</li>
+    <li style="margin-bottom:6px">▶ 再生すると、リストの順にシームレスにつながって再生される</li>
+    <li>クリップの並び替えはドラッグ、削除は 🗑 ボタン</li>
+  </ol>
+  <img class="shot" src="slides_assets/pre_reel.png" alt="REEL 画面">
+  <figcaption>REEL 画面 ─ 複数ショットの版を並べてクリップ集として再生</figcaption>
+  <div class="tip"><b>💡</b> REEL 用のフレームコメント・判定は個別ショットの版とは別の場所に保存されるので、「REEL で通しで見た時の指摘」と「個別ショットレビュー時の指摘」を混ぜずに済みます。範囲設定（IN/OUT）・ループ・音量も個別レビューと同じ操作。</div>
+</div>
+
+<!-- ============ STEP 12：サブミット ============ -->
+<div class="step" id="submit">
+  <div class="head"><span class="n">12</span><span class="t">サブミットで複数ショットを束ねて出す</span></div>
+  <p class="sub">「今週のレイアウト <b>8 カット</b>まとめて提出」のように、<b>複数タスクの版を 1 束にまとめて</b>チェック依頼を出す機能。1 通の通知でチェック担当が全体を把握できます。</p>
+  <ol style="padding-left:20px;color:var(--text2);font-size:14px;margin-top:6px">
+    <li style="margin-bottom:6px">プロジェクト画面上部の <b>「サブミット」タブ</b> を開く</li>
+    <li style="margin-bottom:6px"><b>「＋ 新規サブミット」</b> を押す</li>
+    <li style="margin-bottom:6px">サブミット名を入力（自動で <code>YYYYMMDD_001</code> が入る）＋ 全体コメント（オプション）</li>
+    <li style="margin-bottom:6px">対象にしたい <b>タスク × 版</b> を選ぶ（同じショットの複数工程・複数ショットを混ぜて OK）</li>
+    <li>「提出」を押すと、含めた全タスクが <b>一括で「チェック待ち」</b> になり、チェック担当に <b>1 件の通知</b> が届く</li>
+  </ol>
+  <div class="tip"><b>💡</b> サブミット履歴タブで <b>誰がいつ何を出したか</b> が一覧できます。過去のサブミットを開けば、その時の版だけを絞り込んで確認可能。「先週のあの提出、何が入ってたっけ？」がすぐ辿れます。</div>
+  <div class="warn"><b>⚠️</b> サブミットの「チェック」担当は、含めた各タスクに設定されているチェック担当が対象。事前に <b>各タスクにチェック担当を設定</b>しておいてください（STEP 7）。</div>
 </div>
 
 <!-- ============ FAQ ============ -->
