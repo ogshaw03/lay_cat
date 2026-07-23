@@ -186,11 +186,14 @@
   <p class="sub">プロジェクトの中を「3 階層」で組み立てます：</p>
   <div class="todo"><b>構造</b>→ プロジェクト ▸ カテゴリ（EP01 / SEQ_A 等） ▸ ショット（SC001, SC002…） ▸ 工程（LAY / ANIM / COMP 等）</div>
   <ol style="padding-left:20px;color:var(--text2);font-size:14px;margin-top:6px">
-    <li style="margin-bottom:6px">まず <b>カテゴリ</b>（例：EP01）を追加</li>
-    <li style="margin-bottom:6px">カテゴリの設定で <b>工程テンプレート</b>（LAY / ANIM / COMP など）を登録</li>
-    <li>カテゴリの下に <b>ショット</b> を追加 → 工程が自動で全部作られる</li>
+    <li style="margin-bottom:6px">先に <b>プロジェクト設定 → ②工程テンプレート</b> で「テンプレートA = LAY / ANIM / FIN」などを登録（<a href="#projset" style="color:var(--blue);text-decoration:underline">STEP 13</a> 参照）</li>
+    <li style="margin-bottom:6px">左サイドバーの <b>「＋ 追加」</b> ボタンから <b>カテゴリ</b>（例：EP01）を追加</li>
+    <li style="margin-bottom:6px">カテゴリの下に <b>ショット</b> を追加するとき、上部の <b>「工程テンプレートから選択：」プルダウン</b> でテンプレートを選び「このテンプレートを適用」を押す → 工程が一発で入る</li>
+    <li>「連番で複数作成」にチェックすれば、<code>SC001</code>〜<code>SC050</code> をまとめて作成することも可能</li>
   </ol>
-  <div class="tip"><b>💡</b> ショット名は <b><code>SC001</code>, <code>SC010</code></b> のようにゼロ埋めで。 数字順に並ぶようになります。</div>
+  <img class="shot" src="slides_assets/guide_add_item.png" alt="アイテムを追加モーダル">
+  <figcaption>アイテムを追加モーダル ─ 工程テンプレートから選ぶだけで工程が一発で入る</figcaption>
+  <div class="tip"><b>💡</b> ショット名は <b><code>SC001</code>, <code>SC010</code></b> のようにゼロ埋めで。 数字順に並ぶようになります。テンプレートを適用したあとも、下の一覧で工程を足したり削ったりして微調整できます。</div>
 </div>
 
 <!-- ============ STEP 5 ============ -->
