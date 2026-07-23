@@ -26,6 +26,8 @@
 - **EXR 連番のレイヤー切替が再生後に beauty に戻る不具合を修正**：`drawTo(layer)` が seq の場合は `v.exrView.layer/exposure/gamma/depth` を更新した上で `renderSeqFrame(seqFrame)` に委譲するよう修正。フレームごとに `getExrParsed` → `drawLayerToCanvas` で選択レイヤーを描画するので、レイヤー切替 → 再生してもそのレイヤーで再生し続ける。
 - **EXR 連番のキャッシュ戦略を「アップロード時全 F 保存」から「再生時 1F 先だけプリフェッチ」に変更**：Adobe After Effects の RAM プレビューに近い方式。`uploadExrSequence` は EXR 実体保存のみに簡素化（アップ時間短縮）。`renderSeqFrame` は描画時に非同期でメモリキャッシュ（LRU 60 F）に格納し、成功時に 1F 先を `noPrefetch:true` でプリフェッチ（連鎖しない）。キャッシュキーにレイヤー・露出・ガンマ・depth を含めるので、設定変更で正しくキャッシュ無効化される。
 - **EXR 連番タイムラインにキャッシュ済みフレームの青ライン表示を追加**（REEL 準拠）。`drawTimeline` に seq 用の下段 1.5px 青ラインを追加し、現在の表示設定でキャッシュ済みのフレームだけ塗る。`renderSeqFrame` の成功時に `drawTimeline` を呼び直して即座に更新。レイヤー切替や露出/ガンマ変更でキャッシュが無効化されると自動的にラインが消える。
+- **EXR 連番のショートカットキー（Space / ← → / , . / X）を有効化**。`onKey` および `fbKeyUpSpin` のガードが `isVideo` に固定されていて seq では効かなかったのを `isPlayable = isVideo || isSeq` に変更。
+- **EXR 連番のスクラブ中は 1F 先プリフェッチをスキップ**。`renderSeqFrame` のプリフェッチ条件を `!ropts.noPrefetch && !scrubbing` に変更し、スクラブ中に非同期の EXR パース＋描画が JS スレッドを取り合うのを防ぐ。ドロップ時（`onpointerup`）で `scrubbing=false` 後の再呼び出しで通常通りプリフェッチが走る。
 
 ---
 
