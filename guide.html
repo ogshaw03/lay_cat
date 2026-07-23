@@ -307,10 +307,18 @@
 
   <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">① 工程テンプレート（LAY / ANIM / COMP など）</h4>
   <p style="color:var(--text2);font-size:14px;line-height:1.7">
-    「この中で管理する工程」欄で、<b>ショット追加時に自動作成される工程一覧</b>を定義します。
-    <b>「＋ 工程を追加」</b>で新しい工程名を入れ、色は自動で割り当てられます（工程名から一意に決まる）。
-    ここで並べた順に、各ショット直下の工程タイルも並びます。
+    ②「工程テンプレート」欄で、<b>このプロジェクトで使う工程セットを "テンプレート" として複数登録</b>できます
+    （例：「テンプレートA = LAY / ANIM / FIN / COMP」「テンプレートB（PV 用）= 絵コンテ / 原画 / 動画 / 仕上げ」）。
+    <b>「＋ 工程を追加」</b>で工程を追加、<b>「＋ テンプレートを追加」</b>で新しいテンプレートを作れます。
+    色は工程名から自動で割り当てられます（同じ名前なら常に同じ色）。
   </p>
+  <p style="color:var(--text2);font-size:14px;line-height:1.7;margin-top:6px">
+    ここで作ったテンプレートは、<b>カテゴリ（EP01 など）の「アイテムの設定」から選んで適用</b>できます。
+    カテゴリ設定の「工程テンプレート」セクションでプルダウン →「このテンプレートを適用」を押すと、
+    そのカテゴリの工程一覧に一発で展開されます。適用後も個別に工程を足したり削ったりできます。
+  </p>
+  <img class="shot" src="slides_assets/guide_cat_settings.png" alt="カテゴリのアイテム設定 ─ テンプレート適用プルダウン">
+  <figcaption>カテゴリの「アイテムの設定」 ─ プロジェクトで作ったテンプレートを選んで適用</figcaption>
 
   <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">② ステータス定義（チェック待ち / OK / リテイク など）</h4>
   <p style="color:var(--text2);font-size:14px;line-height:1.7">
