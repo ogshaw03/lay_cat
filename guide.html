@@ -150,6 +150,7 @@
   <p class="sub">最初はプロジェクトが 1 つもありません。左上の <b>「＋ 新規プロジェクト」</b> を押します。</p>
   <img class="shot" src="slides_assets/guide_home.png" alt="ホーム画面">
   <figcaption>ホーム画面 ─ ここから始まる</figcaption>
+  <a href="#projset" class="jump">⚙ 作ったプロジェクトのメンバー・ステータス・工程を整える → プロジェクト設定 <span class="arrow">↓</span></a>
 </div>
 
 <!-- ============ STEP 3 ============ -->
@@ -258,7 +259,7 @@
 <div style="margin:56px 0 8px;text-align:center">
   <span class="lbl" style="display:inline-block;padding:5px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.12em">MORE</span>
   <h2 style="font-size:26px;font-weight:900;letter-spacing:-.01em;margin-top:10px">もっと使いこなす</h2>
-  <p style="color:var(--text2);font-size:14px;margin-top:6px">よく使う 2 つの機能：<b>REEL</b>（連続再生）と <b>サブミット</b>（束ね提出）。</p>
+  <p style="color:var(--text2);font-size:14px;margin-top:6px">よく使う 3 つの機能：<b>REEL</b>（連続再生）／<b>サブミット</b>（束ね提出）／<b>プロジェクト設定</b>（メンバー・ステータス・工程）。</p>
 </div>
 
 <!-- ============ STEP 11：REEL ============ -->
@@ -292,6 +293,55 @@
   </ol>
   <div class="tip"><b>💡</b> 作成後は、プロジェクト画面の <b>「サブミット」タブ</b>（左サイドバー横のタブ）から履歴一覧を開けます。過去のサブミットを開けば、その時の版だけを絞り込んで確認可能。「先週のあの提出、何が入ってたっけ？」がすぐ辿れます。サブミット詳細画面の <b>「▶ まとめて REEL に送る」</b> ボタンで、その提出物をそのまま REEL で通し再生することもできます。</div>
   <div class="warn"><b>⚠️</b> サブミットの「チェック」担当は、含めた各工程に設定されているチェック担当が対象。事前に <b>各工程にチェック担当を設定</b>しておいてください（STEP 7）。</div>
+</div>
+
+<!-- ============ STEP 13：プロジェクト設定 ============ -->
+<div class="step" id="projset">
+  <div class="head"><span class="n">13</span><span class="t">プロジェクト設定（メンバー・ステータス・工程）</span></div>
+  <p class="sub">プロジェクトを作ったら、最初に <b>メンバー・ステータス・工程</b> の 3 つを整えておくと、以降の運用がスムーズです。全部このモーダル 1 つで完結します。</p>
+
+  <div class="todo"><b>開き方</b>→ プロジェクトを開いた状態で、画面右上の <b>保存先チップ（📁 ○○）</b> か、左サイドバー上の <b>プロジェクト名</b> をクリック</div>
+
+  <img class="shot" src="slides_assets/guide_proj_settings.png" alt="プロジェクト設定モーダル">
+  <figcaption>プロジェクト設定モーダル ─ この 1 画面で全部整える</figcaption>
+
+  <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">① 工程テンプレート（LAY / ANIM / COMP など）</h4>
+  <p style="color:var(--text2);font-size:14px;line-height:1.7">
+    「この中で管理する工程」欄で、<b>ショット追加時に自動作成される工程一覧</b>を定義します。
+    <b>「＋ 工程を追加」</b>で新しい工程名を入れ、色は自動で割り当てられます（工程名から一意に決まる）。
+    ここで並べた順に、各ショット直下の工程タイルも並びます。
+  </p>
+
+  <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">② ステータス定義（チェック待ち / OK / リテイク など）</h4>
+  <p style="color:var(--text2);font-size:14px;line-height:1.7">
+    「ステータス定義」欄で、そのプロジェクトで使うステータスの <b>ラベルと色</b> を編集できます。
+    <b>「＋ ステータスを追加」</b>で新規追加、左の色ボックスをクリックで色変更、「削除」で削除。
+    ここで決めたステータスが、進捗ダッシュボードやレビュー画面の判定ボタンにそのまま並びます。
+  </p>
+  <div class="warn"><b>⚠️</b> 先頭のステータスが「新規追加時の既定ステータス」になります。通常は<b>「チェック待ち」</b>相当を先頭に置いてください。</div>
+
+  <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">③ メンバー管理</h4>
+  <p style="color:var(--text2);font-size:14px;line-height:1.7">
+    設定モーダル下部の <b>「👥 メンバー管理…」</b> ボタンで、別ウィンドウのメンバー管理画面が開きます。
+    ここに登録したメンバーが、<b>作業担当・チェック担当のドロップダウン、＠メンションの候補</b>に出るようになります。
+  </p>
+  <img class="shot" src="slides_assets/guide_members.png" alt="メンバー管理ウィンドウ">
+  <figcaption>メンバー管理ウィンドウ ─ プロジェクトごとに独立</figcaption>
+  <ul style="padding-left:20px;color:var(--text2);font-size:14px;line-height:1.8;margin-top:8px">
+    <li><b>名前</b>：担当者ドロップダウンやメンション表示に使われる表示名</li>
+    <li><b>ID（メール）</b>：認証と一致する安定 ID。<b>Google ログイン運用時は必ずメールアドレスを入れる</b>ことで、その人だけがそのプロジェクトを開けます</li>
+    <li><b>色</b>：メンションチップ・アサインバッジの色</li>
+    <li><b>有効</b>：チェックを外すと、そのメンバーは候補から除外（履歴は残る）</li>
+  </ul>
+  <div class="tip"><b>💡</b> メンバー名簿は共有フォルダの <code>laycat.project.json</code> に保存されるので、<b>フォルダを共有している全員に自動で反映</b>されます。誰か 1 人が追加すれば、他の全員の LayCAT にも即反映（次回起動時）。</div>
+
+  <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">その他の設定</h4>
+  <ul style="padding-left:20px;color:var(--text2);font-size:14px;line-height:1.8">
+    <li><b>プロジェクトサムネイル</b>：ホーム画面のタイルに表示される画像。ドラッグ&拡大でトリミング範囲を調整</li>
+    <li><b>保存先フォルダ</b>：後から変更・解除も可能</li>
+    <li><b>パスワード保護</b>：プロジェクトの中身を AES-GCM で暗号化。設定するとフォルダの中身を第三者が読めなくなります（パスワードを紛失すると復号不可なので注意）</li>
+    <li><b>プロジェクトを削除</b>：プロジェクトとその配下データを一括削除</li>
+  </ul>
 </div>
 
 <!-- ============ FAQ ============ -->
