@@ -30,6 +30,7 @@
 - **EXR 連番のスクラブ中は 1F 先プリフェッチをスキップ**。`renderSeqFrame` のプリフェッチ条件を `!ropts.noPrefetch && !scrubbing` に変更し、スクラブ中に非同期の EXR パース＋描画が JS スレッドを取り合うのを防ぐ。ドロップ時（`onpointerup`）で `scrubbing=false` 後の再呼び出しで通常通りプリフェッチが走る。
 - **EXR 連番：任意で「🎞 全キャッシュ」ボタンを追加**（アノテウィンドウ上部）。旧「🖼 サムネ更新」ボタンはレビュー画面から撤去。現在のレイヤー・露出・ガンマ設定で全フレームを順次デコードしてメモリキャッシュに投入。処理中は「キャッシュ中 N/M（クリックで中断）」表示、もう一度クリックで中断可能。LRU 上限（通常 60 F）は「全キャッシュ」実行時のみ `frames.length` に一時拡張されるので、全部溜まる。完了後は再生・スクラブが完全に途切れなく動く（AE の "Fully Cached" 相当）。
 - **アノテウィンドウが開かなくなる不具合を修正**：`isSeq` / `isPlayable` の宣言が openReview 関数内で使用箇所より後方にあり、TDZ（Temporal Dead Zone）で ReferenceError を発生させてウィンドウ全体が開けなくなっていた。宣言を関数冒頭（`isVideo` の直後）に移動して修正。
+- **Slack Incoming Webhook 通知（実験的）**：プロジェクト設定に「Slack 通知 Webhook URL」入力欄と「テスト送信」ボタンを追加。設定すると、動画／画像／EXR 連番のアップロード完了時に自動で Slack に投稿（`uploadVersion` / `uploadExrSequence` の末尾で `notifySlackUpload` を fire-and-forget）。URL は `root.slackWebhook` としてプロジェクト JSON に保存されるためプロジェクト共有相手全員に見える扱い（ドキュメント文言で明示）。CORS 回避のため `mode:'no-cors'` で送信、失敗は握りつぶす。動作次第で削除する可能性あり。
 
 ---
 
