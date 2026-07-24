@@ -13,6 +13,7 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.003) EXR のデータ系レイヤー（Z / Depth / Normal / Motion Vector / Position / UV / Cryptomatte）はデフォルトガンマを 1.0（リニア）にして正しく表示。切替後は従来通りユーザーがスライダで調整可能。`_isDataLayer(name, lay)` / `_defaultGammaForLayer(name, lay)` ヘルパを新設し、レイヤー切替時／リセットボタン／初回ロード時に適用（保存済み gamma が明示的にある場合はそれを優先）。
 - 層① サービス層のロールを 3 択（運営／管理者／メンバー）→ 2 択（運営／メンバー）に統一。「管理者(adminEmails)」ロールを廃止：
   - `access-console.html`：tiers() から admins を削除し、UI の管理者リスト・「→管理者」ボタン・add role の管理者オプションを撤去。setRole の 'admin' ターゲットは互換のため受け取っても 'member' として扱う。旧 adminEmails データは setRole の次回保存で自動的に allowedEmails に統合される（べき等）。isAuditor は isEditor と同義に。RULES の isStaff() から adminEmails 参照を削除
   - `worker/laycat-r2-api.js`：isAdminEmail を廃止、isStaffEmail（operatorEmails のみ）に統合。互換のため `const isAdminEmail = isStaffEmail` で旧関数名も生存。checkProjectAcl の admin エスカレーションは「運営エスカレーション」に改名（reason: 'operator'）
