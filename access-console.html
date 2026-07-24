@@ -129,10 +129,14 @@
 
     <div id="opArea" class="hidden">
       <!-- 監査ログ（adminEmails のみ） -->
-      <div class="card hidden" id="auditCard">
+      <div class="card" id="auditCard">
         <div class="card-title">📋 監査ログ</div>
         <div class="card-desc">R2 プロジェクトへの書込・削除・拒否・エラーの記録を閲覧できます。<b>adminEmails 登録者のみ</b>アクセス可能。</div>
-        <a class="btn btn-primary" id="auditOpenBtn" href="admin-audit.html" target="_blank" rel="noopener">📋 監査ログを開く（別タブ）</a>
+        <a class="btn btn-primary hidden" id="auditOpenBtn" href="admin-audit.html" target="_blank" rel="noopener">📋 監査ログを開く（別タブ）</a>
+        <div class="mstatus off hidden" id="auditNoAccess" style="margin-top:0">
+          <span class="dot off"></span>
+          <span>あなた（<b id="auditMe"></b>）は adminEmails に未登録のため閲覧できません。上の「🔐 アクセス管理」から自分の権限を <b>管理者</b> に昇格させてから再度お試しください（運営権限だけでは不可）。</span>
+        </div>
       </div>
 
       <!-- 認証必須トグル -->
@@ -344,8 +348,15 @@ function tiers(data){
   return {operators,admins,members,domains};
 }
 function isEditor(){ if(!cfg)return true; const t=tiers(cfg); return t.operators.includes(me.email)||t.admins.includes(me.email); }
-/* 監査ログは adminEmails 登録者のみアクセス可（運営 operatorEmails は含まない・ユーザー明示指定） */
-function isAdminOnly(){ if(!cfg||!me)return false; const t=tiers(cfg); return t.admins.includes(me.email); }
+/* 監査ログは adminEmails 登録者のみアクセス可（ユーザー明示指定）。
+   tiers().admins は表示用に operatorEmails を除外した配列のため、raw の adminEmails を直接見る。
+   運営(operatorEmails) だけ登録・adminEmails 未登録の場合は表示されないので、その場合は
+   自分を adminEmails にも追加する。 */
+function isAdminOnly(){
+  if(!cfg||!me)return false;
+  const raw=arr(cfg.adminEmails).map(lc);
+  return raw.includes(lc(me.email));
+}
 /* loggedUsers(email→表示名) から名前索引を作る。名前つき表示・ドメインログイン者の表示に使用 */
 function rebuildNames(){nameByEmail={};for(const u of Object.values(luUsers||{})){if(u&&u.email&&u.displayName){const k=lc(u.email);if(!nameByEmail[k])nameByEmail[k]=u.displayName}} if(me&&me.email&&me.name&&!nameByEmail[lc(me.email)])nameByEmail[lc(me.email)]=me.name;}
 function nameOf(email){return nameByEmail[lc(email)]||'';}
@@ -496,9 +507,15 @@ function paint(){
   /* ユーザー一覧（運営/管理者/メンバー）は別ウィンドウに描画。inline はサマリのみ */
   $('counts').textContent=`運営 ${operators.length} ・ 管理者 ${admins.length} ・ メンバー ${members.length}`;
   paintAccessWin();
-  /* 監査ログカード：adminEmails 登録者のみ表示 */
-  const auditCard=$('auditCard');
-  if(auditCard)auditCard.classList.toggle('hidden',!isAdminOnly());
+  /* 監査ログカード：カード自体は常に表示。ボタンは adminEmails 登録者のみ活性化、
+     それ以外は「未登録のため閲覧不可」の案内文を出す（何もないと機能に気づけないため）。*/
+  const isAudit=isAdminOnly();
+  const auditBtn=$('auditOpenBtn');
+  const auditNo=$('auditNoAccess');
+  const auditMe=$('auditMe');
+  if(auditBtn)auditBtn.classList.toggle('hidden',!isAudit);
+  if(auditNo)auditNo.classList.toggle('hidden',isAudit);
+  if(auditMe&&me)auditMe.textContent=me.email;
 
   // domains
   const dL=$('domList');dL.innerHTML='';
