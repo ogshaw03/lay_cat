@@ -17,6 +17,11 @@
 - (dev v2026.07.24.004) EXR の Cryptomatte 高 rank レイヤー（`crypto_object01` / `crypto_object02` 等）を非表示化：`_cryptoRank(name)` / `_shouldHideCryptoLayer(name)` ヘルパを新設し、レイヤーセレクタと「🎨 全レイヤー」タイルモーダルの両方でフィルタ。プレビュー用の `crypto_object00`（Rank 0-1）のみ表示。Rank 2 以上は精密マスク抽出用でレビュー用途には不要。
 - (dev v2026.07.24.005) 「🎨 全レイヤー」タイルモーダルでも各レイヤーに `_defaultGammaForLayer` を適用（データ系＝1.0、色系＝2.2）、レビュー画面と同じ「本来の見た目」でタイル描画されるように統一。
 - (dev v2026.07.24.005) Cryptomatte の `crypto_object00`（数字サフィックス 00）も非表示化：無ナンバー版（`crypto_object`）と内容が同一なので重複を弾く。`_shouldHideCryptoLayer` の判定を `> 0` → `>= 0` に変更。
+- (dev v2026.07.24.006) EXR Z (Depth) の Auto 黒白点算出を改善：外れ値（far-clip 巨大値・sky sphere 等）を除外した実用域を使うように修正。
+  - **初期黒点＝p1**（下位 1% パーセンタイル）／**初期白点＝p99**（上位 1% パーセンタイル）
+  - **スライダ可動範囲の上限を `p99 * 1.2` にクランプ**（外れ値がスライダを占領しないように）／下限は `stats.min` のまま（探索性のため広めに残す）
+  - Depth リセットボタンも `p1 / p99` に戻すよう変更
+  - 従来は `min / max` を初期値・可動範囲として使用しており、遠景の巨大値のせいで実オブジェクトの階調が潰れる問題があった。Nuke Read ノードの Auto Levels と同様の挙動に。
 - 層① サービス層のロールを 3 択（運営／管理者／メンバー）→ 2 択（運営／メンバー）に統一。「管理者(adminEmails)」ロールを廃止：
   - `access-console.html`：tiers() から admins を削除し、UI の管理者リスト・「→管理者」ボタン・add role の管理者オプションを撤去。setRole の 'admin' ターゲットは互換のため受け取っても 'member' として扱う。旧 adminEmails データは setRole の次回保存で自動的に allowedEmails に統合される（べき等）。isAuditor は isEditor と同義に。RULES の isStaff() から adminEmails 参照を削除
   - `worker/laycat-r2-api.js`：isAdminEmail を廃止、isStaffEmail（operatorEmails のみ）に統合。互換のため `const isAdminEmail = isStaffEmail` で旧関数名も生存。checkProjectAcl の admin エスカレーションは「運営エスカレーション」に改名（reason: 'operator'）
