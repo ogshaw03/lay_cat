@@ -21,7 +21,7 @@
  *   段階2：プロジェクト単位 ACL（_access.json）
  *   - projects/<pid>/_access.json を読み、{owner, members: [emails]} で判定
  *   - owner または members に自分のメールが含まれていれば OK
- *   - laynaAccess の adminEmails なら常時許可（admin エスカレーション：owner 不在時の緊急対応）
+ *   - laynaAccess の operatorEmails なら常時許可（運営エスカレーション：owner 不在時の緊急対応）
  *   - _access.json が無い場合はブートストラップ（初回 PUT のみ許可、body に自分を owner として指定必須）
  *   - key の先頭が `projects/<pid>/` に一致することを検証
  *
@@ -82,19 +82,9 @@ async function loadProjectAccess(env, pid) {
 function invalidateProjectAccess(pid) { _aclCache.delete(pid); }
 
 // admin 判定：Firestore/access.json の adminEmails 合算（isAllowed と同じソース）
-async function isAdminEmail(env, email) {
-  if (!email) return false;
-  const now = Date.now();
-  // _accessCache は isAllowed 側で使っているグローバル。60秒キャッシュされている。
-  if (!_accessCache.cfg || (now - _accessCache.at) > 60 * 1000) {
-    _accessCache.cfg = await firestoreGetDoc(env, 'laynaAccess/config').catch(() => null);
-    _accessCache.invited = await firestoreGetDoc(env, 'laynaAccess/invited').catch(() => null);
-    _accessCache.json = await loadAccessJson(env);
-    _accessCache.at = now;
-  }
-  return _isStaffOrAdmin(email, 'adminEmails');
-}
-// 運営 or 管理者判定（rebuild-memberships のような運営作業向け）
+// 運営（operatorEmails）判定。
+// ※ 2026-07-24 「管理者(adminEmails)」ロールを廃止。旧 isAdminEmail は互換のため
+// このエイリアスを残すが、内部的には isStaffEmail と完全に同じ挙動。
 async function isStaffEmail(env, email) {
   if (!email) return false;
   const now = Date.now();
@@ -104,13 +94,15 @@ async function isStaffEmail(env, email) {
     _accessCache.json = await loadAccessJson(env);
     _accessCache.at = now;
   }
-  return _isStaffOrAdmin(email, 'operatorEmails') || _isStaffOrAdmin(email, 'adminEmails');
+  return _isOperator(email);
 }
-function _isStaffOrAdmin(email, fieldName) {
+// 後方互換エイリアス（呼び出し側の修正コスト削減）
+const isAdminEmail = isStaffEmail;
+function _isOperator(email) {
   const lower = email.toLowerCase();
   const emails = [
-    ...((_accessCache.cfg && fsField(_accessCache.cfg, fieldName)) || []),
-    ...((_accessCache.json && _accessCache.json[fieldName]) || []),
+    ...((_accessCache.cfg && fsField(_accessCache.cfg, 'operatorEmails')) || []),
+    ...((_accessCache.json && _accessCache.json.operatorEmails) || []),
   ];
   return emails.some(e => String(e || '').toLowerCase() === lower);
 }
@@ -126,8 +118,8 @@ async function checkProjectAcl(env, pid, email) {
   if (String(access.owner || '').toLowerCase() === lower) return { allowed: true, reason: 'owner', access };
   const members = Array.isArray(access.members) ? access.members : [];
   if (members.map(m => String(m || '').toLowerCase()).includes(lower)) return { allowed: true, reason: 'member', access };
-  // admin エスカレーション：laynaAccess の adminEmails なら常時許可（owner 不在時の緊急対応用）
-  if (await isAdminEmail(env, email)) return { allowed: true, reason: 'admin', access };
+  // 運営エスカレーション：laynaAccess の operatorEmails なら常時許可（owner 不在時の緊急対応用）
+  if (await isStaffEmail(env, email)) return { allowed: true, reason: 'operator', access };
   return { allowed: false, reason: 'not-a-member', access };
 }
 
@@ -595,7 +587,7 @@ export default {
     // Firestore laycatMemberships/{emailKey}/projects/ を LIST して各 pid の _access.json を並列読取。
     // ?bucketScan=1 を付けると旧経路（R2 バケット全体を LIST）にフォールバック（運営専用の緊急用）。
     if (path === '/api/r2/mine' && req.method === 'GET') {
-      const isAdminUser = await isAdminEmail(env, payload.email);
+      const isAdminUser = await isStaffEmail(env, payload.email);
       const me = String(payload.email || '').toLowerCase();
       const useBucketScan = url.searchParams.get('bucketScan') === '1' && isAdminUser;
 

@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- 層① サービス層のロールを 3 択（運営／管理者／メンバー）→ 2 択（運営／メンバー）に統一。「管理者(adminEmails)」ロールを廃止：
+  - `access-console.html`：tiers() から admins を削除し、UI の管理者リスト・「→管理者」ボタン・add role の管理者オプションを撤去。setRole の 'admin' ターゲットは互換のため受け取っても 'member' として扱う。旧 adminEmails データは setRole の次回保存で自動的に allowedEmails に統合される（べき等）。isAuditor は isEditor と同義に。RULES の isStaff() から adminEmails 参照を削除
+  - `worker/laycat-r2-api.js`：isAdminEmail を廃止、isStaffEmail（operatorEmails のみ）に統合。互換のため `const isAdminEmail = isStaffEmail` で旧関数名も生存。checkProjectAcl の admin エスカレーションは「運営エスカレーション」に改名（reason: 'operator'）
+  - `admin-audit.html`：既に operatorEmails 判定なので変更なし
+  - `docs/ROLES_MODEL.md`：新規作成。3 層（サービス／プロジェクト／契約）のロールモデル全体像を整理
+  - 廃止理由：「運営」との差が「監査ログ可否」だけで薄い中間層になっていた。サブスク運営時の「ユーザー招待管理」は層③（契約層）のオーナー／管理者で行う設計に統一するため、層①では不要と判断
 - R2 バケット LIST 露出問題を解決：Firestore メンバーシップ表（`laycatMemberships/{emailKey}/projects/{pid}`）を導入し、`/api/r2/mine` の実装を Firestore クエリベースに切替。
   - Worker (`worker/laycat-r2-api.js`)：
     - `firestoreSetDoc` / `firestoreDeleteDoc` / `firestoreListIds` / `memberKeyFromEmail` / `upsertMembership` / `deleteMembership` / `syncMembershipsForProject` / `purgeProjectMemberships` / `listMyMemberships` ヘルパを新設

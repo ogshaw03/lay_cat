@@ -94,7 +94,7 @@
 
 <div class="overlay hidden" id="loginScreen">
   <div class="title-big">LayCAT <span class="sub">アクセス管理</span></div>
-  <div class="muted">管理者専用のコンソールです。管理者アカウントでログインしてください。</div>
+  <div class="muted">運営専用のコンソールです。運営アカウントでログインしてください。</div>
   <button class="btn btn-primary" id="loginBtn">Google でログイン</button>
 </div>
 
@@ -133,7 +133,7 @@
         <div class="card-title">🔄 R2 メンバーシップ再構築（初回移行用）</div>
         <div class="card-desc">
           既存プロジェクトの <code>_access.json</code> を全走査して Firestore <code>laycatMemberships</code> インデックスを構築します。
-          <b>Worker アップデート後に一度だけ実行してください</b>。運営（operatorEmails）または管理者（adminEmails）のみ実行可。
+          <b>Worker アップデート後に一度だけ実行してください</b>。運営（operatorEmails）のみ実行可。
           べき等（何度実行しても壊れない）。
         </div>
         <div class="add-row">
@@ -146,7 +146,7 @@
       <!-- 監査ログ（operatorEmails/運営 のみ） -->
       <div class="card" id="auditCard">
         <div class="card-title">📋 監査ログ</div>
-        <div class="card-desc">R2 プロジェクトへの書込・削除・拒否・エラーの記録を閲覧できます。<b>運営（operatorEmails）のみ</b>アクセス可能。管理者権限では閲覧できません。</div>
+        <div class="card-desc">R2 プロジェクトへの書込・削除・拒否・エラーの記録を閲覧できます。<b>運営（operatorEmails）のみ</b>アクセス可能。</div>
         <a class="btn btn-primary hidden" id="auditOpenBtn" href="admin-audit.html" target="_blank" rel="noopener">📋 監査ログを開く（別タブ）</a>
         <div class="mstatus off hidden" id="auditNoAccess" style="margin-top:0">
           <span class="dot off"></span>
@@ -165,7 +165,7 @@
       <!-- メンテナンス制御 -->
       <div class="card">
         <div class="card-title">🛠 メンテナンス制御</div>
-        <div class="card-desc">開始するとアクセス中の全メンバーがメンテナンス画面になります（運営・管理者は上部バナーで閲覧可）。<b>解除すると全メンバーのページが自動的に再読み込み</b>されます。</div>
+        <div class="card-desc">開始するとアクセス中の全メンバーがメンテナンス画面になります（運営は上部バナーで閲覧可）。<b>解除すると全メンバーのページが自動的に再読み込み</b>されます。</div>
         <div class="mstatus off" id="mStatus"><span class="dot off" id="mDot"></span><span id="mStatusText">状態を取得中…</span></div>
         <div id="mMeta" style="font-size:11px;color:#8a8a92;margin:6px 0 2px"></div>
         <label class="field-label">メンテナンス画面に表示するメッセージ</label>
@@ -193,7 +193,7 @@
       <!-- アクセス管理 -->
       <div class="card">
         <div class="card-title">🔐 アクセス管理 / 権限付与</div>
-        <div class="card-desc">3区分でアクセスを管理します。<b>運営</b>=この設定を編集可、<b>管理者</b>=権限付与可、<b>メンバー</b>=利用のみ。許可したメールアドレスの Google アカウントが LayCAT を利用できます。行ごとのボタンで権限を変更・削除できます。</div>
+        <div class="card-desc">2区分でアクセスを管理します。<b>運営</b>=この設定を編集可・監査ログ閲覧可、<b>メンバー</b>=LayCAT にログインできる（プロジェクト参加は各プロジェクト側で管理）。許可したメールアドレスの Google アカウントが LayCAT を利用できます。行ごとのボタンで権限を変更・削除できます。</div>
 
         <div class="counts" id="counts" style="margin:6px 0 12px"></div>
         <button class="btn btn-primary" id="openAccessBtn">🪟 別ウィンドウで開く（ユーザー追加・権限変更・削除）</button>
@@ -264,17 +264,16 @@ service cloud.firestore {
     // ===== 共通ヘルパ =====
     function signedIn() { return request.auth != null; }
 
-    // アクセス設定（未作成なら空扱い）。運営/管理者の判定に使う
+    // アクセス設定（未作成なら空扱い）。運営の判定に使う
+    // ※ 2026-07-24 に「管理者(adminEmails)」ロールを廃止。運営 or メンバーの 2 択に統一。
     function cfgData() {
       return exists(/databases/$(database)/documents/laynaAccess/config)
         ? get(/databases/$(database)/documents/laynaAccess/config).data
         : {};
     }
     function isStaff() {
-      return signedIn() && (
-        request.auth.token.email in cfgData().get('operatorEmails', []) ||
-        request.auth.token.email in cfgData().get('adminEmails', [])
-      );
+      return signedIn() &&
+        request.auth.token.email in cfgData().get('operatorEmails', []);
     }
 
     // 本体/コンソールが使うメールキー（emailを小文字化し記号を _ に）。
@@ -289,7 +288,7 @@ service cloud.firestore {
         .affectedKeys().hasOnly([myKey()]);
     }
 
-    // ===== アクセス設定（読取=認証者／編集=運営・管理者のみ） =====
+    // ===== アクセス設定（読取=認証者／編集=運営のみ） =====
     match /laynaAccess/config {
       allow read:           if signedIn();          // 本体が許可判定のため読む
       allow create:         if signedIn();          // 初回ブートストラップ（作成者を運営に）
@@ -304,7 +303,7 @@ service cloud.firestore {
       allow delete:         if isStaff();
     }
 
-    // ===== 招待URL参加者の名簿（各自が自分の1件だけ登録。削除・全体上書きは運営/管理者） =====
+    // ===== 招待URL参加者の名簿（各自が自分の1件だけ登録。削除・全体上書きは運営） =====
     // 本体はこの名簿を読んで「招待済みメンバー」を許可するため、readは認証者に許可
     match /laynaAccess/invited {
       allow read:           if signedIn();
@@ -315,11 +314,11 @@ service cloud.firestore {
     // ===== 招待リンク（トークン）。list(列挙)禁止でトークン総当りを防ぐ =====
     match /laynaAccessInvites/{token} {
       allow get:            if signedIn();          // URLを知る本人が照合のため単体取得
-      allow list:           if isStaff();           // 一覧はコンソール(運営/管理者)のみ
-      allow write:          if isStaff();           // 発行・無効化・削除は運営/管理者
+      allow list:           if isStaff();           // 一覧はコンソール(運営)のみ
+      allow write:          if isStaff();           // 発行・無効化・削除は運営
     }
 
-    // ===== メンテナンス / 全体お知らせ（読取=認証者／編集=運営・管理者のみ） =====
+    // ===== メンテナンス / 全体お知らせ（読取=認証者／編集=運営のみ） =====
     match /laynaAccess/maintenance {
       allow read:           if signedIn();
       allow write:          if isStaff();
@@ -332,12 +331,8 @@ service cloud.firestore {
     // ===== 監査ログ（読取=operatorEmails/運営のみ／書込=Worker が Service Account でルール bypass） =====
     // Worker がプロジェクトに対する PUT/DELETE や 4xx/5xx イベントを Firestore laynaAudit に自動書き込む。
     // 読取は admin-audit.html（別ページ）から運営 (operatorEmails) 登録者だけがアクセス可能。
-    // 最上位権限のみに限定することで、管理者権限を持つユーザーからも監査ログを見せない。
-    function isAuditor() {
-      return signedIn() && (request.auth.token.email in cfgData().get('operatorEmails', []));
-    }
     match /laynaAudit/{docId} {
-      allow read, list:     if isAuditor();
+      allow read, list:     if isStaff();
       allow write:          if false;
     }
 
@@ -366,23 +361,25 @@ const INV_COL='laynaAccessInvites';
 $('rulesPre')&&($('rulesPre').textContent=RULES);
 $('rulesPre2')&&($('rulesPre2').textContent=RULES);
 
-/* ---- 役割リストの取り出し ---- */
+/* ---- 役割リストの取り出し ----
+   2026-07-24 に「管理者(adminEmails)」ロールを廃止（層① は 運営 or メンバー の 2 択に統一）。
+   互換のため adminEmails フィールドが Firestore に残っていても無視し、
+   config 保存時に allowedEmails へマージ移行する（setRole 内で処理）。 */
 const arr=v=>Array.isArray(v)?[...v]:[];
 function tiers(data){
   const operators=arr(data.operatorEmails);
-  const admins=arr(data.adminEmails).filter(e=>!operators.includes(e));
-  const members=arr(data.allowedEmails).filter(e=>!operators.includes(e)&&!admins.includes(e));
+  /* 旧 adminEmails は allowedEmails に統合してメンバー扱いに */
+  const legacyAdmins=arr(data.adminEmails).filter(e=>!operators.includes(e));
+  const explicit=arr(data.allowedEmails);
+  const memberSet=new Set([...explicit,...legacyAdmins].map(lc));
+  const members=[...memberSet].filter(e=>!operators.map(lc).includes(e));
   const domains=arr(data.allowedDomains).map(d=>String(d).replace(/^@/,''));
-  return {operators,admins,members,domains};
+  return {operators,members,domains};
 }
-function isEditor(){ if(!cfg)return true; const t=tiers(cfg); return t.operators.includes(me.email)||t.admins.includes(me.email); }
-/* 監査ログは operatorEmails 登録者（運営）のみアクセス可（ユーザー明示指定・セキュリティ最優先）。
-   管理者(adminEmails) でも閲覧不可。運営権限が最上位なので、それ以外の権限からは監査ログを見せない。 */
-function isAuditor(){
-  if(!cfg||!me)return false;
-  const raw=arr(cfg.operatorEmails).map(lc);
-  return raw.includes(lc(me.email));
-}
+function isEditor(){ if(!cfg)return true; const t=tiers(cfg); return t.operators.map(lc).includes(lc(me.email)); }
+/* 監査ログは運営（operatorEmails）のみアクセス可。
+   ※ 2026-07-24 「管理者(adminEmails)」廃止後は isEditor と同義（運営 = editor = auditor）。 */
+function isAuditor(){ return isEditor(); }
 /* loggedUsers(email→表示名) から名前索引を作る。名前つき表示・ドメインログイン者の表示に使用 */
 function rebuildNames(){nameByEmail={};for(const u of Object.values(luUsers||{})){if(u&&u.email&&u.displayName){const k=lc(u.email);if(!nameByEmail[k])nameByEmail[k]=u.displayName}} if(me&&me.email&&me.name&&!nameByEmail[lc(me.email)])nameByEmail[lc(me.email)]=me.name;}
 function nameOf(email){return nameByEmail[lc(email)]||'';}
@@ -460,24 +457,24 @@ function renderBroadcast(d){
   if(on&&document.activeElement!==$('bMessage'))$('bMessage').value=msg;
 }
 $('mStartBtn').onclick=async()=>{
-  if(!isEditor())return notify('運営・管理者のみ実行できます');
+  if(!isEditor())return notify('運営のみ実行できます');
   const message=($('mMessage').value||'').trim();
   if(!confirm('メンテナンスを開始します。\nアクセス中の全メンバーがメンテナンス画面になります。よろしいですか？'))return;
   try{await setDoc(maintRef(),{active:true,message,startedAt:Date.now(),by:me.email||''});notify('メンテナンスを開始しました')}catch(e){notify('失敗: '+e.message)}
 };
 $('mEndBtn').onclick=async()=>{
-  if(!isEditor())return notify('運営・管理者のみ実行できます');
+  if(!isEditor())return notify('運営のみ実行できます');
   if(!confirm('メンテナンスを解除します。\n全メンバーのページが自動的に再読み込みされます。よろしいですか？'))return;
   try{await setDoc(maintRef(),{active:false,endedAt:Date.now()},{merge:true});notify('解除しました（全員を再読み込み）')}catch(e){notify('失敗: '+e.message)}
 };
 $('bSendBtn').onclick=async()=>{
-  if(!isEditor())return notify('運営・管理者のみ実行できます');
+  if(!isEditor())return notify('運営のみ実行できます');
   const message=($('bMessage').value||'').trim();
   if(!message)return notify('本文を入力してください');
   try{await setDoc(bcastRef(),{id:Date.now(),message,by:me.email||'',createdAt:Date.now()});notify('お知らせを全メンバーに送信しました')}catch(e){notify('失敗: '+e.message)}
 };
 $('bClearBtn').onclick=async()=>{
-  if(!isEditor())return notify('運営・管理者のみ実行できます');
+  if(!isEditor())return notify('運営のみ実行できます');
   if(!confirm('お知らせを取り下げますか？（全メンバーの表示が消えます）'))return;
   try{await setDoc(bcastRef(),{id:Date.now(),message:'',by:me.email||'',createdAt:Date.now()});$('bMessage').value='';notify('お知らせを取り下げました')}catch(e){notify('失敗: '+e.message)}
 };
@@ -500,7 +497,7 @@ function render(){
   $('bootstrapCard').classList.add('hidden');
   if(!isEditor()){
     $('notOpCard').classList.remove('hidden');$('opArea').classList.add('hidden');
-    $('notOpDesc').textContent=me.email+' は運営(operatorEmails)・管理者(adminEmails)に登録されていません。編集するには管理者に追加を依頼してください。';
+    $('notOpDesc').textContent=me.email+' は運営(operatorEmails)に登録されていません。編集するには運営に追加を依頼してください。';
     return;
   }
   $('notOpCard').classList.add('hidden');$('opArea').classList.remove('hidden');
@@ -530,8 +527,8 @@ function paint(){
     });
     return row;
   };
-  /* ユーザー一覧（運営/管理者/メンバー）は別ウィンドウに描画。inline はサマリのみ */
-  $('counts').textContent=`運営 ${operators.length} ・ 管理者 ${admins.length} ・ メンバー ${members.length}`;
+  /* ユーザー一覧（運営/メンバー）は別ウィンドウに描画。inline はサマリのみ */
+  $('counts').textContent=`運営 ${operators.length} ・ メンバー ${members.length}`;
   paintAccessWin();
   /* 監査ログカード：カード自体は常に表示。ボタンは operatorEmails 登録者のみ活性化、
      それ以外は「未登録のため閲覧不可」の案内文を出す（何もないと機能に気づけないため）。*/
@@ -612,20 +609,19 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 </style></head><body>
 <div id="awNote"></div>
 <h1>🔐 アクセス管理 / 権限付与</h1>
-<div class="desc"><b>運営</b>=この設定を編集可、<b>管理者</b>=権限付与可、<b>メンバー</b>=利用のみ。行ごとのボタンで権限を変更・削除できます。</div>
+<div class="desc"><b>運営</b>=この設定を編集可・監査ログ閲覧可。<b>メンバー</b>=LayCAT にログインできる（プロジェクト参加は各プロジェクト側で管理）。行ごとのボタンで権限を変更・削除できます。</div>
 <div class="add-row">
   <input id="awAddEmail" type="email" placeholder="user@example.com" autocomplete="off">
-  <select id="awAddRole"><option value="member">メンバー</option><option value="admin">管理者</option><option value="operator">運営</option></select>
+  <select id="awAddRole"><option value="member">メンバー</option><option value="operator">運営</option></select>
   <button class="btn btn-primary" id="awAddBtn">追加</button>
 </div>
 <div class="search"><input id="awSearch" type="text" placeholder="メールアドレスで検索…" autocomplete="off"></div>
 <div class="counts" id="awCounts"></div>
-<div class="sub-label">運営（この設定を編集可）</div><div class="u-list" id="awOpList"></div>
-<div class="sub-label">管理者（権限付与のみ可）</div><div class="u-list" id="awAdminList"></div>
-<div class="sub-label">メンバー（利用のみ）</div><div class="u-list" id="awMemberList"></div>
+<div class="sub-label">運営（この設定を編集可・監査ログ閲覧可）</div><div class="u-list" id="awOpList"></div>
+<div class="sub-label">メンバー（ログインのみ）</div><div class="u-list" id="awMemberList"></div>
 </body></html>`;
 function openAccessWindow(){
-  if(!cfg||!isEditor()){ notify('運営・管理者のみ操作できます'); return; }
+  if(!cfg||!isEditor()){ notify('運営のみ操作できます'); return; }
   if(accessWin&&!accessWin.closed){ accessWin.focus(); paintAccessWin(); return; }
   accessWin=window.open('','laycat_access','width=780,height=880');
   if(!accessWin){ notify('ポップアップがブロックされました。ポップアップを許可してから再度お試しください。'); return; }
@@ -640,7 +636,7 @@ function openAccessWindow(){
 function paintAccessWin(){
   if(!accessWin||accessWin.closed||!cfg)return;
   const d=accessWin.document;
-  const {operators,admins,members}=tiers(cfg);
+  const {operators,members}=tiers(cfg);
   const q=lc((accessQuery||'').trim());
   const flt=a=>q?a.filter(e=>lc(e).includes(q)):a;
   const editor=isEditor();
@@ -652,16 +648,14 @@ function paintAccessWin(){
     btns.forEach(([label,fn,danger])=>{const b=d.createElement('button');b.className='btn btn-sm'+(danger?' btn-danger':'');b.textContent=label;b.disabled=!editor;b.onclick=fn;row.appendChild(b);});
     return row;
   };
-  const opL=d.getElementById('awOpList'),adL=d.getElementById('awAdminList'),meL=d.getElementById('awMemberList');
-  opL.innerHTML='';adL.innerHTML='';meL.innerHTML='';
-  const fo=flt(operators),fa=flt(admins),fm=flt(members);
-  fo.forEach(e=>opL.appendChild(mkRow(e,{cls:'op',label:'運営'},[['→管理者',()=>setRole(e,'admin')],['→メンバー',()=>setRole(e,'member')],['削除',()=>setRole(e,'remove'),true]])));
+  const opL=d.getElementById('awOpList'),meL=d.getElementById('awMemberList');
+  opL.innerHTML='';meL.innerHTML='';
+  const fo=flt(operators),fm=flt(members);
+  fo.forEach(e=>opL.appendChild(mkRow(e,{cls:'op',label:'運営'},[['→メンバー',()=>setRole(e,'member')],['削除',()=>setRole(e,'remove'),true]])));
   if(!fo.length)opL.innerHTML='<div class="empty">'+(q?'該当なし':'運営はいません')+'</div>';
-  fa.forEach(e=>adL.appendChild(mkRow(e,{cls:'admin',label:'管理者'},[['→運営',()=>setRole(e,'operator')],['→メンバー',()=>setRole(e,'member')],['削除',()=>setRole(e,'remove'),true]])));
-  if(!fa.length)adL.innerHTML='<div class="empty">'+(q?'該当なし':'管理者はいません')+'</div>';
-  fm.forEach(e=>meL.appendChild(mkRow(e,{cls:'member',label:'メンバー'},[['→運営',()=>setRole(e,'operator')],['→管理者',()=>setRole(e,'admin')],['削除',()=>setRole(e,'remove'),true]])));
+  fm.forEach(e=>meL.appendChild(mkRow(e,{cls:'member',label:'メンバー'},[['→運営',()=>setRole(e,'operator')],['削除',()=>setRole(e,'remove'),true]])));
   if(!fm.length)meL.innerHTML='<div class="empty">'+(q?'該当なし':'メンバーはいません')+'</div>';
-  d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ 管理者 ${admins.length} ・ メンバー ${members.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fa.length+fm.length}件`:'');
+  d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ メンバー ${members.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fm.length}件`:'');
 }
 
 /* ---- 招待リンク（承認不要URL） ---- */
@@ -691,7 +685,7 @@ function renderInvites(){
       });
     }
   }
-  // 招待リンクから参加したメンバー（明示的な運営/管理者/メンバー登録済みの人は除く）
+  // 招待リンクから参加したメンバー（明示的な運営/メンバー登録済みの人は除く）
   const ilist=$('invitedList');
   if(ilist){
     const {operators,admins,members}=tiers(cfg||{});
@@ -715,7 +709,7 @@ function renderInvites(){
 }
 async function copyInvite(url){try{await navigator.clipboard.writeText(url);notify('リンクをコピーしました');}catch(_){notify('コピーできません。リンク欄を選択して手動でコピーしてください');}}
 async function createInvite(){
-  if(!isEditor())return notify('運営・管理者のみ実行できます');
+  if(!isEditor())return notify('運営のみ実行できます');
   const label=($('invLabel').value||'').trim();
   const token=genToken();
   try{
@@ -727,24 +721,24 @@ async function createInvite(){
   }catch(e){ notify('発行失敗: '+e.message); }
 }
 async function revokeInvite(token){
-  if(!isEditor())return notify('運営・管理者のみ実行できます');
+  if(!isEditor())return notify('運営のみ実行できます');
   if(!confirm('このリンクを無効化しますか？以後このリンクからは参加できません（参加済みの人はそのまま利用できます）。'))return;
   try{ await setDoc(doc(db,INV_COL,token),{active:false,revokedBy:me.email||'',revokedAt:Date.now()},{merge:true}); notify('無効化しました'); }
   catch(e){ notify('失敗: '+e.message); }
 }
 async function restoreInvite(token){
-  if(!isEditor())return notify('運営・管理者のみ実行できます');
+  if(!isEditor())return notify('運営のみ実行できます');
   try{ await setDoc(doc(db,INV_COL,token),{active:true},{merge:true}); notify('再有効化しました'); }
   catch(e){ notify('失敗: '+e.message); }
 }
 async function deleteInvite(token){
-  if(!isEditor())return notify('運営・管理者のみ実行できます');
+  if(!isEditor())return notify('運営のみ実行できます');
   if(!confirm('このリンクを完全に削除しますか？元に戻せません。'))return;
   try{ await deleteDoc(doc(db,INV_COL,token)); notify('削除しました'); }
   catch(e){ notify('削除失敗: '+e.message); }
 }
 async function removeInvited(key,email){
-  if(!isEditor())return notify('運営・管理者のみ実行できます');
+  if(!isEditor())return notify('運営のみ実行できます');
   if(!confirm((email||'このメンバー')+' の招待による参加を解除しますか？（有効なリンクがあれば再度参加できます）'))return;
   try{ await setDoc(doc(db,'laynaAccess','invited'),{emails:{[key]:deleteField()}},{merge:true}); notify('解除しました: '+(email||key)); }
   catch(e){ notify('失敗: '+e.message); }
@@ -752,14 +746,16 @@ async function removeInvited(key,email){
 
 async function readConfig(){const snap=await getDoc(doc(db,...CFG_PATH));return snap.exists()?snap.data():{};}
 
-const roleLabel={operator:'運営',admin:'管理者',member:'メンバー',remove:'削除'};
+const roleLabel={operator:'運営',member:'メンバー',remove:'削除'};
 async function setRole(email,target){
   email=lc(email);
-  if(!isEditor())return notify('運営・管理者のみ実行できます');
+  if(!isEditor())return notify('運営のみ実行できます');
+  /* 「admin」ターゲットは廃止済み。互換のため受け取っても member として扱う */
+  if(target==='admin')target='member';
   const data=await readConfig();
   const {operators:curOp}=tiers(data);
   // 最後の運営は降格・削除不可（運営ゼロによるロック防止）
-  if(target!=='operator' && curOp.includes(email) && curOp.length<=1){
+  if(target!=='operator' && curOp.map(lc).includes(email) && curOp.length<=1){
     return awNotify('最後の運営は降格・削除できません。先に別の運営を追加してください。');
   }
   if(email===me.email && target!=='operator'){
@@ -768,19 +764,21 @@ async function setRole(email,target){
     if(!awConfirm(email+' を削除しますか？'))return;
   }
   try{
-    let operators=arr(data.operatorEmails).filter(e=>e!==email);
-    let admins=arr(data.adminEmails).filter(e=>e!==email&&!operators.includes(e));
-    let members=arr(data.allowedEmails).filter(e=>e!==email&&!operators.includes(e)&&!admins.includes(e));
+    let operators=arr(data.operatorEmails).map(lc).filter(e=>e!==email);
+    /* 旧 adminEmails は allowedEmails に統合してから email を除外する */
+    const legacyAdmins=arr(data.adminEmails).map(lc);
+    const explicit=arr(data.allowedEmails).map(lc);
+    let members=[...new Set([...explicit,...legacyAdmins])].filter(e=>e!==email&&!operators.includes(e));
     if(target==='operator')operators.push(email);
-    else if(target==='admin')admins.push(email);
     else if(target==='member')members.push(email);
-    await setDoc(doc(db,...CFG_PATH),{operatorEmails:operators,adminEmails:admins,allowedEmails:members,updatedBy:me.email,updatedAt:new Date().toISOString()},{merge:true});
+    /* adminEmails は空配列で上書き（旧データを掃除） */
+    await setDoc(doc(db,...CFG_PATH),{operatorEmails:operators,adminEmails:[],allowedEmails:members,updatedBy:me.email,updatedAt:new Date().toISOString()},{merge:true});
     awNotify(target==='remove'?('削除しました: '+email):(roleLabel[target]+'に変更しました: '+email));
   }catch(e){notify('失敗: '+e.message)}
 }
 
 async function addUser(){
-  if(!isEditor())return awNotify('運営・管理者のみ実行できます');
+  if(!isEditor())return awNotify('運営のみ実行できます');
   const eEl=(accessWin&&!accessWin.closed)?accessWin.document.getElementById('awAddEmail'):null;
   const rEl=(accessWin&&!accessWin.closed)?accessWin.document.getElementById('awAddRole'):null;
   const email=lc(((eEl&&eEl.value)||'').trim());
@@ -794,7 +792,7 @@ async function addUser(){
 }
 
 async function addDomain(){
-  if(!isEditor())return notify('運営・管理者のみ実行できます');
+  if(!isEditor())return notify('運営のみ実行できます');
   const dom=lc(($('domInput').value||'').trim().replace(/^@/,''));
   if(!dom)return notify('ドメインを入力してください');
   const data=await readConfig();
@@ -805,7 +803,7 @@ async function addDomain(){
   catch(e){notify('失敗: '+e.message)}
 }
 async function removeDomain(dom){
-  if(!isEditor())return notify('運営・管理者のみ実行できます');
+  if(!isEditor())return notify('運営のみ実行できます');
   if(!confirm('@'+dom+' を削除しますか？'))return;
   const data=await readConfig();
   const domains=arr(data.allowedDomains).filter(d=>lc(String(d).replace(/^@/,''))!==lc(dom));
@@ -814,7 +812,7 @@ async function removeDomain(dom){
 }
 
 $('authRequired').onchange=async()=>{
-  if(!isEditor()){ $('authRequired').checked=cfg&&cfg.authRequired!==false; return notify('運営・管理者のみ変更できます'); }
+  if(!isEditor()){ $('authRequired').checked=cfg&&cfg.authRequired!==false; return notify('運営のみ変更できます'); }
   try{ await setDoc(doc(db,...CFG_PATH),{authRequired:$('authRequired').checked,updatedBy:me.email,updatedAt:new Date().toISOString()},{merge:true}); notify('認証設定を更新しました'); }
   catch(e){ notify('失敗: '+e.message); }
 };
