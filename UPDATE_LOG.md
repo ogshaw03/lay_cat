@@ -13,6 +13,20 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- R2 バケット LIST 露出問題を解決：Firestore メンバーシップ表（`laycatMemberships/{emailKey}/projects/{pid}`）を導入し、`/api/r2/mine` の実装を Firestore クエリベースに切替。
+  - Worker (`worker/laycat-r2-api.js`)：
+    - `firestoreSetDoc` / `firestoreDeleteDoc` / `firestoreListIds` / `memberKeyFromEmail` / `upsertMembership` / `deleteMembership` / `syncMembershipsForProject` / `purgeProjectMemberships` / `listMyMemberships` ヘルパを新設
+    - `_access.json` PUT 時：body を保持して置換後、`syncMembershipsForProject(oldAccess, newAccess)` で追加／削除された人だけを Firestore に反映（`ctx.waitUntil` で fire-and-forget）
+    - `_access.json` DELETE 時／`/api/r2/purge/projects/<pid>/` 時：`purgeProjectMemberships` で該当 pid の全メンバーシップを削除
+    - `/api/r2/mine`：Firestore を LIST → 自分の pid 配列を取得 → 各 `_access.json` を並列 GET（旧実装のバケット全走査は廃止）。運営が `?bucketScan=1` を付ければ旧経路にフォールバック可能（緊急用）
+    - 新規 `POST /api/r2/rebuild-memberships`：既存プロジェクトの全 `_access.json` を走査してメンバーシップを Firestore に流し込む初回移行用。運営 or 管理者のみ、べき等
+    - `isStaffEmail(env, email)` ヘルパを新設（既存 `isAdminEmail` は adminEmails のみ、こちらは operatorEmails or adminEmails）
+    - `checkProjectAcl` の返り値に `access` フィールドを追加（PUT/DELETE ハンドラで diff 計算に再利用）
+  - `access-console.html`：
+    - opArea に「🔄 R2 メンバーシップ再構築」カード（Worker エンドポイント URL 入力 → POST /api/r2/rebuild-memberships）を追加
+    - Firestore rules に `laycatMemberships/{key}/projects/{pid}` セクション（read=各ユーザーの自分の emailKey のみ、write=false → Worker SA で bypass）
+  - `docs/SECURITY_MEMO.md`：R2 プロジェクト階層のフラット構造問題を「対応済み」に更新
+  - Beta 反映前に **Firebase コンソールで Firestore セキュリティルール更新 → Worker 再デプロイ → 運営が「🔄 R2 メンバーシップ再構築」ボタンを 1 回押す** の 3 手順が必要
 - 監査ログ閲覧 UI を追加：新規 `admin-audit.html`（運営 operatorEmails 登録者のみアクセス可能・管理者でも閲覧不可）で、Worker が Firestore `laynaAudit` コレクションに自動記録した R2 の書込・削除・拒否・エラーイベントを閲覧可能に。フィルタ（日付範囲・メソッド・ステータス・PID・メール・パスの部分一致）と CSV エクスポートに対応。
   - Worker (`worker/laycat-r2-api.js`)：`firestoreCreateDoc(collection, data)` ヘルパを新設し、audit 関数を修正。PUT/POST/DELETE と 4xx/5xx イベントは `laynaAudit` コレクションに `ctx.waitUntil()` で fire-and-forget 書き込み（レスポンスをブロックしない）。GET 200 は console.log のみ（ボリューム抑制）。フィールド：ts / method / path / key / pid / email / ip / ua / status / dur / extra。
   - `access-console.html`：opArea 先頭に「📋 監査ログ」カードを追加。カードは常時表示、ボタン活性は運営（operatorEmails）登録者のみ、それ以外には「未登録のため閲覧不可」の案内文を表示。`admin-audit.html` を新規タブで開く。Firestore rules に `laynaAudit/{docId}` を追加（read=operatorEmails のみ、write=false → Worker の SA でルール bypass 書込）。

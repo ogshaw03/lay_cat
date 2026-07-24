@@ -128,6 +128,21 @@
     </div>
 
     <div id="opArea" class="hidden">
+      <!-- R2 メンバーシップ再構築（operatorEmails/運営 のみ・1 回だけ実行） -->
+      <div class="card" id="rebuildCard">
+        <div class="card-title">🔄 R2 メンバーシップ再構築（初回移行用）</div>
+        <div class="card-desc">
+          既存プロジェクトの <code>_access.json</code> を全走査して Firestore <code>laycatMemberships</code> インデックスを構築します。
+          <b>Worker アップデート後に一度だけ実行してください</b>。運営（operatorEmails）または管理者（adminEmails）のみ実行可。
+          べき等（何度実行しても壊れない）。
+        </div>
+        <div class="add-row">
+          <input id="rebuildEndpoint" type="text" placeholder="https://laycat-r2-api.<your>.workers.dev" autocomplete="off">
+          <button class="btn btn-primary" id="rebuildBtn">🔄 実行</button>
+        </div>
+        <div id="rebuildResult" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
+      </div>
+
       <!-- 監査ログ（operatorEmails/運営 のみ） -->
       <div class="card" id="auditCard">
         <div class="card-title">📋 監査ログ</div>
@@ -324,6 +339,18 @@ service cloud.firestore {
     match /laynaAudit/{docId} {
       allow read, list:     if isAuditor();
       allow write:          if false;
+    }
+
+    // ===== R2 プロジェクトメンバーシップ表（Firestore インデックス） =====
+    // Worker が _access.json 変更時に同期する。読取は各ユーザーが自分の emailKey 配下のみ、
+    // 書込は Service Account 経由（rules bypass）で Worker が行う。
+    // これにより R2 バケット全体を LIST しなくても「自分のプロジェクト一覧」が取得できる。
+    match /laycatMemberships/{key} {
+      allow read:           if signedIn() && key == myKey();
+      match /projects/{pid} {
+        allow read, list:   if signedIn() && key == myKey();
+        allow write:        if false;
+      }
     }
   }
 }`;
@@ -804,6 +831,24 @@ $('domAddBtn').onclick=addDomain;
 $('domInput').addEventListener('keydown',e=>{if(e.key==='Enter')addDomain();});
 $('invCreateBtn').onclick=createInvite;
 $('invLabel').addEventListener('keydown',e=>{if(e.key==='Enter')createInvite();});
+
+/* R2 メンバーシップ再構築（localStorage の Worker エンドポイントを既定値に） */
+try{const ep=localStorage.getItem('laycat_r2Endpoint')||'';if(ep)$('rebuildEndpoint').value=ep;}catch(_){}
+$('rebuildBtn').onclick=async()=>{
+  const ep=String($('rebuildEndpoint').value||'').trim().replace(/\/$/,'');
+  if(!ep){$('rebuildResult').textContent='Worker エンドポイントを入力してください（例: https://laycat-r2-api.xxx.workers.dev）';return}
+  if(!ep.startsWith('http')){$('rebuildResult').textContent='http:// または https:// で始めてください';return}
+  if(!confirm('R2 バケットを全走査し、Firestore laycatMemberships インデックスを再構築します。プロジェクト数に比例して数秒〜数十秒かかります。続行しますか？'))return;
+  try{localStorage.setItem('laycat_r2Endpoint',ep);}catch(_){}
+  $('rebuildResult').textContent='実行中…';
+  try{
+    const tok=await auth.currentUser.getIdToken();
+    const r=await fetch(ep+'/api/r2/rebuild-memberships',{method:'POST',headers:{authorization:'Bearer '+tok}});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){$('rebuildResult').textContent='失敗 ('+r.status+'): '+(j.error||JSON.stringify(j));return}
+    $('rebuildResult').textContent='完了：'+(j.scanned||0)+' プロジェクト走査 → '+(j.synced||0)+' 件同期 ('+(j.failed||0)+' 件失敗)';
+  }catch(e){$('rebuildResult').textContent='失敗: '+e.message}
+};
 </script>
 </body>
 </html>

@@ -92,29 +92,43 @@ async function isAdminEmail(env, email) {
     _accessCache.json = await loadAccessJson(env);
     _accessCache.at = now;
   }
-  const admins = [
-    ...((_accessCache.cfg && fsField(_accessCache.cfg, 'adminEmails')) || []),
-    ...((_accessCache.json && _accessCache.json.adminEmails) || []),
-  ];
-  const lower = email.toLowerCase();
-  return admins.map(x => (x || '').toLowerCase()).includes(lower);
+  return _isStaffOrAdmin(email, 'adminEmails');
 }
-
+// 運営 or 管理者判定（rebuild-memberships のような運営作業向け）
+async function isStaffEmail(env, email) {
+  if (!email) return false;
+  const now = Date.now();
+  if (!_accessCache.cfg || (now - _accessCache.at) > 60 * 1000) {
+    _accessCache.cfg = await firestoreGetDoc(env, 'laynaAccess/config').catch(() => null);
+    _accessCache.invited = await firestoreGetDoc(env, 'laynaAccess/invited').catch(() => null);
+    _accessCache.json = await loadAccessJson(env);
+    _accessCache.at = now;
+  }
+  return _isStaffOrAdmin(email, 'operatorEmails') || _isStaffOrAdmin(email, 'adminEmails');
+}
+function _isStaffOrAdmin(email, fieldName) {
+  const lower = email.toLowerCase();
+  const emails = [
+    ...((_accessCache.cfg && fsField(_accessCache.cfg, fieldName)) || []),
+    ...((_accessCache.json && _accessCache.json[fieldName]) || []),
+  ];
+  return emails.some(e => String(e || '').toLowerCase() === lower);
+}
 // 判定結果：
 //   { allowed: true, reason: 'owner'|'member'|'admin' }
 //   { allowed: false, reason: 'not-a-member' }
 //   { allowed: false, reason: 'no-access-json' } … 未初期化。ブートストラップ許可の判断は呼び出し側で
 async function checkProjectAcl(env, pid, email) {
   const access = await loadProjectAccess(env, pid);
-  if (!access) return { allowed: false, reason: 'no-access-json' };
+  if (!access) return { allowed: false, reason: 'no-access-json', access: null };
   const lower = String(email || '').toLowerCase();
-  if (!lower) return { allowed: false, reason: 'no-email' };
-  if (String(access.owner || '').toLowerCase() === lower) return { allowed: true, reason: 'owner' };
+  if (!lower) return { allowed: false, reason: 'no-email', access };
+  if (String(access.owner || '').toLowerCase() === lower) return { allowed: true, reason: 'owner', access };
   const members = Array.isArray(access.members) ? access.members : [];
-  if (members.map(m => String(m || '').toLowerCase()).includes(lower)) return { allowed: true, reason: 'member' };
+  if (members.map(m => String(m || '').toLowerCase()).includes(lower)) return { allowed: true, reason: 'member', access };
   // admin エスカレーション：laynaAccess の adminEmails なら常時許可（owner 不在時の緊急対応用）
-  if (await isAdminEmail(env, email)) return { allowed: true, reason: 'admin' };
-  return { allowed: false, reason: 'not-a-member' };
+  if (await isAdminEmail(env, email)) return { allowed: true, reason: 'admin', access };
+  return { allowed: false, reason: 'not-a-member', access };
 }
 
 // URL パスからプロジェクト ID を抽出（/api/r2/(list|purge)?/projects/<pid>/...）
@@ -264,9 +278,7 @@ async function firestoreGetDoc(env, path) {
 // Firestore の指定コレクションに自動 ID でドキュメントを作成する。
 // data は Firestore の REST 形式（{ fields: {name: {stringValue|integerValue|...}} }）ではなく
 // 素の JS オブジェクトを渡し、内部で fields 形式に変換する。
-async function firestoreCreateDoc(env, collection, data) {
-  const token = await getSaAccessToken(env);
-  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}`;
+function _jsToFields(data) {
   const fields = {};
   for (const k of Object.keys(data)) {
     const v = data[k];
@@ -277,13 +289,110 @@ async function firestoreCreateDoc(env, collection, data) {
     else if (typeof v === 'boolean') fields[k] = { booleanValue: v };
     else fields[k] = { stringValue: JSON.stringify(v) };
   }
+  return fields;
+}
+async function firestoreCreateDoc(env, collection, data) {
+  const token = await getSaAccessToken(env);
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}`;
   const r = await fetch(url, {
     method: 'POST',
     headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' },
-    body: JSON.stringify({ fields }),
+    body: JSON.stringify({ fields: _jsToFields(data) }),
   });
   if (!r.ok) throw new Error('firestore create failed: ' + r.status);
   return r.json();
+}
+// ドキュメント ID を指定して upsert（PATCH）。既存があれば上書き、なければ作成。
+async function firestoreSetDoc(env, docPath, data) {
+  const token = await getSaAccessToken(env);
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${docPath}`;
+  const r = await fetch(url, {
+    method: 'PATCH',
+    headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' },
+    body: JSON.stringify({ fields: _jsToFields(data) }),
+  });
+  if (!r.ok) throw new Error('firestore set failed: ' + r.status + ' ' + await r.text().catch(() => ''));
+  return r.json();
+}
+async function firestoreDeleteDoc(env, docPath) {
+  const token = await getSaAccessToken(env);
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${docPath}`;
+  const r = await fetch(url, { method: 'DELETE', headers: { authorization: 'Bearer ' + token } });
+  if (!r.ok && r.status !== 404) throw new Error('firestore delete failed: ' + r.status);
+  return r.ok;
+}
+// 指定コレクション（またはサブコレクション）配下のドキュメント ID を列挙する。
+async function firestoreListIds(env, collectionPath) {
+  const token = await getSaAccessToken(env);
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collectionPath}?pageSize=1000`;
+  const r = await fetch(url, { headers: { authorization: 'Bearer ' + token } });
+  if (r.status === 404) return [];
+  if (!r.ok) throw new Error('firestore list failed: ' + r.status);
+  const j = await r.json();
+  const docs = j.documents || [];
+  return docs.map(d => (d.name || '').split('/').pop()).filter(Boolean);
+}
+
+// ---------- メンバーシップ表（laycatMemberships/{emailKey}/projects/{pid}）----------
+// R2 バケット全体を LIST しなくても「自分がアクセスできるプロジェクト」が取得できるインデックス。
+// _access.json 書込／削除／purge 時に同期。
+
+// メールを Firestore ドキュメント ID として使うためのキー化（access-console と同じ変換規則）
+function memberKeyFromEmail(email) {
+  return String(email || '').toLowerCase().replace(/[.@#$/]/g, '_');
+}
+// 単一メンバーを 1 プロジェクトに登録／更新
+async function upsertMembership(env, email, pid, role) {
+  if (!email || !pid) return;
+  const key = memberKeyFromEmail(email);
+  const docPath = `laycatMemberships/${key}/projects/${pid}`;
+  await firestoreSetDoc(env, docPath, {
+    email: String(email).toLowerCase(),
+    pid,
+    role: role || 'member',
+    updatedAt: new Date().toISOString(),
+  });
+}
+async function deleteMembership(env, email, pid) {
+  if (!email || !pid) return;
+  const key = memberKeyFromEmail(email);
+  const docPath = `laycatMemberships/${key}/projects/${pid}`;
+  await firestoreDeleteDoc(env, docPath).catch(() => null);
+}
+// 旧 access と新 access を比較し、追加された人・削除された人だけを Firestore に反映
+async function syncMembershipsForProject(env, pid, oldAccess, newAccess) {
+  const oldOwner = (oldAccess && oldAccess.owner || '').toLowerCase();
+  const oldMembers = new Set(((oldAccess && oldAccess.members) || []).map(x => String(x || '').toLowerCase()).filter(Boolean));
+  if (oldOwner) oldMembers.add(oldOwner);
+  const newOwner = (newAccess && newAccess.owner || '').toLowerCase();
+  const newMembers = new Set(((newAccess && newAccess.members) || []).map(x => String(x || '').toLowerCase()).filter(Boolean));
+  if (newOwner) newMembers.add(newOwner);
+  const promises = [];
+  // 追加または role 変更（owner ↔ member）を upsert
+  for (const email of newMembers) {
+    const role = (email === newOwner) ? 'owner' : 'member';
+    promises.push(upsertMembership(env, email, pid, role).catch(e => console.log('[membership-upsert-fail] ' + email + '/' + pid + ': ' + e.message)));
+  }
+  // 削除された人はメンバーシップから削除
+  for (const email of oldMembers) {
+    if (!newMembers.has(email)) {
+      promises.push(deleteMembership(env, email, pid).catch(e => console.log('[membership-delete-fail] ' + email + '/' + pid + ': ' + e.message)));
+    }
+  }
+  await Promise.all(promises);
+}
+// プロジェクト削除時：全メンバーからそのプロジェクトのエントリを削除
+async function purgeProjectMemberships(env, pid, accessJson) {
+  const members = new Set(((accessJson && accessJson.members) || []).map(x => String(x || '').toLowerCase()).filter(Boolean));
+  const owner = String(accessJson && accessJson.owner || '').toLowerCase();
+  if (owner) members.add(owner);
+  await Promise.all([...members].map(e => deleteMembership(env, e, pid).catch(() => null)));
+}
+// 自分のメンバーシップ一覧を Firestore から取得
+async function listMyMemberships(env, email) {
+  const key = memberKeyFromEmail(email);
+  const ids = await firestoreListIds(env, `laycatMemberships/${key}/projects`).catch(() => []);
+  return ids; // pid の配列
 }
 
 function fsField(doc, name) {
@@ -483,20 +592,53 @@ export default {
     }
 
     // /api/r2/mine — 自分がアクセスできる R2 プロジェクト一覧を返す
-    // バケット全体の projects/*/_access.json を LIST → 各 _access.json を読み、
-    // 自分が owner/member（or admin）に含まれるプロジェクトのメタを返す
+    // Firestore laycatMemberships/{emailKey}/projects/ を LIST して各 pid の _access.json を並列読取。
+    // ?bucketScan=1 を付けると旧経路（R2 バケット全体を LIST）にフォールバック（運営専用の緊急用）。
     if (path === '/api/r2/mine' && req.method === 'GET') {
       const isAdminUser = await isAdminEmail(env, payload.email);
       const me = String(payload.email || '').toLowerCase();
+      const useBucketScan = url.searchParams.get('bucketScan') === '1' && isAdminUser;
+
+      if (!useBucketScan) {
+        // 通常経路：Firestore メンバーシップ表から自分のプロジェクト ID を取得。
+        // O(自分のプロジェクト数) で完了し、バケット全体を LIST しない。
+        let pids = [];
+        try {
+          pids = await listMyMemberships(env, me);
+        } catch (e) {
+          return respond(json(env, req, { error: 'membership-list-failed', detail: String(e.message || e) }, 500), 'ms_list_fail');
+        }
+        const results = [];
+        for (let i = 0; i < pids.length; i += 10) {
+          const batch = pids.slice(i, i + 10);
+          const parsed = await Promise.all(batch.map(async pid => {
+            try {
+              const obj = await env.R2.get(`projects/${pid}/_access.json`);
+              if (!obj) return null; // ゴースト（プロジェクト削除済み、Firestore に残骸）はスキップ
+              const access = JSON.parse(await obj.text());
+              const isOwner = String(access.owner || '').toLowerCase() === me;
+              const isMember = (access.members || []).map(x => String(x || '').toLowerCase()).includes(me);
+              if (!isOwner && !isMember && !isAdminUser) return null;
+              return {
+                pid,
+                owner: access.owner || null,
+                members: access.members || [],
+                role: isOwner ? 'owner' : (isMember ? 'member' : 'admin'),
+              };
+            } catch (_) { return null; }
+          }));
+          for (const p of parsed) if (p) results.push(p);
+        }
+        return respond(json(env, req, { projects: results, source: 'firestore' }), 'count=' + results.length + ' src=fs');
+      }
+
+      // フォールバック経路：バケット全体を LIST（旧実装。運営が ?bucketScan=1 で明示的に呼ぶ）
       const results = [];
       const seen = new Set();
       let cursor = undefined;
-      // limit 1000 で反復。プロジェクト数が数千を超えるまで問題にならない想定
       while (true) {
         const list = await env.R2.list({ prefix: KEY_PREFIX, cursor, limit: 1000 });
-        // _access.json だけに絞る
         const accessKeys = list.objects.filter(o => /^projects\/[^/]+\/_access\.json$/.test(o.key));
-        // 並列取得（負荷平準のため 10 並列まで）
         for (let i = 0; i < accessKeys.length; i += 10) {
           const batch = accessKeys.slice(i, i + 10);
           const parsed = await Promise.all(batch.map(async o => {
@@ -523,7 +665,39 @@ export default {
         if (!list.truncated) break;
         cursor = list.cursor;
       }
-      return respond(json(env, req, { projects: results }), 'count=' + results.length);
+      return respond(json(env, req, { projects: results, source: 'bucketScan' }), 'count=' + results.length + ' src=scan');
+    }
+
+    // /api/r2/rebuild-memberships — 既存プロジェクトのメンバーシップを Firestore に一括再構築（運営専用・1 回だけ実行）
+    // バケット全体を LIST して各 _access.json からメンバーシップを Firestore に流し込む。
+    if (path === '/api/r2/rebuild-memberships' && req.method === 'POST') {
+      const isStaff = await isStaffEmail(env, payload.email);
+      if (!isStaff) return respond(json(env, req, { error: 'staff-only' }, 403), 'not_staff');
+      let cursor = undefined, scanned = 0, ok = 0, fail = 0;
+      while (true) {
+        const list = await env.R2.list({ prefix: KEY_PREFIX, cursor, limit: 1000 });
+        const accessKeys = list.objects.filter(o => /^projects\/[^/]+\/_access\.json$/.test(o.key));
+        scanned += accessKeys.length;
+        for (let i = 0; i < accessKeys.length; i += 5) {
+          const batch = accessKeys.slice(i, i + 5);
+          await Promise.all(batch.map(async o => {
+            const pid = o.key.match(/^projects\/([^/]+)\/_access\.json$/)[1];
+            try {
+              const obj = await env.R2.get(o.key);
+              if (!obj) { fail++; return; }
+              const access = JSON.parse(await obj.text());
+              await syncMembershipsForProject(env, pid, null, access);
+              ok++;
+            } catch (e) {
+              console.log('[rebuild-fail] pid=' + pid + ': ' + String(e.message || e));
+              fail++;
+            }
+          }));
+        }
+        if (!list.truncated) break;
+        cursor = list.cursor;
+      }
+      return respond(json(env, req, { ok: true, scanned, synced: ok, failed: fail }), 'rebuild scanned=' + scanned + ' ok=' + ok + ' fail=' + fail);
     }
 
     // /api/r2/list/projects/<pid>/
@@ -541,6 +715,8 @@ export default {
     m = path.match(/^\/api\/r2\/purge\/(projects\/[^/]+\/)$/);
     if (m && req.method === 'DELETE') {
       const prefix = m[1];
+      // purge 前に _access.json を読んでおき、メンバーシップ一掃に使う
+      const preAccess = aclResult && aclResult.access ? aclResult.access : null;
       let cursor = undefined, total = 0;
       while (true) {
         const list = await env.R2.list({ prefix, cursor });
@@ -550,7 +726,15 @@ export default {
         if (!list.truncated) break;
         cursor = list.cursor;
       }
-      if (pid) invalidateProjectAccess(pid); // プロジェクト消滅により ACL キャッシュも破棄
+      if (pid) {
+        invalidateProjectAccess(pid); // プロジェクト消滅により ACL キャッシュも破棄
+        // Firestore メンバーシップも一掃（fire-and-forget）
+        if (ctx && typeof ctx.waitUntil === 'function' && preAccess) {
+          ctx.waitUntil(purgeProjectMemberships(env, pid, preAccess).catch(e => {
+            console.log('[purge-membership-fail] pid=' + pid + ': ' + String(e.message || e));
+          }));
+        }
+      }
       return respond(json(env, req, { deleted: total }), 'purged=' + total + ' prefix=' + prefix);
     }
 
@@ -578,13 +762,45 @@ export default {
           return respond(json(env, req, { error: 'payload-too-large', limit, size: cl }, 413), 'key=' + key + ' size=' + cl + ' limit=' + limit);
         }
         const contentType = req.headers.get('x-laycat-content-type') || req.headers.get('content-type') || 'application/octet-stream';
-        await env.R2.put(key, req.body, { httpMetadata: { contentType } });
-        // _access.json への書き込みなら ACL キャッシュを無効化（次回チェックで最新を読む）
-        if (/\/_access\.json$/.test(key) && pid) invalidateProjectAccess(pid);
+        const isAccessJson = /\/_access\.json$/.test(key) && pid;
+        // _access.json は本文を保持して置換後にメンバーシップ同期に使う
+        let bodyText = null;
+        if (isAccessJson) {
+          bodyText = await req.text();
+          await env.R2.put(key, bodyText, { httpMetadata: { contentType } });
+        } else {
+          await env.R2.put(key, req.body, { httpMetadata: { contentType } });
+        }
+        if (isAccessJson) {
+          invalidateProjectAccess(pid);
+          // Firestore メンバーシップ表を同期（fire-and-forget、レスポンスをブロックしない）
+          if (ctx && typeof ctx.waitUntil === 'function') {
+            const oldAccess = aclResult && aclResult.access ? aclResult.access : null;
+            let newAccess = null;
+            try { newAccess = JSON.parse(bodyText); } catch (_) {}
+            if (newAccess) {
+              ctx.waitUntil(syncMembershipsForProject(env, pid, oldAccess, newAccess).catch(e => {
+                console.log('[membership-sync-fail] pid=' + pid + ': ' + String(e.message || e));
+              }));
+            }
+          }
+        }
         return respond(json(env, req, { ok: true, key, bootstrap: willBootstrap || undefined }), 'key=' + key + ' size=' + cl + (willBootstrap ? ' bootstrap=1' : ''));
       }
       if (req.method === 'DELETE') {
+        const isAccessJson = /\/_access\.json$/.test(key) && pid;
+        // _access.json 削除時は Firestore からもメンバーシップを一掃する
+        let oldAccess = null;
+        if (isAccessJson) oldAccess = aclResult && aclResult.access ? aclResult.access : null;
         await env.R2.delete(key);
+        if (isAccessJson) {
+          invalidateProjectAccess(pid);
+          if (ctx && typeof ctx.waitUntil === 'function' && oldAccess) {
+            ctx.waitUntil(purgeProjectMemberships(env, pid, oldAccess).catch(e => {
+              console.log('[membership-purge-fail] pid=' + pid + ': ' + String(e.message || e));
+            }));
+          }
+        }
         return respond(json(env, req, { ok: true, key }), 'key=' + key);
       }
       return respond(json(env, req, { error: 'method-not-allowed' }, 405));
