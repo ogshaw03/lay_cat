@@ -200,7 +200,7 @@
           <table>
             <thead>
               <tr>
-                <th>時刻 (UTC)</th>
+                <th>時刻 (JST)</th>
                 <th>操作</th>
                 <th>Status</th>
                 <th>Email</th>
@@ -514,7 +514,7 @@ function renderGrouped(rows){
     if(errN>0)grp.classList.add('open');
     const body=document.createElement('div');body.className='grp-body';
     const tbl=document.createElement('div');tbl.className='tbl-wrap';
-    let html='<table><thead><tr><th>時刻(UTC)</th><th>操作</th><th>Status</th><th>Email</th><th>Key</th><th>Dur</th></tr></thead><tbody>';
+    let html='<table><thead><tr><th>時刻(JST)</th><th>操作</th><th>Status</th><th>Email</th><th>Key</th><th>Dur</th></tr></thead><tbody>';
     for(const r of g.list){
       const status=String(r.status||'');
       const sclass='s-'+(status[0]||'2');
@@ -536,7 +536,16 @@ function renderGrouped(rows){
   wrap.appendChild(frag);
 }
 
-function fmtTs(iso){if(!iso)return'-';return String(iso).replace('T',' ').replace(/\.\d+Z$/,'Z').replace('Z',' Z')}
+function fmtTs(iso){
+  if(!iso)return'-';
+  const d=new Date(iso);
+  if(isNaN(d))return String(iso);
+  /* Asia/Tokyo (JST = UTC+9) で YYYY-MM-DD HH:MM:SS 形式に整形 */
+  try{
+    const j=d.toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+    return j.replace(/\//g,'-');
+  }catch(_){return String(iso).replace('T',' ').replace(/\.\d+Z$/,'')}
+}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
 $('#applyBtn').onclick=()=>{loadAudit()};
