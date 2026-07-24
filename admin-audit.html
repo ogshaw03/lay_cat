@@ -87,9 +87,20 @@
   .grp-body td{font-size:11px}
   .grp-h .warn{color:var(--red);font-weight:700}
   .grp-h .ok{color:var(--green)}
+  .grp-h .deleted{color:var(--red);font-weight:700;background:rgba(224,106,106,.15);padding:2px 8px;border-radius:8px;border:1px solid rgba(224,106,106,.35)}
+  .grp.deleted-grp .pid{color:var(--text3);text-decoration:line-through}
   .mode-toggle{display:inline-flex;gap:0;border:1px solid var(--border2);border-radius:var(--radius2);overflow:hidden}
   .mode-toggle button{background:var(--bg3);color:var(--text2);border:none;padding:6px 12px;font-size:11px;cursor:pointer;font-family:inherit}
   .mode-toggle button.act{background:#ececf0;color:#16161a;font-weight:700}
+
+  /* 操作ラベル */
+  .op{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;white-space:nowrap}
+  .op .emo{font-size:12px}
+  .op.op-green{color:#7fbf9a}
+  .op.op-blue{color:#6a9fe0}
+  .op.op-amber{color:#d6a95f}
+  .op.op-red{color:#e06a6a}
+  .op.op-mute{color:#9a9aaa}
 
   .notification{position:fixed;bottom:24px;right:24px;background:var(--bg4);border:1px solid var(--border2);border-radius:var(--radius);padding:11px 16px;font-size:13px;z-index:2000;display:none;max-width:340px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
 </style>
@@ -190,14 +201,13 @@
             <thead>
               <tr>
                 <th>時刻 (UTC)</th>
-                <th>Method</th>
+                <th>操作</th>
                 <th>Status</th>
                 <th>Email</th>
                 <th>PID</th>
-                <th>Path / Key</th>
+                <th>Key</th>
                 <th>Dur</th>
                 <th>IP</th>
-                <th>Extra</th>
               </tr>
             </thead>
             <tbody id="tbody"></tbody>
@@ -300,6 +310,102 @@ function shortKey(r){
   return raw;
 }
 
+/* Method + key + extra から「何の操作か」を推定 */
+function classifyOp(r){
+  const key=r.key||r.path||'';
+  const m=(r.method||'').toUpperCase();
+  const status=String(r.status||'');
+  const extra=String(r.extra||'');
+  const isErr=/^[45]/.test(status);
+  if(isErr){
+    if(status==='401')return{emo:'⛔',label:'認証失敗',color:'red'};
+    if(status==='403')return{emo:'⛔',label:'アクセス拒否',color:'red'};
+    if(status==='404')return{emo:'❓',label:'見つからない',color:'amber'};
+    if(status==='413')return{emo:'⚠️',label:'サイズ上限超過',color:'red'};
+    return{emo:'⚠️',label:'エラー('+status+')',color:'red'};
+  }
+  /* プロジェクト削除（purge）*/
+  if(m==='DELETE'&&/^\/api\/r2\/purge\//.test(r.path||''))return{emo:'🗑',label:'プロジェクト削除',color:'red'};
+  /* _access.json */
+  if(/\/_access\.json$/.test(key)){
+    if(m==='PUT'&&extra.includes('bootstrap=1'))return{emo:'🚀',label:'プロジェクト作成',color:'green'};
+    if(m==='PUT')return{emo:'👥',label:'メンバー／権限変更',color:'blue'};
+    if(m==='DELETE')return{emo:'🗑',label:'ACL 削除',color:'red'};
+    if(m==='GET')return{emo:'👁',label:'ACL 確認',color:'mute'};
+  }
+  /* /api/r2/mine */
+  if(/^\/api\/r2\/mine/.test(r.path||''))return{emo:'📋',label:'プロジェクト一覧取得',color:'mute'};
+  if(/^\/api\/r2\/rebuild-memberships/.test(r.path||''))return{emo:'🔄',label:'メンバーシップ再構築',color:'blue'};
+  /* 動画・画像・EXR */
+  if(/\/media\/.+\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(key)){
+    if(m==='DELETE')return{emo:'🗑',label:'動画削除',color:'red'};
+    if(m==='PUT')return{emo:'🎬',label:'動画アップロード',color:'green'};
+    return{emo:'🎬',label:'動画取得',color:'mute'};
+  }
+  if(/\/media\/.+\.(jpg|jpeg|png|gif|webp)$/i.test(key)){
+    if(m==='DELETE')return{emo:'🗑',label:'画像削除',color:'red'};
+    if(m==='PUT')return{emo:'🖼',label:'画像アップロード',color:'green'};
+    return{emo:'🖼',label:'画像取得',color:'mute'};
+  }
+  if(/\/media\/.+\.exr$/i.test(key)){
+    if(m==='DELETE')return{emo:'🗑',label:'EXR 削除',color:'red'};
+    if(m==='PUT')return{emo:'🎨',label:'EXR アップロード',color:'green'};
+    return{emo:'🎨',label:'EXR 取得',color:'mute'};
+  }
+  if(/\/media\//.test(key)){
+    if(m==='DELETE')return{emo:'🗑',label:'メディア削除',color:'red'};
+    if(m==='PUT')return{emo:'📎',label:'メディアアップロード',color:'green'};
+    return{emo:'📎',label:'メディア取得',color:'mute'};
+  }
+  /* サムネイル */
+  if(/\/thumbnails\//.test(key)){
+    if(m==='DELETE')return{emo:'🗑',label:'サムネ削除',color:'red'};
+    if(m==='PUT')return{emo:'🖼',label:'サムネ生成',color:'blue'};
+    return{emo:'🖼',label:'サムネ取得',color:'mute'};
+  }
+  /* ショット（Phase 2 分割保存）→ コメント・アノテ・版追加 */
+  if(/\/shots\/[^/]+\.json$/.test(key)){
+    if(m==='DELETE')return{emo:'🗑',label:'ショット削除',color:'red'};
+    if(m==='PUT')return{emo:'💬',label:'コメント／アノテ／版更新',color:'blue'};
+    return{emo:'💬',label:'ショット読取',color:'mute'};
+  }
+  /* サブミット（Phase 1 分割保存）*/
+  if(/\/submits\/[^/]+\.json$/.test(key)){
+    if(m==='DELETE')return{emo:'🗑',label:'サブミット削除',color:'red'};
+    if(m==='PUT')return{emo:'📮',label:'サブミット保存',color:'blue'};
+    return{emo:'📮',label:'サブミット読取',color:'mute'};
+  }
+  /* REEL */
+  if(/\/reels\/.+\.json$/.test(key)){
+    if(m==='DELETE')return{emo:'🗑',label:'REEL 削除',color:'red'};
+    if(m==='PUT')return{emo:'🎞',label:'REEL 保存',color:'blue'};
+    return{emo:'🎞',label:'REEL 読取',color:'mute'};
+  }
+  /* プロジェクト骨格 */
+  if(/\/laycat\.project\.json$/.test(key)){
+    if(m==='DELETE')return{emo:'🗑',label:'プロジェクト骨格削除',color:'red'};
+    if(m==='PUT')return{emo:'🗂',label:'プロジェクト構造更新',color:'blue'};
+    return{emo:'🗂',label:'プロジェクト骨格読取',color:'mute'};
+  }
+  /* fallback */
+  return{emo:'❓',label:m+' '+shortKey(r).slice(0,30),color:'mute'};
+}
+
+/* 全ログから「削除されたプロジェクト ID」の集合を検出 */
+function detectDeletedPids(rows){
+  const s=new Set();
+  for(const r of rows){
+    if(r.method==='DELETE'&&String(r.status||'').startsWith('2')&&/^\/api\/r2\/purge\/projects\/[^/]+\/$/.test(r.path||'')){
+      if(r.pid&&r.pid!=='-')s.add(r.pid);
+    }
+  }
+  return s;
+}
+function opCell(r){
+  const c=classifyOp(r);
+  return '<span class="op op-'+c.color+'"><span class="emo">'+c.emo+'</span>'+esc(c.label)+'</span>';
+}
+
 function applyFilters(){
   const fm=$('#fMethod').value.trim();
   const fs=$('#fStatus').value.trim();
@@ -338,24 +444,25 @@ function renderRows(){
 function renderFlat(rows){
   const tb=$('#tbody');
   tb.innerHTML='';
-  if(!rows.length){tb.innerHTML='<tr><td colspan="9" class="empty">条件に一致する監査ログがありません</td></tr>';return}
+  if(!rows.length){tb.innerHTML='<tr><td colspan="8" class="empty">条件に一致する監査ログがありません</td></tr>';return}
+  const deleted=detectDeletedPids(allRows);
   const frag=document.createDocumentFragment();
   for(const r of rows){
     const tr=document.createElement('tr');
-    const method=(r.method||'').toUpperCase();
-    const mclass=method==='PUT'?'m-put':method==='DELETE'?'m-del':method==='POST'?'m-post':'m-get';
     const status=String(r.status||'');
     const sclass='s-'+(status[0]||'2');
+    const pidCell=(r.pid&&r.pid!=='-'&&deleted.has(r.pid))
+      ? esc(r.pid)+' <span class="op op-red" style="font-size:9px">🗑削除済</span>'
+      : esc(r.pid||'-');
     tr.innerHTML=
       '<td>'+esc(fmtTs(r.ts))+'</td>'+
-      '<td><span class="badge '+mclass+'">'+esc(method)+'</span></td>'+
+      '<td>'+opCell(r)+'</td>'+
       '<td><span class="badge '+sclass+'">'+esc(status)+'</span></td>'+
       '<td>'+esc(r.email||'-')+'</td>'+
-      '<td>'+esc(r.pid||'-')+'</td>'+
+      '<td>'+pidCell+'</td>'+
       '<td class="wrap">'+esc(shortKey(r))+'</td>'+
       '<td>'+esc((r.dur!=null?r.dur+'ms':'-'))+'</td>'+
-      '<td>'+esc(r.ip||'-')+'</td>'+
-      '<td class="wrap">'+esc(r.extra||'')+'</td>';
+      '<td>'+esc(r.ip||'-')+'</td>';
     frag.appendChild(tr);
   }
   tb.appendChild(frag);
@@ -365,6 +472,7 @@ function renderGrouped(rows){
   const wrap=$('#groupView');
   wrap.innerHTML='';
   if(!rows.length){wrap.innerHTML='<div class="empty">条件に一致する監査ログがありません</div>';return}
+  const deleted=detectDeletedPids(allRows);
   /* PID でグループ化。PID なし（例: /api/r2/mine）は "-" グループに集約 */
   const groups=new Map();
   for(const r of rows){
@@ -383,11 +491,22 @@ function renderGrouped(rows){
     const errN=g.list.filter(r=>String(r.status||'').match(/^[45]/)).length;
     const putN=g.list.filter(r=>r.method==='PUT').length;
     const delN=g.list.filter(r=>r.method==='DELETE').length;
-    const grp=document.createElement('div');grp.className='grp';
+    const isDeleted=g.pid!=='-'&&deleted.has(g.pid);
+    /* このグループ内の主な操作をサマリ表示（プロジェクト作成／動画アップ／コメント記入 の件数）*/
+    const opCounts={};
+    for(const r of g.list){
+      const c=classifyOp(r);
+      if(c.color==='mute')continue; /* 読取・キャッシュ確認は主要操作としてカウントしない */
+      opCounts[c.label]=(opCounts[c.label]||0)+1;
+    }
+    const opSummary=Object.entries(opCounts).sort((a,b)=>b[1]-a[1]).slice(0,4)
+      .map(([lab,n])=>esc(lab)+' × '+n).join(' · ');
+    const grp=document.createElement('div');grp.className='grp'+(isDeleted?' deleted-grp':'');
     const h=document.createElement('div');h.className='grp-h';
     h.innerHTML='<span class="caret">▸</span>'+
       '<span class="pid">'+esc(g.pid)+'</span>'+
-      '<span class="count">'+g.list.length+' 件 · PUT '+putN+' · DEL '+delN+(errN?' · <span class="warn">ERR '+errN+'</span>':'')+'</span>'+
+      (isDeleted?'<span class="deleted">🗑 削除済み</span>':'')+
+      '<span class="count">'+g.list.length+' 件'+(opSummary?' · <span style="color:var(--text)">'+opSummary+'</span>':'')+(errN?' · <span class="warn">ERR '+errN+'</span>':'')+'</span>'+
       '<span class="lastts">最新: '+esc(fmtTs(g.latest))+'</span>';
     h.onclick=()=>grp.classList.toggle('open');
     grp.appendChild(h);
@@ -395,20 +514,17 @@ function renderGrouped(rows){
     if(errN>0)grp.classList.add('open');
     const body=document.createElement('div');body.className='grp-body';
     const tbl=document.createElement('div');tbl.className='tbl-wrap';
-    let html='<table><thead><tr><th>時刻(UTC)</th><th>Method</th><th>Status</th><th>Email</th><th>Key</th><th>Dur</th><th>Extra</th></tr></thead><tbody>';
+    let html='<table><thead><tr><th>時刻(UTC)</th><th>操作</th><th>Status</th><th>Email</th><th>Key</th><th>Dur</th></tr></thead><tbody>';
     for(const r of g.list){
-      const method=(r.method||'').toUpperCase();
-      const mclass=method==='PUT'?'m-put':method==='DELETE'?'m-del':method==='POST'?'m-post':'m-get';
       const status=String(r.status||'');
       const sclass='s-'+(status[0]||'2');
       html+='<tr>'+
         '<td>'+esc(fmtTs(r.ts))+'</td>'+
-        '<td><span class="badge '+mclass+'">'+esc(method)+'</span></td>'+
+        '<td>'+opCell(r)+'</td>'+
         '<td><span class="badge '+sclass+'">'+esc(status)+'</span></td>'+
         '<td>'+esc(r.email||'-')+'</td>'+
         '<td class="wrap">'+esc(shortKey(r))+'</td>'+
         '<td>'+esc((r.dur!=null?r.dur+'ms':'-'))+'</td>'+
-        '<td class="wrap">'+esc(r.extra||'')+'</td>'+
         '</tr>';
     }
     html+='</tbody></table>';
