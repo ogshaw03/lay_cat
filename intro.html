@@ -250,6 +250,11 @@
   footer{padding:32px 24px;background:var(--bg);border-top:1px solid var(--border);text-align:center;color:var(--text3);font-size:12px}
   footer a{color:var(--text2);text-decoration:none;margin-left:8px}
   footer a:hover{color:var(--purple)}
+
+  /* リリース準備中バッジ（アプリを開くボタンを無効化して置換） */
+  .comingsoon{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px dashed var(--border2);color:var(--text3);border-radius:999px;font-size:13px;cursor:not-allowed;user-select:none;background:transparent;font-family:inherit}
+  .comingsoon.big{padding:12px 22px;font-size:14px}
+  .comingsoon .badge{display:inline-block;padding:1px 8px;font-size:10px;font-weight:800;letter-spacing:.5px;border-radius:8px;background:var(--purple);color:#fff;margin-right:2px}
 </style>
 </head>
 <body>
@@ -273,7 +278,7 @@
       <a href="#exr">EXR</a>
       <a href="#cloud">クラウド</a>
       <a href="guide.html">はじめ方ガイド</a>
-      <a href="laycat.html" class="cta">アプリを開く</a>
+      <span class="comingsoon" title="現在リリース準備中です"><span class="badge">SOON</span>リリース準備中</span>
     </div>
   </div>
 </nav>
@@ -290,7 +295,7 @@
     重たいツール群に頼らず、ブラウザだけで軽快に動きます。
   </p>
   <div class="cta-row">
-    <a href="laycat.html" class="btn btn-primary">アプリを開く →</a>
+    <span class="comingsoon big" title="現在リリース準備中です"><span class="badge">SOON</span>アプリはリリース準備中</span>
     <a href="guide.html" class="btn btn-ghost">はじめ方ガイド</a>
     <a href="#features" class="btn btn-ghost">できることを見る</a>
   </div>
@@ -605,7 +610,7 @@
       <div class="step">
         <span class="num">1</span>
         <h4>アプリを開く</h4>
-        <p>右上の「アプリを開く」から、ブラウザで LayCAT を起動します。インストール不要。</p>
+        <p>ブラウザで LayCAT を起動します。インストール不要。<b>※現在リリース準備中です。</b></p>
       </div>
       <div class="step">
         <span class="num">2</span>
@@ -632,10 +637,10 @@
 <!-- ============ FINAL CTA ============ -->
 <section class="final-cta">
   <div class="container">
-    <h2>まずはブラウザで開いてみる。</h2>
-    <p>登録不要。アクセスするだけで、すぐに触れます。</p>
+    <h2>アプリはリリース準備中です。</h2>
+    <p>正式リリースまでもう少しお待ちください。先にはじめ方ガイドで概要を確認できます。</p>
     <div class="cta-row" style="justify-content:center;display:flex;gap:12px;flex-wrap:wrap">
-      <a href="laycat.html" class="btn btn-primary">アプリを開く →</a>
+      <span class="comingsoon big" title="現在リリース準備中です"><span class="badge">SOON</span>アプリはリリース準備中</span>
       <a href="guide.html" class="btn btn-ghost">はじめ方ガイド</a>
     </div>
   </div>

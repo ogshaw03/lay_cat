@@ -114,6 +114,11 @@
 
   footer{padding:32px 24px;border-top:1px solid var(--border);color:var(--text3);font-size:12px;text-align:center;margin-top:40px}
   footer a{color:var(--text3)}
+
+  /* リリース準備中バッジ */
+  .comingsoon{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px dashed var(--border2);color:var(--text3);border-radius:999px;font-size:13px;cursor:not-allowed;user-select:none;background:transparent;font-family:inherit}
+  .comingsoon.big{padding:12px 22px;font-size:14px}
+  .comingsoon .badge{display:inline-block;padding:1px 8px;font-size:10px;font-weight:800;letter-spacing:.5px;border-radius:8px;background:var(--purple,#7a5cff);color:#fff;margin-right:2px}
 </style>
 </head>
 <body>
@@ -123,7 +128,7 @@
     <a href="intro.html" class="brand" aria-label="LayCAT"><img src="laycat_icon.png" alt="LayCAT"></a>
     <div class="links">
       <a href="intro.html">紹介</a>
-      <a href="laycat.html" class="cta">アプリを開く</a>
+      <span class="comingsoon" title="現在リリース準備中です"><span class="badge">SOON</span>リリース準備中</span>
     </div>
   </div>
 </nav>
@@ -139,9 +144,9 @@
 <!-- ============ STEP 1 ============ -->
 <div class="step">
   <div class="head"><span class="n">1</span><span class="t">アプリを開く</span></div>
-  <p class="sub">ブラウザで下の URL を開くだけ。<b>Chrome / Edge 推奨</b>（フォルダを直接読み書きする機能が使えるため）。</p>
-  <div class="todo"><b>DO</b>→ <a href="laycat.html" style="color:var(--blue);text-decoration:underline">ここをクリックしてアプリを開く</a></div>
-  <div class="tip"><b>💡</b> インストール不要・登録不要。ブックマークしておくと便利です。</div>
+  <p class="sub">ブラウザで LayCAT の URL を開くだけ。<b>Chrome / Edge 推奨</b>（フォルダを直接読み書きする機能が使えるため）。</p>
+  <div class="todo"><b>DO</b>→ <span class="comingsoon"><span class="badge">SOON</span>アプリはリリース準備中</span></div>
+  <div class="tip"><b>💡</b> 正式リリース時にこのボタンからアプリを開けるようになります。インストール不要・登録不要。</div>
 </div>
 
 <!-- ============ STEP 2 ============ -->
@@ -361,10 +366,10 @@
 
 <!-- ============ FINAL ============ -->
 <div class="final">
-  <h2>準備完了です</h2>
-  <p>あとは触るだけ。読むより 30 秒動かした方が早いです。</p>
+  <h2>アプリはリリース準備中です</h2>
+  <p>正式リリース時にここからアプリを開けるようになります。</p>
   <div class="row">
-    <a href="laycat.html" class="btn btn-primary">アプリを開く →</a>
+    <span class="comingsoon big" title="現在リリース準備中です"><span class="badge">SOON</span>アプリはリリース準備中</span>
     <a href="intro.html" class="btn btn-ghost">紹介ページに戻る</a>
   </div>
 </div>
