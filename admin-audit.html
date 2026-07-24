@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>LayCAT 監査ログ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;700&family=Noto+Sans+JP:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0d0d0f;--bg2:#141416;--bg3:#1c1c1f;--bg4:#232327;
+    --border:#2a2a2f;--border2:#3a3a42;
+    --text:#e8e8ec;--text2:#9a9aaa;--text3:#5a5a6a;
+    --accent:#c7c7cf;--accent2:#e8e8ec;--green:#7fbf9a;--amber:#d6a95f;--red:#e06a6a;--blue:#6a9fe0;
+    --radius:10px;--radius2:6px;
+    --font:'Noto Sans JP',system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-head:'Syne',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;font-size:13px}
+  .hidden{display:none!important}
+  button{font-family:inherit;cursor:pointer}
+  .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);padding:7px 12px;border-radius:var(--radius2);font-size:12px;transition:.15s;white-space:nowrap}
+  .btn:hover{background:var(--bg4)}
+  .btn-primary{background:#ececf0;border-color:#ececf0;color:#16161a;font-weight:600}
+  .btn-primary:hover{background:#fff}
+  .btn-sm{padding:4px 9px;font-size:11px}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  input,select{font-family:inherit;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:7px 10px;border-radius:var(--radius2);font-size:12px}
+  input:focus,select:focus{outline:none;border-color:var(--accent)}
+
+  .overlay{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;z-index:1000;padding:24px;text-align:center}
+  .title-big{font-family:var(--font-head);font-size:26px;font-weight:800;letter-spacing:1px}
+  .title-big .sub{color:var(--accent)}
+  .muted{color:var(--text3);font-size:13px;line-height:1.7;max-width:460px}
+
+  .topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;padding:12px 20px;background:var(--bg2);border-bottom:1px solid var(--border)}
+  .brand{font-family:var(--font-head);font-weight:800;font-size:16px;letter-spacing:.5px}
+  .brand .sub{color:var(--accent)}
+  .spacer{flex:1}
+  .user-chip{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)}
+  .user-chip img{width:28px;height:28px;border-radius:50%;background:var(--bg4)}
+
+  .wrap{max-width:1400px;margin:0 auto;padding:16px 20px 60px}
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+  .card-title{font-family:var(--font-head);font-size:14px;font-weight:700;margin-bottom:6px}
+
+  .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .filters label{display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text3)}
+  .filters input,.filters select{min-width:110px}
+  .fx-actions{display:flex;gap:6px;margin-left:auto;align-items:flex-end}
+
+  .meta{font-size:11px;color:var(--text3);margin-bottom:8px}
+  .meta b{color:var(--text2)}
+
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius2);background:var(--bg3)}
+  table{width:100%;border-collapse:collapse;font-size:11px;font-family:monospace}
+  th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top;white-space:nowrap}
+  th{background:var(--bg4);color:var(--text2);font-weight:700;position:sticky;top:0;font-size:10px;letter-spacing:.5px;text-transform:uppercase}
+  td.wrap{white-space:normal;word-break:break-all;max-width:400px}
+  tr:hover td{background:rgba(255,255,255,.03)}
+
+  .badge{display:inline-block;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700;letter-spacing:.3px}
+  .badge.m-get{background:rgba(106,159,224,.15);color:var(--blue);border:1px solid rgba(106,159,224,.35)}
+  .badge.m-put{background:rgba(127,191,154,.15);color:var(--green);border:1px solid rgba(127,191,154,.35)}
+  .badge.m-post{background:rgba(127,191,154,.15);color:var(--green);border:1px solid rgba(127,191,154,.35)}
+  .badge.m-del{background:rgba(224,106,106,.15);color:var(--red);border:1px solid rgba(224,106,106,.35)}
+  .badge.s-2{background:rgba(127,191,154,.12);color:var(--green)}
+  .badge.s-3{background:rgba(214,169,95,.12);color:var(--amber)}
+  .badge.s-4,.badge.s-5{background:rgba(224,106,106,.16);color:var(--red);border:1px solid rgba(224,106,106,.35)}
+  .empty{color:var(--text3);padding:24px;text-align:center;font-size:12px}
+
+  .notification{position:fixed;bottom:24px;right:24px;background:var(--bg4);border:1px solid var(--border2);border-radius:var(--radius);padding:11px 16px;font-size:13px;z-index:2000;display:none;max-width:340px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+</style>
+</head>
+<body>
+
+<div class="overlay" id="loadingOverlay"><div class="muted">読み込み中...</div></div>
+
+<div class="overlay hidden" id="loginScreen">
+  <div class="title-big">LayCAT <span class="sub">監査ログ</span></div>
+  <div class="muted">運営（adminEmails）専用のコンソールです。管理者アカウントでログインしてください。</div>
+  <button class="btn btn-primary" id="loginBtn">Google でログイン</button>
+</div>
+
+<div class="overlay hidden" id="denyScreen">
+  <div class="title-big">⚠ 権限がありません</div>
+  <div class="muted" id="denyMsg"></div>
+  <div style="display:flex;gap:8px"><a href="access-console.html" class="btn">アクセス管理へ</a><button class="btn" id="denyLogout">ログアウト</button></div>
+</div>
+
+<div id="console" class="hidden">
+  <div class="topbar">
+    <div class="brand">LayCAT <span class="sub">監査ログ</span></div>
+    <a href="access-console.html" class="btn btn-sm">← アクセス管理へ戻る</a>
+    <div class="spacer"></div>
+    <div class="user-chip" id="userChip"></div>
+    <button class="btn btn-sm" id="logoutBtn">ログアウト</button>
+  </div>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="card-title">🔍 フィルタ</div>
+      <div class="filters">
+        <label>件数上限
+          <select id="fLimit">
+            <option value="100">100 件</option>
+            <option value="300" selected>300 件</option>
+            <option value="1000">1000 件</option>
+            <option value="3000">3000 件</option>
+          </select>
+        </label>
+        <label>開始日時
+          <input id="fFrom" type="datetime-local">
+        </label>
+        <label>終了日時
+          <input id="fTo" type="datetime-local">
+        </label>
+        <label>メソッド
+          <select id="fMethod">
+            <option value="">すべて</option>
+            <option value="GET">GET</option>
+            <option value="PUT">PUT</option>
+            <option value="POST">POST</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+        </label>
+        <label>ステータス
+          <select id="fStatus">
+            <option value="">すべて</option>
+            <option value="2xx">2xx (成功)</option>
+            <option value="4xx">4xx (拒否)</option>
+            <option value="5xx">5xx (エラー)</option>
+          </select>
+        </label>
+        <label>プロジェクトID（部分一致）
+          <input id="fPid" type="text" placeholder="proj_...">
+        </label>
+        <label>メール（部分一致）
+          <input id="fEmail" type="text" placeholder="user@...">
+        </label>
+        <label>パス（部分一致）
+          <input id="fPath" type="text" placeholder="/api/r2/...">
+        </label>
+        <div class="fx-actions">
+          <button class="btn btn-primary" id="applyBtn">🔍 検索</button>
+          <button class="btn" id="resetBtn">リセット</button>
+          <button class="btn" id="csvBtn">📥 CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📋 監査ログ</div>
+      <div class="meta" id="meta">読み込み中…</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>時刻 (UTC)</th>
+              <th>Method</th>
+              <th>Status</th>
+              <th>Email</th>
+              <th>PID</th>
+              <th>Path / Key</th>
+              <th>Dur</th>
+              <th>IP</th>
+              <th>Extra</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="notification" id="notification"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, getDoc, collection, query, orderBy, limit as fsLimit, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const firebaseConfig={apiKey:"AIzaSyBn9TFT7lMdEVcatGo6v_qzIPXeDay5Cvw",authDomain:"laycat-54ee4.firebaseapp.com",projectId:"laycat-54ee4",storageBucket:"laycat-54ee4.firebasestorage.app",messagingSenderId:"1016486781774",appId:"1:1016486781774:web:f41f9546fd47e73774b41f"};
+const CFG_PATH=['laynaAccess','config'];
+
+const app=initializeApp(firebaseConfig);
+const db=getFirestore(app);
+const auth=getAuth(app);
+const provider=new GoogleAuthProvider();
+
+const $=s=>document.querySelector(s);
+const notify=(m)=>{const n=$('#notification');n.textContent=m;n.style.display='block';setTimeout(()=>n.style.display='none',3200)};
+
+let currentUser=null;
+let currentCfg=null;
+
+$('#loginBtn').onclick=async()=>{try{await signInWithPopup(auth,provider)}catch(e){notify('ログイン失敗：'+e.message)}};
+$('#logoutBtn').onclick=()=>signOut(auth);
+$('#denyLogout').onclick=()=>signOut(auth);
+
+onAuthStateChanged(auth,async(u)=>{
+  $('#loadingOverlay').classList.add('hidden');
+  if(!u){$('#loginScreen').classList.remove('hidden');$('#console').classList.add('hidden');$('#denyScreen').classList.add('hidden');return}
+  currentUser=u;
+  $('#loginScreen').classList.add('hidden');
+  // 権限チェック：adminEmails のみ許可
+  try{
+    const snap=await getDoc(doc(db,...CFG_PATH));
+    if(!snap.exists()){throw new Error('laynaAccess/config が未作成です')}
+    currentCfg=snap.data();
+    const admins=(currentCfg.adminEmails||[]).map(x=>String(x).toLowerCase());
+    if(!admins.includes(String(u.email||'').toLowerCase())){
+      $('#denyMsg').textContent=u.email+' は adminEmails に登録されていません。運営（adminEmails 登録者）のみアクセス可能です。';
+      $('#denyScreen').classList.remove('hidden');
+      return;
+    }
+    $('#denyScreen').classList.add('hidden');
+    $('#console').classList.remove('hidden');
+    $('#userChip').innerHTML='<img src="'+(u.photoURL||'')+'" alt=""> '+(u.displayName||u.email);
+    // 初期ロード
+    await loadAudit();
+  }catch(e){
+    $('#denyMsg').textContent='設定を読み込めませんでした: '+e.message;
+    $('#denyScreen').classList.remove('hidden');
+  }
+});
+
+let allRows=[];
+
+async function loadAudit(){
+  const meta=$('#meta');const tb=$('#tbody');
+  meta.textContent='読み込み中…';tb.innerHTML='';
+  const lim=parseInt($('#fLimit').value)||300;
+  try{
+    // Firestore: laynaAudit を ts 降順で最新 N 件取得
+    const q=query(collection(db,'laynaAudit'),orderBy('ts','desc'),fsLimit(lim));
+    const snap=await getDocs(q);
+    allRows=[];
+    snap.forEach(d=>{const x=d.data();allRows.push({id:d.id,...x})});
+    renderRows();
+  }catch(e){
+    meta.textContent='読み込みエラー: '+e.message;
+    console.error(e);
+  }
+}
+
+function renderRows(){
+  const meta=$('#meta');const tb=$('#tbody');
+  const fm=$('#fMethod').value.trim();
+  const fs=$('#fStatus').value.trim();
+  const fp=$('#fPid').value.trim().toLowerCase();
+  const fe=$('#fEmail').value.trim().toLowerCase();
+  const fpath=$('#fPath').value.trim().toLowerCase();
+  const fromV=$('#fFrom').value.trim();
+  const toV=$('#fTo').value.trim();
+  const fromT=fromV?new Date(fromV).getTime():null;
+  const toT=toV?new Date(toV).getTime():null;
+
+  const rows=allRows.filter(r=>{
+    if(fm&&r.method!==fm)return false;
+    if(fs){
+      const s=String(r.status||'');
+      if(fs==='2xx'&&!s.startsWith('2'))return false;
+      if(fs==='4xx'&&!s.startsWith('4'))return false;
+      if(fs==='5xx'&&!s.startsWith('5'))return false;
+    }
+    if(fp&&!(r.pid||'').toLowerCase().includes(fp))return false;
+    if(fe&&!(r.email||'').toLowerCase().includes(fe))return false;
+    if(fpath&&!(r.path||'').toLowerCase().includes(fpath))return false;
+    const t=r.ts?new Date(r.ts).getTime():0;
+    if(fromT!=null&&t<fromT)return false;
+    if(toT!=null&&t>toT)return false;
+    return true;
+  });
+
+  tb.innerHTML='';
+  if(!rows.length){tb.innerHTML='<tr><td colspan="9" class="empty">条件に一致する監査ログがありません</td></tr>';meta.textContent=allRows.length+' 件中 0 件表示';return}
+  const frag=document.createDocumentFragment();
+  for(const r of rows){
+    const tr=document.createElement('tr');
+    const method=(r.method||'').toUpperCase();
+    const mclass=method==='PUT'?'m-put':method==='DELETE'?'m-del':method==='POST'?'m-post':'m-get';
+    const status=String(r.status||'');
+    const sclass='s-'+(status[0]||'2');
+    tr.innerHTML=
+      '<td>'+esc(fmtTs(r.ts))+'</td>'+
+      '<td><span class="badge '+mclass+'">'+esc(method)+'</span></td>'+
+      '<td><span class="badge '+sclass+'">'+esc(status)+'</span></td>'+
+      '<td>'+esc(r.email||'-')+'</td>'+
+      '<td>'+esc(r.pid||'-')+'</td>'+
+      '<td class="wrap">'+esc(r.key||r.path||'')+'</td>'+
+      '<td>'+esc((r.dur!=null?r.dur+'ms':'-'))+'</td>'+
+      '<td>'+esc(r.ip||'-')+'</td>'+
+      '<td class="wrap">'+esc(r.extra||'')+'</td>';
+    frag.appendChild(tr);
+  }
+  tb.appendChild(frag);
+  meta.textContent=allRows.length+' 件取得 → '+rows.length+' 件表示';
+}
+
+function fmtTs(iso){if(!iso)return'-';return String(iso).replace('T',' ').replace(/\.\d+Z$/,'Z').replace('Z',' Z')}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+$('#applyBtn').onclick=()=>{loadAudit()};
+$('#resetBtn').onclick=()=>{['fMethod','fStatus','fPid','fEmail','fPath','fFrom','fTo'].forEach(id=>{$('#'+id).value=''});loadAudit()};
+['fMethod','fStatus','fPid','fEmail','fPath','fFrom','fTo'].forEach(id=>{$('#'+id).addEventListener('change',renderRows);$('#'+id).addEventListener('input',renderRows)});
+
+$('#csvBtn').onclick=()=>{
+  const rows=Array.from($('#tbody').querySelectorAll('tr'));
+  if(!rows.length||rows[0].querySelector('.empty')){notify('エクスポートするデータがありません');return}
+  const hdr=['ts','method','status','email','pid','key','path','dur','ip','ua','extra'];
+  const lines=[hdr.join(',')];
+  for(const r of allRows){
+    const cells=hdr.map(k=>{const v=String(r[k]==null?'':r[k]);return '"'+v.replace(/"/g,'""')+'"'});
+    lines.push(cells.join(','));
+  }
+  const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='laycat_audit_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+};
+</script>
+</body>
+</html>

@@ -261,6 +261,31 @@ async function firestoreGetDoc(env, path) {
   return r.json();
 }
 
+// Firestore の指定コレクションに自動 ID でドキュメントを作成する。
+// data は Firestore の REST 形式（{ fields: {name: {stringValue|integerValue|...}} }）ではなく
+// 素の JS オブジェクトを渡し、内部で fields 形式に変換する。
+async function firestoreCreateDoc(env, collection, data) {
+  const token = await getSaAccessToken(env);
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}`;
+  const fields = {};
+  for (const k of Object.keys(data)) {
+    const v = data[k];
+    if (v == null) continue;
+    if (typeof v === 'string') fields[k] = { stringValue: v };
+    else if (typeof v === 'number' && Number.isInteger(v)) fields[k] = { integerValue: String(v) };
+    else if (typeof v === 'number') fields[k] = { doubleValue: v };
+    else if (typeof v === 'boolean') fields[k] = { booleanValue: v };
+    else fields[k] = { stringValue: JSON.stringify(v) };
+  }
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' },
+    body: JSON.stringify({ fields }),
+  });
+  if (!r.ok) throw new Error('firestore create failed: ' + r.status);
+  return r.json();
+}
+
 function fsField(doc, name) {
   const f = doc && doc.fields && doc.fields[name];
   if (!f) return null;
@@ -372,13 +397,40 @@ export default {
     const path = url.pathname;
     const start = Date.now();
     let auditEmail = '-';
-    // 監査ログ：全リクエスト（OPTIONS 除く）で終端の直前に呼ぶ
-    // Cloudflare Workers Logs（ダッシュボード → Workers → Logs）で表示される
+    const clientIp = req.headers.get('cf-connecting-ip') || '-';
+    const userAgent = (req.headers.get('user-agent') || '').slice(0, 200);
+    // 監査ログ：console.log に加えて、興味深いイベントは Firestore laynaAudit にも記録する。
+    // - PUT / DELETE：書き込み系（常に記録）
+    // - 4xx / 5xx：拒否・エラー（常に記録）
+    // - その他 GET 200 は console.log のみ（ボリューム抑制のため Firestore に書かない）
     const audit = (status, extra) => {
       try {
         const dur = Date.now() - start;
         const ex = extra ? ' ' + extra : '';
         console.log('[audit] ' + new Date().toISOString() + ' ' + req.method + ' ' + path + ' email=' + auditEmail + ' status=' + status + ' dur=' + dur + 'ms' + ex);
+        // Firestore 書き込みは fire-and-forget（レスポンスをブロックしない）
+        const method = req.method;
+        const shouldLog = (method === 'PUT' || method === 'DELETE' || method === 'POST' || status >= 400);
+        if (shouldLog && ctx && typeof ctx.waitUntil === 'function') {
+          const pid = extractPidFromPath(path) || '-';
+          const key = path.replace(/^\/api\/r2\/(?:list|purge\/)?/, '');
+          const entry = {
+            ts: new Date().toISOString(),
+            method,
+            path,
+            key,
+            pid,
+            email: auditEmail,
+            ip: clientIp,
+            ua: userAgent,
+            status,
+            dur,
+            extra: extra || '',
+          };
+          ctx.waitUntil(firestoreCreateDoc(env, 'laynaAudit', entry).catch(e => {
+            console.log('[audit-write-fail] ' + String(e && e.message || e));
+          }));
+        }
       } catch (_) {}
     };
     const respond = (resp, extra) => { audit(resp.status, extra); return resp; };
