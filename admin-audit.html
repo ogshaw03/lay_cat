@@ -71,6 +71,26 @@
   .badge.s-4,.badge.s-5{background:rgba(224,106,106,.16);color:var(--red);border:1px solid rgba(224,106,106,.35)}
   .empty{color:var(--text3);padding:24px;text-align:center;font-size:12px}
 
+  /* グループ表示 */
+  .grp{margin-bottom:10px;border:1px solid var(--border);border-radius:var(--radius2);background:var(--bg3);overflow:hidden}
+  .grp-h{display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--bg4);cursor:pointer;font-size:12px;user-select:none}
+  .grp-h:hover{background:#2a2a30}
+  .grp-h .caret{display:inline-block;width:10px;transition:transform .12s}
+  .grp.open .grp-h .caret{transform:rotate(90deg)}
+  .grp-h .pid{font-family:monospace;font-weight:700;color:var(--text)}
+  .grp-h .count{color:var(--text2);font-size:11px}
+  .grp-h .lastts{margin-left:auto;color:var(--text3);font-size:11px;font-family:monospace}
+  .grp-body{display:none;padding:0}
+  .grp.open .grp-body{display:block}
+  .grp-body table{background:var(--bg3)}
+  .grp-body th{background:var(--bg3);font-size:9px}
+  .grp-body td{font-size:11px}
+  .grp-h .warn{color:var(--red);font-weight:700}
+  .grp-h .ok{color:var(--green)}
+  .mode-toggle{display:inline-flex;gap:0;border:1px solid var(--border2);border-radius:var(--radius2);overflow:hidden}
+  .mode-toggle button{background:var(--bg3);color:var(--text2);border:none;padding:6px 12px;font-size:11px;cursor:pointer;font-family:inherit}
+  .mode-toggle button.act{background:#ececf0;color:#16161a;font-weight:700}
+
   .notification{position:fixed;bottom:24px;right:24px;background:var(--bg4);border:1px solid var(--border2);border-radius:var(--radius);padding:11px 16px;font-size:13px;z-index:2000;display:none;max-width:340px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
 </style>
 </head>
@@ -152,25 +172,37 @@
     </div>
 
     <div class="card">
-      <div class="card-title">📋 監査ログ</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div class="card-title" style="margin:0">📋 監査ログ</div>
+        <div style="flex:1"></div>
+        <div class="mode-toggle" id="modeToggle">
+          <button data-mode="group" class="act">プロジェクトごと</button>
+          <button data-mode="flat">時系列</button>
+        </div>
+      </div>
       <div class="meta" id="meta">読み込み中…</div>
-      <div class="tbl-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>時刻 (UTC)</th>
-              <th>Method</th>
-              <th>Status</th>
-              <th>Email</th>
-              <th>PID</th>
-              <th>Path / Key</th>
-              <th>Dur</th>
-              <th>IP</th>
-              <th>Extra</th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
+      <!-- グループ表示 -->
+      <div id="groupView"></div>
+      <!-- 時系列表示（従来の table） -->
+      <div id="flatView" class="hidden">
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>時刻 (UTC)</th>
+                <th>Method</th>
+                <th>Status</th>
+                <th>Email</th>
+                <th>PID</th>
+                <th>Path / Key</th>
+                <th>Dur</th>
+                <th>IP</th>
+                <th>Extra</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -247,8 +279,28 @@ async function loadAudit(){
   }
 }
 
-function renderRows(){
-  const meta=$('#meta');const tb=$('#tbody');
+let viewMode='group';
+document.querySelectorAll('#modeToggle button').forEach(b=>{
+  b.onclick=()=>{
+    viewMode=b.dataset.mode;
+    document.querySelectorAll('#modeToggle button').forEach(x=>x.classList.toggle('act',x===b));
+    $('#groupView').classList.toggle('hidden',viewMode!=='group');
+    $('#flatView').classList.toggle('hidden',viewMode!=='flat');
+    renderRows();
+  };
+});
+
+/* パスから projects/<pid>/ プレフィックスを除いた短縮キーを返す */
+function shortKey(r){
+  const raw=r.key||r.path||'';
+  if(r.pid&&r.pid!=='-'){
+    const pre='projects/'+r.pid+'/';
+    if(raw.startsWith(pre))return raw.slice(pre.length);
+  }
+  return raw;
+}
+
+function applyFilters(){
   const fm=$('#fMethod').value.trim();
   const fs=$('#fStatus').value.trim();
   const fp=$('#fPid').value.trim().toLowerCase();
@@ -258,8 +310,7 @@ function renderRows(){
   const toV=$('#fTo').value.trim();
   const fromT=fromV?new Date(fromV).getTime():null;
   const toT=toV?new Date(toV).getTime():null;
-
-  const rows=allRows.filter(r=>{
+  return allRows.filter(r=>{
     if(fm&&r.method!==fm)return false;
     if(fs){
       const s=String(r.status||'');
@@ -275,9 +326,19 @@ function renderRows(){
     if(toT!=null&&t>toT)return false;
     return true;
   });
+}
 
+function renderRows(){
+  const meta=$('#meta');
+  const rows=applyFilters();
+  meta.textContent=allRows.length+' 件取得 → '+rows.length+' 件表示（表示モード: '+(viewMode==='group'?'プロジェクトごと':'時系列')+'）';
+  if(viewMode==='group'){renderGrouped(rows)}else{renderFlat(rows)}
+}
+
+function renderFlat(rows){
+  const tb=$('#tbody');
   tb.innerHTML='';
-  if(!rows.length){tb.innerHTML='<tr><td colspan="9" class="empty">条件に一致する監査ログがありません</td></tr>';meta.textContent=allRows.length+' 件中 0 件表示';return}
+  if(!rows.length){tb.innerHTML='<tr><td colspan="9" class="empty">条件に一致する監査ログがありません</td></tr>';return}
   const frag=document.createDocumentFragment();
   for(const r of rows){
     const tr=document.createElement('tr');
@@ -291,14 +352,72 @@ function renderRows(){
       '<td><span class="badge '+sclass+'">'+esc(status)+'</span></td>'+
       '<td>'+esc(r.email||'-')+'</td>'+
       '<td>'+esc(r.pid||'-')+'</td>'+
-      '<td class="wrap">'+esc(r.key||r.path||'')+'</td>'+
+      '<td class="wrap">'+esc(shortKey(r))+'</td>'+
       '<td>'+esc((r.dur!=null?r.dur+'ms':'-'))+'</td>'+
       '<td>'+esc(r.ip||'-')+'</td>'+
       '<td class="wrap">'+esc(r.extra||'')+'</td>';
     frag.appendChild(tr);
   }
   tb.appendChild(frag);
-  meta.textContent=allRows.length+' 件取得 → '+rows.length+' 件表示';
+}
+
+function renderGrouped(rows){
+  const wrap=$('#groupView');
+  wrap.innerHTML='';
+  if(!rows.length){wrap.innerHTML='<div class="empty">条件に一致する監査ログがありません</div>';return}
+  /* PID でグループ化。PID なし（例: /api/r2/mine）は "-" グループに集約 */
+  const groups=new Map();
+  for(const r of rows){
+    const k=r.pid||'-';
+    if(!groups.has(k))groups.set(k,[]);
+    groups.get(k).push(r);
+  }
+  /* 各グループを最新イベントの ts 降順で並べる */
+  const sorted=[...groups.entries()].map(([pid,list])=>{
+    list.sort((a,b)=>(new Date(b.ts||0))-(new Date(a.ts||0)));
+    return {pid,list,latest:list[0]?.ts||''};
+  }).sort((a,b)=>(new Date(b.latest||0))-(new Date(a.latest||0)));
+
+  const frag=document.createDocumentFragment();
+  for(const g of sorted){
+    const errN=g.list.filter(r=>String(r.status||'').match(/^[45]/)).length;
+    const putN=g.list.filter(r=>r.method==='PUT').length;
+    const delN=g.list.filter(r=>r.method==='DELETE').length;
+    const grp=document.createElement('div');grp.className='grp';
+    const h=document.createElement('div');h.className='grp-h';
+    h.innerHTML='<span class="caret">▸</span>'+
+      '<span class="pid">'+esc(g.pid)+'</span>'+
+      '<span class="count">'+g.list.length+' 件 · PUT '+putN+' · DEL '+delN+(errN?' · <span class="warn">ERR '+errN+'</span>':'')+'</span>'+
+      '<span class="lastts">最新: '+esc(fmtTs(g.latest))+'</span>';
+    h.onclick=()=>grp.classList.toggle('open');
+    grp.appendChild(h);
+    /* エラーがあるグループは自動で開いておく */
+    if(errN>0)grp.classList.add('open');
+    const body=document.createElement('div');body.className='grp-body';
+    const tbl=document.createElement('div');tbl.className='tbl-wrap';
+    let html='<table><thead><tr><th>時刻(UTC)</th><th>Method</th><th>Status</th><th>Email</th><th>Key</th><th>Dur</th><th>Extra</th></tr></thead><tbody>';
+    for(const r of g.list){
+      const method=(r.method||'').toUpperCase();
+      const mclass=method==='PUT'?'m-put':method==='DELETE'?'m-del':method==='POST'?'m-post':'m-get';
+      const status=String(r.status||'');
+      const sclass='s-'+(status[0]||'2');
+      html+='<tr>'+
+        '<td>'+esc(fmtTs(r.ts))+'</td>'+
+        '<td><span class="badge '+mclass+'">'+esc(method)+'</span></td>'+
+        '<td><span class="badge '+sclass+'">'+esc(status)+'</span></td>'+
+        '<td>'+esc(r.email||'-')+'</td>'+
+        '<td class="wrap">'+esc(shortKey(r))+'</td>'+
+        '<td>'+esc((r.dur!=null?r.dur+'ms':'-'))+'</td>'+
+        '<td class="wrap">'+esc(r.extra||'')+'</td>'+
+        '</tr>';
+    }
+    html+='</tbody></table>';
+    tbl.innerHTML=html;
+    body.appendChild(tbl);
+    grp.appendChild(body);
+    frag.appendChild(grp);
+  }
+  wrap.appendChild(frag);
 }
 
 function fmtTs(iso){if(!iso)return'-';return String(iso).replace('T',' ').replace(/\.\d+Z$/,'Z').replace('Z',' Z')}
