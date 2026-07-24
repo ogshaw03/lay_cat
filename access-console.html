@@ -128,14 +128,14 @@
     </div>
 
     <div id="opArea" class="hidden">
-      <!-- 監査ログ（adminEmails のみ） -->
+      <!-- 監査ログ（operatorEmails/運営 のみ） -->
       <div class="card" id="auditCard">
         <div class="card-title">📋 監査ログ</div>
-        <div class="card-desc">R2 プロジェクトへの書込・削除・拒否・エラーの記録を閲覧できます。<b>adminEmails 登録者のみ</b>アクセス可能。</div>
+        <div class="card-desc">R2 プロジェクトへの書込・削除・拒否・エラーの記録を閲覧できます。<b>運営（operatorEmails）のみ</b>アクセス可能。管理者権限では閲覧できません。</div>
         <a class="btn btn-primary hidden" id="auditOpenBtn" href="admin-audit.html" target="_blank" rel="noopener">📋 監査ログを開く（別タブ）</a>
         <div class="mstatus off hidden" id="auditNoAccess" style="margin-top:0">
           <span class="dot off"></span>
-          <span>あなた（<b id="auditMe"></b>）は adminEmails に未登録のため閲覧できません。上の「🔐 アクセス管理」から自分の権限を <b>管理者</b> に昇格させてから再度お試しください（運営権限だけでは不可）。</span>
+          <span>あなた（<b id="auditMe"></b>）は運営（operatorEmails）に未登録のため閲覧できません。監査ログは最上位権限（運営）のみアクセス可能です。</span>
         </div>
       </div>
 
@@ -314,14 +314,15 @@ service cloud.firestore {
       allow write:          if isStaff();
     }
 
-    // ===== 監査ログ（読取=adminEmailsのみ／書込=Worker が Service Account でルール bypass） =====
+    // ===== 監査ログ（読取=operatorEmails/運営のみ／書込=Worker が Service Account でルール bypass） =====
     // Worker がプロジェクトに対する PUT/DELETE や 4xx/5xx イベントを Firestore laynaAudit に自動書き込む。
-    // 読取は admin-audit.html（別ページ）から adminEmails 登録者だけがアクセス可能。
-    function isAdminOnly() {
-      return signedIn() && (request.auth.token.email in cfgData().get('adminEmails', []));
+    // 読取は admin-audit.html（別ページ）から運営 (operatorEmails) 登録者だけがアクセス可能。
+    // 最上位権限のみに限定することで、管理者権限を持つユーザーからも監査ログを見せない。
+    function isAuditor() {
+      return signedIn() && (request.auth.token.email in cfgData().get('operatorEmails', []));
     }
     match /laynaAudit/{docId} {
-      allow read, list:     if isAdminOnly();
+      allow read, list:     if isAuditor();
       allow write:          if false;
     }
   }
@@ -348,13 +349,11 @@ function tiers(data){
   return {operators,admins,members,domains};
 }
 function isEditor(){ if(!cfg)return true; const t=tiers(cfg); return t.operators.includes(me.email)||t.admins.includes(me.email); }
-/* 監査ログは adminEmails 登録者のみアクセス可（ユーザー明示指定）。
-   tiers().admins は表示用に operatorEmails を除外した配列のため、raw の adminEmails を直接見る。
-   運営(operatorEmails) だけ登録・adminEmails 未登録の場合は表示されないので、その場合は
-   自分を adminEmails にも追加する。 */
-function isAdminOnly(){
+/* 監査ログは operatorEmails 登録者（運営）のみアクセス可（ユーザー明示指定・セキュリティ最優先）。
+   管理者(adminEmails) でも閲覧不可。運営権限が最上位なので、それ以外の権限からは監査ログを見せない。 */
+function isAuditor(){
   if(!cfg||!me)return false;
-  const raw=arr(cfg.adminEmails).map(lc);
+  const raw=arr(cfg.operatorEmails).map(lc);
   return raw.includes(lc(me.email));
 }
 /* loggedUsers(email→表示名) から名前索引を作る。名前つき表示・ドメインログイン者の表示に使用 */
@@ -507,9 +506,9 @@ function paint(){
   /* ユーザー一覧（運営/管理者/メンバー）は別ウィンドウに描画。inline はサマリのみ */
   $('counts').textContent=`運営 ${operators.length} ・ 管理者 ${admins.length} ・ メンバー ${members.length}`;
   paintAccessWin();
-  /* 監査ログカード：カード自体は常に表示。ボタンは adminEmails 登録者のみ活性化、
+  /* 監査ログカード：カード自体は常に表示。ボタンは operatorEmails 登録者のみ活性化、
      それ以外は「未登録のため閲覧不可」の案内文を出す（何もないと機能に気づけないため）。*/
-  const isAudit=isAdminOnly();
+  const isAudit=isAuditor();
   const auditBtn=$('auditOpenBtn');
   const auditNo=$('auditNoAccess');
   const auditMe=$('auditMe');

@@ -80,7 +80,7 @@
 
 <div class="overlay hidden" id="loginScreen">
   <div class="title-big">LayCAT <span class="sub">監査ログ</span></div>
-  <div class="muted">運営（adminEmails）専用のコンソールです。管理者アカウントでログインしてください。</div>
+  <div class="muted">運営（operatorEmails）専用のコンソールです。運営権限アカウントでログインしてください。管理者権限では閲覧できません。</div>
   <button class="btn btn-primary" id="loginBtn">Google でログイン</button>
 </div>
 
@@ -206,14 +206,14 @@ onAuthStateChanged(auth,async(u)=>{
   if(!u){$('#loginScreen').classList.remove('hidden');$('#console').classList.add('hidden');$('#denyScreen').classList.add('hidden');return}
   currentUser=u;
   $('#loginScreen').classList.add('hidden');
-  // 権限チェック：adminEmails のみ許可
+  // 権限チェック：operatorEmails（運営）のみ許可。管理者権限では閲覧不可（セキュリティ最優先）。
   try{
     const snap=await getDoc(doc(db,...CFG_PATH));
     if(!snap.exists()){throw new Error('laynaAccess/config が未作成です')}
     currentCfg=snap.data();
-    const admins=(currentCfg.adminEmails||[]).map(x=>String(x).toLowerCase());
-    if(!admins.includes(String(u.email||'').toLowerCase())){
-      $('#denyMsg').textContent=u.email+' は adminEmails に登録されていません。運営（adminEmails 登録者）のみアクセス可能です。';
+    const operators=(currentCfg.operatorEmails||[]).map(x=>String(x).toLowerCase());
+    if(!operators.includes(String(u.email||'').toLowerCase())){
+      $('#denyMsg').textContent=u.email+' は運営（operatorEmails）に登録されていません。監査ログは最上位権限（運営）のみアクセス可能で、管理者権限では閲覧できません。';
       $('#denyScreen').classList.remove('hidden');
       return;
     }

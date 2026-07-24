@@ -13,9 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
-- 監査ログ閲覧 UI を追加：新規 `admin-audit.html`（adminEmails 登録者のみアクセス可能）で、Worker が Firestore `laynaAudit` コレクションに自動記録した R2 の書込・削除・拒否・エラーイベントを閲覧可能に。フィルタ（日付範囲・メソッド・ステータス・PID・メール・パスの部分一致）と CSV エクスポートに対応。
+- 監査ログ閲覧 UI を追加：新規 `admin-audit.html`（運営 operatorEmails 登録者のみアクセス可能・管理者でも閲覧不可）で、Worker が Firestore `laynaAudit` コレクションに自動記録した R2 の書込・削除・拒否・エラーイベントを閲覧可能に。フィルタ（日付範囲・メソッド・ステータス・PID・メール・パスの部分一致）と CSV エクスポートに対応。
   - Worker (`worker/laycat-r2-api.js`)：`firestoreCreateDoc(collection, data)` ヘルパを新設し、audit 関数を修正。PUT/POST/DELETE と 4xx/5xx イベントは `laynaAudit` コレクションに `ctx.waitUntil()` で fire-and-forget 書き込み（レスポンスをブロックしない）。GET 200 は console.log のみ（ボリューム抑制）。フィールド：ts / method / path / key / pid / email / ip / ua / status / dur / extra。
-  - `access-console.html`：opArea 先頭に「📋 監査ログ」カードを追加（adminEmails 登録者のみ表示）、`admin-audit.html` を新規タブで開く。Firestore rules に `laynaAudit/{docId}` を追加（read=adminEmails のみ、write=false → Worker の SA でルール bypass 書込）。
+  - `access-console.html`：opArea 先頭に「📋 監査ログ」カードを追加。カードは常時表示、ボタン活性は運営（operatorEmails）登録者のみ、それ以外には「未登録のため閲覧不可」の案内文を表示。`admin-audit.html` を新規タブで開く。Firestore rules に `laynaAudit/{docId}` を追加（read=operatorEmails のみ、write=false → Worker の SA でルール bypass 書込）。
+  - **監査ログのアクセス権限は「運営（operatorEmails）のみ」に限定**（管理者/adminEmails では閲覧不可）：セキュリティ最優先の設計で、最上位権限だけが監査ログを見られる。
   - Beta 反映前に **Firebase コンソールで Firestore セキュリティルールを更新する必要あり**（access-console 表示のルールに `laynaAudit` セクションが追加されている）。
 
 ---
