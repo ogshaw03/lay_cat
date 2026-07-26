@@ -13,16 +13,6 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
-- (dev v2026.07.24.003) EXR のデータ系レイヤー（Z / Depth / Normal / Motion Vector / Position / UV / Cryptomatte）はデフォルトガンマを 1.0（リニア）にして正しく表示。切替後は従来通りユーザーがスライダで調整可能。`_isDataLayer(name, lay)` / `_defaultGammaForLayer(name, lay)` ヘルパを新設し、レイヤー切替時／リセットボタン／初回ロード時に適用（保存済み gamma が明示的にある場合はそれを優先）。
-- (dev v2026.07.24.004) EXR の Cryptomatte 高 rank レイヤー（`crypto_object01` / `crypto_object02` 等）を非表示化：`_cryptoRank(name)` / `_shouldHideCryptoLayer(name)` ヘルパを新設し、レイヤーセレクタと「🎨 全レイヤー」タイルモーダルの両方でフィルタ。プレビュー用の `crypto_object00`（Rank 0-1）のみ表示。Rank 2 以上は精密マスク抽出用でレビュー用途には不要。
-- (dev v2026.07.24.005) 「🎨 全レイヤー」タイルモーダルでも各レイヤーに `_defaultGammaForLayer` を適用（データ系＝1.0、色系＝2.2）、レビュー画面と同じ「本来の見た目」でタイル描画されるように統一。
-- (dev v2026.07.24.005) Cryptomatte の `crypto_object00`（数字サフィックス 00）も非表示化：無ナンバー版（`crypto_object`）と内容が同一なので重複を弾く。`_shouldHideCryptoLayer` の判定を `> 0` → `>= 0` に変更。
-- (dev v2026.07.24.007) チェック待ちタブの「⧉ まとめてタブに追加」ボタンを修正：全担当者のチェック待ちカットが対象になっていたのを、現在選択中の担当者タブ (state.checkReviewer) のカットだけを対象にする。ボタン文言も「⧉ このタブをまとめてタブに追加 (N)」に変更し、対象担当者名を title と toast に表示。
-- (dev v2026.07.24.006) EXR Z (Depth) の Auto 黒白点算出を改善：外れ値（far-clip 巨大値・sky sphere 等）を除外した実用域を使うように修正。
-  - **初期黒点＝p1**（下位 1% パーセンタイル）／**初期白点＝p99**（上位 1% パーセンタイル）
-  - **スライダ可動範囲の上限を `p99 * 1.2` にクランプ**（外れ値がスライダを占領しないように）／下限は `stats.min` のまま（探索性のため広めに残す）
-  - Depth リセットボタンも `p1 / p99` に戻すよう変更
-  - 従来は `min / max` を初期値・可動範囲として使用しており、遠景の巨大値のせいで実オブジェクトの階調が潰れる問題があった。Nuke Read ノードの Auto Levels と同様の挙動に。
 - 層① サービス層のロールを 3 択（運営／管理者／メンバー）→ 2 択（運営／メンバー）に統一。「管理者(adminEmails)」ロールを廃止：
   - `access-console.html`：tiers() から admins を削除し、UI の管理者リスト・「→管理者」ボタン・add role の管理者オプションを撤去。setRole の 'admin' ターゲットは互換のため受け取っても 'member' として扱う。旧 adminEmails データは setRole の次回保存で自動的に allowedEmails に統合される（べき等）。isAuditor は isEditor と同義に。RULES の isStaff() から adminEmails 参照を削除
   - `worker/laycat-r2-api.js`：isAdminEmail を廃止、isStaffEmail（operatorEmails のみ）に統合。互換のため `const isAdminEmail = isStaffEmail` で旧関数名も生存。checkProjectAcl の admin エスカレーションは「運営エスカレーション」に改名（reason: 'operator'）
@@ -86,6 +76,15 @@
 ---
 
 ## 反映済み・パッチノート記載なし（Beta 反映済み・PATCH_NOTES.md 未記載）
+
+- **【2026-07-24 Beta v0.0.5 再反映（バージョン据え置き）】** 以下は laycat_dev.html → laycat.html にコピー済みだが PATCH_NOTES.md には記載せず beta v0.0.5 のまま:
+  - **EXR データ系レイヤーはデフォルトガンマ 1.0（リニア）で表示**：Depth / Normal / Motion Vector / Position / UV / Cryptomatte を `_isDataLayer(name, lay)` で判定し `_defaultGammaForLayer` を通す。切替後はスライダで自由に調整可能。レイヤー切替時／リセットボタン／初回ロードのいずれでも適用（保存済み gamma が明示的にある場合はそれを優先）。
+  - **EXR Z (Depth) の Auto 黒白点を p1/p99 パーセンタイルベースに**：far-clip の巨大値や sky sphere の Infinity で実オブジェクトの階調が潰れる問題を解消。初期黒点＝p1（下位 1%）／初期白点＝p99（上位 1%）／スライダ可動範囲上限を `p99 * 1.2` にクランプ。Nuke Read ノードの Auto Levels と同等の挙動。
+  - **EXR Cryptomatte の数字サフィックス付きレイヤー（`crypto_object00` / `01` / `02` …）を全て非表示化**：無ナンバー版（`crypto_object`）だけを表示。00 も 01+ と同じ扱い（本体と内容が同一なので重複）。`_cryptoRank(name)` / `_shouldHideCryptoLayer(name)` ヘルパを新設し、レイヤーセレクタと「🎨 全レイヤー」タイルモーダルの両方でフィルタ。
+  - **「🎨 全レイヤー」タイルモーダルでも各レイヤー適切なガンマで描画**：レビュー画面と同じ「本来の見た目」でタイル一覧できるように。
+  - **チェック待ちタブ「⧉ まとめてタブに追加」ボタンを選択中の担当者タブに限定**：以前は全担当者のチェック待ちカット全てが対象になっていた。ボタン件数と title / toast にも対象担当者名を表示。
+  - **バッジ全般の文字ウェイトを細くして CJK 太字の潰れを解消**：10-11px の小さいバッジで日本語が font-weight 700 だと画数の多い文字が潰れて読みにくかったため全体調整。`.mp-badge`（作業/チェック担当）名前 600 → 500、`.chk-done-chip` / `.sc-chip` / `.proj-badge` 700 → 500、`.pm-badge` / `.tl-stage` / `.draft-chip` 700 → 600。
+
 
 - **【2026-07-24 Beta v0.0.5 再反映（バグ修正＋UX 小改善のみ・バージョン据え置き）】** 以下は laycat_dev.html → laycat.html にコピー済みだが PATCH_NOTES.md には記載せず beta v0.0.5 のまま：
   - **REEL の下部クリップ帯に各クリップのサムネイル画像を表示するよう追加**。各 `.clip` ブロックの上部に `.cth` サムネ枠（`v.thumb`／`node.thumbnail` 由来）を差し込み、`.track` の min-height を 96px に拡張。サムネは `background-size: contain` で枠内に全体表示（はみ出しなし）。

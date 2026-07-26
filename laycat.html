@@ -146,9 +146,9 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .mp-sel{background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:var(--radius2);padding:5px 8px;font-size:12px;font-family:inherit;cursor:pointer;max-width:160px}
 .mp-sel:focus{outline:none;border-color:var(--border2)}
 .mp-badges{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
-.mp-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:2px 7px 2px 6px}
-.mp-badge .mp-bl{color:var(--text3);font-size:9px;letter-spacing:.02em}
-.mp-badge .mp-bn{color:var(--text);font-weight:600}
+.mp-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:2px 7px 2px 6px;font-weight:400}
+.mp-badge .mp-bl{color:var(--text3);font-size:9px;letter-spacing:.02em;font-weight:400}
+.mp-badge .mp-bn{color:var(--text);font-weight:500}
 .mp-badge .mp-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 /* 作業担当＝グリーン系 / チェック担当＝アンバー系 で色分け */
 .mp-badge.mp-a{background:rgba(127,191,154,.13);border-color:rgba(127,191,154,.4)}
@@ -228,7 +228,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .chk-tab .chk-cnt{font-size:11px;font-weight:700;color:var(--text3);background:var(--bg3);border-radius:999px;padding:1px 7px;min-width:18px;text-align:center}
 .chk-tab.on .chk-cnt{color:var(--text);background:var(--bg4)}
 .tl-item.tl-done{opacity:.5}
-.chk-done-chip{font-size:10px;font-weight:700;color:var(--green);background:rgba(127,191,154,.14);border:1px solid rgba(127,191,154,.4);border-radius:5px;padding:1px 7px;white-space:nowrap}
+.chk-done-chip{font-size:10px;font-weight:500;color:var(--green);background:rgba(127,191,154,.14);border:1px solid rgba(127,191,154,.4);border-radius:5px;padding:1px 7px;white-space:nowrap}
 .pm-card{border:1px solid var(--border);border-radius:12px;background:var(--bg2);padding:16px 18px;margin-bottom:6px}
 .pm-body{display:flex;gap:26px;align-items:center;flex-wrap:wrap}
 .pm-body canvas{flex-shrink:0;cursor:pointer}
@@ -243,7 +243,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .pm-num{text-align:right;font-variant-numeric:tabular-nums}
 .pm-pct{color:var(--text3);font-variant-numeric:tabular-nums}
 .pm-h{font-family:var(--font-head);font-size:10px;letter-spacing:1px;color:var(--text3);text-transform:uppercase;margin:22px 2px 10px}
-.pm-badge{display:inline-block;padding:2px 9px;border-radius:5px;font-size:11px;font-weight:700;color:#101013}
+.pm-badge{display:inline-block;padding:2px 9px;border-radius:5px;font-size:11px;font-weight:600;color:#101013}
 .pm-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
 /* 複数エピソード（ショット親フォルダ）の進捗を並べて表示 */
 .pm-donrow{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:6px}
@@ -329,7 +329,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .proj-body{padding:15px 17px 17px}
 .proj-name{font-size:18px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .proj-meta{display:flex;align-items:center;gap:12px;margin-top:11px;flex-wrap:wrap}
-.proj-badge{font-size:11px;font-weight:700;padding:2px 11px;border-radius:20px;border:1px solid}
+.proj-badge{font-size:11px;font-weight:500;padding:2px 11px;border-radius:20px;border:1px solid}
 .proj-cnt,.proj-upd{font-size:11px;color:var(--text3)}
 .proj-add{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:216px;border:none;box-shadow:none;color:var(--text3);gap:8px;background:transparent}
 .proj-add:hover{color:var(--text);animation:none;box-shadow:none;border:none}
@@ -352,7 +352,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .tl-body{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
 .tl-path{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tl-title{font-size:14px;font-weight:600;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.tl-stage{display:inline-block;padding:1px 9px;border-radius:5px;font-size:10px;font-weight:700;color:#101013}
+.tl-stage{display:inline-block;padding:1px 9px;border-radius:5px;font-size:10px;font-weight:600;color:#101013}
 .tl-kind{font-size:10px;color:var(--text3);border:1px solid var(--border);border-radius:4px;padding:0 6px}
 .tl-fchip{font-size:10px;color:#9ec5ff;border:1px solid rgba(96,165,255,.5);border-radius:4px;padding:0 6px}
 .tl-comment{font-size:13px;color:var(--text);margin-top:5px;white-space:pre-wrap;word-break:break-word;line-height:1.5}
@@ -479,7 +479,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 /* ログ内の独立コメント（動画タイルと時系列で混在表示） */
 .log-note.sc-item{border-left:3px solid rgba(96,165,255,.55)}
 .sc-item .m{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
-.sc-chip{font-size:10px;font-weight:700;color:#9cc4ff;background:rgba(96,165,255,.14);border:1px solid rgba(96,165,255,.4);border-radius:9px;padding:1px 7px}
+.sc-chip{font-size:10px;font-weight:500;color:#9cc4ff;background:rgba(96,165,255,.14);border:1px solid rgba(96,165,255,.4);border-radius:9px;padding:1px 7px}
 .note-acts{margin-left:auto;display:inline-flex;gap:4px}
 .na{font-size:11px;color:var(--text3);padding:2px 6px;border-radius:4px}
 .na:hover{color:var(--text);background:rgba(255,255,255,.08)}
@@ -738,7 +738,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .fb-submit-bar{display:flex;align-items:center;gap:8px;padding:0 12px 12px}
 .fb-unsent-lab{flex:1;font-size:11px;color:var(--amber);font-weight:600}
 .log-note.draft-note{border-color:var(--amber);border-style:dashed;background:rgba(214,169,95,.06)}
-.draft-chip{font-size:10px;font-weight:700;color:#1a1200;background:var(--amber);border-radius:8px;padding:1px 7px;margin-right:6px}
+.draft-chip{font-size:10px;font-weight:600;color:#1a1200;background:var(--amber);border-radius:8px;padding:1px 7px;margin-right:6px}
 .fb-input textarea{flex:1;min-height:44px;max-height:140px;resize:vertical;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;line-height:1.5}
 .fb-input textarea:focus{outline:none;border-color:var(--border2)}
 @media (max-width:900px){.fb-side{width:230px}}
@@ -1448,6 +1448,40 @@ function _isCryptoLayer(name){return /crypto|matte/i.test(String(name||''))}
 /* レイヤー名 / チャンネル配置からのヒント判定（Motion Vector・Position 等） */
 function _isMotionLayer(name){return /motion|velocity|vector|\bvec\b/i.test(String(name||''))}
 function _isPositionLayer(name){return /position|wpos|\bpoint\b|worldpos/i.test(String(name||''))}
+/* Cryptomatte のランク番号（末尾 2 桁の数値）を返す。数値がなければ -1（無ナンバー版＝プレビュー本体）。
+   ・crypto_object  （無ナンバー） → -1（プレビュー本体・表示する）
+   ・crypto_object00 → 0（Rank 0-1、無ナンバー版と同じ内容の重複なので非表示）
+   ・crypto_object01 → 1（Rank 2-3、詳細抽出用・レビューでは不要）
+   ・crypto_object02 → 2（Rank 4-5、稀にしか使わない） */
+function _cryptoRank(name){
+  const m=String(name||'').match(/crypto[^0-9]*?(\d+)$/i);
+  return m?parseInt(m[1],10):-1;
+}
+/* Cryptomatte の数値サフィックス付き（00 / 01 / 02 …）は全てレビューには不要として弾く。
+   数値サフィックスなしのプレビュー本体（例：crypto_object）だけを表示。 */
+function _shouldHideCryptoLayer(name){return _cryptoRank(name)>=0}
+/* データ系レイヤー（Z / Depth / Normal / Motion / Position / UV / Cryptomatte）判定。
+   これらはガンマ補正なし（gamma=1.0 リニア表示）が本来の正しい表示。 */
+function _isDataLayer(name, lay){
+  if(!name)return false;
+  const nm=String(name);
+  if(_isCryptoLayer(nm))return true;
+  if(_isMotionLayer(nm))return true;
+  if(_isPositionLayer(nm))return true;
+  if(/normal|nrml|\bnorm\b/i.test(nm))return true;
+  if(/depth|\bZ\s*\(|\bZ$|zdepth/i.test(nm))return true;
+  if(/^UV|uvpass|uv_/i.test(nm))return true;
+  /* チャンネル構造からの判定：単チャンネル Z（Depth）／X,Y,Z（Normal or Position） */
+  if(lay&&lay.channels){
+    const subs=lay.channels.map(c=>String(c.sub||'').toUpperCase());
+    if(subs.length===1&&subs[0]==='Z')return true; /* Depth */
+    if(subs.length===3&&subs.includes('X')&&subs.includes('Y')&&subs.includes('Z'))return true; /* Normal / Position */
+    if(subs.length===2&&((subs.includes('X')&&subs.includes('Y'))||(subs.includes('U')&&subs.includes('V'))))return true; /* Motion / UV */
+  }
+  return false;
+}
+/* レイヤー種別に応じた初期ガンマ値：データ系は 1.0（リニア）、それ以外は 2.2（sRGB 風） */
+function _defaultGammaForLayer(name, lay){return _isDataLayer(name, lay)?1.0:2.2}
 /* HSV(0..1) → RGB(0..1) — Motion Vector の可視化用（角度→色相、magnitude→彩度/明度） */
 function _hsvToRgb(h,s,v){
   const i=Math.floor(h*6)%6;const f=h*6-i;
@@ -4155,18 +4189,31 @@ function renderProjCheck(main,root){
   /* 対象＝配下の工程(review)で、動画があり、まだ完了していないもの（チェック担当の有無は問わない） */
   const pendingNow=descendants(root.id).filter(n=>n.type==='review'&&n.versions&&n.versions.length&&isAwaitingCheck(root,nodeStatus(n)));
   const pendingIds=new Set(pendingNow.map(n=>n.id));
-  /* 更新ボタンの横：チェック待ちのカットをまとめてタスクタブに追加 */
-  if(pendingNow.length){
-    const addAll=el('button','btn btn-ghost btn-sm','⧉ まとめてタブに追加 ('+pendingNow.length+')');
-    addAll.title='チェック待ちのカットをすべてタスクタブに追加します';
+  /* 更新ボタンの横：チェック待ちのカットをまとめてタスクタブに追加。
+     現在選択中の担当者タブ (state.checkReviewer) 分だけを対象にする（他担当者のカットは追加しない）。
+     ボタンは head 末尾に append するが、担当者タブより後に対象数が確定するため、
+     プレースホルダで先に place-holder を作っておき、あとで内容を差し込む方式にする。 */
+  const addAllHolder=el('span');
+  if(pendingNow.length)head.appendChild(addAllHolder);
+  const paintAddAllBtn=()=>{
+    addAllHolder.innerHTML='';
+    const cur=state.checkReviewer;
+    const bucketPend=pendingNow.filter(n=>{
+      if(cur===CHK_NONE)return !n.reviewer;
+      return n.reviewer&&String(n.reviewer).toLowerCase()===String(cur||'').toLowerCase();
+    });
+    if(!bucketPend.length)return;
+    const label=(cur===CHK_NONE)?'未割り当て':(memberById(root,cur)?.name||cur);
+    const addAll=el('button','btn btn-ghost btn-sm','⧉ まとめてタブに追加 ('+bucketPend.length+')');
+    addAll.title='現在表示中の担当者「'+label+'」のチェック待ちカットだけをタスクタブに追加します';
     addAll.onclick=()=>{
       let added=0;
-      for(const n of pendingNow){if(!state.openTasks.includes(n.id)){state.openTasks.push(n.id);added++;for(const y of pathOf(n.id))state.expanded.add(y.id);}}
+      for(const n of bucketPend){if(!state.openTasks.includes(n.id)){state.openTasks.push(n.id);added++;for(const y of pathOf(n.id))state.expanded.add(y.id);}}
       render();resolveThumbs();
-      toast(added?added+' 件のカットをタスクタブに追加しました':'すべてタブに追加済みです');
+      toast(added?added+' 件のカット（'+label+'）をタスクタブに追加しました':'すべてタブに追加済みです');
     };
-    head.appendChild(addAll);
-  }
+    addAllHolder.appendChild(addAll);
+  };
   /* スナップショット：タブに入った時（またはチェック待ちタブ再クリック/更新）に確定。
      以後のステータス変更ではリストからカットを消さず、済みは薄く表示のまま残す（誤操作防止）。 */
   if(!state.checkSnap||state.checkSnapRoot!==root.id||state.checkReset){state.checkSnap=new Set(pendingIds);state.checkSnapRoot=root.id;state.checkReset=false}
@@ -4183,6 +4230,8 @@ function renderProjCheck(main,root){
   /* 選択が無効なら、未割り当てがあれば未割り当てを、なければ先頭を既定表示 */
   const has=k=>keys.some(x=>String(x).toLowerCase()===String(k||'').toLowerCase());
   if(!has(state.checkReviewer))state.checkReviewer=keys.includes(CHK_NONE)?CHK_NONE:keys[0];
+  /* addAll ボタンを担当者タブ確定後に描画（現在の state.checkReviewer に応じて対象カットが決まる） */
+  paintAddAllBtn();
   /* 担当者タブ（本体のタブUIに統一：アンダーライン／モノクロ） */
   const tabs=el('div','chk-tabs');
   for(const key of keys){
@@ -5248,7 +5297,10 @@ async function openExrLayerGrid(node,v){
       status.style.color='#e56b6b';status.textContent='読み込み失敗：'+String(e&&e.message||e);return;
     }
     if(!hdr||!hdr.layers){status.textContent='レイヤー情報がありません';return}
-    const names=Object.keys(hdr.layers).sort((a,b)=>a==='beauty'?-1:b==='beauty'?1:a.localeCompare(b));
+    /* Cryptomatte の rank 1 以上（crypto_object01 等）はレビュー用途では意味がないので非表示 */
+    const names=Object.keys(hdr.layers)
+      .filter(nm=>!_shouldHideCryptoLayer(nm))
+      .sort((a,b)=>a==='beauty'?-1:b==='beauty'?1:a.localeCompare(b));
     const settings=(v.exrView&&typeof v.exrView==='object')?v.exrView:{exposure:0,gamma:2.2};
     status.textContent='解像度: '+full.width+'×'+full.height+' ／ レイヤー: '+names.length+' 件（クリックでそのレイヤーを開く）';
     /* 各レイヤーをタイル描画（順次で描く。1タイルあたり ~50ms 程度） */
@@ -5281,7 +5333,9 @@ async function openExrLayerGrid(node,v){
           const w=Math.max(2,Math.round(full.width*scale)),h=Math.max(2,Math.round(full.height*scale));
           /* 大キャンバスで描画→縮小コピー（レイヤーの正しい表現を得るため一旦全解像度で描く） */
           const bigCv=document.createElement('canvas');
-          drawLayerToCanvas(bigCv,full,lay,{exposure:settings.exposure||0,gamma:settings.gamma||2.2,depth:(settings.depth||{})});
+          /* 各レイヤーごとに適切なガンマを適用（データ系=1.0、色系=2.2）。露出は共通設定を尊重。 */
+          const tileGamma=_defaultGammaForLayer(nm,lay);
+          drawLayerToCanvas(bigCv,full,lay,{exposure:settings.exposure||0,gamma:tileGamma,depth:{}});
           const smallCv=document.createElement('canvas');smallCv.width=w;smallCv.height=h;
           smallCv.getContext('2d').drawImage(bigCv,0,0,w,h);
           smallCv.style.cssText='display:block;width:100%;height:auto';
@@ -7244,7 +7298,10 @@ function openReview(nodeId,versionId,opts){
         return;
       }
       if(!alive||!hdr||!hdr.layers)return;
-      const names=Object.keys(hdr.layers).sort((a,b)=>a==='beauty'?-1:b==='beauty'?1:a.localeCompare(b));
+      /* Cryptomatte の rank 1 以上（crypto_object01 等）はレビュー用途では意味がないので非表示 */
+      const names=Object.keys(hdr.layers)
+        .filter(nm=>!_shouldHideCryptoLayer(nm))
+        .sort((a,b)=>a==='beauty'?-1:b==='beauty'?1:a.localeCompare(b));
       laySel.innerHTML='';
       for(const nm of names){
         const lay=hdr.layers[nm];
@@ -7256,6 +7313,12 @@ function openReview(nodeId,versionId,opts){
       }
       const initial=(settings.layer&&hdr.layers[settings.layer])?settings.layer:('beauty' in hdr.layers?'beauty':names[0]);
       laySel.value=initial;laySel.disabled=false;
+      /* 初期レイヤーがデータ系（Depth/Normal 等）で、ガンマが未設定なら 1.0（リニア）を適用。
+         v.exrView.gamma が保存されている場合はユーザーの選択を優先。 */
+      if(!(v.exrView&&typeof v.exrView.gamma==='number')){
+        const dgInit=_defaultGammaForLayer(initial,hdr.layers[initial]);
+        settings.gamma=dgInit;gamS.inp.value=String(dgInit);gamS.vv.value=dgInit.toFixed(2);
+      }
       let curUrl=null;
       const drawTo=async(name)=>{
         /* EXR 連番モードは frame ごとに描画する必要があるので、renderSeqFrame に委譲。
@@ -7293,16 +7356,21 @@ function openReview(nodeId,versionId,opts){
         if(!isDepthLayer(lay)){depthWrap.style.display='none';return}
         const zArr=full.channels[lay.channels[0].name];
         const stats=computeDepthStats(zArr);
-        /* 初期実装の Auto デフォルト（画像の実 min/max）に戻す。
-           保存済みの値がある（範囲内）ならそちら優先。 */
-        if(!isFinite(settings.depth.black)||settings.depth.black<stats.min*0.5||settings.depth.black>stats.max*2)settings.depth.black=stats.min;
-        if(!isFinite(settings.depth.white)||settings.depth.white<stats.min*0.5||settings.depth.white>stats.max*2)settings.depth.white=stats.max;
+        /* Auto 黒白点：外れ値（far-clip 巨大値・sky sphere 等）を除いた実用域を使う。
+           - 初期黒点 = p1（下位 1%）／初期白点 = p99（上位 1%）
+           - スライダ可動範囲は p99 * 1.2 を上限にクランプ（外れ値がスライダを占領しないよう）
+           - スライダ下限は stats.min（探索性のため広めに残す） */
+        const sliderMin=stats.min;
+        const sliderMax=Math.max(stats.p99*1.2, stats.p99+(stats.p99-stats.p1)*0.1);
+        const inRange=(v)=>isFinite(v)&&v>=sliderMin&&v<=sliderMax;
+        if(!inRange(settings.depth.black))settings.depth.black=stats.p1;
+        if(!inRange(settings.depth.white))settings.depth.white=stats.p99;
         if(typeof settings.depth.invert!=='boolean')settings.depth.invert=false;
-        bpS=mkSlider('黒',stats.min,stats.max,(stats.max-stats.min)/1000,settings.depth.black,x=>x.toFixed(2));
-        wpS=mkSlider('白',stats.min,stats.max,(stats.max-stats.min)/1000,settings.depth.white,x=>x.toFixed(2));
+        bpS=mkSlider('黒',sliderMin,sliderMax,(sliderMax-sliderMin)/1000,settings.depth.black,x=>x.toFixed(2));
+        wpS=mkSlider('白',sliderMin,sliderMax,(sliderMax-sliderMin)/1000,settings.depth.white,x=>x.toFixed(2));
         invBtn=el('button','btn btn-ghost btn-sm'+(settings.depth.invert?' active':''),'反転');invBtn.title='奥⇄手前の白黒を反転';invBtn.style.margin='0 2px';
         /* リセット：Auto（画像 min/max）・反転 OFF に戻す */
-        const dResetBtn=el('button','btn btn-ghost btn-sm','↺');dResetBtn.title='Depth を初期値に戻す（Auto min/max・反転OFF）';dResetBtn.style.padding='4px 8px';
+        const dResetBtn=el('button','btn btn-ghost btn-sm','↺');dResetBtn.title='Depth を初期値に戻す（Auto p1/p99・反転OFF）';dResetBtn.style.padding='4px 8px';
         depthWrap.appendChild(bpS.wrap);depthWrap.appendChild(wpS.wrap);depthWrap.appendChild(invBtn);depthWrap.appendChild(dResetBtn);
         depthWrap.style.display='';
         const onDepthChange=async(k,val)=>{settings.depth[k]=val;v.exrView=v.exrView||{};v.exrView.depth=settings.depth;try{await persist()}catch(_){}drawTo(laySel.value)};
@@ -7310,9 +7378,9 @@ function openReview(nodeId,versionId,opts){
         wpS.inp.addEventListener('input',()=>onDepthChange('white',+wpS.inp.value));
         invBtn.onclick=()=>{settings.depth.invert=!settings.depth.invert;invBtn.classList.toggle('active',settings.depth.invert);onDepthChange('invert',settings.depth.invert)};
         dResetBtn.onclick=async()=>{
-          settings.depth={black:stats.min,white:stats.max,invert:false};
-          bpS.inp.value=String(stats.min);bpS.vv.value=stats.min.toFixed(2);
-          wpS.inp.value=String(stats.max);wpS.vv.value=stats.max.toFixed(2);
+          settings.depth={black:stats.p1,white:stats.p99,invert:false};
+          bpS.inp.value=String(stats.p1);bpS.vv.value=stats.p1.toFixed(2);
+          wpS.inp.value=String(stats.p99);wpS.vv.value=stats.p99.toFixed(2);
           invBtn.classList.remove('active');
           v.exrView=v.exrView||{};v.exrView.depth=settings.depth;
           try{await persist()}catch(_){}
@@ -7324,7 +7392,13 @@ function openReview(nodeId,versionId,opts){
       rebuildDepthCtl(hdr.layers[initial]);
       laySel.onchange=async()=>{
         const nm=laySel.value;
-        v.exrView=v.exrView||{exposure:0,gamma:2.2};v.exrView.layer=nm;
+        const lay=hdr.layers[nm];
+        /* データ系レイヤー（Depth/Normal/Motion/Position/UV/Cryptomatte）はガンマを 1.0（リニア）に、
+           それ以外は 2.2（sRGB 風）に初期化。切替後はユーザーが自由に調整可能。 */
+        const dg=_defaultGammaForLayer(nm,lay);
+        settings.gamma=dg;
+        gamS.inp.value=String(dg);gamS.vv.value=dg.toFixed(2);
+        v.exrView=v.exrView||{exposure:0,gamma:dg};v.exrView.layer=nm;v.exrView.gamma=dg;
         settings.depth={}; /* レイヤー切替で depth 設定はリセット（層ごとに範囲が違うため） */
         try{await persist()}catch(_){}
         rebuildDepthCtl(hdr.layers[nm]);
@@ -7333,14 +7407,16 @@ function openReview(nodeId,versionId,opts){
       /* 露出/ガンマ変更で永続化＋再描画（デバウンスなし：小画像なら十分速い） */
       const onEG=async()=>{settings.exposure=+expS.inp.value;settings.gamma=+gamS.inp.value;v.exrView=v.exrView||{};v.exrView.exposure=settings.exposure;v.exrView.gamma=settings.gamma;try{await persist()}catch(_){}drawTo(laySel.value)};
       expS.inp.addEventListener('input',onEG);gamS.inp.addEventListener('input',onEG);
-      /* 露出/ガンマ リセット：0 / 2.2 に戻す */
+      /* 露出/ガンマ リセット：露出=0、ガンマは現在のレイヤーに応じたデフォルト（データ系=1.0／それ以外=2.2） */
       egResetBtn.onclick=async()=>{
+        const curNm=laySel.value;const curLay=hdr.layers[curNm];
+        const dg=_defaultGammaForLayer(curNm,curLay);
         expS.inp.value='0';expS.vv.value='0.0';
-        gamS.inp.value='2.2';gamS.vv.value='2.20';
-        settings.exposure=0;settings.gamma=2.2;
-        v.exrView=v.exrView||{};v.exrView.exposure=0;v.exrView.gamma=2.2;
+        gamS.inp.value=String(dg);gamS.vv.value=dg.toFixed(2);
+        settings.exposure=0;settings.gamma=dg;
+        v.exrView=v.exrView||{};v.exrView.exposure=0;v.exrView.gamma=dg;
         try{await persist()}catch(_){}
-        drawTo(laySel.value);
+        drawTo(curNm);
       };
       /* EXR 連番のみ：全キャッシュボタンの処理。現在のレイヤー・露出・ガンマ設定で
          全フレームを renderSeqFrame(i,{noPrefetch:true}) で 1 枚ずつ描画してメモリ
