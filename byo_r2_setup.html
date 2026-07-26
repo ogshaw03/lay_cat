@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BYO R2 セットアップ手順 — LayCAT</title>
+<meta name="description" content="LayCAT で自分の Cloudflare R2 バケットを使うためのセットアップ手順（BYO R2）。">
+<link rel="icon" href="laycat_icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Inter:wght@400;600;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0a0d; --bg2:#141418; --bg3:#1c1c22; --bg4:#26262e;
+    --border:#2a2a32; --border2:#3a3a46;
+    --text:#eeeef2; --text2:#a0a0b0; --text3:#606070;
+    --purple:#A56BF0; --purpleGlow:rgba(165,107,240,.4);
+    --blue:#5A9BFF; --green:#5CB878; --amber:#f2c86b; --red:#ff7373;
+    --grad:linear-gradient(135deg,#5CC7EF 0%,#7A5CFF 100%);
+    --gradPurple:linear-gradient(135deg,#A56BF0 0%,#7A5CFF 100%);
+    --gradOrange:linear-gradient(135deg,#f6821f 0%,#faad3f 100%);
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP','Inter',system-ui,sans-serif;line-height:1.7;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  a{color:#9cc4ff}
+  a:hover{color:#c8dcff}
+
+  /* NAV */
+  nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,10,13,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:14px 24px}
+  nav .inner{max-width:1080px;margin:0 auto;display:flex;align-items:center;gap:24px}
+  nav .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:16px;text-decoration:none;color:var(--text)}
+  nav .brand img{height:34px;width:auto;display:block}
+  nav .links{margin-left:auto;display:flex;gap:20px;align-items:center}
+  nav .links a{color:var(--text2);text-decoration:none;font-size:14px;font-weight:500}
+  nav .links a:hover{color:var(--text)}
+
+  /* PAGE */
+  .page{max-width:860px;margin:0 auto;padding:110px 24px 100px}
+
+  /* HERO */
+  .doc-head{margin-bottom:36px;text-align:center}
+  .doc-head .lbl{display:inline-block;padding:5px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;font-size:11px;font-weight:700;color:var(--text2);letter-spacing:.12em;margin-bottom:14px}
+  .doc-head h1{font-size:clamp(28px,4.4vw,42px);font-weight:900;letter-spacing:-.02em;line-height:1.2;margin-bottom:14px}
+  .doc-head h1 b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .doc-head p{color:var(--text2);font-size:15px;max-width:640px;margin:0 auto}
+
+  /* DISCLAIMER */
+  .disc{margin:24px 0 32px;padding:16px 20px;background:rgba(242,200,107,.06);border:1px solid rgba(242,200,107,.28);border-radius:12px}
+  .disc h3{color:#f2c86b;font-size:13px;font-weight:800;margin-bottom:8px;letter-spacing:.05em}
+  .disc p{color:#e6dbb8;font-size:13.5px;line-height:1.75}
+  .disc p + p{margin-top:6px}
+
+  /* TOC */
+  .toc{margin:0 0 40px;padding:18px 22px;background:var(--bg2);border:1px solid var(--border);border-radius:12px}
+  .toc h3{font-size:12px;font-weight:800;color:var(--text2);margin-bottom:10px;letter-spacing:.15em}
+  .toc ol{list-style:none;counter-reset:t;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:6px 22px}
+  @media(max-width:640px){.toc ol{grid-template-columns:1fr}}
+  .toc li{counter-increment:t;padding:4px 0 4px 30px;position:relative;font-size:13.5px}
+  .toc li::before{content:counter(t,decimal-leading-zero);position:absolute;left:0;top:4px;color:var(--purple);font-family:'Inter',monospace;font-weight:800;font-size:12px}
+  .toc a{color:var(--text2);text-decoration:none}
+  .toc a:hover{color:var(--text)}
+
+  /* STEP */
+  .step{margin:44px 0;padding:26px 28px 28px;background:var(--bg2);border:1px solid var(--border);border-radius:18px;position:relative;overflow:hidden}
+  .step::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--gradPurple)}
+  .step .head{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+  .step .n{
+    flex-shrink:0;width:44px;height:44px;border-radius:50%;
+    background:var(--gradPurple);color:#fff;font-weight:900;font-size:19px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 8px 22px var(--purpleGlow);font-family:'Inter';
+  }
+  .step .t{font-size:22px;font-weight:800;letter-spacing:-.01em;line-height:1.3}
+  .step h3{font-size:16px;font-weight:800;margin:22px 0 10px;color:var(--text)}
+  .step h3:first-child{margin-top:0}
+  .step p{color:var(--text2);font-size:14.5px;margin-bottom:10px}
+  .step p b{color:var(--text)}
+  .step ul, .step ol{color:var(--text2);font-size:14px;padding-left:22px;margin:6px 0 12px}
+  .step li{margin:4px 0}
+  .step li b{color:var(--text)}
+
+  /* CODE */
+  pre{background:#08080b;border:1px solid var(--border);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:10px 0 14px;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.65;color:#dfe7f2}
+  code{font-family:'JetBrains Mono',monospace;font-size:12.5px;background:var(--bg4);color:#c8dcff;padding:1px 6px;border-radius:4px}
+  pre code{background:transparent;padding:0;color:inherit;font-size:inherit}
+  .fname{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11.5px;background:var(--bg3);color:#a0c8ff;padding:2px 8px;border-radius:4px;margin-bottom:6px;border:1px solid var(--border)}
+
+  /* CALLOUTS */
+  .tip{margin:12px 0;padding:12px 16px;background:rgba(90,155,255,.07);border:1px solid rgba(90,155,255,.28);border-radius:8px;color:#c8dcff;font-size:13px;line-height:1.75}
+  .tip b{color:#7cb2ff}
+  .warn{margin:12px 0;padding:12px 16px;background:rgba(242,200,107,.07);border:1px solid rgba(242,200,107,.3);border-radius:8px;color:#efe4c8;font-size:13px;line-height:1.75}
+  .warn b{color:#f2c86b}
+  .danger{margin:12px 0;padding:12px 16px;background:rgba(255,115,115,.07);border:1px solid rgba(255,115,115,.32);border-radius:8px;color:#ffd6d6;font-size:13px;line-height:1.75}
+  .danger b{color:#ff9090}
+  .note{margin:12px 0;padding:12px 16px;background:var(--bg3);border-left:3px solid var(--purple);border-radius:0 8px 8px 0;color:var(--text2);font-size:13px;line-height:1.75}
+  .note b{color:var(--purple)}
+
+  /* UI HINT — UIラベル案内 */
+  .ui{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;background:var(--bg4);border:1px solid var(--border2);border-radius:5px;font-size:12px;font-weight:700;color:#e0d0ff;font-family:'Inter',sans-serif}
+  .ui::before{content:'▸';color:var(--purple);margin-right:2px;font-size:10px}
+  .path{color:var(--text3);font-size:12px;margin:2px 0 0}
+
+  /* TABLE */
+  .tbl{width:100%;border-collapse:collapse;margin:10px 0 14px;font-size:13px}
+  .tbl th,.tbl td{padding:10px 12px;border:1px solid var(--border);text-align:left;vertical-align:top}
+  .tbl th{background:var(--bg3);color:var(--text);font-weight:700;font-size:12px;letter-spacing:.05em}
+  .tbl td{color:var(--text2)}
+  .tbl td b{color:var(--text)}
+
+  /* DIAGRAM */
+  .diag{margin:16px 0;padding:18px;background:#08080b;border:1px solid var(--border);border-radius:12px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;color:#a0c8ff;overflow-x:auto;white-space:pre}
+
+  /* FAQ */
+  .faq{margin-top:56px}
+  .faq h2{font-size:24px;font-weight:900;margin-bottom:16px;text-align:center}
+  .faq details{background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden}
+  .faq details[open]{border-color:var(--border2)}
+  .faq summary{padding:14px 20px;cursor:pointer;font-weight:700;font-size:14px;list-style:none;display:flex;align-items:center;gap:12px}
+  .faq summary::-webkit-details-marker{display:none}
+  .faq summary::before{content:'＋';color:var(--text3);font-weight:400}
+  .faq details[open] summary::before{content:'−';color:var(--purple)}
+  .faq .body{padding:0 20px 16px;color:var(--text2);font-size:13.5px;line-height:1.8}
+  .faq .body p+p{margin-top:8px}
+
+  /* FOOT */
+  footer{max-width:860px;margin:0 auto;padding:32px 24px 60px;border-top:1px solid var(--border);text-align:center;color:var(--text3);font-size:12px}
+  footer a{color:var(--text2);text-decoration:none;margin:0 8px}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="inner">
+    <a href="intro.html" class="brand" aria-label="LayCAT"><img src="laycat_icon.png" alt="LayCAT"></a>
+    <div class="links">
+      <a href="intro.html">紹介</a>
+      <a href="guide.html">はじめ方</a>
+    </div>
+  </div>
+</nav>
+
+<div class="page">
+
+<div class="doc-head">
+  <div class="lbl">BYO R2 SETUP</div>
+  <h1>自分の <b>Cloudflare R2</b> を LayCAT に接続する</h1>
+  <p>BYO（Bring Your Own）R2 プランで、自前の Cloudflare アカウント上に LayCAT 用のストレージを構築するための手順書です。所要時間の目安は 30〜60 分。</p>
+</div>
+
+<div class="disc">
+  <h3>⚠ この手順書について</h3>
+  <p>本ページには <b>Cloudflare / Firebase のウェブ管理画面</b>での操作が含まれます。両サービスとも UI（メニュー名・ボタン位置・画面レイアウト）はアップデートで<b>予告なく変わる</b>ことがあります。</p>
+  <p>本文中の画面名やボタン名は<b>執筆時点の目安</b>です。実際の画面で見つからない場合は、その要素の<b>役割</b>（例：「新規バケットを作る」「シークレットを追加する」）から近い項目を探してください。</p>
+  <p>手順の <b>順序と目的</b>（何をどこに登録するか）は基本的に変わりません。迷ったら FAQ の末尾リンクから最新の公式ドキュメントを確認してください。</p>
+</div>
+
+<div class="toc">
+  <h3>目次</h3>
+  <ol>
+    <li><a href="#s1">前提と全体像</a></li>
+    <li><a href="#s2">Cloudflare アカウント準備</a></li>
+    <li><a href="#s3">R2 バケットの作成</a></li>
+    <li><a href="#s4">Worker（プロキシ API）のデプロイ</a></li>
+    <li><a href="#s5">Firestore サービスアカウント設定</a></li>
+    <li><a href="#s6">Worker シークレット・環境変数</a></li>
+    <li><a href="#s7">LayCAT 側の接続設定</a></li>
+    <li><a href="#s8">動作確認</a></li>
+    <li><a href="#s9">料金の目安</a></li>
+    <li><a href="#s10">トラブルシュート</a></li>
+  </ol>
+</div>
+
+<!-- ================================================================ -->
+<div class="step" id="s1">
+  <div class="head"><div class="n">1</div><div class="t">前提と全体像</div></div>
+
+  <h3>必要なもの</h3>
+  <ul>
+    <li><b>Cloudflare アカウント</b>（無料枠あり／クレジットカード登録は R2 有効化時に必要）</li>
+    <li><b>ローカル環境</b>：Node.js 18+ と npm（Worker デプロイ用の <code>wrangler</code> CLI に必要）</li>
+    <li><b>LayCAT のログインアカウント</b>（Google／メール認証）</li>
+    <li><b>LayCAT 運営から共有される接続情報</b>（Firebase の <code>projectId</code>、アクセス管理登録の依頼先）</li>
+  </ul>
+
+  <h3>この構成でできること</h3>
+  <p>プロジェクトのメタ情報（<code>laycat.project.json</code>）と動画・画像・リールデータを、<b>自分の Cloudflare アカウント配下の R2 バケット</b>に保存できるようになります。データは常に自分の管理下にあり、退会時も自分でバケットごと削除できます。</p>
+
+  <h3>データフロー</h3>
+  <div class="diag">[ブラウザ (LayCAT)]
+     │  ① Firebase Auth でログイン → ID トークン取得
+     │  ② PUT/GET/DELETE https://&lt;worker&gt;/api/r2/&lt;projectId&gt;/&lt;path&gt;
+     ▼
+[Cloudflare Workers  (laycat-r2-api)]
+     │  ・ID トークンを Firebase 公開鍵で検証
+     │  ・Firestore の アクセス管理 (laynaAccess) を照合
+     │  ・key プレフィックスが projectId 直下か検査
+     ▼
+[Cloudflare R2 バケット (laycat-projects)]
+     projects/&lt;projectId&gt;/laycat.project.json
+     projects/&lt;projectId&gt;/media/&lt;file&gt;
+     projects/&lt;projectId&gt;/reels/reels.json</div>
+
+  <div class="tip"><b>ポイント：</b> R2 バケットは<b>非公開のまま</b>運用します。ブラウザから直接 R2 は叩かず、必ず Worker を経由するため、S3 互換の API トークンや署名付き URL の管理は不要です。</div>
+</div>
+
+<!-- ================================================================ -->
+<div class="step" id="s2">
+  <div class="head"><div class="n">2</div><div class="t">Cloudflare アカウント準備</div></div>
+
+  <h3>2-1. サインアップ</h3>
+  <p><a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener">https://dash.cloudflare.com/sign-up</a> でアカウント作成。既に持っていればスキップ。</p>
+
+  <h3>2-2. R2 の有効化</h3>
+  <p>ダッシュボード左サイドの <span class="ui">R2 Object Storage</span> を開き、案内に沿って有効化します。<b>初回のみクレジットカード登録が必要</b>ですが、無料枠内なら課金は発生しません。</p>
+
+  <table class="tbl">
+    <thead><tr><th>項目</th><th>無料枠（月あたり）</th></tr></thead>
+    <tbody>
+      <tr><td><b>ストレージ</b></td><td>10 GB</td></tr>
+      <tr><td><b>Class A リクエスト</b>（PUT / POST / COPY / DELETE / LIST）</td><td>100 万回</td></tr>
+      <tr><td><b>Class B リクエスト</b>（GET / HEAD）</td><td>1000 万回</td></tr>
+      <tr><td><b>エグレス</b>（データ転送）</td><td>完全無料</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note"><b>MEMO：</b> R2 の最大の特徴は<b>エグレス無料</b>です。動画を再生・ダウンロードするたびに転送料金がかさむ心配はありません。</div>
+</div>
+
+<!-- ================================================================ -->
+<div class="step" id="s3">
+  <div class="head"><div class="n">3</div><div class="t">R2 バケットの作成</div></div>
+
+  <p>R2 のダッシュボード画面から<b>新規バケットを作成</b>します。ボタン名は概ね「Create bucket」相当です。</p>
+
+  <h3>入力項目</h3>
+  <table class="tbl">
+    <thead><tr><th>項目</th><th>値</th><th>備考</th></tr></thead>
+    <tbody>
+      <tr><td><b>Name（バケット名）</b></td><td><code>laycat-projects</code></td><td>半角小文字・ハイフンのみ。命名は任意だが、以降の手順は本ドキュメントの名前で統一。</td></tr>
+      <tr><td><b>Location</b></td><td><code>Automatic</code></td><td>特別な要件が無ければ自動選択で OK。日本ユーザー中心なら APAC 明示も可。</td></tr>
+      <tr><td><b>Storage Class</b></td><td>Standard</td><td>選択肢が出た場合。Infrequent Access はコストが逆に上がるので選ばない。</td></tr>
+      <tr><td><b>Public access</b></td><td><b>無効のまま</b></td><td>公開しません。Worker 経由でのみアクセスします。</td></tr>
+    </tbody>
+  </table>
+
+  <div class="warn"><b>注意：</b> <span class="ui">Allow Access</span>／<span class="ui">Public URL</span> のような「公開する」設定を有効にしないでください。有効化するとバケット内の全ファイルが誰でも読める URL で公開されます。</div>
+
+  <p>作成完了後、以下の 2 つの値を控えておきます（次のステップで使用）。</p>
+  <ul>
+    <li><b>バケット名</b>（例：<code>laycat-projects</code>）</li>
+    <li><b>アカウント ID</b>（R2 ダッシュボード右側や、アカウントホームの URL に含まれる 32 桁の英数字）</li>
+  </ul>
+</div>
+
+<!-- ================================================================ -->
+<div class="step" id="s4">
+  <div class="head"><div class="n">4</div><div class="t">Worker（プロキシ API）のデプロイ</div></div>
+
+  <p>R2 バケットへのアクセスを仲介する Cloudflare Workers を作成します。<b>Workers Free プラン</b>で動きます（1 日 10 万リクエストまで無料）。</p>
+
+  <h3>4-1. wrangler CLI をインストール</h3>
+  <pre><code>npm i -g wrangler
+wrangler login</code></pre>
+  <p>ブラウザが開いて Cloudflare のログイン画面が出るので、対象アカウントで承認します。</p>
+
+  <h3>4-2. Worker プロジェクトの雛形を作る</h3>
+  <pre><code>mkdir laycat-r2-worker && cd laycat-r2-worker</code></pre>
+  <p>LayCAT リポジトリの <code>worker/laycat-r2-api.js</code> をこのフォルダに <code>index.js</code> としてコピーします。運営から Worker スクリプト本体を受け取っている場合はそれを使ってください。</p>
+  <pre><code>cp /path/to/lay_cat/worker/laycat-r2-api.js index.js</code></pre>
+
+  <h3>4-3. <span class="fname">wrangler.toml</span> を作成</h3>
+  <p>同じフォルダに <code>wrangler.toml</code> を作り、下記内容を書き込みます。</p>
+  <pre><code>name = "laycat-r2-api"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+[[r2_buckets]]
+binding = "R2"                       # Worker から env.R2 でアクセス
+bucket_name = "laycat-projects"      # ステップ 3 で作ったバケット名
+
+[vars]
+FIREBASE_PROJECT_ID = "layna-app"    # 運営から共有される projectId
+ALLOW_ORIGIN = "https://ogshaw03.github.io"
+# 開発時はカンマ区切りで複数許可可：
+# ALLOW_ORIGIN = "https://ogshaw03.github.io,http://localhost:8080"</code></pre>
+
+  <div class="note"><b>MEMO：</b> <code>binding = "R2"</code> の <b>"R2"</b> という文字列は Worker スクリプトが参照する変数名です。<b>変更しないでください</b>（変えるとスクリプトが動きません）。</div>
+
+  <h3>4-4. デプロイ（初回はまだしない）</h3>
+  <p>この時点ではまだシークレット（ステップ 6）が未登録なので、動作させても認証エラーになります。ステップ 5 → 6 を完了してからデプロイします。</p>
+</div>
+
+<!-- ================================================================ -->
+<div class="step" id="s5">
+  <div class="head"><div class="n">5</div><div class="t">Firestore サービスアカウント設定</div></div>
+
+  <p>Worker から Firestore の <code>laynaAccess</code>（アクセス管理）を読み書きするために、Firebase の <b>サービスアカウント秘密鍵</b>を発行します。</p>
+
+  <div class="warn"><b>注意：</b> ここは<b>運営から共有される情報</b>を使う手順です。BYO ユーザーが自分の Firebase プロジェクトを新たに作る必要はありません（LayCAT の Firebase を Worker から読むだけ）。運営から <b>Service Account JSON</b>、または「発行手順を実行する Firebase コンソールへの案内」を受け取っている前提です。</p></div>
+
+  <h3>5-1. Firebase コンソールでサービスアカウント JSON を発行</h3>
+  <p>運営から共有された Firebase プロジェクトに入り、下記の位置で <b>新しい秘密鍵を生成</b>します。</p>
+  <p><span class="ui">プロジェクト設定</span> → <span class="ui">サービス アカウント</span> → <span class="ui">新しい秘密鍵の生成</span></p>
+  <p class="path">Project settings → Service accounts → Generate new private key</p>
+
+  <div class="tip"><b>ヒント：</b> このメニューは Firebase コンソール左上の歯車アイコンから開ける「プロジェクト設定」の中にあります。UI 表記が変わっている場合は「service account」「秘密鍵」で画面内検索してください。</div>
+
+  <h3>5-2. ダウンロードした JSON の扱い</h3>
+  <p>クリックすると JSON ファイルが 1 個ダウンロードされます。中身はこんな形です：</p>
+  <pre><code>{
+  "type": "service_account",
+  "project_id": "layna-app",
+  "private_key_id": "…",
+  "private_key": "-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-xxxx@layna-app.iam.gserviceaccount.com",
+  …
+}</code></pre>
+
+  <div class="danger"><b>危険：</b> この JSON は <b>Firestore への読み書きが可能な認証情報</b>です。Git にコミットしたり、共有ドライブに置いたり、Slack で投げたりしないでください。Worker Secret に登録したら、ローカルからは削除して構いません。</div>
+</div>
+
+<!-- ================================================================ -->
+<div class="step" id="s6">
+  <div class="head"><div class="n">6</div><div class="t">Worker シークレット・環境変数</div></div>
+
+  <h3>6-1. サービスアカウント JSON を Secret として登録</h3>
+  <p><code>laycat-r2-worker</code> フォルダで下記を実行します。</p>
+  <pre><code>wrangler secret put FIREBASE_SERVICE_ACCOUNT</code></pre>
+  <p>プロンプトが「Enter the secret value:」と表示されたら、ステップ 5 でダウンロードした JSON の中身を<b>そのまま貼り付け</b>ます（改行を含む複数行のままで OK）。改行の扱いがうまくいかない場合は、JSON を 1 行に整形（内部の <code>\n</code> はそのまま残す）してから貼り付けます。</p>
+
+  <div class="note"><b>MEMO：</b> Worker Secret はダッシュボード上でも読み出せない暗号化ストレージに保存されます。<code>wrangler.toml</code> や Git には残りません。</div>
+
+  <h3>6-2. デプロイ</h3>
+  <pre><code>wrangler deploy</code></pre>
+  <p>成功すると、こんな URL が発行されます：</p>
+  <pre><code>https://laycat-r2-api.&lt;your-subdomain&gt;.workers.dev</code></pre>
+  <p>この URL を控えておいてください（ステップ 7 で LayCAT に登録します）。</p>
+
+  <h3>6-3. Cloudflare ダッシュボードでの追加設定（任意）</h3>
+  <p>デプロイ後、Cloudflare の <span class="ui">Workers &amp; Pages</span> から作成した Worker を開き、以下を確認/追加できます。</p>
+  <ul>
+    <li><b>環境変数</b>（<code>ALLOW_ORIGIN</code> 等）を GUI からも編集可</li>
+    <li><b>カスタムドメイン</b>を設定して <code>https://r2.your-domain.com</code> のような URL に置き換え可</li>
+    <li><b>ログ／メトリクス</b>で Worker の呼び出し数・エラー率を確認可</li>
+  </ul>
+</div>
+
+<!-- ================================================================ -->
+<div class="step" id="s7">
+  <div class="head"><div class="n">7</div><div class="t">LayCAT 側の接続設定</div></div>
+
+  <h3>7-1. Worker URL を LayCAT に登録</h3>
+  <p>LayCAT を開き、環境設定（歯車アイコン）から <b>Cloudflare R2 エンドポイント</b>欄に、ステップ 6 で発行された Worker の URL を貼り付けます。</p>
+
+  <div class="note"><b>MEMO：</b> BYO R2 の UI は現在準備中です（β 期間中は運営が代行して設定します）。運営に Worker の URL を伝えてください。</div>
+
+  <h3>7-2. アクセス許可の登録</h3>
+  <p>Worker は LayCAT の <code>laynaAccess</code> に登録されたメールアドレスからのリクエストのみ受け付けます。<b>プロジェクトを操作するメンバーのメールアドレス</b>を運営に共有し、アクセス管理コンソールから登録してもらってください。</p>
+
+  <h3>7-3. 新規プロジェクト作成時に R2 モードを選択</h3>
+  <p>プロジェクト作成画面で、保存先として <b>Cloudflare R2</b> を選択します。既存のフォルダ運用プロジェクトはそのまま維持され、影響を受けません。</p>
+
+  <div class="tip"><b>ヒント：</b> ローカルフォルダ運用と R2 運用は<b>プロジェクト単位で共存</b>できます。徐々に新規から R2 に切り替えていく運用が可能です。</div>
+</div>
+
+<!-- ================================================================ -->
+<div class="step" id="s8">
+  <div class="head"><div class="n">8</div><div class="t">動作確認</div></div>
+
+  <h3>8-1. R2 プロジェクトを 1 つ作る</h3>
+  <p>LayCAT で新規プロジェクトを R2 モードで作成し、動画を 1 本アップロードします。アップロード中にエラーが出なければ OK。</p>
+
+  <h3>8-2. Cloudflare R2 ダッシュボードで確認</h3>
+  <p>R2 のバケット詳細画面を開き、以下のキーが作られていることを確認します。</p>
+  <pre><code>projects/&lt;projectId&gt;/laycat.project.json
+projects/&lt;projectId&gt;/media/&lt;video-id&gt;.mp4</code></pre>
+
+  <h3>8-3. Worker ログを確認</h3>
+  <p>Cloudflare ダッシュボードの Workers 画面から、リアルタイムログ（<span class="ui">Logs</span> / <span class="ui">Real-time Logs</span>）を開くと、LayCAT からのリクエストが 200 系で返っているのが見えます。401/403 が続く場合はステップ 10（トラブルシュート）を参照。</p>
+</div>
+
+<!-- ================================================================ -->
+<div class="step" id="s9">
+  <div class="head"><div class="n">9</div><div class="t">料金の目安</div></div>
+
+  <table class="tbl">
+    <thead><tr><th>項目</th><th>無料枠</th><th>超過分の単価</th></tr></thead>
+    <tbody>
+      <tr><td>ストレージ</td><td>10 GB/月</td><td><b>$0.015 / GB / 月</b>（1 TB ≒ 月 $15）</td></tr>
+      <tr><td>Class A（書き込み系）</td><td>100 万回/月</td><td>$4.50 / 100 万回</td></tr>
+      <tr><td>Class B（読み取り系）</td><td>1000 万回/月</td><td>$0.36 / 100 万回</td></tr>
+      <tr><td>エグレス</td><td>制限なし</td><td><b>$0</b></td></tr>
+      <tr><td>Workers 呼び出し</td><td>10 万回/日</td><td>$5/月から Paid プラン</td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip"><b>目安：</b> 数名〜十数名で 4K 動画中心のレビューを回す想定でも、当面は無料枠内に収まる規模です。超過しても月 $10〜30 程度の想定。</div>
+</div>
+
+<!-- ================================================================ -->
+<div class="step" id="s10">
+  <div class="head"><div class="n">10</div><div class="t">トラブルシュート</div></div>
+
+  <h3>デプロイ時のエラー</h3>
+  <ul>
+    <li><b>Missing binding: R2</b> → <code>wrangler.toml</code> の <code>[[r2_buckets]]</code> セクションが抜けている／バケット名が誤っている。</li>
+    <li><b>Authentication error / You need to login</b> → <code>wrangler login</code> を再実行。ブラウザで別アカウントにログイン中だと誤ったアカウントで承認しがち。</li>
+    <li><b>Script too large</b> → 巨大な依存を入れていないか確認（本 Worker は依存なしで動くはず）。</li>
+  </ul>
+
+  <h3>ランタイムエラー</h3>
+  <ul>
+    <li><b>401 / 403</b> → Firebase ID トークン期限切れ、<code>laynaAccess</code> に未登録、別プロジェクトのキーへアクセス、のいずれか。LayCAT で再ログインして試す。</li>
+    <li><b>404</b> → バケット内にファイルが無いだけ。初回書き込み前の GET は 404 が正常。</li>
+    <li><b>CORS エラー</b> → Worker の <code>ALLOW_ORIGIN</code> に現在のオリジンが含まれていない。<code>wrangler.toml</code> の <code>[vars]</code> を修正して <code>wrangler deploy</code>。</li>
+    <li><b>500 Internal Error</b> → Worker のログ（Real-time Logs）でスタックトレースを確認。多くは <code>FIREBASE_SERVICE_ACCOUNT</code> Secret の JSON が壊れているケース。</li>
+  </ul>
+
+  <h3>データ関連</h3>
+  <ul>
+    <li><b>プロジェクトを削除したのに R2 にファイルが残る</b> → LayCAT からの <code>DELETE</code> は非同期でバケット内をループ削除します。数十秒〜数分待って再確認。残る場合は Cloudflare ダッシュボードから手動削除可。</li>
+    <li><b>ローカル運用 → R2 移行</b> → 現状は手動移行のみ（新規プロジェクトを R2 で作り、動画を再アップロード）。自動移行ツールは今後対応予定。</li>
+  </ul>
+
+  <h3>公式ドキュメント</h3>
+  <ul>
+    <li>Cloudflare R2: <a href="https://developers.cloudflare.com/r2/" target="_blank" rel="noopener">https://developers.cloudflare.com/r2/</a></li>
+    <li>Cloudflare Workers: <a href="https://developers.cloudflare.com/workers/" target="_blank" rel="noopener">https://developers.cloudflare.com/workers/</a></li>
+    <li>wrangler CLI: <a href="https://developers.cloudflare.com/workers/wrangler/" target="_blank" rel="noopener">https://developers.cloudflare.com/workers/wrangler/</a></li>
+    <li>Firebase Admin SDK（サービスアカウント）: <a href="https://firebase.google.com/docs/admin/setup" target="_blank" rel="noopener">https://firebase.google.com/docs/admin/setup</a></li>
+  </ul>
+</div>
+
+<!-- ================================================================ -->
+<div class="faq">
+  <h2>よくある質問</h2>
+
+  <details>
+    <summary>BYO と Managed の違いは？</summary>
+    <div class="body">
+      <p><b>Managed（運営提供）：</b> 運営の R2 バケットに保存。セットアップ不要ですぐ使える。ストレージ・転送費用は運営持ち。</p>
+      <p><b>BYO：</b> 自分の Cloudflare アカウントに保存。セットアップは 30〜60 分必要。ストレージ・転送費用は自己負担だが、無料枠内で収まる想定。データを完全に自分の管理下に置ける。退会時もバケットごと自分で削除できる。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>1 つの Worker を複数チームで共有できますか？</summary>
+    <div class="body">
+      <p>技術的には可能ですが推奨しません。Worker のコストとリクエスト数が全チーム分になるうえ、障害時の影響範囲も広がります。<b>1 チーム = 1 Worker + 1 バケット</b>の運用を推奨します。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>バケット名を変えたい</summary>
+    <div class="body">
+      <p><code>wrangler.toml</code> の <code>bucket_name</code> を書き換えて <code>wrangler deploy</code> するだけです。ただし<b>既存データの移行は自動では行われません</b>。プロジェクトを新規作成し直すか、Cloudflare の <a href="https://developers.cloudflare.com/r2/data-migration/" target="_blank" rel="noopener">Super Slurper</a> 等で内容をコピーしてください。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Cloudflare のダッシュボード表記が本ドキュメントと違う</summary>
+    <div class="body">
+      <p>Cloudflare の UI は年に数回更新されます。本ドキュメントは執筆時点のものなので、細部は変わっている可能性があります。<b>操作の目的</b>（バケット作成／Worker デプロイ／Secret 登録）は変わらないので、UI 内検索や公式ドキュメントで対応する項目を探してください。それでも見つからない場合は運営までお問い合わせください。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>途中で失敗したらどうする？</summary>
+    <div class="body">
+      <p>各ステップは<b>単独でやり直せる</b>ように分けています。バケット・Worker・Secret はいずれも上書き作成／再デプロイで問題ありません。ゼロからやり直したい場合は、Cloudflare ダッシュボードから Worker とバケットを削除してステップ 3 から再開してください。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Cloudflare 以外のオブジェクトストレージは使えますか？</summary>
+    <div class="body">
+      <p>現状は R2 のみ対応です。S3 / GCS / Backblaze B2 なども構造的には可能ですが、<b>エグレス無料</b>という R2 の利点が動画中心のワークフローに最も適しているため、当面は R2 一本で提供する予定です。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>この手順書が古くなっていたら？</summary>
+    <div class="body">
+      <p>LayCAT の運営（<a href="mailto:ogusho1101@gmail.com">ogusho1101@gmail.com</a>）まで連絡いただければ更新します。「このステップの画面が今こうなってた」というスクリーンショット付きで報告してもらえると助かります。</p>
+    </div>
+  </details>
+</div>
+
+</div>
+
+<footer>
+  <div><a href="intro.html">紹介</a> · <a href="guide.html">はじめ方</a> · <a href="pricing.html">料金</a></div>
+  <div style="margin-top:12px;color:var(--text3);font-size:11px">© LayCAT — BYO R2 セットアップ手順書</div>
+</footer>
+
+</body>
+</html>
