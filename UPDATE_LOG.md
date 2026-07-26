@@ -13,6 +13,7 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.010) ライトテーマ追加。ヘッダの通知ベル右に「テーマ切替」ボタン（月／太陽アイコン）を追加。`:root[data-theme="light"]` で明色パレットに切替、localStorage `laycat_theme` に永続化。既定はダーク。`<head>` の早期スクリプトで保存済みテーマを最速反映して FOUC を防止。
 - 層① サービス層のロールを 3 択（運営／管理者／メンバー）→ 2 択（運営／メンバー）に統一。「管理者(adminEmails)」ロールを廃止：
   - `access-console.html`：tiers() から admins を削除し、UI の管理者リスト・「→管理者」ボタン・add role の管理者オプションを撤去。setRole の 'admin' ターゲットは互換のため受け取っても 'member' として扱う。旧 adminEmails データは setRole の次回保存で自動的に allowedEmails に統合される（べき等）。isAuditor は isEditor と同義に。RULES の isStaff() から adminEmails 参照を削除
   - `worker/laycat-r2-api.js`：isAdminEmail を廃止、isStaffEmail（operatorEmails のみ）に統合。互換のため `const isAdminEmail = isStaffEmail` で旧関数名も生存。checkProjectAcl の admin エスカレーションは「運営エスカレーション」に改名（reason: 'operator'）
