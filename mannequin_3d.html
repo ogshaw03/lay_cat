@@ -108,6 +108,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 
 // ---------- Scene setup ----------
 const stage = document.getElementById('stage');
@@ -308,6 +309,16 @@ function setHighlight(boneName){
   });
 }
 
+// TransformControls: rotate gizmo on selected bone (3D interactive manipulator).
+// Auto-disables OrbitControls while dragging so the camera doesn't fight the bone rotation.
+const tc = new TransformControls(camera, renderer.domElement);
+tc.setMode('rotate');
+tc.setSize(0.7);
+tc.setSpace('local');   // Rotate around bone's own axes (natural for FK)
+scene.add(tc);
+tc.addEventListener('dragging-changed', ev => { controls.enabled = !ev.value; });
+tc.addEventListener('objectChange', () => { if(selected) syncSlidersFromBone(); });
+
 function selectBone(name){
   selected = name;
   setHighlight(name);
@@ -317,11 +328,13 @@ function selectBone(name){
     info.textContent = 'ボーンをクリックして選択';
     info.classList.add('none');
     ctl.style.display = 'none';
+    tc.detach();
   } else {
     info.textContent = displayName(name);
     info.classList.remove('none');
     ctl.style.display = '';
     syncSlidersFromBone();
+    tc.attach(bones[name]);
   }
   refreshBoneList();
 }
@@ -339,6 +352,7 @@ function displayName(n){
 
 canvas.addEventListener('pointerdown', ev=>{
   if(ev.button !== 0) return;
+  if(tc.dragging) return;   // TransformControls をドラッグ中はボーン選択を封じる
   const r = canvas.getBoundingClientRect();
   mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
   mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
@@ -504,8 +518,10 @@ function snapshotDataURL(w=800, h=800){
   renderer.setPixelRatio(1);
   renderer.setSize(w, h, false);
   renderer.setClearColor(0x000000, 0);   // transparent
-  // Hide grid for snapshot
+  // Hide grid and gizmo for snapshot
   grid.visible = false;
+  const tcVisPrev = tc.visible;
+  tc.visible = false;
   // Restore highlight temporarily
   const hlSnapshot = [...highlighted];
   for(const m of hlSnapshot){ m.material = origMat.get(m) || MAT_BODY; }
@@ -514,6 +530,7 @@ function snapshotDataURL(w=800, h=800){
   // Restore
   for(const m of hlSnapshot){ m.material = MAT_HL; }
   grid.visible = true;
+  tc.visible = tcVisPrev;
   renderer.setClearColor(0x0e0e12, 1);
   renderer.setPixelRatio(oldPR);
   renderer.setSize(oldSize.x, oldSize.y, false);
@@ -600,6 +617,8 @@ if(isHeadless){
   rt.style.gridTemplateColumns='1fr';
   rt.style.gridTemplateRows='1fr';
   controls.enabled = false;
+  tc.visible = false;    // headless では TransformControls は不要（描画から外す）
+  tc.enabled = false;
   // Signal readiness once first frame renders
   requestAnimationFrame(()=>{
     try{ (window.parent || window.opener || window).postMessage({source:'laycat_mannequin_headless', ready:true}, '*'); }catch(_){}
@@ -625,6 +644,20 @@ if(isHeadless){
           t.y + dist * Math.sin(pitch),
           t.z + dist * Math.cos(pitch) * Math.cos(yaw)
         );
+        // Roll (Z-axis of camera view): rotate camera up vector around the view direction
+        const roll = d.cameraRoll || 0;
+        if(roll){
+          const view = new THREE.Vector3().subVectors(t, camera.position).normalize();
+          const worldUp = new THREE.Vector3(0, 1, 0);
+          const right = new THREE.Vector3().crossVectors(view, worldUp);
+          if(right.lengthSq() < 1e-6) right.set(1,0,0);
+          right.normalize();
+          const up = new THREE.Vector3().crossVectors(right, view).normalize();
+          up.applyAxisAngle(view, roll);
+          camera.up.copy(up);
+        } else {
+          camera.up.set(0,1,0);
+        }
         camera.lookAt(t);
       }
       const w = d.width || 600, h = d.height || 600;
