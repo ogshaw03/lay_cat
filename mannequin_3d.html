@@ -586,6 +586,56 @@ function tick(){
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
+
+// ---------- Headless mode (hidden iframe rendering) ----------
+// URL ?headless=1 で UI を隠し、親ウィンドウからの postMessage コマンドで
+// pose とカメラ角度を受け取り PNG を返す。laycat_dev.html のアノテ内 3D 回転で使用。
+const isHeadless = new URLSearchParams(location.search).get('headless') === '1';
+
+if(isHeadless){
+  document.querySelector('header').style.display='none';
+  document.querySelector('aside').style.display='none';
+  document.getElementById('hud').style.display='none';
+  const rt=document.getElementById('root');
+  rt.style.gridTemplateColumns='1fr';
+  rt.style.gridTemplateRows='1fr';
+  controls.enabled = false;
+  // Signal readiness once first frame renders
+  requestAnimationFrame(()=>{
+    try{ (window.parent || window.opener || window).postMessage({source:'laycat_mannequin_headless', ready:true}, '*'); }catch(_){}
+  });
+
+  window.addEventListener('message', ev=>{
+    const d = ev.data;
+    if(!d || d.source !== 'laycat_mannequin_cmd') return;
+    if(d.cmd === 'render'){
+      if(d.pose) loadPose(d.pose);
+      // Camera as spherical coords around controls.target if provided
+      if(d.cameraYaw != null || d.cameraPitch != null || d.cameraDistance != null){
+        const t = controls.target;
+        const dx = camera.position.x - t.x, dy = camera.position.y - t.y, dz = camera.position.z - t.z;
+        const curDist = Math.max(0.001, Math.hypot(dx, dy, dz));
+        const curYaw = Math.atan2(dx, dz);
+        const curPitch = Math.asin(Math.max(-1, Math.min(1, dy / curDist)));
+        const yaw = d.cameraYaw != null ? d.cameraYaw : curYaw;
+        const pitch = d.cameraPitch != null ? Math.max(-1.4, Math.min(1.4, d.cameraPitch)) : curPitch;
+        const dist = d.cameraDistance != null ? d.cameraDistance : curDist;
+        camera.position.set(
+          t.x + dist * Math.cos(pitch) * Math.sin(yaw),
+          t.y + dist * Math.sin(pitch),
+          t.z + dist * Math.cos(pitch) * Math.cos(yaw)
+        );
+        camera.lookAt(t);
+      }
+      const w = d.width || 600, h = d.height || 600;
+      // Render one frame so snapshot reflects current state
+      renderer.render(scene, camera);
+      const img = snapshotDataURL(w, h);
+      try{ (window.parent || window.opener || window).postMessage({source:'laycat_mannequin_headless', reqId: d.reqId, img}, '*'); }catch(_){}
+    }
+  });
+}
+
 tick();
 
 // Expose for debugging

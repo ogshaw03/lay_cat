@@ -13,7 +13,19 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
-- (dev v2026.07.24.011) 3D マネキン（ポーズ指示）Phase 1 テスト実装。
+- (dev v2026.07.24.012) 3D マネキン Phase 1.5：アノテ内で移動／拡縮／3D 回転／再編集を実装。
+  - **表示バグ修正**：レビューに反映で 1 回目が表示されず 2 回目で表示される問題。原因は `new Image()` の非同期デコード完了前に drawAll が走っていたため。`_mannLoadAsync` を追加して push 前に画像デコード完了を待つ設計に変更。加えて `_mannRedrawCbs` に登録された全レビュー窓へ onload で再描画通知（複数窓・複数レイヤーでも自動追従）。
+  - **🎭 3D をツール化**：ボタンを toggle 化し `tool='mann'` で有効。有効時のみキャンバスでマネキン選択操作が可能（描画ツールを邪魔しない）。カーソルは move。
+  - **アノテ内インライン編集**（案 B）：
+    - 何もない場所をクリック → その位置に新規マネキンを配置（3D エディタを開いて反映後、クリック地点に登場）
+    - マネキン本体をドラッグ → 移動
+    - 四隅ハンドル（紫の小四角）をドラッグ → 拡縮
+    - **Shift + ドラッグ → 3D 回転**（水平＝ヨー左右／垂直＝ピッチ俯仰）
+    - ダブルクリック → 3D エディタを開いてポーズ再編集（直前ポーズを LocalStorage 経由で自動ロード）
+    - ツール選択中は選択枠（紫の点線）＋四隅ハンドル＋操作ヒントを描画
+  - **3D 回転の裏側**：`mannequin_3d.html?headless=1` を隠し iframe に常駐させ、ドラッグ中は throttle して `postMessage {cmd:'render', pose, cameraYaw, cameraPitch}` を送信 → 新 PNG が返り次第 `p.img` を差し替えて `drawAll()`。UI・OrbitControls を無効化した headless モードを mannequin_3d.html に追加（Three.js scene は共通）。
+  - `mannequin` アノテに `viewYaw` / `viewPitch` フィールドを追加。`cloneDrawItem` はまだ含めていない（次コミットで追加予定）が、pending の in-memory 編集はできる。
+  - `cleanup()` で `_mannRedrawCbs.delete(_mannCb)` を呼び、アノテ窓を閉じた後にゾンビコールバックが発火しないように。
   - 新規 `mannequin_3d.html`：別ウィンドウで開く 3D ポーズエディタ。Three.js（0.160 CDN + importmap）＋ 手続き型ヒューマノイド（Cylinder+Sphere+Box プリミティブ）＋ OrbitControls。
   - 21 ボーン（root/spine/chest/neck/head、左右 shoulder/upperArm/lowerArm/hand、左右 hip/upperLeg/lowerLeg/foot）。ボーンクリックでハイライト＋右パネルに XYZ 回転スライダ（初期ポーズからのデルタ・度単位）。プリセット 6 種（T ポーズ／A ポーズ／立ち／座り／走り／手を振る）。
   - 「レビューに反映 →」ボタンで 600×600 の透明 PNG スナップショット + ポーズ JSON（各ボーンのオイラー角＋カメラ位置）を postMessage で opener に返す。「キャンセル」でも postMessage を送って呼出側の onMsg を確実に解除。
