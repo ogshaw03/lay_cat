@@ -13,7 +13,14 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
-- (dev v2026.07.24.022) 自動リフレッシュで他ユーザーのステータス変更が反映されないバグを修正。
+- (dev v2026.07.24.023) アノテ UI 改善（ペン/消しゴム分離・担当バッジ・投げ縄選択・工程順序）
+  - **ペン／消しゴムを別ボタン化**：paintBtn の 3 状態循環をやめ、`penBtn(✎)` と `eraserBtn(⌫)` の独立 toggle に。両方アイコンのみ・active 状態で判別。既存の `paintBtn` / `drawBtn` / `eraserBtn` 参照は penBtn への alias で互換維持。
+  - **アノテ窓のトップに担当者／レビュアーバッジ**：ステータスバッジの右に「担当: ...」「レビュー: ...」チップを表示。ショット単位の assignee/reviewer を参照。
+  - **投げ縄（lasso）選択ツール追加**：`◇` ボタンで有効化。フリーハンドで囲んで現在フレーム＋現在レイヤーのペンストロークを選択（過半数の点が polygon 内で判定）。選択後は選択枠+4 隅ハンドル+上端回転ハンドル+情報バーを描画。
+    - 選択枠内をドラッグ = 移動、四隅 = 拡縮、上端ハンドル = 回転、Delete = 削除、Esc = 選択解除
+    - pending + committed（送信済み）両対応。committed 変更時は `n.edited=true` と `committedDirty=true` を立てて自動保存に載せる
+  - **全工程未着手ショットの先頭工程表示**：`repOf` が `stageRankCmp`（LAY/ANIM ハードコード順）で再ソートしていたのを廃止し、`childrenOf` の工程設定順（`section.stages` 由来）をそのまま採用。全工程未着手のショットは先頭工程が代表となり、その名前（例：lay）と担当者バッジがショットタイル・行に表示される。工程バッジは動画無しの時は半透明で控えめ表示、未着手バッジも別途出す。
+  - APP_VERSION を 2026.07.24.023 に。
   - 原因：`autoRefresh` → `refreshFromFolders` → `_unionRemoteIntoDB` → `_mergeNodeInto` が 3-way マージ用の「local 優先・空欄のみ remote で補完」実装。他ユーザーがショットの status / assignee / reviewer を変更しても local 側の値が空でない限り上書きされず、タブ復帰しても見た目が変わらなかった。
   - 修正：`_mergeNodeInto(a, b, opts)` に `preferRemote` オプションを追加。`preferRemote=true` の場合は remote に値があれば local を上書き（scalar 8 種類 ＋ 配列 4 種類）。
   - `refreshFromFolders` は「未保存変更が無い（`_saveCache.proj[id]` と現在の projectData が一致）」プロジェクトのみ `preferRemote:true` で呼び出す。編集中のプロジェクトは従来通り union のみで保守的に取り込む。
