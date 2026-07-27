@@ -13,7 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
-- (dev v2026.07.24.021) 3D マネキン：黄色 E リングの回転方向をアノテ実体験に合わせて再反転（angle を negate）。
+- (dev v2026.07.24.022) 自動リフレッシュで他ユーザーのステータス変更が反映されないバグを修正。
+  - 原因：`autoRefresh` → `refreshFromFolders` → `_unionRemoteIntoDB` → `_mergeNodeInto` が 3-way マージ用の「local 優先・空欄のみ remote で補完」実装。他ユーザーがショットの status / assignee / reviewer を変更しても local 側の値が空でない限り上書きされず、タブ復帰しても見た目が変わらなかった。
+  - 修正：`_mergeNodeInto(a, b, opts)` に `preferRemote` オプションを追加。`preferRemote=true` の場合は remote に値があれば local を上書き（scalar 8 種類 ＋ 配列 4 種類）。
+  - `refreshFromFolders` は「未保存変更が無い（`_saveCache.proj[id]` と現在の projectData が一致）」プロジェクトのみ `preferRemote:true` で呼び出す。編集中のプロジェクトは従来通り union のみで保守的に取り込む。
+  - 取り込み後は `_saveCache` を新しい状態で更新し、次回リフレッシュも `clean` 判定が通るようにする。
+  - 効果：他ユーザーがステータスを変更 → 30 秒以内 or タブ復帰時に自分の画面にも反映されるように。
+  - APP_VERSION を 2026.07.24.022 に。
   - APP_VERSION を 2026.07.24.021 に。
   - `eyeAxis` を pivot→camera 方向に変更し、ring basis を u=worldUp×axis / v=axis×u に。
   - これで「ドラッグ CCW = キャラも CCW」に一致（右手則で軸が視点向きなら CCW が正）。
