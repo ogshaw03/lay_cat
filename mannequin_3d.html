@@ -533,18 +533,20 @@ function computeGizmoRings(cam){
   const zAxis = new THREE.Vector3().setFromMatrixColumn(m, 2).normalize();
   const pivot = new THREE.Vector3(0, 1.0, 0);
   const N = 48;
-  // Each returned point: [u, v, isFront] — isFront = 1 if point is closer to camera than pivot
-  // (front side of the ring facing the viewer), 0 if occluded on the back side.
-  // Annotation side draws only contiguous front segments (matches TransformControls' depth-tested look).
-  const pivotDist = pivot.distanceTo(cam.position);
+  // Each returned point: [u, v, isFront]. "Front" is decided by projecting the offset
+  // (worldPt - pivot) onto the vector from pivot TOWARD the camera. Non-negative → visible
+  // (equator + front half). This correctly keeps the E ring fully visible (offset ⊥ view axis)
+  // while hiding only the true back half of yaw / pitch / roll rings.
+  const viewFromPivot = new THREE.Vector3().subVectors(cam.position, pivot).normalize();
   function makeRing(u, v, radius){
     const pts = new Array(N + 1);
     const tmp = new THREE.Vector3();
+    const off = new THREE.Vector3();
     for(let i = 0; i <= N; i++){
       const t = i / N * Math.PI * 2;
       tmp.copy(pivot).addScaledVector(u, radius * Math.cos(t)).addScaledVector(v, radius * Math.sin(t));
-      const dist = tmp.distanceTo(cam.position);
-      const front = dist <= pivotDist + 0.005 ? 1 : 0;
+      off.subVectors(tmp, pivot);
+      const front = off.dot(viewFromPivot) >= -0.001 ? 1 : 0;
       const p = tmp.clone().project(cam);
       pts[i] = [(p.x + 1) / 2, 1 - (p.y + 1) / 2, front];
     }
