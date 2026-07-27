@@ -521,8 +521,10 @@ function loadPose(pose){
 }
 
 // ---------- Ring projection ----------
-// Compute 3 gizmo rings' polylines in the PNG's normalized (0..1) coordinate space,
-// using the character's local axes (rotated by characterGroup) projected through the given camera.
+// Compute 4 gizmo rings' polylines in the PNG's normalized (0..1) coordinate space:
+//   - yaw / pitch / roll  = character-local axes (rotated by characterGroup)
+//   - eye  = perpendicular to the camera view direction (screen-space roll, TransformControls' "E")
+// Also returns the world-space eye axis so the annotation side can compose a world rotation.
 function computeGizmoRings(cam){
   characterGroup.updateMatrixWorld(true);
   const m = characterGroup.matrixWorld;
@@ -530,29 +532,39 @@ function computeGizmoRings(cam){
   const yAxis = new THREE.Vector3().setFromMatrixColumn(m, 1).normalize();
   const zAxis = new THREE.Vector3().setFromMatrixColumn(m, 2).normalize();
   const pivot = new THREE.Vector3(0, 1.0, 0);
-  const N = 64;
+  const N = 48;
+  // Each returned point: [u, v, isFront] — isFront = 1 if point is closer to camera than pivot
+  // (front side of the ring facing the viewer), 0 if occluded on the back side.
+  // Annotation side draws only contiguous front segments (matches TransformControls' depth-tested look).
+  const pivotDist = pivot.distanceTo(cam.position);
   function makeRing(u, v, radius){
     const pts = new Array(N + 1);
+    const tmp = new THREE.Vector3();
     for(let i = 0; i <= N; i++){
       const t = i / N * Math.PI * 2;
-      const p = new THREE.Vector3().copy(pivot)
-        .addScaledVector(u, radius * Math.cos(t))
-        .addScaledVector(v, radius * Math.sin(t));
-      p.project(cam);
-      pts[i] = [(p.x + 1) / 2, 1 - (p.y + 1) / 2];   // NDC → PNG 0..1
+      tmp.copy(pivot).addScaledVector(u, radius * Math.cos(t)).addScaledVector(v, radius * Math.sin(t));
+      const dist = tmp.distanceTo(cam.position);
+      const front = dist <= pivotDist + 0.005 ? 1 : 0;
+      const p = tmp.clone().project(cam);
+      pts[i] = [(p.x + 1) / 2, 1 - (p.y + 1) / 2, front];
     }
     return pts;
   }
-  // Ring parametrization must match right-hand rotation direction so that dragging along
-  // the ring's positive tangent corresponds to positive rotation for that axis.
-  // For axis a, use (u, v) with v = a × u. In Three.js:
-  //   Yaw (Y):   R_Y(+t) sends +X → -Z, so ring goes X → -Z.
-  //   Pitch (X): R_X(+t) sends +Y → +Z, so ring goes Y → +Z.
-  //   Roll (Z):  R_Z(+t) sends +X → +Y, so ring goes X → +Y.
+  // Eye axis (view direction, from camera to target) and orthonormal basis for the outer ring.
+  const eyeAxis = new THREE.Vector3().subVectors(pivot, cam.position).normalize();
+  const worldUp = new THREE.Vector3(0, 1, 0);
+  let right = new THREE.Vector3().crossVectors(eyeAxis, worldUp);
+  if(right.lengthSq() < 1e-6) right = new THREE.Vector3(1, 0, 0);
+  right.normalize();
+  const upE = new THREE.Vector3().crossVectors(right, eyeAxis).normalize();
+  const R_INNER = 0.70;   // yaw / pitch / roll — all same radius so they don't float
+  const R_EYE = 0.90;     // outer ring (like TransformControls' yellow E)
   return {
-    yaw:   makeRing(xAxis, zAxis.clone().negate(), 0.70),
-    pitch: makeRing(yAxis, zAxis, 0.70),
-    roll:  makeRing(xAxis, yAxis, 0.82)
+    yaw:   makeRing(xAxis, zAxis.clone().negate(), R_INNER),
+    pitch: makeRing(yAxis, zAxis, R_INNER),
+    roll:  makeRing(xAxis, yAxis, R_INNER),
+    eye:   makeRing(right, upE, R_EYE),
+    eyeAxis: [eyeAxis.x, eyeAxis.y, eyeAxis.z]
   };
 }
 

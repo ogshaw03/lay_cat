@@ -13,7 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
-- (dev v2026.07.24.017) 3D マネキン：Quaternion 累積で真の character-local 回転／リング hover ハイライト／エディタが apply で閉じないように。
+- (dev v2026.07.24.018) 3D マネキン：4 軸目「E（Eye）」黄色ジンバル追加／背面リング非表示／半径統一／ドラッグ時 400px 軽量描画。
+  - **E ジンバル追加**：TransformControls の "E" 相当。カメラ視線軸まわりの WORLD 回転（画面平面上ロール）。黄色・外側の環として描画。ドラッグは左乗算（`q_new = R_world(eyeAxis) × q_start`）で世界軸まわりの回転を実現。
+  - **半径統一**：yaw / pitch / roll をすべて 0.70 に統一（青のロールが 0.82 で浮いていた問題を解消）。E は 0.90 で外側に配置。
+  - **背面リング非表示**：iframe が各リング点に `front` フラグ（`isFront = 点までのカメラ距離 ≤ pivot までのカメラ距離`）を付与して返す。アノテ側は front セグメントのみ描画・hit test も背面はスキップ。TransformControls の depth-tested な見た目に近づく。
+  - **ドラッグ中は 400×400 で軽量描画**：`_mannScheduleRender(p, 400)` を rotation drag 中に使用。ドラッグ終了で 600×600 の高解像度に再描画。3D シーンの再レンダー + toDataURL コストが約 40% 削減。
+  - `p.eyeAxis` を render 応答から取得して保持（世界軸情報）。
+  - APP_VERSION を 2026.07.24.018 に。
   - **回転を quaternion 累積に**：viewYaw/Pitch/Roll の固定 Euler（YXZ）廃止 → `viewQuat` を保持。各ドラッグは `viewQuat_start * R(local_axis, angle)` の右乗算（INTRINSIC）で、TransformControls の rotate/local と完全一致。
     - これにより、pitch を先にかけてから yaw ドラッグしても、yaw はキャラの傾いた縦軸まわりに回る（以前は常に world Y だった）。
   - **リング hover ハイライト**：mann ツール中はマウス位置でリング判定 → `mannHoverAxis` を更新して該当リングを太く鮮やかに描画（TransformControls の hover と同じ）。
