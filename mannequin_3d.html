@@ -586,6 +586,8 @@ function snapshotDataURL(w=800, h=800){
 }
 
 // ---------- Apply / cancel ----------
+// Apply: send pose + snapshot to opener but keep window OPEN so user can iterate
+// (like a Photoshop preview: tweak → apply → tweak → apply). Cancel closes.
 function sendResult(action){
   const pose = serializePose();
   const img = action === 'apply' ? snapshotDataURL(600, 600) : null;
@@ -595,13 +597,18 @@ function sendResult(action){
       window.opener.postMessage(payload, '*');
     }
   } catch(_){}
-  // Fallback via localStorage handoff
-  try {
-    localStorage.setItem('laycat_mannequin_result', JSON.stringify(payload));
-  } catch(_){}
-  window.close();
+  try { localStorage.setItem('laycat_mannequin_result', JSON.stringify(payload)); } catch(_){}
+  if(action !== 'apply') window.close();
 }
-document.getElementById('btnApply').onclick = ()=> sendResult('apply');
+document.getElementById('btnApply').onclick = ()=> {
+  sendResult('apply');
+  // Visual feedback: brief "✓ 反映しました" flash on the button
+  const b = document.getElementById('btnApply');
+  const prev = b.textContent;
+  b.textContent = '✓ 反映しました';
+  b.disabled = true;
+  setTimeout(()=>{ b.textContent = prev; b.disabled = false; }, 900);
+};
 document.getElementById('btnCancel').onclick = ()=> sendResult('cancel');
 document.getElementById('btnReset').onclick = ()=>{
   applyPreset('tpose');
@@ -677,15 +684,20 @@ if(isHeadless){
     if(!d || d.source !== 'laycat_mannequin_cmd') return;
     if(d.cmd === 'render'){
       if(d.pose) loadPose(d.pose);
-      // Apply character rotation (intrinsic YXZ, matching head guide convention).
-      // charYaw/charPitch/charRoll are the new field names; cameraYaw/etc. kept for backward compat.
-      const cy = d.charYaw != null ? d.charYaw : (d.cameraYaw != null ? d.cameraYaw : 0);
-      const cp = d.charPitch != null ? d.charPitch : (d.cameraPitch != null ? d.cameraPitch : 0);
-      const cr = d.charRoll != null ? d.charRoll : (d.cameraRoll != null ? d.cameraRoll : 0);
-      characterGroup.rotation.set(0, 0, 0);
-      characterGroup.rotateY(cy);
-      characterGroup.rotateX(cp);
-      characterGroup.rotateZ(cr);
+      // Character rotation: prefer full quaternion for intrinsic accumulation
+      // (matches TransformControls behavior on the annotation side).
+      // Falls back to Euler charYaw/charPitch/charRoll → YXZ intrinsic for backward compat.
+      if(Array.isArray(d.charQuat) && d.charQuat.length === 4){
+        characterGroup.quaternion.set(d.charQuat[0], d.charQuat[1], d.charQuat[2], d.charQuat[3]);
+      } else {
+        const cy = d.charYaw != null ? d.charYaw : (d.cameraYaw != null ? d.cameraYaw : 0);
+        const cp = d.charPitch != null ? d.charPitch : (d.cameraPitch != null ? d.cameraPitch : 0);
+        const cr = d.charRoll != null ? d.charRoll : (d.cameraRoll != null ? d.cameraRoll : 0);
+        characterGroup.rotation.set(0, 0, 0);
+        characterGroup.rotateY(cy);
+        characterGroup.rotateX(cp);
+        characterGroup.rotateZ(cr);
+      }
       const w = d.width || 600, h = d.height || 600;
       const cam = camera.clone();
       cam.aspect = w / h;

@@ -13,7 +13,15 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
-- (dev v2026.07.24.016) 3D マネキン：緑リング（ヨー）のパラメタ方向を反転して回転方向を修正。
+- (dev v2026.07.24.017) 3D マネキン：Quaternion 累積で真の character-local 回転／リング hover ハイライト／エディタが apply で閉じないように。
+  - **回転を quaternion 累積に**：viewYaw/Pitch/Roll の固定 Euler（YXZ）廃止 → `viewQuat` を保持。各ドラッグは `viewQuat_start * R(local_axis, angle)` の右乗算（INTRINSIC）で、TransformControls の rotate/local と完全一致。
+    - これにより、pitch を先にかけてから yaw ドラッグしても、yaw はキャラの傾いた縦軸まわりに回る（以前は常に world Y だった）。
+  - **リング hover ハイライト**：mann ツール中はマウス位置でリング判定 → `mannHoverAxis` を更新して該当リングを太く鮮やかに描画（TransformControls の hover と同じ）。
+  - **旧データ互換**：`_mannEnsureQuat` で viewYaw/Pitch/Roll を YXZ intrinsic の quaternion に自動変換。
+  - **`_mannRender` は `charQuat`（[x,y,z,w]）を送信**：iframe 側は charQuat 優先で `characterGroup.quaternion.copy` に反映、Euler は互換のため残す。
+  - **レビューに反映で 3D エディタが閉じないように**：`sendResult('apply')` は `window.close()` を呼ばず、ボタンに「✓ 反映しました」を 0.9 秒表示するだけ。連続で apply 可能（Photoshop のようにポーズ調整 → プレビュー反映のループ）。cancel は従来通り閉じる。
+  - **openMannEditor の複数呼び対応**：`_mannActiveHandler` / `_mannActiveEditor` を track し、新しい editor を開く際に古いハンドラを解除＋古い窓を閉じてリスナー重複を防ぐ。apply では handler を残す（連続 apply 対応）。
+  - `cloneDrawItem` は viewQuat を保存対象に。APP_VERSION を 2026.07.24.017 に。
   - mannequin_3d.html の `computeGizmoRings`：ヨーリングの basis v を `+zAxis` → `-zAxis` に。Three.js R_Y(+t) が +X→-Z なので、リングを X→-Z 順に張ることで「ドラッグ方向 = 実際の回転方向」に一致させる。
   - ピッチ・ロールは元々一致していたので変更なし。
   - APP_VERSION を 2026.07.24.016 に。
