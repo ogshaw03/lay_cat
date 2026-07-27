@@ -13,7 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
-- (dev v2026.07.24.019) 3D マネキン：E リング（黄色）が全く見えないバグを修正。
+- (dev v2026.07.24.020) 3D マネキン：黄色 E リングの回転方向を反転修正。
+  - `eyeAxis` を pivot→camera 方向に変更し、ring basis を u=worldUp×axis / v=axis×u に。
+  - これで「ドラッグ CCW = キャラも CCW」に一致（右手則で軸が視点向きなら CCW が正）。
+  - APP_VERSION を 2026.07.24.020 に。
   - 原因：`isFront` を「点までのカメラ距離が pivot 距離以下」で判定していたため、E リング（pivot 平面上の円）は全点が pivot より遠くなり、全部背面扱いで消えていた。yaw/pitch/roll の赤道点も同様に非表示だった。
   - 修正：判定を「offset · (pivot→camera 方向) ≥ -0.001」に。E リング（offset ⊥ 視線）は全点 dot=0 で常に表示、yaw/pitch/roll は真の背面のみ非表示。
   - APP_VERSION を 2026.07.24.019 に。

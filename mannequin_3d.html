@@ -552,13 +552,16 @@ function computeGizmoRings(cam){
     }
     return pts;
   }
-  // Eye axis (view direction, from camera to target) and orthonormal basis for the outer ring.
-  const eyeAxis = new THREE.Vector3().subVectors(pivot, cam.position).normalize();
+  // Eye axis: from pivot TOWARD camera (so right-hand rotation around it = CCW on screen,
+  // matching how people expect an on-screen roll to work).
+  const eyeAxis = new THREE.Vector3().subVectors(cam.position, pivot).normalize();
   const worldUp = new THREE.Vector3(0, 1, 0);
-  let right = new THREE.Vector3().crossVectors(eyeAxis, worldUp);
+  // right on screen = worldUp × eyeAxis   (points to viewer's right for default camera up)
+  let right = new THREE.Vector3().crossVectors(worldUp, eyeAxis);
   if(right.lengthSq() < 1e-6) right = new THREE.Vector3(1, 0, 0);
   right.normalize();
-  const upE = new THREE.Vector3().crossVectors(right, eyeAxis).normalize();
+  // Right-hand basis for positive-rotation tangent: v = eyeAxis × u
+  const upE = new THREE.Vector3().crossVectors(eyeAxis, right).normalize();
   const R_INNER = 0.70;   // yaw / pitch / roll — all same radius so they don't float
   const R_EYE = 0.90;     // outer ring (like TransformControls' yellow E)
   return {
