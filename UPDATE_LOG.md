@@ -13,7 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
-- (dev v2026.07.24.015) 3D マネキン マニピュレータ v3：キャラクター基準の回転 + 3D エディタ同等の挙動。
+- (dev v2026.07.24.016) 3D マネキン：緑リング（ヨー）のパラメタ方向を反転して回転方向を修正。
+  - mannequin_3d.html の `computeGizmoRings`：ヨーリングの basis v を `+zAxis` → `-zAxis` に。Three.js R_Y(+t) が +X→-Z なので、リングを X→-Z 順に張ることで「ドラッグ方向 = 実際の回転方向」に一致させる。
+  - ピッチ・ロールは元々一致していたので変更なし。
+  - APP_VERSION を 2026.07.24.016 に。
   - **回転がキャラクター基準に**：mannequin_3d.html に characterGroup（(0, 1.0, 0) をピボットに）を導入し、root ボーンをその中へ移動。headless render は camera を動かさず、`characterGroup.rotateY(yaw) → rotateX(pitch) → rotateZ(roll)` の順に intrinsic YXZ を適用（顔の向きガイド／3D エディタ TransformControls と同じ順序）。カメラは pose.camera 位置に固定。
   - **リング視覚化を正確に**：iframe が現在の character 軸を PNG 座標に投影した 3 リング polyline を返す（`computeGizmoRings` を Three.js の `Vector3.project(cam)` で 64 点ずつ生成）。アノテ側は polyline を canvas に描画するため、ヨー後にピッチリングが character の局所垂直方向に来る等、character 基準の 3 軸が正しく表示される。
   - **ドラッグを接線ベース化**：クリック点で polyline の接線を取得し、ドラッグ量を接線に投影して回転量に変換（3D エディタの TransformControls と同じ体感）。1 リング周長 ≒ 360° 相当の感度。

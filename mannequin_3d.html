@@ -543,10 +543,16 @@ function computeGizmoRings(cam){
     }
     return pts;
   }
+  // Ring parametrization must match right-hand rotation direction so that dragging along
+  // the ring's positive tangent corresponds to positive rotation for that axis.
+  // For axis a, use (u, v) with v = a × u. In Three.js:
+  //   Yaw (Y):   R_Y(+t) sends +X → -Z, so ring goes X → -Z.
+  //   Pitch (X): R_X(+t) sends +Y → +Z, so ring goes Y → +Z.
+  //   Roll (Z):  R_Z(+t) sends +X → +Y, so ring goes X → +Y.
   return {
-    yaw: makeRing(xAxis, zAxis, 0.70),   // perpendicular to Y (character up)
-    pitch: makeRing(yAxis, zAxis, 0.70), // perpendicular to X (character right)
-    roll: makeRing(xAxis, yAxis, 0.82)   // perpendicular to Z (character forward), slightly larger to sit outside
+    yaw:   makeRing(xAxis, zAxis.clone().negate(), 0.70),
+    pitch: makeRing(yAxis, zAxis, 0.70),
+    roll:  makeRing(xAxis, yAxis, 0.82)
   };
 }
 
