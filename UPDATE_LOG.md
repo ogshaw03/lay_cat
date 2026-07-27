@@ -13,7 +13,18 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
-- (dev v2026.07.24.010) ライトテーマ追加。ヘッダの通知ベル右に「テーマ切替」ボタン（月／太陽アイコン）を追加。`:root[data-theme="light"]` で明色パレットに切替、localStorage `laycat_theme` に永続化。既定はダーク。`<head>` の早期スクリプトで保存済みテーマを最速反映して FOUC を防止。
+- (dev v2026.07.24.011) 3D マネキン（ポーズ指示）Phase 1 テスト実装。
+  - 新規 `mannequin_3d.html`：別ウィンドウで開く 3D ポーズエディタ。Three.js（0.160 CDN + importmap）＋ 手続き型ヒューマノイド（Cylinder+Sphere+Box プリミティブ）＋ OrbitControls。
+  - 21 ボーン（root/spine/chest/neck/head、左右 shoulder/upperArm/lowerArm/hand、左右 hip/upperLeg/lowerLeg/foot）。ボーンクリックでハイライト＋右パネルに XYZ 回転スライダ（初期ポーズからのデルタ・度単位）。プリセット 6 種（T ポーズ／A ポーズ／立ち／座り／走り／手を振る）。
+  - 「レビューに反映 →」ボタンで 600×600 の透明 PNG スナップショット + ポーズ JSON（各ボーンのオイラー角＋カメラ位置）を postMessage で opener に返す。「キャンセル」でも postMessage を送って呼出側の onMsg を確実に解除。
+  - `laycat_dev.html`：
+    - アノテーションツールバーに `🎭 3D` ボタンを追加（顔の向きの右）。押すと popup で mannequin_3d.html を開き、応答を待って pending に `{kind:'mannequin', cx, cy, w, img, pose, f, layer}` を追加。
+    - 同フレーム＋同レイヤーに既存 mannequin があれば「再編集モード」：LocalStorage 経由でポーズを渡して開き、返ってきたら差し替え。
+    - `paintStrokeList` に `kind==='mannequin'` の分岐を追加し、base64 PNG を Image デコード（`_mannIMG` キャッシュ）→ 正規化中心 `(cx,cy)`＋正規化幅 `w` で描画（縦横比維持）。
+    - `eraseFromList`：マネキン矩形を消しゴムでクリックすると削除。
+    - `cloneDrawItem`：mannequin フィールドを保存対象に含める（DB シリアライズ・undo 復元対応）。
+  - Phase 1 の割り切り：中心固定・拡縮/移動 UI なし（次 Phase）。3D 側は CDN 依存（後続でインライン化検討）。IK・接地拘束は未実装（現在は FK スライダのみ）。
+  - 参考：`docs/MANNEQUIN_3D_MEMO.md`ヘッダの通知ベル右に「テーマ切替」ボタン（月／太陽アイコン）を追加。`:root[data-theme="light"]` で明色パレットに切替、localStorage `laycat_theme` に永続化。既定はダーク。`<head>` の早期スクリプトで保存済みテーマを最速反映して FOUC を防止。
 - 層① サービス層のロールを 3 択（運営／管理者／メンバー）→ 2 択（運営／メンバー）に統一。「管理者(adminEmails)」ロールを廃止：
   - `access-console.html`：tiers() から admins を削除し、UI の管理者リスト・「→管理者」ボタン・add role の管理者オプションを撤去。setRole の 'admin' ターゲットは互換のため受け取っても 'member' として扱う。旧 adminEmails データは setRole の次回保存で自動的に allowedEmails に統合される（べき等）。isAuditor は isEditor と同義に。RULES の isStaff() から adminEmails 参照を削除
   - `worker/laycat-r2-api.js`：isAdminEmail を廃止、isStaffEmail（operatorEmails のみ）に統合。互換のため `const isAdminEmail = isStaffEmail` で旧関数名も生存。checkProjectAcl の admin エスカレーションは「運営エスカレーション」に改名（reason: 'operator'）

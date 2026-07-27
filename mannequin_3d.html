@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>3D Mannequin — LayCAT</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html,body{margin:0;padding:0;background:#0e0e12;color:#eee;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;height:100%;overflow:hidden;user-select:none;-webkit-user-select:none}
+  #root{position:fixed;inset:0;display:grid;grid-template-columns:1fr 260px;grid-template-rows:44px 1fr;gap:0}
+  header{grid-column:1/3;background:#151519;border-bottom:1px solid #26262e;display:flex;align-items:center;gap:10px;padding:0 12px}
+  header .ttl{font-weight:800;font-size:13px;letter-spacing:.05em}
+  header .sp{flex:1}
+  header button{background:#26262e;border:1px solid #34343e;color:#eee;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600}
+  header button:hover{background:#34343e}
+  header button.primary{background:linear-gradient(135deg,#A56BF0,#7A5CFF);border-color:transparent}
+  header button.primary:hover{filter:brightness(1.1)}
+  #stage{position:relative;background:#0e0e12;overflow:hidden}
+  #stage canvas{display:block;width:100%;height:100%;cursor:grab}
+  #stage.dragging canvas{cursor:grabbing}
+  #hud{position:absolute;left:10px;top:10px;background:rgba(20,20,28,.85);border:1px solid #34343e;border-radius:8px;padding:8px 12px;font-size:11px;color:#a0a0b0;line-height:1.6;pointer-events:none}
+  #hud b{color:#e0d0ff}
+  aside{background:#141418;border-left:1px solid #26262e;padding:14px;overflow-y:auto;font-size:12px}
+  aside h3{font-size:11px;font-weight:800;color:#a0a0b0;letter-spacing:.1em;margin:0 0 8px}
+  aside .sect{margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid #26262e}
+  aside .sect:last-child{border-bottom:none}
+  .selInfo{background:#1c1c22;border:1px solid #26262e;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:11.5px;color:#c8dcff;font-weight:600}
+  .selInfo.none{color:#606070;font-weight:500}
+  .row{display:flex;align-items:center;gap:8px;margin:6px 0}
+  .row label{width:14px;font-weight:800;font-family:monospace;font-size:11px}
+  .row .lx{color:#ff6b6b}.row .ly{color:#6bff8f}.row .lz{color:#6b9dff}
+  .row input[type=range]{flex:1;min-width:0}
+  .row .val{width:40px;text-align:right;font-family:monospace;font-size:11px;color:#a0a0b0}
+  .presetGrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .presetGrid button{padding:8px 6px;background:#1c1c22;border:1px solid #26262e;color:#c8dcff;border-radius:6px;font-size:11.5px;cursor:pointer;font-weight:600}
+  .presetGrid button:hover{background:#26262e;border-color:#3a3a46}
+  .helpTxt{color:#606070;font-size:10.5px;line-height:1.6}
+  .helpTxt kbd{background:#1c1c22;border:1px solid #34343e;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:10px;color:#c8dcff}
+  #boneList{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+  #boneList button{padding:5px 6px;background:#1c1c22;border:1px solid #26262e;color:#a0a0b0;border-radius:4px;font-size:10.5px;cursor:pointer;text-align:left}
+  #boneList button:hover{background:#26262e;color:#c8dcff}
+  #boneList button.active{background:#3a2a5a;color:#e0d0ff;border-color:#5a4a8a}
+</style>
+</head>
+<body>
+<div id="root">
+  <header>
+    <div class="ttl">🎭 3D Mannequin</div>
+    <div class="sp"></div>
+    <button id="btnReset">初期ポーズ</button>
+    <button id="btnCancel">キャンセル</button>
+    <button id="btnApply" class="primary">レビューに反映 →</button>
+  </header>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="hud">
+      <b>マウス：</b> ドラッグでカメラ回転 ／ ホイールでズーム ／ 右ドラッグで平行移動<br>
+      <b>ボーン：</b> クリックで選択 → 右パネルで XYZ 回転
+    </div>
+  </div>
+  <aside>
+    <div class="sect">
+      <h3>選択中</h3>
+      <div id="selInfo" class="selInfo none">ボーンをクリックして選択</div>
+      <div id="rotCtl" style="display:none">
+        <div class="row"><label class="lx">X</label><input type="range" id="rx" min="-180" max="180" step="1" value="0"><span class="val" id="rxV">0°</span></div>
+        <div class="row"><label class="ly">Y</label><input type="range" id="ry" min="-180" max="180" step="1" value="0"><span class="val" id="ryV">0°</span></div>
+        <div class="row"><label class="lz">Z</label><input type="range" id="rz" min="-180" max="180" step="1" value="0"><span class="val" id="rzV">0°</span></div>
+        <button id="btnBoneReset" style="width:100%;margin-top:6px;padding:5px;background:#26262e;border:1px solid #34343e;color:#a0a0b0;border-radius:4px;font-size:11px;cursor:pointer">このボーンだけリセット</button>
+      </div>
+    </div>
+    <div class="sect">
+      <h3>プリセット</h3>
+      <div class="presetGrid">
+        <button data-preset="tpose">T ポーズ</button>
+        <button data-preset="apose">A ポーズ</button>
+        <button data-preset="stand">立ち</button>
+        <button data-preset="sit">座り</button>
+        <button data-preset="run">走り</button>
+        <button data-preset="wave">手を振る</button>
+      </div>
+    </div>
+    <div class="sect">
+      <h3>ボーン一覧</h3>
+      <div id="boneList"></div>
+    </div>
+    <div class="sect">
+      <div class="helpTxt">
+        <b style="color:#a0a0b0">Phase 1 テスト実装</b><br>
+        手続き型プリミティブの簡易マネキン。glTF・IK は後続 Phase。<br>
+        <br>
+        <b style="color:#a0a0b0">操作</b><br>
+        <kbd>Left</kbd> 回転 ／ <kbd>Right</kbd> パン ／ <kbd>Wheel</kbd> ズーム<br>
+        <kbd>R</kbd> 選択ボーンをリセット ／ <kbd>Esc</kbd> 選択解除
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---------- Scene setup ----------
+const stage = document.getElementById('stage');
+const canvas = document.getElementById('cv');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true, alpha:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setClearColor(0x0e0e12, 1);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+camera.position.set(0, 1.5, 5.5);
+
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(0, 1.0, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 1.5;
+controls.maxDistance = 15;
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+
+// Lighting
+scene.add(new THREE.HemisphereLight(0xffffff, 0x333344, 0.9));
+const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+dir.position.set(3, 6, 4);
+scene.add(dir);
+const dir2 = new THREE.DirectionalLight(0x99aacc, 0.35);
+dir2.position.set(-4, 2, -3);
+scene.add(dir2);
+
+// Ground grid (subtle)
+const grid = new THREE.GridHelper(6, 12, 0x2a2a32, 0x1c1c22);
+grid.position.y = 0;
+scene.add(grid);
+
+// ---------- Procedural humanoid ----------
+// Simple stick-and-joint figure: each bone is a Group; parts are Meshes attached.
+const MAT_BODY = new THREE.MeshPhongMaterial({color:0xd8d8e0, shininess:15});
+const MAT_JOINT = new THREE.MeshPhongMaterial({color:0xb0b0c0, shininess:20});
+const MAT_HL = new THREE.MeshPhongMaterial({color:0xff9dfa, emissive:0x552255, shininess:30});
+
+const bones = {};   // name -> Group
+const partMap = new Map();   // Mesh -> bone name
+const bindMap = {};  // name -> {parent, offset:[x,y,z], initEuler:[x,y,z]}
+
+function makeLimb(len, r0, r1){
+  const g = new THREE.CylinderGeometry(r1, r0, len, 14, 1);
+  g.translate(0, -len/2, 0);   // pivot at top
+  return new THREE.Mesh(g, MAT_BODY);
+}
+function makeJoint(r){
+  return new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), MAT_JOINT);
+}
+
+// Build bone as a Group with a visual mesh + joint sphere at origin
+function bone(name, parent, offset, buildVisual){
+  const g = new THREE.Group();
+  g.name = name;
+  g.position.set(offset[0], offset[1], offset[2]);
+  bindMap[name] = {parent: parent ? parent.name : null, offset:[...offset], initEuler:[0,0,0]};
+  bones[name] = g;
+  if(parent) parent.add(g); else scene.add(g);
+  if(buildVisual){
+    const visual = buildVisual();
+    if(Array.isArray(visual)){
+      visual.forEach(v=>{ g.add(v); partMap.set(v, name); });
+    } else {
+      g.add(visual); partMap.set(visual, name);
+    }
+  }
+  return g;
+}
+
+// ROOT — pelvis at world (0, 0.95, 0)
+const root = bone('root', null, [0, 0.95, 0], () => {
+  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.20), MAT_BODY);
+  hips.position.y = -0.05;
+  return hips;
+});
+
+// Spine → chest → neck → head
+const spine = bone('spine', root, [0, 0.05, 0], () => makeJoint(0.06));
+const chest = bone('chest', spine, [0, 0.32, 0], () => {
+  const t = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.32, 0.22), MAT_BODY);
+  t.position.y = -0.16;
+  const j = makeJoint(0.055);
+  return [t, j];
+});
+const neck = bone('neck', chest, [0, 0.05, 0], () => {
+  const n = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.09, 12), MAT_BODY);
+  n.position.y = 0.045;
+  return n;
+});
+const head = bone('head', neck, [0, 0.11, 0], () => {
+  const h = new THREE.Mesh(new THREE.SphereGeometry(0.13, 20, 16), MAT_BODY);
+  h.position.y = 0.13;
+  h.scale.set(0.9, 1.05, 0.95);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.05, 8), MAT_JOINT);
+  nose.position.set(0, 0.11, 0.115);
+  nose.rotation.x = Math.PI/2;
+  return [h, nose];
+});
+
+// Arms (T-pose default: X-rotation 0, arms extend horizontally via bone offsets & rotations)
+// leftShoulder at chest top
+const lSh = bone('leftShoulder', chest, [0.15, 0.03, 0], () => makeJoint(0.055));
+// Upper arm should extend to the LEFT (character's left = viewer's right); apply Z rotation to point limb outward
+const lUpArm = bone('leftUpperArm', lSh, [0, 0, 0], () => makeLimb(0.32, 0.05, 0.045));
+lUpArm.rotation.z = Math.PI/2;  // T-pose — points to +X (character's left)
+bindMap.leftUpperArm.initEuler = [0, 0, Math.PI/2];
+const lLoArm = bone('leftLowerArm', lUpArm, [0, -0.32, 0], () => {
+  makeJoint(0.045);
+  const g = makeLimb(0.28, 0.045, 0.035);
+  const j = makeJoint(0.045);
+  return [g, j];
+});
+const lHand = bone('leftHand', lLoArm, [0, -0.28, 0], () => {
+  const h = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.04), MAT_BODY);
+  h.position.y = -0.07;
+  return h;
+});
+
+const rSh = bone('rightShoulder', chest, [-0.15, 0.03, 0], () => makeJoint(0.055));
+const rUpArm = bone('rightUpperArm', rSh, [0, 0, 0], () => makeLimb(0.32, 0.05, 0.045));
+rUpArm.rotation.z = -Math.PI/2;
+bindMap.rightUpperArm.initEuler = [0, 0, -Math.PI/2];
+const rLoArm = bone('rightLowerArm', rUpArm, [0, -0.32, 0], () => {
+  const g = makeLimb(0.28, 0.045, 0.035);
+  const j = makeJoint(0.045);
+  return [g, j];
+});
+const rHand = bone('rightHand', rLoArm, [0, -0.28, 0], () => {
+  const h = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.04), MAT_BODY);
+  h.position.y = -0.07;
+  return h;
+});
+
+// Legs — hips → upperLeg (down) → lowerLeg → foot
+const lHip = bone('leftHip', root, [0.09, -0.05, 0], () => makeJoint(0.06));
+const lUpLeg = bone('leftUpperLeg', lHip, [0, 0, 0], () => makeLimb(0.42, 0.06, 0.05));
+const lLoLeg = bone('leftLowerLeg', lUpLeg, [0, -0.42, 0], () => {
+  const g = makeLimb(0.40, 0.05, 0.04);
+  const j = makeJoint(0.05);
+  return [g, j];
+});
+const lFoot = bone('leftFoot', lLoLeg, [0, -0.40, 0], () => {
+  const f = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.20), MAT_BODY);
+  f.position.set(0, -0.025, 0.06);
+  return f;
+});
+
+const rHip = bone('rightHip', root, [-0.09, -0.05, 0], () => makeJoint(0.06));
+const rUpLeg = bone('rightUpperLeg', rHip, [0, 0, 0], () => makeLimb(0.42, 0.06, 0.05));
+const rLoLeg = bone('rightLowerLeg', rUpLeg, [0, -0.42, 0], () => {
+  const g = makeLimb(0.40, 0.05, 0.04);
+  const j = makeJoint(0.05);
+  return [g, j];
+});
+const rFoot = bone('rightFoot', rLoLeg, [0, -0.40, 0], () => {
+  const f = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.20), MAT_BODY);
+  f.position.set(0, -0.025, 0.06);
+  return f;
+});
+
+// Snapshot the initial (T-pose) rotations as bind pose
+for(const [name, b] of Object.entries(bones)){
+  const cur = bindMap[name].initEuler;
+  // If initEuler was set above (e.g. T-pose arms), use those; else read current
+  if(cur[0]===0 && cur[1]===0 && cur[2]===0){
+    bindMap[name].initEuler = [b.rotation.x, b.rotation.y, b.rotation.z];
+  } else {
+    b.rotation.set(cur[0], cur[1], cur[2]);
+  }
+}
+
+// ---------- Selection ----------
+let selected = null;   // bone name
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const highlighted = new Set();   // meshes currently swapped to MAT_HL
+const origMat = new Map();
+
+function setHighlight(boneName){
+  // Restore previous
+  for(const m of highlighted){
+    m.material = origMat.get(m) || MAT_BODY;
+  }
+  highlighted.clear();
+  origMat.clear();
+  if(!boneName) return;
+  const b = bones[boneName];
+  if(!b) return;
+  b.traverse(o=>{
+    if(o.isMesh){
+      origMat.set(o, o.material);
+      o.material = MAT_HL;
+      highlighted.add(o);
+    }
+  });
+}
+
+function selectBone(name){
+  selected = name;
+  setHighlight(name);
+  const info = document.getElementById('selInfo');
+  const ctl = document.getElementById('rotCtl');
+  if(!name){
+    info.textContent = 'ボーンをクリックして選択';
+    info.classList.add('none');
+    ctl.style.display = 'none';
+  } else {
+    info.textContent = displayName(name);
+    info.classList.remove('none');
+    ctl.style.display = '';
+    syncSlidersFromBone();
+  }
+  refreshBoneList();
+}
+
+function displayName(n){
+  const map = {
+    root:'ルート（腰）', spine:'背骨', chest:'胸', neck:'首', head:'頭',
+    leftShoulder:'左肩', leftUpperArm:'左上腕', leftLowerArm:'左前腕', leftHand:'左手',
+    rightShoulder:'右肩', rightUpperArm:'右上腕', rightLowerArm:'右前腕', rightHand:'右手',
+    leftHip:'左股関節', leftUpperLeg:'左太もも', leftLowerLeg:'左脛', leftFoot:'左足',
+    rightHip:'右股関節', rightUpperLeg:'右太もも', rightLowerLeg:'右脛', rightFoot:'右足'
+  };
+  return map[n] || n;
+}
+
+canvas.addEventListener('pointerdown', ev=>{
+  if(ev.button !== 0) return;
+  const r = canvas.getBoundingClientRect();
+  mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
+  mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const meshes = [...partMap.keys()];
+  const hits = raycaster.intersectObjects(meshes, false);
+  if(hits.length){
+    const bn = partMap.get(hits[0].object);
+    selectBone(bn);
+    ev.stopPropagation();
+  }
+});
+
+// ---------- Rotation sliders ----------
+const rx = document.getElementById('rx'), ry = document.getElementById('ry'), rz = document.getElementById('rz');
+const rxV = document.getElementById('rxV'), ryV = document.getElementById('ryV'), rzV = document.getElementById('rzV');
+
+function syncSlidersFromBone(){
+  if(!selected) return;
+  const b = bones[selected];
+  const init = bindMap[selected].initEuler;
+  // Show delta from initEuler
+  const dx = radToDeg(b.rotation.x - init[0]);
+  const dy = radToDeg(b.rotation.y - init[1]);
+  const dz = radToDeg(b.rotation.z - init[2]);
+  rx.value = Math.round(dx); ry.value = Math.round(dy); rz.value = Math.round(dz);
+  rxV.textContent = rx.value + '°'; ryV.textContent = ry.value + '°'; rzV.textContent = rz.value + '°';
+}
+function applySliderToBone(){
+  if(!selected) return;
+  const b = bones[selected];
+  const init = bindMap[selected].initEuler;
+  b.rotation.set(init[0] + degToRad(+rx.value), init[1] + degToRad(+ry.value), init[2] + degToRad(+rz.value));
+  rxV.textContent = rx.value + '°'; ryV.textContent = ry.value + '°'; rzV.textContent = rz.value + '°';
+}
+[rx, ry, rz].forEach(sl => sl.addEventListener('input', applySliderToBone));
+
+document.getElementById('btnBoneReset').onclick = ()=>{
+  if(!selected) return;
+  const b = bones[selected];
+  const init = bindMap[selected].initEuler;
+  b.rotation.set(init[0], init[1], init[2]);
+  syncSlidersFromBone();
+};
+
+function radToDeg(r){ return r * 180 / Math.PI; }
+function degToRad(d){ return d * Math.PI / 180; }
+
+// ---------- Bone list ----------
+const BONE_ORDER = ['root','spine','chest','neck','head',
+  'leftShoulder','leftUpperArm','leftLowerArm','leftHand',
+  'rightShoulder','rightUpperArm','rightLowerArm','rightHand',
+  'leftHip','leftUpperLeg','leftLowerLeg','leftFoot',
+  'rightHip','rightUpperLeg','rightLowerLeg','rightFoot'];
+function refreshBoneList(){
+  const list = document.getElementById('boneList');
+  list.innerHTML = '';
+  for(const n of BONE_ORDER){
+    if(!bones[n]) continue;
+    const b = document.createElement('button');
+    b.textContent = displayName(n);
+    if(n === selected) b.classList.add('active');
+    b.onclick = ()=> selectBone(n);
+    list.appendChild(b);
+  }
+}
+refreshBoneList();
+
+// ---------- Presets ----------
+const PRESETS = {
+  tpose: {},   // all zeros — default
+  apose: {
+    leftUpperArm: [0, 0, -0.4],
+    rightUpperArm: [0, 0, 0.4]
+  },
+  stand: {
+    leftUpperArm: [0, 0, -1.4],
+    rightUpperArm: [0, 0, 1.4],
+    leftLowerArm: [0.2, 0, 0],
+    rightLowerArm: [0.2, 0, 0]
+  },
+  sit: {
+    leftUpperLeg: [-1.5, 0.15, 0],
+    rightUpperLeg: [-1.5, -0.15, 0],
+    leftLowerLeg: [1.5, 0, 0],
+    rightLowerLeg: [1.5, 0, 0],
+    leftUpperArm: [0, 0, -1.0],
+    rightUpperArm: [0, 0, 1.0],
+    leftLowerArm: [0.4, 0, 0],
+    rightLowerArm: [0.4, 0, 0]
+  },
+  run: {
+    leftUpperLeg: [0.8, 0, 0],
+    rightUpperLeg: [-0.9, 0, 0],
+    leftLowerLeg: [-0.6, 0, 0],
+    rightLowerLeg: [1.2, 0, 0],
+    leftUpperArm: [-0.9, 0, -1.0],
+    rightUpperArm: [0.9, 0, 1.0],
+    leftLowerArm: [-1.0, 0, 0],
+    rightLowerArm: [-1.0, 0, 0],
+    chest: [0.15, 0.1, 0]
+  },
+  wave: {
+    leftUpperArm: [0, 0, -0.3],
+    rightUpperArm: [-2.6, 0.3, 1.6],
+    rightLowerArm: [-0.5, 0, 0],
+    head: [0, 0.15, 0]
+  }
+};
+
+function applyPreset(name){
+  const p = PRESETS[name] || {};
+  // Reset all first
+  for(const [bn, info] of Object.entries(bindMap)){
+    const b = bones[bn];
+    b.rotation.set(info.initEuler[0], info.initEuler[1], info.initEuler[2]);
+  }
+  // Then apply preset deltas
+  for(const [bn, delta] of Object.entries(p)){
+    const b = bones[bn]; if(!b) continue;
+    const init = bindMap[bn].initEuler;
+    b.rotation.set(init[0]+delta[0], init[1]+delta[1], init[2]+delta[2]);
+  }
+  if(selected) syncSlidersFromBone();
+}
+document.querySelectorAll('.presetGrid button').forEach(btn=>{
+  btn.onclick = ()=> applyPreset(btn.dataset.preset);
+});
+
+// ---------- Pose serialization ----------
+function serializePose(){
+  const bonesOut = {};
+  for(const [name, b] of Object.entries(bones)){
+    bonesOut[name] = [b.rotation.x, b.rotation.y, b.rotation.z];
+  }
+  return {
+    v: 1,
+    bones: bonesOut,
+    camera: { pos:[camera.position.x, camera.position.y, camera.position.z],
+              target:[controls.target.x, controls.target.y, controls.target.z] }
+  };
+}
+function loadPose(pose){
+  if(!pose || !pose.bones) return;
+  for(const [n, e] of Object.entries(pose.bones)){
+    if(bones[n]) bones[n].rotation.set(e[0]||0, e[1]||0, e[2]||0);
+  }
+  if(pose.camera){
+    if(pose.camera.pos) camera.position.set(...pose.camera.pos);
+    if(pose.camera.target) controls.target.set(...pose.camera.target);
+    controls.update();
+  }
+  if(selected) syncSlidersFromBone();
+}
+
+// ---------- Snapshot ----------
+function snapshotDataURL(w=800, h=800){
+  const oldSize = renderer.getSize(new THREE.Vector2());
+  const oldPR = renderer.getPixelRatio();
+  const cam = camera.clone();
+  cam.aspect = w/h;
+  cam.updateProjectionMatrix();
+  renderer.setPixelRatio(1);
+  renderer.setSize(w, h, false);
+  renderer.setClearColor(0x000000, 0);   // transparent
+  // Hide grid for snapshot
+  grid.visible = false;
+  // Restore highlight temporarily
+  const hlSnapshot = [...highlighted];
+  for(const m of hlSnapshot){ m.material = origMat.get(m) || MAT_BODY; }
+  renderer.render(scene, cam);
+  const data = renderer.domElement.toDataURL('image/png');
+  // Restore
+  for(const m of hlSnapshot){ m.material = MAT_HL; }
+  grid.visible = true;
+  renderer.setClearColor(0x0e0e12, 1);
+  renderer.setPixelRatio(oldPR);
+  renderer.setSize(oldSize.x, oldSize.y, false);
+  return data;
+}
+
+// ---------- Apply / cancel ----------
+function sendResult(action){
+  const pose = serializePose();
+  const img = action === 'apply' ? snapshotDataURL(600, 600) : null;
+  const payload = { source:'laycat_mannequin', action, pose, img, ts: Date.now() };
+  try {
+    if(window.opener && !window.opener.closed){
+      window.opener.postMessage(payload, '*');
+    }
+  } catch(_){}
+  // Fallback via localStorage handoff
+  try {
+    localStorage.setItem('laycat_mannequin_result', JSON.stringify(payload));
+  } catch(_){}
+  window.close();
+}
+document.getElementById('btnApply').onclick = ()=> sendResult('apply');
+document.getElementById('btnCancel').onclick = ()=> sendResult('cancel');
+document.getElementById('btnReset').onclick = ()=>{
+  applyPreset('tpose');
+};
+
+// ---------- Keyboard ----------
+window.addEventListener('keydown', e=>{
+  if(e.key === 'Escape'){ selectBone(null); }
+  else if(e.key === 'r' || e.key === 'R'){
+    if(selected){
+      const b = bones[selected]; const init = bindMap[selected].initEuler;
+      b.rotation.set(init[0], init[1], init[2]);
+      syncSlidersFromBone();
+    }
+  }
+});
+
+// ---------- Load pose from opener (round-trip) ----------
+try {
+  const params = new URLSearchParams(location.search);
+  const key = params.get('poseKey');
+  if(key){
+    const raw = localStorage.getItem(key);
+    if(raw){
+      const pose = JSON.parse(raw);
+      loadPose(pose);
+    }
+  }
+} catch(_){}
+
+// ---------- Resize & render loop ----------
+function resize(){
+  const w = stage.clientWidth, h = stage.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Cursor state on drag
+canvas.addEventListener('pointerdown', ()=> stage.classList.add('dragging'));
+window.addEventListener('pointerup', ()=> stage.classList.remove('dragging'));
+
+function tick(){
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+tick();
+
+// Expose for debugging
+window.__mannequin = { bones, bindMap, serializePose, loadPose, applyPreset };
+</script>
+</body>
+</html>
