@@ -143,6 +143,13 @@ const grid = new THREE.GridHelper(6, 12, 0x2a2a32, 0x1c1c22);
 grid.position.y = 0;
 scene.add(grid);
 
+// Character group: pivot at character center (0, 1.0, 0). Annotation-side rotation is applied
+// as intrinsic Euler to this group so the CHARACTER rotates (not the camera).
+// Bones (root -> spine -> ...) live inside this group.
+const characterGroup = new THREE.Group();
+characterGroup.position.set(0, 1.0, 0);
+scene.add(characterGroup);
+
 // ---------- Procedural humanoid ----------
 // Simple stick-and-joint figure: each bone is a Group; parts are Meshes attached.
 const MAT_BODY = new THREE.MeshPhongMaterial({color:0xd8d8e0, shininess:15});
@@ -181,12 +188,17 @@ function bone(name, parent, offset, buildVisual){
   return g;
 }
 
-// ROOT — pelvis at world (0, 0.95, 0)
+// ROOT — pelvis at world (0, 0.95, 0). bone() added it to scene; move it under characterGroup
+// and adjust local position so its world position stays (0, 0.95, 0) given characterGroup at (0, 1.0, 0).
 const root = bone('root', null, [0, 0.95, 0], () => {
   const hips = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.20), MAT_BODY);
   hips.position.y = -0.05;
   return hips;
 });
+scene.remove(root);
+characterGroup.add(root);
+root.position.set(0, -0.05, 0);
+bindMap.root.offset = [0, -0.05, 0];
 
 // Spine → chest → neck → head
 const spine = bone('spine', root, [0, 0.05, 0], () => makeJoint(0.06));
@@ -508,6 +520,36 @@ function loadPose(pose){
   if(selected) syncSlidersFromBone();
 }
 
+// ---------- Ring projection ----------
+// Compute 3 gizmo rings' polylines in the PNG's normalized (0..1) coordinate space,
+// using the character's local axes (rotated by characterGroup) projected through the given camera.
+function computeGizmoRings(cam){
+  characterGroup.updateMatrixWorld(true);
+  const m = characterGroup.matrixWorld;
+  const xAxis = new THREE.Vector3().setFromMatrixColumn(m, 0).normalize();
+  const yAxis = new THREE.Vector3().setFromMatrixColumn(m, 1).normalize();
+  const zAxis = new THREE.Vector3().setFromMatrixColumn(m, 2).normalize();
+  const pivot = new THREE.Vector3(0, 1.0, 0);
+  const N = 64;
+  function makeRing(u, v, radius){
+    const pts = new Array(N + 1);
+    for(let i = 0; i <= N; i++){
+      const t = i / N * Math.PI * 2;
+      const p = new THREE.Vector3().copy(pivot)
+        .addScaledVector(u, radius * Math.cos(t))
+        .addScaledVector(v, radius * Math.sin(t));
+      p.project(cam);
+      pts[i] = [(p.x + 1) / 2, 1 - (p.y + 1) / 2];   // NDC → PNG 0..1
+    }
+    return pts;
+  }
+  return {
+    yaw: makeRing(xAxis, zAxis, 0.70),   // perpendicular to Y (character up)
+    pitch: makeRing(yAxis, zAxis, 0.70), // perpendicular to X (character right)
+    roll: makeRing(xAxis, yAxis, 0.82)   // perpendicular to Z (character forward), slightly larger to sit outside
+  };
+}
+
 // ---------- Snapshot ----------
 function snapshotDataURL(w=800, h=800){
   const oldSize = renderer.getSize(new THREE.Vector2());
@@ -629,42 +671,37 @@ if(isHeadless){
     if(!d || d.source !== 'laycat_mannequin_cmd') return;
     if(d.cmd === 'render'){
       if(d.pose) loadPose(d.pose);
-      // Camera as spherical coords around controls.target if provided
-      if(d.cameraYaw != null || d.cameraPitch != null || d.cameraDistance != null){
-        const t = controls.target;
-        const dx = camera.position.x - t.x, dy = camera.position.y - t.y, dz = camera.position.z - t.z;
-        const curDist = Math.max(0.001, Math.hypot(dx, dy, dz));
-        const curYaw = Math.atan2(dx, dz);
-        const curPitch = Math.asin(Math.max(-1, Math.min(1, dy / curDist)));
-        const yaw = d.cameraYaw != null ? d.cameraYaw : curYaw;
-        const pitch = d.cameraPitch != null ? Math.max(-1.4, Math.min(1.4, d.cameraPitch)) : curPitch;
-        const dist = d.cameraDistance != null ? d.cameraDistance : curDist;
-        camera.position.set(
-          t.x + dist * Math.cos(pitch) * Math.sin(yaw),
-          t.y + dist * Math.sin(pitch),
-          t.z + dist * Math.cos(pitch) * Math.cos(yaw)
-        );
-        // Roll (Z-axis of camera view): rotate camera up vector around the view direction
-        const roll = d.cameraRoll || 0;
-        if(roll){
-          const view = new THREE.Vector3().subVectors(t, camera.position).normalize();
-          const worldUp = new THREE.Vector3(0, 1, 0);
-          const right = new THREE.Vector3().crossVectors(view, worldUp);
-          if(right.lengthSq() < 1e-6) right.set(1,0,0);
-          right.normalize();
-          const up = new THREE.Vector3().crossVectors(right, view).normalize();
-          up.applyAxisAngle(view, roll);
-          camera.up.copy(up);
-        } else {
-          camera.up.set(0,1,0);
-        }
-        camera.lookAt(t);
-      }
+      // Apply character rotation (intrinsic YXZ, matching head guide convention).
+      // charYaw/charPitch/charRoll are the new field names; cameraYaw/etc. kept for backward compat.
+      const cy = d.charYaw != null ? d.charYaw : (d.cameraYaw != null ? d.cameraYaw : 0);
+      const cp = d.charPitch != null ? d.charPitch : (d.cameraPitch != null ? d.cameraPitch : 0);
+      const cr = d.charRoll != null ? d.charRoll : (d.cameraRoll != null ? d.cameraRoll : 0);
+      characterGroup.rotation.set(0, 0, 0);
+      characterGroup.rotateY(cy);
+      characterGroup.rotateX(cp);
+      characterGroup.rotateZ(cr);
       const w = d.width || 600, h = d.height || 600;
-      // Render one frame so snapshot reflects current state
-      renderer.render(scene, camera);
-      const img = snapshotDataURL(w, h);
-      try{ (window.parent || window.opener || window).postMessage({source:'laycat_mannequin_headless', reqId: d.reqId, img}, '*'); }catch(_){}
+      const cam = camera.clone();
+      cam.aspect = w / h;
+      cam.updateProjectionMatrix();
+      // Render + rings using the SAME cam so projections match the PNG exactly.
+      const oldSize = renderer.getSize(new THREE.Vector2());
+      const oldPR = renderer.getPixelRatio();
+      renderer.setPixelRatio(1);
+      renderer.setSize(w, h, false);
+      renderer.setClearColor(0x000000, 0);
+      grid.visible = false;
+      const tcVisPrev = tc.visible;
+      tc.visible = false;
+      renderer.render(scene, cam);
+      const img = renderer.domElement.toDataURL('image/png');
+      const rings = computeGizmoRings(cam);
+      grid.visible = true;
+      tc.visible = tcVisPrev;
+      renderer.setClearColor(0x0e0e12, 1);
+      renderer.setPixelRatio(oldPR);
+      renderer.setSize(oldSize.x, oldSize.y, false);
+      try{ (window.parent || window.opener || window).postMessage({source:'laycat_mannequin_headless', reqId: d.reqId, img, rings}, '*'); }catch(_){}
     }
   });
 }

@@ -13,7 +13,15 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
-- (dev v2026.07.24.014) 3D マネキン マニピュレータ v2（3 軸ジンバル・自由回転・ボーン用 TransformControls・水平方向修正）。
+- (dev v2026.07.24.015) 3D マネキン マニピュレータ v3：キャラクター基準の回転 + 3D エディタ同等の挙動。
+  - **回転がキャラクター基準に**：mannequin_3d.html に characterGroup（(0, 1.0, 0) をピボットに）を導入し、root ボーンをその中へ移動。headless render は camera を動かさず、`characterGroup.rotateY(yaw) → rotateX(pitch) → rotateZ(roll)` の順に intrinsic YXZ を適用（顔の向きガイド／3D エディタ TransformControls と同じ順序）。カメラは pose.camera 位置に固定。
+  - **リング視覚化を正確に**：iframe が現在の character 軸を PNG 座標に投影した 3 リング polyline を返す（`computeGizmoRings` を Three.js の `Vector3.project(cam)` で 64 点ずつ生成）。アノテ側は polyline を canvas に描画するため、ヨー後にピッチリングが character の局所垂直方向に来る等、character 基準の 3 軸が正しく表示される。
+  - **ドラッグを接線ベース化**：クリック点で polyline の接線を取得し、ドラッグ量を接線に投影して回転量に変換（3D エディタの TransformControls と同じ体感）。1 リング周長 ≒ 360° 相当の感度。
+  - **ヒットテストも polyline に**：エリプス近似を廃し `_nearestOnPolyline` で 3 リングとの距離を比較して最も近いリングを採用。優先順位：コーナー > 中央ハンドル > リング > 本体。
+  - **レビューに反映で回転がリセットされる問題を修正**：openMannEditor の onMsg で prev が存在するとき、pose のみ差し替えて viewYaw/Pitch/Roll は保持し、必ず `_mannScheduleRender(prev)` を走らせて回転が入った img と gizmoRings を再生成。新規作成時も 0 回転で 1 度 render を走らせて gizmoRings を取得。
+  - **ドラッグ方向**：本体自由回転を +dx→+yaw／+dy→+pitch（顔の向きガイドと同じ convention）に統一。
+  - `_mannRender` は `{img, rings}` を返す形にリファクタ。`cameraYaw/Pitch/Roll` は互換のため受理するが送信側は `charYaw/Pitch/Roll` に統一。
+  - APP_VERSION を 2026.07.24.015 に。
   - **ヨー方向を修正**：緑リング／本体ドラッグの水平方向をカメラ位置計算の符号と合わせ、右ドラッグでキャラが右向きに回るように反転。
   - **ロール軸（青リング）を追加**：viewRoll を新設。青い円は画面平面上に常に円で表示、中心からの角度差でロール量を決定。3 軸で完全な 3D 回転が可能に。
   - **本体ドラッグ = 自由回転**：リング外の本体クリック時は yaw + pitch を同時に動かす（顔の向きガイドと同じ挙動）。
