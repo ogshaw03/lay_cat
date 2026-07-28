@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.010';
+const APP_VERSION='2026.07.28.011';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4160,18 +4160,42 @@ function buildTaskTabs(root){
     tab.draggable=true;
     tab.dataset.tabId=id;
     tab.addEventListener('dragstart',ev=>{
-      try{ev.dataTransfer.setData('application/x-laycat-tab',id);ev.dataTransfer.effectAllowed='move';}catch(_){}
+      try{
+        ev.dataTransfer.setData('application/x-laycat-tab',id);
+        ev.dataTransfer.effectAllowed='move';
+        /* ブラウザ標準のドラッグゴーストは 2D 自由に動くので上下追従してしまう。
+           1x1 の透明キャンバスをゴースト画像に指定して見えなくする。代わりに下で
+           独自クローンを Y 固定・X のみ追従で描画する（Chrome タブと同じ挙動）。 */
+        const img=document.createElement('canvas');img.width=img.height=1;
+        ev.dataTransfer.setDragImage(img,0,0);
+      }catch(_){}
       tab.classList.add('dragging');
       /* スナップショット：全タブ + それぞれの初期位置。以降のシフトはこの基準からの transform で表現。 */
       const tabs=[...strip.querySelectorAll('.task-tab[data-tab-id]')];
       const rects=tabs.map(t=>t.getBoundingClientRect());
       const draggedIdx=tabs.indexOf(tab);
-      dragCtx={tabs,rects,draggedIdx,dragId:id,insertIdx:draggedIdx};
+      const dr=rects[draggedIdx];
+      /* 独自プレビュー：dragged タブのクローンを body 直下に position:fixed で配置し、
+         top を strip の Y に固定・left のみカーソル X で更新する → 左右だけスライド。 */
+      const ghost=tab.cloneNode(true);
+      ghost.classList.remove('dragging');
+      ghost.removeAttribute('draggable');
+      ghost.style.cssText='position:fixed;top:'+dr.top+'px;left:'+dr.left+'px;width:'+dr.width+'px;height:'+dr.height+'px;pointer-events:none;opacity:.9;z-index:2000;box-shadow:0 6px 18px rgba(0,0,0,.4);border-radius:6px;background:var(--bg2);transition:none';
+      document.body.appendChild(ghost);
+      const offsetX=ev.clientX-dr.left;
+      /* document 全体で dragover を捕捉して ghost.left を更新（strip の外にカーソルが
+         出ても追従は継続。Y は絶対に触らない）。Firefox の終了イベント (0,0) は無視。 */
+      const onDocDrag=(e)=>{
+        if(!dragCtx||!dragCtx.ghost)return;
+        if(e.clientX===0&&e.clientY===0)return;
+        dragCtx.ghost.style.left=(e.clientX-dragCtx.offsetX)+'px';
+      };
+      document.addEventListener('dragover',onDocDrag);
+      dragCtx={tabs,rects,draggedIdx,dragId:id,insertIdx:draggedIdx,ghost,offsetX,onDocDrag};
       /* drag image がブラウザに捕捉された直後に、dragged タブを width 0 に潰して
          DOM 上から実質的に除去する。flexbox が自動で他タブを詰める → applyShift の
          translateX と組み合わせて Chrome ライクな挿入プレビューを実現。setTimeout(0)
-         を挟まないと drag image が「幅0のタブ」で captured されてしまい半透明の
-         ゴーストが消えるので必須。 */
+         を挟まないと drag image 生成に幅0のタブが渡ってしまうので必須。 */
       setTimeout(()=>{
         if(!dragCtx)return;
         tab.classList.add('dragging-collapse');
@@ -4184,7 +4208,12 @@ function buildTaskTabs(root){
     tab.addEventListener('dragend',()=>{
       tab.classList.remove('dragging');
       tab.classList.remove('dragging-collapse');
-      if(dragCtx){ clearShifts(); dragCtx=null; }
+      if(dragCtx){
+        if(dragCtx.ghost)dragCtx.ghost.remove();
+        if(dragCtx.onDocDrag)document.removeEventListener('dragover',dragCtx.onDocDrag);
+        clearShifts();
+        dragCtx=null;
+      }
     });
     tab.onclick=()=>{state.currentId=id;state.projTab='browse';state.pmPick=null;state.search='';$('#searchInput').value='';for(const x of pathOf(id))state.expanded.add(x.id);render();syncHash();
       /* タスクタブ切替：フォルダから最新を取り込み（fire-and-forget）。補正 render は入れない */
@@ -4260,7 +4289,11 @@ function buildTaskTabs(root){
     if(insertIdx>arr.length)insertIdx=arr.length;
     arr.splice(insertIdx,0,srcId);
     /* transform 掃除は render で DOM 再生成されるため自動的にクリア。
-       他タブは既にドラッグ中に visual final position まで動いているのでスナップは発生しない。 */
+       他タブは既にドラッグ中に visual final position まで動いているのでスナップは発生しない。
+       ghost / document 級リスナーは dragend でも解放するが、render で DOM が
+       作り直されるとタイミング的に取りこぼす可能性があるのでここでも確実に解放。 */
+    if(dragCtx.ghost)dragCtx.ghost.remove();
+    if(dragCtx.onDocDrag)document.removeEventListener('dragover',dragCtx.onDocDrag);
     state.openTasks=arr;
     render();syncHash();
   });

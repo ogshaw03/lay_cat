@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.28.011) タスクタブ並べ替え：ドラッグ中に上下も動いてしまうのを左右だけに固定
+  - ブラウザ標準のドラッグゴーストは 2D 自由に動くのでカーソルに合わせて上下追従してしまっていた。
+  - `dataTransfer.setDragImage()` に 1x1 の透明キャンバスを渡して標準ゴーストを非表示化。代わりに dragged タブのクローンを `body` 直下に `position:fixed` で配置し、`top` は strip の Y に固定・`left` のみカーソル X に追従で更新する独自プレビューを表示（Chrome タブと同じ挙動）。
+  - `document` レベルで dragover を捕捉し ghost.left を更新。dragend / drop 両方で ghost とリスナーを解放。
+
 - (dev v2026.07.28.010) タスクタブを D&D した際に「動画・画像ファイルをドロップしてください」トーストが出る不具合を修正
   - window レベルの `dragover`/`drop` は `dropCtx()` で判定していたが、`dropCtx` に「Files 種別しか受けない」チェックが無かったため、タブ D&D（`application/x-laycat-tab`）でも `preventDefault` → drop 到達 → files.length=0 → 無関係なトースト発火。
   - `dropCtx` 内で `dataTransfer.types` に `'Files'` が含まれない D&D を早期リターンして無視するように修正。
