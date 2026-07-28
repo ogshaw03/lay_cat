@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.020';
+const APP_VERSION='2026.07.28.021';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4172,8 +4172,12 @@ function buildTaskTabs(root){
       const draggedIdx=tabs.indexOf(tab);
       const dr=rects[draggedIdx];
       const offsetX=ev.clientX-dr.left;
+      const w_dragged=dr.width;
+      const N=tabs.length;
       let dragging=false,didDrag=false;
+      let lastPointerX=ev.clientX;   /* onEnd で「ドロップ時のカーソル位置」から実位置を確定するため保持 */
       const onMove=e=>{
+        lastPointerX=e.clientX;
         if(!dragging){
           /* しきい値 5px を超えて動いたらドラッグ開始 */
           if(Math.hypot(e.clientX-startX,e.clientY-startY)<5)return;
@@ -4191,26 +4195,15 @@ function buildTaskTabs(root){
         }
         if(!dragCtx)return;
         dragCtx.ghost.style.left=(e.clientX-offsetX)+'px';
-        /* 挿入位置は「ゴーストの中央 X vs 各タブの元の mid」で判定する。
-           applyShift の結果、非 dragged タブは（K が正しければ）元の位置に配置される
-           ので、元の rects[i] の中央が挿入境界になる。以前は compact 化された座標
-           （flexbox 詰め後の位置）と比較していたため、ゴーストが元位置からわずか動く
-           だけで「隣タブの compact mid」を跨いでしまい、右側が急激にスライドしていた。 */
-        const w_dragged=rects[draggedIdx].width;
+        /* 【視覚用】スライドアニメの insertIdx。境界は「reorder 時の各 K における
+           ghost slot 中央」の中点（Chrome 準拠 = 半分オーバーラップでスワップ）。
+           見てくれ上のスライドを自然に見せるためだけの計算で、実際のドロップ位置は
+           onEnd 側で「カーソル位置 vs 元 mid」のシンプルなルールで別途決定する。 */
         const G=e.clientX-offsetX+w_dragged/2;
-        const N=tabs.length;
-        /* 境界は「reorder 時の各 K における ghost slot 中央」の中点で決める。
-           slot K の左端 = L(K) = L0 + sum(compact widths 0..K-1) + K*gap、
-           slot K の ghost 中央 = L(K) + w_dragged/2。
-           境界(K/K+1) = ghost 中央の中点 = L(K) + w_dragged/2 + (compact[K].w + g)/2。
-
-           以前は「隣り合う rects[k].mid の中点」を使っていたが、これは uniform 幅
-           前提で、dragged が他より広い/狭い場合に境界が右寄り/左寄りになり、
-           ドロップ位置が常に 1 スロット左（または右）にずれていた。 */
         const compactW=[];
         for(let i=0;i<N;i++)if(i!==draggedIdx)compactW.push(rects[i].width);
         const g=2;   /* .task-tabs の CSS gap */
-        const L0=rects[0].left;  /* DOM 順 = 視覚順（flexbox row）なので tab 0 が leftmost */
+        const L0=rects[0].left;
         let L=L0,insertIdx=N-1;
         for(let K=0;K<N-1;K++){
           const boundary=L+w_dragged/2+(compactW[K]+g)/2;
@@ -4236,11 +4229,24 @@ function buildTaskTabs(root){
       };
       const onEnd=e=>{
         if(didDrag&&dragCtx){
+          /* 【実位置用】ドロップ時のカーソル X（= ghost 中央 X）と「元の layout の
+             タブ mid」だけを使って、シンプルに挿入位置を決定する。視覚のスライドが
+             どこを見せていようが、ここが最終的なドロップ位置。
+             ルール：非 dragged タブを DOM 順に見て、ghost 中央が rects[i].mid より
+             左になる最初の i の compact index を挿入位置に。該当なしなら末尾。 */
+          const dropG=lastPointerX-offsetX+w_dragged/2;
+          let dropIdx=N-1;
+          for(let i=0;i<N;i++){
+            if(i===draggedIdx)continue;
+            const mid=rects[i].left+rects[i].width/2;
+            const j=i<draggedIdx?i:i-1;
+            if(dropG<mid){ dropIdx=j; break; }
+          }
           const arr=(state.openTasks||[]).slice();
           const srcIdx=arr.indexOf(id);
           if(srcIdx>=0){
             arr.splice(srcIdx,1);
-            let insertIdx=dragCtx.insertIdx;
+            let insertIdx=dropIdx;
             if(insertIdx<0)insertIdx=0;
             if(insertIdx>arr.length)insertIdx=arr.length;
             arr.splice(insertIdx,0,id);
