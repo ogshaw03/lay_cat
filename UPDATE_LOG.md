@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.28.005) タスクタブを D&D で並べ替え可能に
+  - HTML5 D&D API で各 `.task-tab` を draggable 化。`dataTransfer` に `application/x-laycat-tab` として元 id を積み、dragover でマウス X 位置から前/後を判定してタブに `drop-before`/`drop-after` ライン（3px の accent 色）を表示、drop で `state.openTasks` 配列を並べ替えて `render();syncHash()`。
+  - openTasks は既に localStorage 永続化されているので、リロード後も並び順が保持される。
+  - タブ内 `.tt-close` ボタンに `stopPropagation` はあるので、閉じるボタンをドラッグしても親タブの D&D は発火しない設計。
+
 
 
 ---

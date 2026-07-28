@@ -223,6 +223,10 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .task-tab .tt-close{border:none;background:none;color:var(--text3);font-size:10px;padding:0 3px;line-height:1;border-radius:4px;flex-shrink:0;opacity:.5}
 .task-tab:hover .tt-close,.task-tab.on .tt-close{opacity:1}
 .task-tab .tt-close:hover{background:rgba(255,255,255,.14);color:var(--text)}
+/* タブの並べ替え D&D 中のビジュアルフィードバック */
+.task-tab.dragging{opacity:.35}
+.task-tab.drop-before{box-shadow:inset 3px 0 0 var(--accent2)}
+.task-tab.drop-after{box-shadow:inset -3px 0 0 var(--accent2)}
 /* タスクタブ列の最右：すべてのタブを一括で閉じる */
 .tt-clear{margin-left:auto;align-self:center;border:1px solid var(--border2);background:none;color:var(--text3);font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;flex-shrink:0;margin-bottom:4px;white-space:nowrap}
 .tt-clear:hover{background:var(--bg3);color:var(--text2);border-color:var(--border2)}
@@ -2901,7 +2905,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.004';
+const APP_VERSION='2026.07.28.005';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4118,6 +4122,50 @@ function buildTaskTabs(root){
     const active=state.currentId===id;
     const tab=el('div','task-tab'+(active?' on':''));
     tab.appendChild(el('span','tt-name',shotOf(n)||n.name)); /* タブはショット名のみ（工程はタスクページ側で表示） */
+    /* 並べ替え用に HTML5 D&D。ドラッグ開始時に元の id、ドロップ時に位置を計算して openTasks を並べ替える。 */
+    tab.draggable=true;
+    tab.dataset.tabId=id;
+    tab.addEventListener('dragstart',ev=>{
+      try{ev.dataTransfer.setData('application/x-laycat-tab',id);ev.dataTransfer.effectAllowed='move';}catch(_){}
+      tab.classList.add('dragging');
+    });
+    tab.addEventListener('dragend',()=>{
+      tab.classList.remove('dragging','drop-before','drop-after');
+      /* 全タブから残留クラスを掃除 */
+      strip.querySelectorAll('.task-tab').forEach(t=>t.classList.remove('drop-before','drop-after'));
+    });
+    tab.addEventListener('dragover',ev=>{
+      /* 別プロジェクトタブや外部ソースは受け付けない */
+      const types=ev.dataTransfer&&ev.dataTransfer.types;
+      if(!types||![...types].includes('application/x-laycat-tab'))return;
+      ev.preventDefault();ev.dataTransfer.dropEffect='move';
+      const r=tab.getBoundingClientRect();
+      const before=(ev.clientX-r.left)<r.width/2;
+      tab.classList.toggle('drop-before',before);
+      tab.classList.toggle('drop-after',!before);
+    });
+    tab.addEventListener('dragleave',()=>{
+      tab.classList.remove('drop-before','drop-after');
+    });
+    tab.addEventListener('drop',ev=>{
+      const srcId=ev.dataTransfer&&ev.dataTransfer.getData('application/x-laycat-tab');
+      tab.classList.remove('drop-before','drop-after');
+      if(!srcId||srcId===id)return;
+      ev.preventDefault();
+      const arr=(state.openTasks||[]).slice();
+      const srcIdx=arr.indexOf(srcId);
+      if(srcIdx<0)return;
+      arr.splice(srcIdx,1);
+      /* drop 先の位置を再計算：削除後の配列で id の index を取り、mouse 位置が左半分なら前、右半分なら後 */
+      let destIdx=arr.indexOf(id);
+      if(destIdx<0)destIdx=arr.length;
+      const r=tab.getBoundingClientRect();
+      const before=(ev.clientX-r.left)<r.width/2;
+      if(!before)destIdx++;
+      arr.splice(destIdx,0,srcId);
+      state.openTasks=arr;
+      render();syncHash();
+    });
     tab.onclick=()=>{state.currentId=id;state.projTab='browse';state.pmPick=null;state.search='';$('#searchInput').value='';for(const x of pathOf(id))state.expanded.add(x.id);render();syncHash();
       /* タスクタブ切替：フォルダから最新を取り込み（fire-and-forget）。補正 render は入れない */
       setTimeout(()=>{autoRefresh(true).catch(()=>{})},0);
