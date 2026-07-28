@@ -269,6 +269,12 @@ const gltfLoader = new GLTFLoader();
 gltfLoader.setDRACOLoader(dracoLoader);
 
 let modelLoaded = false, modelRoot = null;
+/* 正中線（脊柱を辿る折れ線）— tick 毎に更新 */
+let midLine = null, midlineGeo = null;
+const midlineMaxPts = 16;
+/* 正中線を通すボーンのフレンドリ名（頭上 → 首 → 胸 → 背骨 → 腰 → 足中点 の順）。
+   モデルに存在するボーンだけ順に採用する。 */
+const MIDLINE_CHAIN = ['head', 'neck', 'upperChest', 'chest', 'spine', 'root'];
 function showLoadingHud(msg, isError){
   const hud = document.getElementById('hud');
   hud.innerHTML = '<b>'+(isError?'エラー':'読み込み中')+'：</b>'+msg;
@@ -327,19 +333,19 @@ function loadGLBModel(){
     const dbgInfo = 'nativeH='+heightNative.toFixed(2)+' scale='+scale.toFixed(3)+' foot.y='+footY.toFixed(2)+' hips=('+cx.toFixed(2)+','+cz.toFixed(2)+')';
     console.log('[mannequin]', dbgInfo);
 
-    /* 正中線（midline / 体の中心を通る一本線）を characterGroup 直下に追加。
-       characterGroup 座標系で（0, -1.0, 0）= 世界地面、（0, +0.7, 0）= 身長 1.7m の頭頂に対応。
-       characterGroup の 3D 回転（アノテ側のリング操作）にも自動的に追従する。
-       depthTest=false で常に手前に描画（体の裏側にあってもガイドとして見える）。 */
-    const midMat = new THREE.LineBasicMaterial({ color: 0xff7bd1, transparent:true, opacity:0.85, depthTest:false });
-    const midGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, -1.0, 0),
-      new THREE.Vector3(0,  0.75, 0)
-    ]);
-    const midLine = new THREE.Line(midGeo, midMat);
+    /* 正中線（midline）：頭頂 → 首 → 胸 → 背骨 → 腰 → 両足中点をボーンの
+       ワールド位置で結んだポリライン。tick 毎に world 位置から再構築するので、
+       ポーズを変えたり characterGroup を回転させても体の中心線に追従する
+       （テクスチャのように貼りついた見た目）。scene 直下に置き、depthTest=false で
+        体の裏側にあっても常に手前描画。 */
+    const midMat = new THREE.LineBasicMaterial({ color: 0xff7bd1, transparent:true, opacity:0.9, depthTest:false, linewidth:2 });
+    midlineGeo = new THREE.BufferGeometry();
+    midlineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(midlineMaxPts * 3), 3));
+    midLine = new THREE.Line(midlineGeo, midMat);
     midLine.name = '__midline';
     midLine.renderOrder = 998;   // joint proxy(999) より少し奥
-    characterGroup.add(midLine);
+    midLine.frustumCulled = false;
+    scene.add(midLine);
 
     // ボーンを収集してフレンドリ名にマップ
     let mappedCount = 0;
@@ -1028,9 +1034,46 @@ function syncJointProxies(){
   }
 }
 
+/* 正中線を各フレームで再構築（ボーンのワールド位置を辿った折れ線）。
+   これでポーズ変更・キャラ回転どちらにも「テクスチャのように」追従する。 */
+const _midTmp = new THREE.Vector3(), _midTmp2 = new THREE.Vector3();
+function updateMidline(){
+  if(!midLine || !midlineGeo) return;
+  const posAttr = midlineGeo.attributes.position;
+  const arr = posAttr.array;
+  let n = 0;
+  const push = (x,y,z)=>{ if(n>=midlineMaxPts) return; arr[n*3]=x; arr[n*3+1]=y; arr[n*3+2]=z; n++; };
+  /* 頭頂：head ボーン位置から少し上に延長（頭のトップ側まで線を伸ばす） */
+  if(bones.head){
+    bones.head.getWorldPosition(_midTmp);
+    /* 頭のサイズ相当（キャラスケール込みで概ね 0.13〜0.18m）だけ上方に延長 */
+    push(_midTmp.x, _midTmp.y + 0.14, _midTmp.z);
+  }
+  /* head → neck → upperChest → chest → spine → root（存在するものだけ順に採用） */
+  for(const name of MIDLINE_CHAIN){
+    const b = bones[name]; if(!b) continue;
+    b.getWorldPosition(_midTmp);
+    push(_midTmp.x, _midTmp.y, _midTmp.z);
+  }
+  /* 両足中点：レッグの平均で終端 */
+  const lf = bones.leftFoot, rf = bones.rightFoot;
+  if(lf && rf){
+    lf.getWorldPosition(_midTmp);
+    rf.getWorldPosition(_midTmp2);
+    push((_midTmp.x + _midTmp2.x) * 0.5, (_midTmp.y + _midTmp2.y) * 0.5, (_midTmp.z + _midTmp2.z) * 0.5);
+  } else if(lf || rf){
+    (lf || rf).getWorldPosition(_midTmp);
+    push(_midTmp.x, _midTmp.y, _midTmp.z);
+  }
+  midlineGeo.setDrawRange(0, n);
+  posAttr.needsUpdate = true;
+  midlineGeo.computeBoundingSphere();
+}
+
 function tick(){
   controls.update();
   syncJointProxies();
+  updateMidline();
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
