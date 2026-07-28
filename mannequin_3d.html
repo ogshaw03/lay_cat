@@ -426,7 +426,27 @@ tc.setMode('rotate');
 tc.setSize(0.7);
 tc.setSpace('local');   // Rotate around bone's own axes (natural for FK)
 scene.add(tc);
-tc.addEventListener('dragging-changed', ev => { controls.enabled = !ev.value; });
+tc.addEventListener('dragging-changed', ev => {
+  controls.enabled = !ev.value;
+  /* ドラッグ終了時：もし操作対象がチェーン内のボーンだったら、そのチェーンの
+     tipTargetWorldQuat / target 位置 / pole 位置を「現ポーズ」から取り直す。
+     FK で足を回した後にも足裏フラット固定が新しい向きで維持される。 */
+  if(!ev.value && ikChains.length && tc.object){
+    const obj = tc.object;
+    const q = new THREE.Quaternion(), p = new THREE.Vector3(), mp = new THREE.Vector3();
+    for(const c of ikChains){
+      if(obj === c.rBone || obj === c.mBone || obj === c.tBone){
+        modelRoot.updateMatrixWorld(true);
+        c.tBone.getWorldPosition(p); c.target.position.copy(p);
+        c.tBone.getWorldQuaternion(q); c.tipTargetWorldQuat = q.clone();
+        if(c.poleTarget){
+          c.mBone.getWorldPosition(mp);
+          c.poleTarget.position.copy(mp).addScaledVector(c.poleDir, 0.3);
+        }
+      }
+    }
+  }
+});
 
 /* TransformControls の rotate ピッカーで XYZE（自由回転）の球は既定 radius 0.25 と
    小さく、軸リング（radius 0.5, tube 0.1）の内側の中央にしか無いため、ちょっとカーソルが
@@ -991,6 +1011,16 @@ function solveIK(chain){
   const P1_current = new THREE.Vector3(); mBone.getWorldPosition(P1_current);
   aimBoneAt(mBone, new THREE.Vector3().subVectors(T, P1_current).normalize(), mAim);
   modelRoot.updateMatrixWorld(true);
+  /* 足裏（手首）の世界回転を保存値に戻す：親（lowerLeg / lowerArm）の回転が変わったので、
+     tip.local = parentWorldInv * savedWorldQuat で局所回転を再計算して同じ世界向きに保つ。
+     これで腰を移動しても足裏がぐるっと回らず接地面がキープされる。 */
+  if(chain.tipTargetWorldQuat){
+    const parentQ = new THREE.Quaternion();
+    if(tBone.parent){ tBone.parent.getWorldQuaternion(parentQ); } else { parentQ.identity(); }
+    const localQ = parentQ.invert().multiply(chain.tipTargetWorldQuat);
+    tBone.quaternion.copy(localQ);
+    tBone.updateMatrixWorld(true);
+  }
 }
 
 /* 毎フレーム：
@@ -1027,15 +1057,18 @@ function tickIK(){
    世界固定にし、tickIK() がチェーンを解き続ける。 */
 function setIKEnabled(on){
   ikEnabled = !!on;
-  const mp = new THREE.Vector3(), tp = new THREE.Vector3();
+  const mp = new THREE.Vector3(), tp = new THREE.Vector3(), q = new THREE.Quaternion();
   for(const c of ikChains){
     c.target.visible = ikEnabled;
     if(c.poleTarget) c.poleTarget.visible = ikEnabled;
     if(c.poleLine)   c.poleLine.visible   = ikEnabled;
     if(ikEnabled){
-      /* target を現 tip 位置にリセット */
+      /* target を現 tip 位置にリセット。あわせて tip の world quaternion をスナップして
+         solveIK が tip.local を再計算して「世界回転を保つ」ようにする（足裏フラット維持）。 */
       c.tBone.getWorldPosition(tp);
       c.target.position.copy(tp);
+      c.tBone.getWorldQuaternion(q);
+      c.tipTargetWorldQuat = q.clone();
       if(c.poleTarget){
         c.mBone.getWorldPosition(mp);
         c.poleTarget.position.copy(mp).addScaledVector(c.poleDir, 0.3);
@@ -1116,10 +1149,11 @@ const PRESETS = {
 
 function applyPreset(name){
   const p = PRESETS[name] || {};
-  // Reset all first
+  // Reset all bones to bind pose (rotation AND position — 腰は translate されてる可能性がある)
   for(const [bn, info] of Object.entries(bindMap)){
-    const b = bones[bn];
+    const b = bones[bn]; if(!b) continue;
     b.rotation.set(info.initEuler[0], info.initEuler[1], info.initEuler[2]);
+    if(info.offset) b.position.set(info.offset[0], info.offset[1], info.offset[2]);
   }
   // Then apply preset deltas
   for(const [bn, delta] of Object.entries(p)){
@@ -1128,6 +1162,27 @@ function applyPreset(name){
     b.rotation.set(init[0]+delta[0], init[1]+delta[1], init[2]+delta[2]);
   }
   if(selected) syncSlidersFromBone();
+  /* IK ON 中は target が世界固定なので、そのまま tickIK が走ると新ポーズが古い target 位置に
+     引き戻される。プリセット後の tip 位置と world quaternion で target/tipTargetWorldQuat を更新。 */
+  if(ikEnabled && ikChains.length) refreshIKTargetsFromCurrentPose();
+}
+
+/* 現在のポーズから IK target 位置・tip 世界回転・pole 位置をリセットする。
+   IK ON 中のプリセット適用時などに、目標位置と実ポーズの整合を取るため。 */
+function refreshIKTargetsFromCurrentPose(){
+  if(!ikChains.length) return;
+  modelRoot.updateMatrixWorld(true);
+  const tp = new THREE.Vector3(), mp = new THREE.Vector3(), q = new THREE.Quaternion();
+  for(const c of ikChains){
+    c.tBone.getWorldPosition(tp);
+    c.target.position.copy(tp);
+    c.tBone.getWorldQuaternion(q);
+    c.tipTargetWorldQuat = q.clone();
+    if(c.poleTarget){
+      c.mBone.getWorldPosition(mp);
+      c.poleTarget.position.copy(mp).addScaledVector(c.poleDir, 0.3);
+    }
+  }
 }
 document.querySelectorAll('.presetGrid button').forEach(btn=>{
   btn.onclick = ()=> applyPreset(btn.dataset.preset);

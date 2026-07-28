@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.063) 3D マネキン：IK ON 中のプリセット反映＋足裏フラット固定（腰移動で足首が回らない）
+  - **プリセット (初期ポーズ等) が IK ON 中に効かない不具合修正**：`applyPreset` 後に IK target が古い位置のままだったため、次フレームで tickIK が「新ポーズを古い target 位置に引き戻す」動作をしていた。プリセット適用後に `refreshIKTargetsFromCurrentPose()` を呼び、target/tipTargetWorldQuat/pole 位置を新ポーズに合わせて更新するようにした。同時にボーン位置（腰など translate 済みの可能性あり）も bindMap.offset にリセット。
+  - **足裏フラット固定**：IK 有効時に tip ボーン（足首・手首）の world quaternion をスナップ、`solveIK` の末尾で `tip.local = parentWorldInv * savedWorld` を計算して局所回転を再設定する。これで腰を移動しても親（lowerLeg / lowerArm）の回転変化が tip の見た目回転を変えず、足裏が地面に対してフラットのまま維持される。
+  - **FK で tip を回した後の追随**：`tc.dragging-changed` の drag 終了イベントで、操作対象がチェーン内ボーンなら該当チェーンの target 位置・tipTargetWorldQuat・pole を再取得する。FK で足を回した後もその向きで固定が続く。
+  - APP_VERSION を 2026.07.24.063 に。
+
 - (dev v2026.07.24.062) 3D マネキン：Maya の W=移動 / E=回転 マニピュレータ切替＋腰の移動対応
   - **W/E キーで TC モード切替**：`userPreferredMode` を導入。`W` で translate、`E` で rotate。単独ボーン選択時のみ即反映（IK ハンドル・ポール・複数選択の proxy は用途固定のまま）。
   - **単独ボーン選択時は W で移動できる**：これで腰（root/hips）を選んで W を押せば移動マニピュレータが出て、ドラッグで胴体を並進移動できる。IK ON なら v061 の tickIK でチェーンが再解決されて足元は地面に残る。
