@@ -69,6 +69,12 @@
         <div class="row"><label class="lz">Z</label><input type="range" id="rz" min="-180" max="180" step="1" value="0"><span class="val" id="rzV">0°</span></div>
         <button id="btnBoneReset" style="width:100%;margin-top:6px;padding:5px;background:#26262e;border:1px solid #34343e;color:#a0a0b0;border-radius:4px;font-size:11px;cursor:pointer">このボーンだけリセット</button>
       </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:#a0a0b0">
+        <span>ギズモサイズ</span>
+        <button id="btnGizmoMinus" style="width:26px;height:22px;padding:0;background:#26262e;border:1px solid #34343e;color:#eee;border-radius:4px;cursor:pointer;font-weight:700">−</button>
+        <span id="gizmoSizeLab" style="width:32px;text-align:center;font-family:monospace">0.7</span>
+        <button id="btnGizmoPlus" style="width:26px;height:22px;padding:0;background:#26262e;border:1px solid #34343e;color:#eee;border-radius:4px;cursor:pointer;font-weight:700">＋</button>
+      </div>
     </div>
     <div class="sect">
       <h3>プリセット</h3>
@@ -94,7 +100,8 @@
         <b style="color:#a0a0b0">ボーン</b><br>
         <kbd>Left</kbd> クリック=選択 ／ 空白ドラッグ=範囲選択（複数）<br>
         <kbd>Shift</kbd>+クリック/ドラッグ で追加選択<br>
-        空白クリック / <kbd>Esc</kbd> で選択解除 ／ <kbd>R</kbd> 選択中を bind pose にリセット
+        空白クリック / <kbd>Esc</kbd> で選択解除<br>
+        <kbd>R</kbd> 選択中を bind pose にリセット ／ <kbd>F</kbd> 選択中に寄る
       </div>
     </div>
   </aside>
@@ -147,6 +154,12 @@ let altHeld = false;
 function updateMayaMode(){
   controls.mouseButtons = altHeld ? MAYA_BUTTONS : NO_BUTTONS;
   stage.style.cursor = altHeld ? 'grab' : '';
+  /* Alt 押下中はカメラ操作モード → TransformControls を無効化して
+     ボーン回転を封じる（ドラッグ中は tc.dragging も残さない）。 */
+  if(typeof tc !== 'undefined' && tc){
+    tc.enabled = !altHeld;
+    tc.visible = !altHeld;
+  }
 }
 window.addEventListener('keydown', e=>{
   if(e.key === 'Alt' && !altHeld){ altHeld = true; updateMayaMode(); e.preventDefault(); }
@@ -406,26 +419,65 @@ let _multiDragStart = null;
 
 tc.addEventListener('mouseDown', ()=>{
   if(selectedSet.size > 1){
-    /* multiProxy を identity に戻し、この時点からの delta が取り出せるように。
-       各ボーンの初期 quaternion もスナップショット。 */
+    /* multiProxy を identity に戻し、この時点からの delta が世界空間の回転として
+       取り出せるようにする。各ボーンについて
+         ・初期ローカル quaternion
+         ・親のワールド quaternion（と逆）
+       をスナップショット。 */
     multiProxy.quaternion.identity();
     multiProxy.rotation.set(0,0,0);
     _multiDragStart = { bones: {} };
+    const pQ = new THREE.Quaternion();
     for(const name of selectedSet){
-      if(bones[name]) _multiDragStart.bones[name] = bones[name].quaternion.clone();
+      const b = bones[name]; if(!b) continue;
+      const parent = b.parent;
+      if(parent){ parent.updateMatrixWorld(true); parent.getWorldQuaternion(pQ); }
+      else{ pQ.identity(); }
+      _multiDragStart.bones[name] = {
+        init: b.quaternion.clone(),
+        parentQ: pQ.clone(),
+        parentQInv: pQ.clone().invert()
+      };
     }
   }
 });
 tc.addEventListener('mouseUp', ()=>{ _multiDragStart = null; });
 
+/* ギズモサイズ調整（＋/− ボタン）。setSize は掛け算スケールなので 0.15 刻みで
+   0.25〜2.5 の範囲を上下する。ローカルストレージに保存して次回起動時にも復元。 */
+let gizmoSize = 0.7;
+try{ const s = parseFloat(localStorage.getItem('laycat_mann_gizmo_size')); if(s>0.05 && s<10) gizmoSize = s; }catch(_){}
+function setGizmoSize(v){
+  gizmoSize = Math.max(0.25, Math.min(2.5, v));
+  tc.setSize(gizmoSize);
+  const lab = document.getElementById('gizmoSizeLab');
+  if(lab) lab.textContent = gizmoSize.toFixed(2);
+  try{ localStorage.setItem('laycat_mann_gizmo_size', String(gizmoSize)); }catch(_){}
+}
+setGizmoSize(gizmoSize);
+document.getElementById('btnGizmoMinus').onclick = ()=> setGizmoSize(gizmoSize - 0.15);
+document.getElementById('btnGizmoPlus').onclick  = ()=> setGizmoSize(gizmoSize + 0.15);
+
 tc.addEventListener('objectChange', () => {
   if(selectedSet.size > 1 && _multiDragStart){
-    /* multiProxy.quaternion は identity からの delta。
-       各ボーンの初期 quaternion に post-multiply（＝ボーンのローカル軸まわりで delta を適用）。 */
+    /* multiProxy.quaternion は世界空間で見た delta 回転（identity からのズレ）。
+       各ボーンにはワールド空間で同じ delta を適用したいので、親フレームに変換して
+       ローカルにセットする：
+         newLocal = parentQInv * delta * parentQ * initLocal
+       これで両腕・両脚など軸方向がまちまちなボーン群でも、視覚的に「同じ方向へ回る」。 */
     const delta = multiProxy.quaternion;
+    const tmp = new THREE.Quaternion();
     for(const name of selectedSet){
-      const init = _multiDragStart.bones[name];
-      if(init && bones[name]) bones[name].quaternion.copy(init).multiply(delta);
+      const rec = _multiDragStart.bones[name];
+      const b = bones[name];
+      if(!rec || !b) continue;
+      /* tmp = parentQInv * delta */
+      tmp.copy(rec.parentQInv).multiply(delta);
+      /* tmp = tmp * parentQ */
+      tmp.multiply(rec.parentQ);
+      /* newLocal = tmp * initLocal */
+      tmp.multiply(rec.init);
+      b.quaternion.copy(tmp);
     }
   } else if(selected){
     syncSlidersFromBone();
@@ -861,6 +913,9 @@ document.getElementById('btnReset').onclick = ()=>{
 
 // ---------- Keyboard ----------
 window.addEventListener('keydown', e=>{
+  /* テキスト入力中はショートカットを無視 */
+  const t = e.target;
+  if(t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
   if(e.key === 'Escape'){ selectBone(null); }
   else if(e.key === 'r' || e.key === 'R'){
     /* 選択中の全ボーンを bind pose にリセット（複数選択対応） */
@@ -870,7 +925,48 @@ window.addEventListener('keydown', e=>{
     }
     if(selected) syncSlidersFromBone();
   }
+  else if(e.key === 'f' || e.key === 'F'){
+    /* Maya の Frame Selected：選択中のボーンにフィット。無選択ならキャラ全体にフィット。 */
+    frameSelection();
+    e.preventDefault();
+  }
 });
+
+/* 選択中のボーン（無選択なら全マップ済みボーン）を bounding sphere で包み、
+   カメラの視線方向を保ったまま target と距離を調整して収める。 */
+function frameSelection(){
+  const targets = selectedSet.size > 0 ? [...selectedSet] : Object.keys(bones);
+  if(!targets.length) return;
+  const pts = [];
+  const tmp = new THREE.Vector3();
+  for(const name of targets){
+    const b = bones[name]; if(!b) continue;
+    b.getWorldPosition(tmp);
+    pts.push(tmp.clone());
+  }
+  if(!pts.length) return;
+  /* 重心 */
+  const c = new THREE.Vector3();
+  for(const p of pts) c.add(p);
+  c.divideScalar(pts.length);
+  /* 最大半径 */
+  let radius = 0;
+  for(const p of pts){ const d = p.distanceTo(c); if(d > radius) radius = d; }
+  /* 単一点しか無い場合は関節サイズぶんの猶予を確保（超近接ズームを防止） */
+  radius = Math.max(radius, 0.12);
+  /* 視野に収めるための距離。少し余白（1.6 倍）を持たせる。 */
+  const fovR = camera.fov * Math.PI / 180;
+  const distV = radius / Math.tan(fovR / 2);
+  const distH = distV / Math.max(0.001, camera.aspect);
+  const dist = Math.max(distV, distH) * 1.6;
+  /* 現在のカメラ方向（target → camera）を保ったまま距離を差し替え、target を重心へ */
+  const dir = new THREE.Vector3().subVectors(camera.position, controls.target);
+  if(dir.lengthSq() < 1e-8) dir.set(0, 0.3, 1);
+  dir.normalize().multiplyScalar(dist);
+  controls.target.copy(c);
+  camera.position.copy(c).add(dir);
+  controls.update();
+}
 
 // ---------- Load pose from opener (round-trip) ----------
 try {

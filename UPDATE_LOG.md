@@ -13,6 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.051) 3D マネキン：F キーで選択に寄る／複数選択の逆挙動修正／Alt 中は回転無効／ギズモサイズ ±
+  - **F キー = Frame Selected**：Maya 準拠。選択中のボーン群 (無選択なら全ボーン) の重心＋最大半径で bounding sphere を計算し、視線方向を保ったまま `controls.target` と `camera.position` を再配置してビューに収める。
+  - **複数選択マニピュレータの逆挙動修正**：これまでは delta を各ボーンのローカル軸に post-multiply していたため、両腕・両脚など軸方向が対になっているボーン群で回転方向が視覚的に反転して見えていた。世界空間で delta を適用し、`newLocal = parentQInv * delta * parentQ * initLocal` で親フレームに変換してからローカルにセットする方式に変更。
+  - **Alt 中はボーン回転を無効化**：Alt キー（カメラ操作モード）押下中は `tc.enabled = false / tc.visible = false` にしてリング操作を封じる。カメラを回そうとして誤ってボーンを回してしまう事故を防ぐ。
+  - **ギズモサイズ ± ボタン**：選択パネルに `−` / `＋` ボタンを追加。`tc.setSize` を 0.25〜2.5 の範囲で 0.15 刻みで変更、値は localStorage に保存して次回起動時に復元。
+  - APP_VERSION を 2026.07.24.051 に。
+
 - (dev v2026.07.24.050) 3D マネキン：複数選択時にもマニピュレーター（共有ピボット）表示
   - **共有ピボット proxy を追加**：複数ボーンを選択したとき、選択重心に空の `Object3D` を配置して TransformControls をアタッチ。ドラッグで proxy の quaternion が変化する。
   - **ドラッグ中は delta を各ボーンにローカル post-multiply**：`mouseDown` で proxy を identity にリセットしつつ各ボーンの quaternion をスナップショット。`objectChange` で `bone.quaternion = init * proxy.quaternion` を各ボーンに適用（＝各ボーンが自分のローカル軸まわりに同じ角度だけ回転）。これで両腕を同時に肘 flex させる等の対称ポーズ調整が可能。
