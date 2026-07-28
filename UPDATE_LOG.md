@@ -13,6 +13,14 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.057) 3D マネキン：Two-bone IK 実装（両腕・両脚）
+  - **チェーン**：`leftArm(shoulder→elbow→wrist)` / `rightArm` / `leftLeg(hip→knee→ankle)` / `rightLeg` の 4 チェーン。init 時に各ボーンの aim direction（子ボーンのローカル位置）・骨長・初期 bend 方向（pole）を計算。
+  - **ソルバ**：Two-bone IK。target までの距離 D から三角形の余弦定理で root/mid の角度を求め、pole 方向で bend 平面を決定。`aimBoneAt` で親フレームに変換した world 方向にボーンの aim ベクトルを合わせるように quaternion を計算・set。
+  - **UI**：サイドバー「IK（逆運動学）」セクションにチェックボックスを追加。ON にすると両手・両足に色付き Box ハンドル（左腕=cyan / 右腕=magenta / 左脚=green / 右脚=orange）が現れる。クリック→TransformControls が translate モードに切替、Move ギズモで引っ張ると肩・肘・股・膝が自動追従。
+  - **FK と共存**：IK ハンドル以外のボーンをクリックすると TC は rotate モードに戻り FK 選択に復帰。IK 非ドラッグ中は target が tip ボーンの現在位置に追随するので、FK でポーズを変えても target が置いてきぼりにならない。
+  - **snapshot / headless render** では IK ハンドルを非表示にしてアノテスクショに写らないよう対策。
+  - APP_VERSION を 2026.07.24.057 に。
+
 - (dev v2026.07.24.056) 3D マネキン：ランタイム正中線を削除（テクスチャ方式に切り替え待ち）
   - v053〜v055 のランタイム正中線描画は体の凹凸に完全追従できないため撤去。今後はテクスチャ入り GLB に差し替える方針。
   - 削除範囲：`midLine` / `midlineGeo` / `updateMidline` / `MIDLINE_CHAIN` / `MIDLINE_THICKNESS` と 3D／headless 両方の tick 呼び出し。
