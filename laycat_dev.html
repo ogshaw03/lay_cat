@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.019';
+const APP_VERSION='2026.07.28.020';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4196,18 +4196,26 @@ function buildTaskTabs(root){
            ので、元の rects[i] の中央が挿入境界になる。以前は compact 化された座標
            （flexbox 詰め後の位置）と比較していたため、ゴーストが元位置からわずか動く
            だけで「隣タブの compact mid」を跨いでしまい、右側が急激にスライドしていた。 */
-        const G=e.clientX-offsetX+rects[draggedIdx].width/2;
+        const w_dragged=rects[draggedIdx].width;
+        const G=e.clientX-offsetX+w_dragged/2;
         const N=tabs.length;
-        /* 境界は「隣り合う slot 中央の中点」= Chrome 風「隣タブの半分に乗った時点で
-           スワップ」を意味する。元 mid そのものを境界にしていた頃はゴーストが隣タブを
-           完全に覆うまでスワップが起きず「思っていた場所より 1 つ左に入る」現象に。
-           uniform 幅前提で、slot K の中央 = rects[K].mid（K=draggedIdx 含む）となる
-           ので、k と k+1 の間の境界 = (mids[k]+mids[k+1])/2。 */
-        const mids=rects.map(r=>r.left+r.width/2);
-        let insertIdx=N-1;
-        for(let k=0;k<N-1;k++){
-          const boundary=(mids[k]+mids[k+1])/2;
-          if(G<boundary){ insertIdx=k; break; }
+        /* 境界は「reorder 時の各 K における ghost slot 中央」の中点で決める。
+           slot K の左端 = L(K) = L0 + sum(compact widths 0..K-1) + K*gap、
+           slot K の ghost 中央 = L(K) + w_dragged/2。
+           境界(K/K+1) = ghost 中央の中点 = L(K) + w_dragged/2 + (compact[K].w + g)/2。
+
+           以前は「隣り合う rects[k].mid の中点」を使っていたが、これは uniform 幅
+           前提で、dragged が他より広い/狭い場合に境界が右寄り/左寄りになり、
+           ドロップ位置が常に 1 スロット左（または右）にずれていた。 */
+        const compactW=[];
+        for(let i=0;i<N;i++)if(i!==draggedIdx)compactW.push(rects[i].width);
+        const g=2;   /* .task-tabs の CSS gap */
+        const L0=rects[0].left;  /* DOM 順 = 視覚順（flexbox row）なので tab 0 が leftmost */
+        let L=L0,insertIdx=N-1;
+        for(let K=0;K<N-1;K++){
+          const boundary=L+w_dragged/2+(compactW[K]+g)/2;
+          if(G<boundary){ insertIdx=K; break; }
+          L+=compactW[K]+g;
         }
         if(insertIdx!==dragCtx.insertIdx){
           dragCtx.insertIdx=insertIdx;
