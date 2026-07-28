@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.28.015) タスクタブ並べ替え：HTML5 D&D をやめて pointer events で書き直し（🚫 チカチカを根本解決）
+  - v012〜v014 で試したどの手を打っても、HTML5 D&D 仕様上 dragstart → 最初の dragover が preventDefault されるまでの数フレーム、ブラウザが標準の「ドロップ不可」カーソル (🚫 / 点線四角) を必ず一瞬描いてしまうことが判明。
+  - `tab.draggable=true` + dragstart/dragover/drop/dragend/dragleave の HTML5 D&D 実装を全撤去し、`pointerdown`/`pointermove`/`pointerup`/`pointercancel` の pointer events で自前実装に置き換え。ブラウザは一切ゴーストもカーソルも描かず、我々の ghost 要素と `document.body.style.cursor='grabbing'` だけで完結する。
+  - 5px 移動しきい値でクリックとドラッグを区別。ドラッグ終了直後の click イベントは 1 回だけ capture フェーズで抑止して誤アクティブ化を防止。
+
 - (dev v2026.07.28.014) タスクタブ並べ替え：🚫/点線四角の三度目の修正（ゴースト画像と strip dragover 両方）
   - `setDragImage(new Image(data:URL))` は dragstart 時に画像がロード完了していない場合ブラウザが「ソースタブそのもの」をフォールバックゴーストにしてしまい、薄い枠付きのタブがマウスに追従して見えていた。
   - オフスクリーンの `<div>` (1x1, opacity 0, position:fixed で -9999px) を DOM に付けてから `setDragImage` に渡す方式に変更（ロード待ちなしで確実に「見えないゴースト」を成立させる）。

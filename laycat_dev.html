@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.014';
+const APP_VERSION='2026.07.28.015';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4157,85 +4157,97 @@ function buildTaskTabs(root){
     const active=state.currentId===id;
     const tab=el('div','task-tab'+(active?' on':''));
     tab.appendChild(el('span','tt-name',shotOf(n)||n.name));
-    tab.draggable=true;
     tab.dataset.tabId=id;
-    tab.addEventListener('dragstart',ev=>{
-      try{
-        ev.dataTransfer.setData('application/x-laycat-tab',id);
-        ev.dataTransfer.effectAllowed='move';
-        /* ブラウザ標準のドラッグゴーストは 2D 自由に動くので上下追従してしまう。
-           new Image() + data URL 方式だと dragstart 時にロードが間に合わず、ブラウザが
-           フォールバックでソースタブ自体をゴースト表示してしまう（＝薄い枠が付いて回る）。
-           代わりに DOM に既に居るオフスクリーンの div を setDragImage に渡すと、
-           ロード待ちなしで確実に「幅0の空要素」がゴーストになり、事実上非表示になる。 */
-        const dragImg=document.createElement('div');
-        dragImg.style.cssText='position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none';
-        document.body.appendChild(dragImg);
-        ev.dataTransfer.setDragImage(dragImg,0,0);
-        setTimeout(()=>dragImg.remove(),0);
-      }catch(_){}
-      tab.classList.add('dragging');
-      /* スナップショット：全タブ + それぞれの初期位置。以降のシフトはこの基準からの transform で表現。 */
+    /* pointer events ベースの並べ替え。HTML5 D&D はどう頑張っても dragstart から
+       最初の dragover が preventDefault されるまでの数フレームでブラウザ標準の
+       「ドロップ不可」カーソル (🚫 / 点線四角) が一瞬見えてしまう仕様なので、
+       ネイティブ D&D を捨てて pointer events で自前実装する。ブラウザは一切ゴーストや
+       カーソルを描かず、我々の ghost 要素と CSS カーソルだけで完結する。 */
+    tab.addEventListener('pointerdown',ev=>{
+      if(ev.button!==0)return;                                /* 左クリック以外は無視 */
+      if(ev.target.closest('.tt-close'))return;               /* ✕ ボタン上は無視 */
+      const startX=ev.clientX,startY=ev.clientY;
       const tabs=[...strip.querySelectorAll('.task-tab[data-tab-id]')];
       const rects=tabs.map(t=>t.getBoundingClientRect());
       const draggedIdx=tabs.indexOf(tab);
       const dr=rects[draggedIdx];
-      /* 独自プレビュー：dragged タブのクローンを body 直下に position:fixed で配置し、
-         top を strip の Y に固定・left のみカーソル X で更新する → 左右だけスライド。 */
-      const ghost=tab.cloneNode(true);
-      ghost.classList.remove('dragging');
-      ghost.removeAttribute('draggable');
-      ghost.style.cssText='position:fixed;top:'+dr.top+'px;left:'+dr.left+'px;width:'+dr.width+'px;height:'+dr.height+'px;pointer-events:none;opacity:.9;z-index:2000;box-shadow:0 6px 18px rgba(0,0,0,.4);border-radius:6px;background:var(--bg2);transition:none';
-      document.body.appendChild(ghost);
       const offsetX=ev.clientX-dr.left;
-      /* document 全体で dragover を捕捉して ghost.left を更新（strip の外にカーソルが
-         出ても追従は継続。Y は絶対に触らない）。Firefox の終了イベント (0,0) は無視。
-         また preventDefault + dropEffect='move' を必ず呼んで、strip 外でも「ドロップ
-         不可」カーソル (🚫 / 点線四角) が出ないようにする。実際に strip 外に drop
-         された場合は下の onDocDrop が空 preventDefault だけ返し、reorder は起きない。 */
-      /* 判定は「dragCtx が生きているか」で行う。dataTransfer.types で
-         `application/x-laycat-tab` を見る方法は一部ブラウザ（Chromium 系の
-         セキュリティ制限）で dragover 中に custom MIME 型が types に現れず動かない。
-         dragCtx はタブ D&D 中しか set されないので、これ自体が「タブ D&D 中」の判定になる。 */
-      const onDocDrag=(e)=>{
+      let dragging=false,didDrag=false;
+      const onMove=e=>{
+        if(!dragging){
+          /* しきい値 5px を超えて動いたらドラッグ開始 */
+          if(Math.hypot(e.clientX-startX,e.clientY-startY)<5)return;
+          dragging=true;didDrag=true;
+          try{tab.setPointerCapture(e.pointerId)}catch(_){}
+          /* 独自プレビュー：dragged タブのクローンを position:fixed で body 直下に。
+             top は strip の Y に固定・left のみカーソル X に追従で更新する。 */
+          const ghost=tab.cloneNode(true);
+          ghost.style.cssText='position:fixed;top:'+dr.top+'px;left:'+dr.left+'px;width:'+dr.width+'px;height:'+dr.height+'px;pointer-events:none;opacity:.9;z-index:2000;box-shadow:0 6px 18px rgba(0,0,0,.4);border-radius:6px;background:var(--bg2);transition:none';
+          document.body.appendChild(ghost);
+          dragCtx={tabs,rects,draggedIdx,dragId:id,insertIdx:draggedIdx,ghost,offsetX};
+          tab.classList.add('dragging','dragging-collapse');
+          document.body.style.cursor='grabbing';
+          applyShift(draggedIdx,false);
+        }
         if(!dragCtx)return;
-        e.preventDefault();
-        try{e.dataTransfer.dropEffect='move'}catch(_){}
-        if(e.clientX===0&&e.clientY===0)return;
-        if(dragCtx.ghost) dragCtx.ghost.style.left=(e.clientX-dragCtx.offsetX)+'px';
+        dragCtx.ghost.style.left=(e.clientX-offsetX)+'px';
+        /* 挿入位置を dragged を除いた compact 配列上の index として計算 */
+        const x=e.clientX;
+        const dw=rects[draggedIdx].width+2;
+        const N=tabs.length;
+        let insertIdx=N-1;
+        for(let i=0;i<N;i++){
+          if(i===draggedIdx)continue;
+          const r=rects[i];
+          const compactLeft = i<draggedIdx ? r.left : r.left-dw;
+          const mid = compactLeft + r.width/2;
+          const j = i<draggedIdx ? i : i-1;
+          if(x<mid){ insertIdx=j; break; }
+        }
+        if(insertIdx!==dragCtx.insertIdx){
+          dragCtx.insertIdx=insertIdx;
+          applyShift(insertIdx);
+        }
       };
-      const onDocDrop=(e)=>{
-        if(!dragCtx)return;
-        /* strip 外に落ちた場合は「何もしない = キャンセル」。デフォルト動作
-           （ブラウザによっては dataTransfer 内容をアドレスバーに開こうとする）だけを止める。 */
-        e.preventDefault();
+      const cleanup=()=>{
+        document.removeEventListener('pointermove',onMove);
+        document.removeEventListener('pointerup',onEnd);
+        document.removeEventListener('pointercancel',onCancel);
+        document.body.style.cursor='';
+        if(dragCtx){
+          if(dragCtx.ghost)dragCtx.ghost.remove();
+          clearShifts();
+          dragCtx=null;
+        }
+        tab.classList.remove('dragging','dragging-collapse');
       };
-      document.addEventListener('dragover',onDocDrag);
-      document.addEventListener('drop',onDocDrop);
-      dragCtx={tabs,rects,draggedIdx,dragId:id,insertIdx:draggedIdx,ghost,offsetX,onDocDrag,onDocDrop};
-      /* drag image がブラウザに捕捉された直後に、dragged タブを width 0 に潰して
-         DOM 上から実質的に除去する。flexbox が自動で他タブを詰める → applyShift の
-         translateX と組み合わせて Chrome ライクな挿入プレビューを実現。setTimeout(0)
-         を挟まないと drag image 生成に幅0のタブが渡ってしまうので必須。 */
-      setTimeout(()=>{
-        if(!dragCtx)return;
-        tab.classList.add('dragging-collapse');
-        /* 初期は「dragged 元位置」を維持したいので、compact 側は dragged 以降を dw 右に寄せて
-           flexbox 詰めを相殺する（insertIdx = draggedIdx が「元スロットに戻す」意）。
-           アニメーションなしで即座にスナップさせる（初期状態を「元の見た目」に瞬時に揃える）。 */
-        applyShift(draggedIdx, false);
-      },0);
-    });
-    tab.addEventListener('dragend',()=>{
-      tab.classList.remove('dragging');
-      tab.classList.remove('dragging-collapse');
-      if(dragCtx){
-        if(dragCtx.ghost)dragCtx.ghost.remove();
-        if(dragCtx.onDocDrag)document.removeEventListener('dragover',dragCtx.onDocDrag);
-        if(dragCtx.onDocDrop)document.removeEventListener('drop',dragCtx.onDocDrop);
-        clearShifts();
-        dragCtx=null;
-      }
+      const onEnd=e=>{
+        if(didDrag&&dragCtx){
+          const arr=(state.openTasks||[]).slice();
+          const srcIdx=arr.indexOf(id);
+          if(srcIdx>=0){
+            arr.splice(srcIdx,1);
+            let insertIdx=dragCtx.insertIdx;
+            if(insertIdx<0)insertIdx=0;
+            if(insertIdx>arr.length)insertIdx=arr.length;
+            arr.splice(insertIdx,0,id);
+            state.openTasks=arr;
+          }
+          cleanup();
+          /* pointerup 直後に発火する click イベントを 1 回だけ抑止（ドラッグ終了で
+             タブが誤アクティブ化されるのを防ぐ）。 */
+          const stopClick=cev=>{cev.stopPropagation();cev.preventDefault();window.removeEventListener('click',stopClick,true)};
+          window.addEventListener('click',stopClick,true);
+          render();syncHash();
+        }else{
+          /* ドラッグしていないただのクリック → 何もしない（下の tab.onclick が発火する） */
+          cleanup();
+        }
+      };
+      const onCancel=()=>{ cleanup(); if(didDrag){render();syncHash()} };
+      document.addEventListener('pointermove',onMove);
+      document.addEventListener('pointerup',onEnd);
+      document.addEventListener('pointercancel',onCancel);
     });
     tab.onclick=()=>{state.currentId=id;state.projTab='browse';state.pmPick=null;state.search='';$('#searchInput').value='';for(const x of pathOf(id))state.expanded.add(x.id);render();syncHash();
       /* タスクタブ切替：フォルダから最新を取り込み（fire-and-forget）。補正 render は入れない */
@@ -4270,65 +4282,8 @@ function buildTaskTabs(root){
   };
   strip.appendChild(clr);
 
-  /* Strip 全体で dragover/drop を受け付ける。dragover 中はカーソル X 位置から挿入位置を計算し、
-     各タブに transform を適用してリアルタイムスライド（Chrome のタブ並び替えと同じ挙動）。 */
-  strip.addEventListener('dragover',ev=>{
-    if(!dragCtx)return;
-    /* types.includes('application/x-laycat-tab') 判定は一部ブラウザで custom MIME 型が
-       dragover 中に見えず preventDefault を素通りしてしまうため、dragCtx の有無で判定する。 */
-    ev.preventDefault();
-    try{ev.dataTransfer.dropEffect='move'}catch(_){}
-    const x=ev.clientX;
-    const dw=dragCtx.rects[dragCtx.draggedIdx].width+2;
-    const N=dragCtx.tabs.length;
-    /* compact 配列は長さ N-1、挿入位置は 0..N-1（末尾含む）。 */
-    let insertIdx=N-1;
-    for(let i=0;i<N;i++){
-      if(i===dragCtx.draggedIdx)continue;
-      const r=dragCtx.rects[i];
-      /* dragged 以降のタブは flexbox で dw 左に詰まっているので、compact 上の中央を計算。 */
-      const compactLeft = i<dragCtx.draggedIdx ? r.left : r.left-dw;
-      const mid = compactLeft + r.width/2;
-      const j = i<dragCtx.draggedIdx ? i : i-1;
-      if(x<mid){ insertIdx=j; break; }
-    }
-    if(insertIdx!==dragCtx.insertIdx){
-      dragCtx.insertIdx=insertIdx;
-      applyShift(insertIdx);
-    }
-  });
-  strip.addEventListener('drop',ev=>{
-    if(!dragCtx)return;
-    const srcId=ev.dataTransfer&&ev.dataTransfer.getData('application/x-laycat-tab');
-    if(!srcId)return;
-    ev.preventDefault();
-    const arr=(state.openTasks||[]).slice();
-    const srcIdx=arr.indexOf(srcId);
-    if(srcIdx<0)return;
-    arr.splice(srcIdx,1);
-    /* insertIdx は既に「dragged を除いた compact 配列上の挿入位置」なので、そのまま splice。 */
-    let insertIdx=dragCtx.insertIdx;
-    if(insertIdx<0)insertIdx=0;
-    if(insertIdx>arr.length)insertIdx=arr.length;
-    arr.splice(insertIdx,0,srcId);
-    /* transform 掃除は render で DOM 再生成されるため自動的にクリア。
-       他タブは既にドラッグ中に visual final position まで動いているのでスナップは発生しない。
-       ghost / document 級リスナーは dragend でも解放するが、render で DOM が
-       作り直されるとタイミング的に取りこぼす可能性があるのでここでも確実に解放。 */
-    if(dragCtx.ghost)dragCtx.ghost.remove();
-    if(dragCtx.onDocDrag)document.removeEventListener('dragover',dragCtx.onDocDrag);
-    if(dragCtx.onDocDrop)document.removeEventListener('drop',dragCtx.onDocDrop);
-    state.openTasks=arr;
-    render();syncHash();
-  });
-  strip.addEventListener('dragleave',ev=>{
-    /* strip 外に完全に出た場合のみリセット（子タブ間の遷移では無視） */
-    if(!dragCtx)return;
-    const rt=ev.relatedTarget;
-    if(rt&&strip.contains(rt))return;
-    dragCtx.insertIdx=dragCtx.draggedIdx;
-    applyShift(dragCtx.insertIdx);
-  });
+  /* 以前の HTML5 D&D 用の strip.dragover / drop / dragleave リスナーは
+     pointer events 実装（tab.pointerdown ハンドラ内）に移行済みなので撤去。 */
   return strip;
 }
 /* 保存先フォルダ未設定の警告バナー（動画はフォルダにしか保存できないため） */
