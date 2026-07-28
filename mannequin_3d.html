@@ -975,31 +975,53 @@ function solveIK(chain){
   modelRoot.updateMatrixWorld(true);
 }
 
-/* 毎フレーム：IK が OFF または非ドラッグ中は target を tip の現在位置に追随させる
-   （FK でポーズが変わったら target も一緒に動くように） */
+/* 毎フレーム：
+   - IK OFF 時は target を tip の現在位置に追随（次に IK ON にしたときの初期位置を最新に）。
+   - IK ON 時は target を tip に追随「させない」＝target 位置を世界固定にする。
+     これで腰などをFKで動かしても足が置いてけぼりで固定され、続く tickIK() で
+     IK ソルバが upperLeg/lowerLeg を再計算して足元をキープする（Maya の IK 挙動）。 */
 const _ikSyncTmp = new THREE.Vector3();
 function syncIKTargets(){
   if(!ikChains.length) return;
+  if(ikEnabled) return;   /* IK ON 中は追随しない（target 位置がユーザー入力の source of truth） */
   for(const c of ikChains){
-    /* IK でドラッグ中のチェーンは skip（target 位置がユーザー入力の source of truth） */
-    if(ikEnabled && ikActiveChain === c && tc && tc.dragging) continue;
     c.tBone.getWorldPosition(_ikSyncTmp);
     c.target.position.copy(_ikSyncTmp);
   }
 }
 
+/* 毎フレーム：IK ON のとき、各チェーンを target 位置に再ソルブ。
+   これで親ボーン（腰・胸など）を FK で動かしても手足は target 位置にキープされる。
+   例外：ユーザーがそのチェーンのボーン自体を FK でドラッグ中は解かない（FK 編集を尊重）。 */
+function tickIK(){
+  if(!ikEnabled || !ikChains.length) return;
+  const dragObj = (tc && tc.dragging) ? tc.object : null;
+  for(const c of ikChains){
+    /* チェーン内のボーンを直接ドラッグ中はスキップ */
+    if(dragObj && (dragObj === c.rBone || dragObj === c.mBone || dragObj === c.tBone)) continue;
+    solveIK(c);
+  }
+}
+
 /* IK ON/OFF：target・pole 表示切替。OFF 時は tc からも外す。
-   ON 時は pole ハンドル位置を現 elbow/knee + 0.3m*bendDir にリセット（前回の残留位置を避ける）。 */
+   ON 時は target を現在の tip 位置、pole を現 elbow/knee + 0.3m*bendDir にリセット
+   （前回残留位置や FK でずれた位置を避ける）。以降 IK ON 中は target を tip に追随させず
+   世界固定にし、tickIK() がチェーンを解き続ける。 */
 function setIKEnabled(on){
   ikEnabled = !!on;
-  const mp = new THREE.Vector3();
+  const mp = new THREE.Vector3(), tp = new THREE.Vector3();
   for(const c of ikChains){
     c.target.visible = ikEnabled;
     if(c.poleTarget) c.poleTarget.visible = ikEnabled;
     if(c.poleLine)   c.poleLine.visible   = ikEnabled;
-    if(ikEnabled && c.poleTarget){
-      c.mBone.getWorldPosition(mp);
-      c.poleTarget.position.copy(mp).addScaledVector(c.poleDir, 0.3);
+    if(ikEnabled){
+      /* target を現 tip 位置にリセット */
+      c.tBone.getWorldPosition(tp);
+      c.target.position.copy(tp);
+      if(c.poleTarget){
+        c.mBone.getWorldPosition(mp);
+        c.poleTarget.position.copy(mp).addScaledVector(c.poleDir, 0.3);
+      }
     }
   }
   if(!ikEnabled && ikActiveChain){
@@ -1330,6 +1352,7 @@ function tick(){
   controls.update();
   syncJointProxies();
   syncIKTargets();
+  tickIK();
   updateIKPoleLines();
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
