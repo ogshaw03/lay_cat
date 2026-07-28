@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.064) 3D マネキン：IK トグルを腕・脚で分離
+  - **UI**：「両手・両足を IK でドラッグ」の 1 個から「両腕を IK でドラッグ」「両脚を IK でドラッグ」の 2 個に分割。
+  - **状態管理**：`ikEnabled` を `{ arm: false, leg: false }` に変更。`setIKEnabled(kind, on)` シグネチャに変更。
+  - `syncIKTargets` / `tickIK` / pointerdown IK ハンドル当たり判定 / `applyPreset` を per-kind 判定に更新。ON にした kind のチェーンだけ target/pole 表示・毎フレーム再ソルブ・当たり判定対象に。
+  - APP_VERSION を 2026.07.24.064 に。
+
 - (dev v2026.07.24.063) 3D マネキン：IK ON 中のプリセット反映＋足裏フラット固定（腰移動で足首が回らない）
   - **プリセット (初期ポーズ等) が IK ON 中に効かない不具合修正**：`applyPreset` 後に IK target が古い位置のままだったため、次フレームで tickIK が「新ポーズを古い target 位置に引き戻す」動作をしていた。プリセット適用後に `refreshIKTargetsFromCurrentPose()` を呼び、target/tipTargetWorldQuat/pole 位置を新ポーズに合わせて更新するようにした。同時にボーン位置（腰など translate 済みの可能性あり）も bindMap.offset にリセット。
   - **足裏フラット固定**：IK 有効時に tip ボーン（足首・手首）の world quaternion をスナップ、`solveIK` の末尾で `tip.local = parentWorldInv * savedWorld` を計算して局所回転を再設定する。これで腰を移動しても親（lowerLeg / lowerArm）の回転変化が tip の見た目回転を変えず、足裏が地面に対してフラットのまま維持される。

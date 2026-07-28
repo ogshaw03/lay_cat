@@ -78,12 +78,16 @@
     </div>
     <div class="sect">
       <h3>IK（逆運動学）</h3>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:11.5px;color:#c8dcff;margin-bottom:4px">
+        <input type="checkbox" id="ikArmsToggle" style="width:14px;height:14px;cursor:pointer">
+        両腕を IK でドラッグ
+      </label>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:11.5px;color:#c8dcff">
-        <input type="checkbox" id="ikToggle" style="width:14px;height:14px;cursor:pointer">
-        両手・両足を IK でドラッグ
+        <input type="checkbox" id="ikLegsToggle" style="width:14px;height:14px;cursor:pointer">
+        両脚を IK でドラッグ
       </label>
       <div class="helpTxt" style="margin-top:6px">
-        ON にすると手首・足首に色付きの■ハンドル、肘・膝の外側に◇ポールハンドル（線でつながる）が出ます。<br>
+        ON にした部位の手首・足首に色付きの■ハンドル、肘・膝の外側に◇ポールハンドル（線でつながる）が出ます。<br>
         ・■ハンドルを Move で引っ張る → 肩・肘・股・膝が自動追従<br>
         ・◇ポールを Move で動かす → 肘・膝の折れ曲がる向きを制御
       </div>
@@ -695,10 +699,11 @@ canvas.addEventListener('pointerdown', ev=>{
   mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
   mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
-  /* IK ON 中は、まず pole ハンドル、次に tip ハンドルを優先で当たり判定 */
-  if(ikEnabled && ikChains.length){
+  /* IK ON kind のチェーンだけ pole/tip ハンドルを当たり判定に含める */
+  if(anyIKEnabled() && ikChains.length){
+    const activeChains = ikChains.filter(isChainIKOn);
     /* pole ハンドル（小さい octahedron）を先にチェック — 前面に描画されているので tip より当てやすい優先度が必要 */
-    const poleMeshes = ikChains.map(c=>c.poleTarget).filter(Boolean);
+    const poleMeshes = activeChains.map(c=>c.poleTarget).filter(Boolean);
     const poleHits = raycaster.intersectObjects(poleMeshes, false);
     if(poleHits.length){
       const cName = poleHits[0].object.userData.__chainName;
@@ -715,7 +720,7 @@ canvas.addEventListener('pointerdown', ev=>{
         return;
       }
     }
-    const ikMeshes = ikChains.map(c=>c.target);
+    const ikMeshes = activeChains.map(c=>c.target);
     const ikHits = raycaster.intersectObjects(ikMeshes, false);
     if(ikHits.length){
       const cName = ikHits[0].object.userData.__chainName;
@@ -869,7 +874,10 @@ const IK_CHAINS_DEF = [
   { name:'rightLeg', kind:'leg', rootName:'rightUpperLeg', midName:'rightLowerLeg', tipName:'rightFoot', color:0xffcc66, label:'右脚' }
 ];
 const ikChains = [];
-let ikEnabled = false;
+/* kind ごとの IK 有効フラグ。腕・脚を別々にトグルできる。 */
+const ikEnabled = { arm: false, leg: false };
+const anyIKEnabled = ()=> ikEnabled.arm || ikEnabled.leg;
+const isChainIKOn = (c)=> !!ikEnabled[c.kind];
 let ikActiveChain = null;   // TC で掴まれている target のチェーン
 let _ikSolving = false;   // ソルバ中の再入防止（objectChange 発火の連鎖を止める）
 
@@ -1031,40 +1039,40 @@ function solveIK(chain){
 const _ikSyncTmp = new THREE.Vector3();
 function syncIKTargets(){
   if(!ikChains.length) return;
-  if(ikEnabled) return;   /* IK ON 中は追随しない（target 位置がユーザー入力の source of truth） */
   for(const c of ikChains){
+    /* この kind の IK が ON のチェーンは target を tip に追随させない（世界固定にする） */
+    if(isChainIKOn(c)) continue;
     c.tBone.getWorldPosition(_ikSyncTmp);
     c.target.position.copy(_ikSyncTmp);
   }
 }
 
-/* 毎フレーム：IK ON のとき、各チェーンを target 位置に再ソルブ。
+/* 毎フレーム：IK ON の kind の各チェーンを target 位置に再ソルブ。
    これで親ボーン（腰・胸など）を FK で動かしても手足は target 位置にキープされる。
    例外：ユーザーがそのチェーンのボーン自体を FK でドラッグ中は解かない（FK 編集を尊重）。 */
 function tickIK(){
-  if(!ikEnabled || !ikChains.length) return;
+  if(!anyIKEnabled() || !ikChains.length) return;
   const dragObj = (tc && tc.dragging) ? tc.object : null;
   for(const c of ikChains){
-    /* チェーン内のボーンを直接ドラッグ中はスキップ */
+    if(!isChainIKOn(c)) continue;
     if(dragObj && (dragObj === c.rBone || dragObj === c.mBone || dragObj === c.tBone)) continue;
     solveIK(c);
   }
 }
 
-/* IK ON/OFF：target・pole 表示切替。OFF 時は tc からも外す。
-   ON 時は target を現在の tip 位置、pole を現 elbow/knee + 0.3m*bendDir にリセット
-   （前回残留位置や FK でずれた位置を避ける）。以降 IK ON 中は target を tip に追随させず
-   世界固定にし、tickIK() がチェーンを解き続ける。 */
-function setIKEnabled(on){
-  ikEnabled = !!on;
+/* kind ('arm' | 'leg') ごとに IK を ON/OFF。target・pole の表示切替と、
+   ON 時に target を tip 位置、tipTargetWorldQuat を tip 世界回転、
+   pole を elbow/knee + 0.3m*bendDir にリセット。 */
+function setIKEnabled(kind, on){
+  if(kind !== 'arm' && kind !== 'leg') return;
+  ikEnabled[kind] = !!on;
   const mp = new THREE.Vector3(), tp = new THREE.Vector3(), q = new THREE.Quaternion();
   for(const c of ikChains){
-    c.target.visible = ikEnabled;
-    if(c.poleTarget) c.poleTarget.visible = ikEnabled;
-    if(c.poleLine)   c.poleLine.visible   = ikEnabled;
-    if(ikEnabled){
-      /* target を現 tip 位置にリセット。あわせて tip の world quaternion をスナップして
-         solveIK が tip.local を再計算して「世界回転を保つ」ようにする（足裏フラット維持）。 */
+    if(c.kind !== kind) continue;
+    c.target.visible = !!on;
+    if(c.poleTarget) c.poleTarget.visible = !!on;
+    if(c.poleLine)   c.poleLine.visible   = !!on;
+    if(on){
       c.tBone.getWorldPosition(tp);
       c.target.position.copy(tp);
       c.tBone.getWorldQuaternion(q);
@@ -1075,14 +1083,15 @@ function setIKEnabled(on){
       }
     }
   }
-  if(!ikEnabled && ikActiveChain){
+  /* 対応 kind のチェーンで active な IK を掴んでたら detach */
+  if(!on && ikActiveChain && ikActiveChain.kind === kind){
     try{ tc.detach() }catch(_){}
     ikActiveChain = null;
-    /* 元のボーン選択がある場合は復元 */
     updateSelectionUI();
   }
-  const cb = document.getElementById('ikToggle');
-  if(cb) cb.checked = ikEnabled;
+  const cbId = (kind === 'arm') ? 'ikArmsToggle' : 'ikLegsToggle';
+  const cb = document.getElementById(cbId);
+  if(cb) cb.checked = !!on;
 }
 
 /* IK の pole ライン（肘/膝 → pole ハンドル）を tick 毎に更新 */
@@ -1101,8 +1110,10 @@ function updateIKPoleLines(){
   }
 }
 {
-  const cb = document.getElementById('ikToggle');
-  if(cb) cb.onchange = ()=> setIKEnabled(cb.checked);
+  const arms = document.getElementById('ikArmsToggle');
+  if(arms) arms.onchange = ()=> setIKEnabled('arm', arms.checked);
+  const legs = document.getElementById('ikLegsToggle');
+  if(legs) legs.onchange = ()=> setIKEnabled('leg', legs.checked);
 }
 
 // ---------- Presets ----------
@@ -1164,7 +1175,7 @@ function applyPreset(name){
   if(selected) syncSlidersFromBone();
   /* IK ON 中は target が世界固定なので、そのまま tickIK が走ると新ポーズが古い target 位置に
      引き戻される。プリセット後の tip 位置と world quaternion で target/tipTargetWorldQuat を更新。 */
-  if(ikEnabled && ikChains.length) refreshIKTargetsFromCurrentPose();
+  if(anyIKEnabled() && ikChains.length) refreshIKTargetsFromCurrentPose();
 }
 
 /* 現在のポーズから IK target 位置・tip 世界回転・pole 位置をリセットする。
@@ -1516,7 +1527,7 @@ if(isHeadless){
 tick();
 
 // Expose for debugging
-window.__mannequin = { bones, bindMap, serializePose, loadPose, applyPreset, ikChains, solveIK, setIKEnabled, tc };
+window.__mannequin = { bones, bindMap, serializePose, loadPose, applyPreset, ikChains, solveIK, setIKEnabled, ikEnabled, tc };
 </script>
 </body>
 </html>
