@@ -206,24 +206,37 @@ function loadGLBModel(){
   showLoadingHud('mannequin_model.glb を取得中…');
   gltfLoader.load('mannequin_model.glb', (gltf)=>{
     modelRoot = gltf.scene;
-    // characterGroup 直下に配置。characterGroup.position.y=1.0 だが、モデル自体は
-    // 「足が世界の地面 y=0 に来る」ように配置し直す。
     characterGroup.add(modelRoot);
-    // Vroid モデルは通常 Y-up・Z-forward。身長は 1.5〜1.7m だが FBX 経由でセンチ単位
-    // (~150) や独自スケールになっている場合もあるため、bounding box から身長を測って
-    // 1.7m にリスケール。
-    const bbox = new THREE.Box3().setFromObject(modelRoot);
-    const size = new THREE.Vector3(); bbox.getSize(size);
+    // SkinnedMesh の boundingBox はスキニング前の生の頂点範囲を返すため、
+    // Box3.setFromObject は実際の見た目サイズを反映しない（Vroid だと 170m 等の異常値）。
+    // 代わりにボーン位置（頭 - 足）で身長を実測してスケールを決める。
+    modelRoot.updateMatrixWorld(true);
+    const findBone = (name)=>{
+      let f=null; modelRoot.traverse(o=>{ if((o.isBone||o.type==='Bone')&&o.name===name)f=o }); return f;
+    };
+    const headBone = findBone('J_Bip_C_Head') || findBone('Head');
+    const footBone = findBone('J_Bip_L_Foot') || findBone('J_Bip_R_Foot') || findBone('LeftFoot');
+    const hipsBone = findBone('J_Bip_C_Hips') || findBone('Hips');
+    let heightNative = 1.5;   // フォールバック
+    if(headBone && footBone){
+      const hp = new THREE.Vector3(), fp = new THREE.Vector3();
+      headBone.getWorldPosition(hp); footBone.getWorldPosition(fp);
+      heightNative = Math.abs(hp.y - fp.y);
+    }
     const targetHeight = 1.7;
-    const scale = size.y > 0.01 ? (targetHeight / size.y) : 1;
+    const scale = heightNative > 0.001 ? (targetHeight / heightNative) : 1;
     modelRoot.scale.setScalar(scale);
-    // スケール後に再測してモデル中心を x=0/z=0、足を世界の地面 y=0 に合わせる。
-    // setFromObject は world-space bbox を返すので、`characterGroup.y=1.0` を差し引く必要は無い
-    // （modelRoot.position を bbox.min.y の逆分だけシフトすればちょうど地面に着地する）。
-    const bbox2 = new THREE.Box3().setFromObject(modelRoot);
-    const c2 = new THREE.Vector3(); bbox2.getCenter(c2);
-    modelRoot.position.set(-c2.x, -bbox2.min.y, -c2.z);
-    console.log('[mannequin] loaded. bbox size:', size.x.toFixed(2), size.y.toFixed(2), size.z.toFixed(2), 'scale:', scale.toFixed(3));
+    modelRoot.updateMatrixWorld(true);
+    // スケール後、足を世界地面 y=0 に合わせる。足ボーンの世界 y から逆算。
+    let footY = 0;
+    if(footBone){ const fp2 = new THREE.Vector3(); footBone.getWorldPosition(fp2); footY = fp2.y; }
+    // 中心を X=0 / Z=0 に（腰ボーンで測る）
+    let cx = 0, cz = 0;
+    if(hipsBone){ const hp2 = new THREE.Vector3(); hipsBone.getWorldPosition(hp2); cx = hp2.x; cz = hp2.z; }
+    modelRoot.position.set(modelRoot.position.x - cx, modelRoot.position.y - footY, modelRoot.position.z - cz);
+
+    const dbgInfo = 'nativeH='+heightNative.toFixed(2)+' scale='+scale.toFixed(3)+' foot.y='+footY.toFixed(2)+' hips=('+cx.toFixed(2)+','+cz.toFixed(2)+')';
+    console.log('[mannequin]', dbgInfo);
 
     // ボーンを収集してフレンドリ名にマップ
     let mappedCount = 0;

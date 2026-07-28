@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.043) 3D マネキン：スケール計算をボーンベースに変更（キャラが表示されない不具合の完全修正）
+  - **問題**：v041/v042 で GLB モデルに差し替えた後、キャラクターが画面から消えて joint proxy のリングだけが見える状態に。
+  - **原因**：`Box3.setFromObject(modelRoot)` を使ったスケール推定が SkinnedMesh に対して機能しない。SkinnedMesh の `boundingBox` はスキニング前の生の頂点座標（VRoid だと `170×26×180` の異常値）を返すため、自動判定で「cm 単位」と誤検出して 1/100 スケールが適用され、キャラが 1.7cm サイズになっていた。
+  - **修正**：`Box3` ベースの推定を廃止し、ボーン位置（`J_Bip_C_Head` と `J_Bip_L_Foot` の world Y 差分）で身長を実測。今回のモデルは native 1.51m → 1.7m target で scale=1.123 が適用される。腰と足も同様にボーン位置ベースで X=0/Z=0/地面 y=0 に整列。
+  - APP_VERSION を 2026.07.24.043 に。
+
 - (dev v2026.07.24.041) 3D マネキンをカスタム GLB モデル（VRM/Vroid スタイル）に差し替え
   - **プロシージャル人体を GLB モデルロードに置き換え**：`mannequin_3d.html` の手続き型ボーン生成コードを撤去し、`GLTFLoader + DRACOLoader`（DRACO decoder は `https://www.gstatic.com/draco/versioned/decoders/1.5.6/`）で `mannequin_model.glb`（DRACO 圧縮済み・1.6 MB）を読み込むように変更。
   - **VRM Bip 命名を既存フレンドリ名にマップ**：`J_Bip_C_Hips` → `root`、`J_Bip_L_UpperArm` → `leftUpperArm` などのマップテーブル（`VRM_MAP`）で 20 ボーンを既存 UI・プリセット・回転操作にブリッジ。
