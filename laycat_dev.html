@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.021';
+const APP_VERSION='2026.07.28.022';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4195,24 +4195,38 @@ function buildTaskTabs(root){
         }
         if(!dragCtx)return;
         dragCtx.ghost.style.left=(e.clientX-offsetX)+'px';
-        /* 【視覚用】スライドアニメの insertIdx。境界は「reorder 時の各 K における
-           ghost slot 中央」の中点（Chrome 準拠 = 半分オーバーラップでスワップ）。
-           見てくれ上のスライドを自然に見せるためだけの計算で、実際のドロップ位置は
-           onEnd 側で「カーソル位置 vs 元 mid」のシンプルなルールで別途決定する。 */
+        /* 判定ルール：「ゴースト中央が、視覚上の隣タブの中央を跨いだらスワップ」
+           （＝中央同士がすれ違ったら切り替わる）。現在の K 状態での視覚 mid を使うので
+           ヒステリシスが自然に効いて、ゴーストが隣タブの中央を越えるまで戻らない。
+           視覚と実挿入位置が完全に一致するので、v021 で分けていた 2 系統は 1 系統に統一。 */
         const G=e.clientX-offsetX+w_dragged/2;
-        const compactW=[];
-        for(let i=0;i<N;i++)if(i!==draggedIdx)compactW.push(rects[i].width);
-        const g=2;   /* .task-tabs の CSS gap */
-        const L0=rects[0].left;
-        let L=L0,insertIdx=N-1;
-        for(let K=0;K<N-1;K++){
-          const boundary=L+w_dragged/2+(compactW[K]+g)/2;
-          if(G<boundary){ insertIdx=K; break; }
-          L+=compactW[K]+g;
+        const dw=w_dragged+2;
+        /* 現在の K 状態で、reorder 位置 p にあるタブの視覚 mid を返す（p==K は ghost なので null） */
+        const visualMidAt=(p,K)=>{
+          if(p===K)return null;
+          const compactIdx = p<K ? p : p-1;
+          const i = compactIdx<draggedIdx ? compactIdx : compactIdx+1;
+          const j = i<draggedIdx ? i : i-1;
+          const shift = (j>=K) ? dw : 0;
+          const compactLeft = i<draggedIdx ? rects[i].left : rects[i].left-dw;
+          return compactLeft + shift + rects[i].width/2;
+        };
+        let K=dragCtx.insertIdx;
+        /* 右へ：ゴースト中央が「1 つ右にあるタブの視覚中央」を越えたら K++（＝そのタブが左に流れる） */
+        while(K<N-1){
+          const mid=visualMidAt(K+1,K);
+          if(G>mid) K++;
+          else break;
         }
-        if(insertIdx!==dragCtx.insertIdx){
-          dragCtx.insertIdx=insertIdx;
-          applyShift(insertIdx);
+        /* 左へ：ゴースト中央が「1 つ左にあるタブの視覚中央」より小さくなったら K--（＝そのタブが右に流れる） */
+        while(K>0){
+          const mid=visualMidAt(K-1,K);
+          if(G<mid) K--;
+          else break;
+        }
+        if(K!==dragCtx.insertIdx){
+          dragCtx.insertIdx=K;
+          applyShift(K);
         }
       };
       const cleanup=()=>{
@@ -4229,24 +4243,14 @@ function buildTaskTabs(root){
       };
       const onEnd=e=>{
         if(didDrag&&dragCtx){
-          /* 【実位置用】ドロップ時のカーソル X（= ghost 中央 X）と「元の layout の
-             タブ mid」だけを使って、シンプルに挿入位置を決定する。視覚のスライドが
-             どこを見せていようが、ここが最終的なドロップ位置。
-             ルール：非 dragged タブを DOM 順に見て、ghost 中央が rects[i].mid より
-             左になる最初の i の compact index を挿入位置に。該当なしなら末尾。 */
-          const dropG=lastPointerX-offsetX+w_dragged/2;
-          let dropIdx=N-1;
-          for(let i=0;i<N;i++){
-            if(i===draggedIdx)continue;
-            const mid=rects[i].left+rects[i].width/2;
-            const j=i<draggedIdx?i:i-1;
-            if(dropG<mid){ dropIdx=j; break; }
-          }
+          /* 視覚（applyShift）と実挿入位置は同じ dragCtx.insertIdx を使う（v021 の
+             2 系統分離は撤去）。「中央同士がすれ違ったら切り替わる」ルールで K を
+             動かしているので、視覚上ゴーストが乗っている場所 = 実挿入位置になる。 */
           const arr=(state.openTasks||[]).slice();
           const srcIdx=arr.indexOf(id);
           if(srcIdx>=0){
             arr.splice(srcIdx,1);
-            let insertIdx=dropIdx;
+            let insertIdx=dragCtx.insertIdx;
             if(insertIdx<0)insertIdx=0;
             if(insertIdx>arr.length)insertIdx=arr.length;
             arr.splice(insertIdx,0,id);
