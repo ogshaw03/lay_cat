@@ -223,12 +223,10 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .task-tab .tt-close{border:none;background:none;color:var(--text3);font-size:10px;padding:0 3px;line-height:1;border-radius:4px;flex-shrink:0;opacity:.5}
 .task-tab:hover .tt-close,.task-tab.on .tt-close{opacity:1}
 .task-tab .tt-close:hover{background:rgba(255,255,255,.14);color:var(--text)}
-/* タブの並べ替え D&D 中のビジュアルフィードバック。
-   .dragging：ドラッグ開始直後の見た目（drag image 生成のためにここでは幅を残す）。
-   .dragging-collapse：drag image 取得後（setTimeout 経由）に幅を 0 に潰して DOM 上から
-     除去。flexbox が自然に他タブを詰め、その上に applyShift の transform を重ねて
+/* タブの並べ替え pointer events 中のビジュアルフィードバック。
+   .dragging-collapse：dragged タブの幅を 0 に潰して DOM 上から実質除去。
+     flexbox が自然に他タブを詰め、その上に applyShift の transform を重ねて
      Chrome ライクなリアルタイム挿入プレビューを実現する。 */
-.task-tab.dragging{opacity:.35}
 .task-tab.dragging-collapse{
   opacity:0!important;
   width:0!important;min-width:0!important;max-width:0!important;
@@ -2914,7 +2912,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.027';
+const APP_VERSION='2026.07.28.028';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4193,7 +4191,7 @@ function buildTaskTabs(root){
           ghost.style.cssText='position:fixed;top:'+freshDr.top+'px;left:'+freshDr.left+'px;width:'+freshDr.width+'px;height:'+freshDr.height+'px;pointer-events:none;opacity:.9;z-index:2000;box-shadow:0 6px 18px rgba(0,0,0,.4);border-radius:6px;background:var(--bg2);transition:none';
           document.body.appendChild(ghost);
           dragCtx={tabs,rects,draggedIdx,dragId:id,insertIdx:draggedIdx,ghost,offsetX};
-          tab.classList.add('dragging','dragging-collapse');
+          tab.classList.add('dragging-collapse');
           document.body.style.cursor='grabbing';
           applyShift(draggedIdx,false);
         }
@@ -4243,7 +4241,7 @@ function buildTaskTabs(root){
           clearShifts();
           dragCtx=null;
         }
-        tab.classList.remove('dragging','dragging-collapse');
+        tab.classList.remove('dragging-collapse');
       };
       const onEnd=e=>{
         if(didDrag&&dragCtx){

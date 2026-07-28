@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.28.028) タスクタブ並べ替え：孤児コード掃除
+  - `.task-tab.dragging` CSS ルールを撤去（`.dragging-collapse` の `opacity:0!important` で完全に打ち消されていた dead code）。
+  - `tab.classList.add/remove('dragging','dragging-collapse')` を `('dragging-collapse')` 単独に簡略化。
+  - CSS コメントから旧 HTML5 D&D 時代の「drag image 生成のため」「setTimeout 経由」記述を撤去。
+
 - (dev v2026.07.28.027) タスクタブ並べ替え：判定ルールを「隣タブの端」に再変更
   - v026 で「visible → openTasks index 変換」の根本修正が入って左飛び現象は解消したので、v023 で試した「端」ルール（少しでも隣タブに乗った時点でスワップ）を再導入。
   - 中央ルール（v025）より反応が良く操作感が軽い。ヒステリシスは狭いが、v026 の変換修正でドロップ位置自体は正しくなるので実害なし。
