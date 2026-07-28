@@ -425,6 +425,34 @@ tc.setSpace('local');   // Rotate around bone's own axes (natural for FK)
 scene.add(tc);
 tc.addEventListener('dragging-changed', ev => { controls.enabled = !ev.value; });
 
+/* TransformControls の rotate ピッカーで XYZE（自由回転）の球は既定 radius 0.25 と
+   小さく、軸リング（radius 0.5, tube 0.1）の内側の中央にしか無いため、ちょっとカーソルが
+   軸リング寄りに来るとすぐ軸回転に吸われて自由回転が発動しない。
+   XYZE ピッカー球を軸リング内側いっぱい（radius 0.42）まで拡げて、リング上の細い帯だけが
+   軸回転、それ以外の gizmo 内部は全部自由回転になるようにする。 */
+(function enlargeFreeRotatePicker(){
+  try{
+    const rp = tc._gizmo && tc._gizmo.picker && tc._gizmo.picker.rotate;
+    if(!rp) return;
+    /* XYZE ピッカーは通常 name='XYZE' の Object3D の下、または children を辿って
+       SphereGeometry を持つ Mesh。両方の探し方を試す。 */
+    const applyScale = (obj)=>{
+      if(!obj || !obj.isMesh || !obj.geometry) return;
+      const g = obj.geometry;
+      if(!g.parameters || Math.abs((g.parameters.radius||0) - 0.25) > 1e-3) return;
+      /* 元の radius 0.25 → 0.42 に差し替え */
+      obj.geometry = new THREE.SphereGeometry(0.42, 16, 12);
+      try{ g.dispose(); }catch(_){}
+    };
+    const xyze = rp.getObjectByName('XYZE');
+    if(xyze){
+      xyze.traverse(applyScale);
+    } else {
+      rp.traverse(applyScale);
+    }
+  }catch(e){ console.warn('failed to enlarge XYZE picker', e); }
+})();
+
 // 複数選択時の共有ピボット proxy：選択ボーン群の重心に置き、TC で回転させて delta を
 // 各ボーンにローカル rotation として post-multiply することで、選択中の全ボーンを
 // 「自分のローカル軸まわりに同じ角度だけ回転」させる（Maya の "each" 相当）。
@@ -1382,7 +1410,7 @@ if(isHeadless){
 tick();
 
 // Expose for debugging
-window.__mannequin = { bones, bindMap, serializePose, loadPose, applyPreset, ikChains, solveIK, setIKEnabled };
+window.__mannequin = { bones, bindMap, serializePose, loadPose, applyPreset, ikChains, solveIK, setIKEnabled, tc };
 </script>
 </body>
 </html>
