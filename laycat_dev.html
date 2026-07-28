@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.008';
+const APP_VERSION='2026.07.28.009';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4130,7 +4130,7 @@ function buildTaskTabs(root){
      dragCtx: dragstart 時に captured されるスナップショット。
      insertIdx は「dragged を除いた compact 配列」上の挿入位置（0..N-1）。 */
   let dragCtx=null;
-  const applyShift=(insertIdx)=>{
+  const applyShift=(insertIdx, animate=true)=>{
     if(!dragCtx)return;
     const dw=dragCtx.rects[dragCtx.draggedIdx].width+2;   /* 隙間分 +2px */
     for(let i=0;i<dragCtx.tabs.length;i++){
@@ -4141,7 +4141,10 @@ function buildTaskTabs(root){
       const j = i<dragCtx.draggedIdx ? i : i-1;
       const shift = (j>=insertIdx) ? dw : 0;
       const t=dragCtx.tabs[i];
-      t.style.transition='transform 200ms cubic-bezier(0.25,0.8,0.3,1)';
+      /* 初期スナップ (animate=false) は transition なしで即座に配置。
+         これを付けないと、dragstart 直後の flexbox 詰め → +dw shift へ 200ms 掛けて
+         滑ってしまい「一番左のタブをドラッグ開始した瞬間に右側タブが動く」ように見える。 */
+      t.style.transition = animate ? 'transform 200ms cubic-bezier(0.25,0.8,0.3,1)' : 'none';
       t.style.transform=shift?('translateX('+shift+'px)'):'';
     }
   };
@@ -4173,8 +4176,9 @@ function buildTaskTabs(root){
         if(!dragCtx)return;
         tab.classList.add('dragging-collapse');
         /* 初期は「dragged 元位置」を維持したいので、compact 側は dragged 以降を dw 右に寄せて
-           flexbox 詰めを相殺する（insertIdx = draggedIdx が「元スロットに戻す」意）。 */
-        applyShift(draggedIdx);
+           flexbox 詰めを相殺する（insertIdx = draggedIdx が「元スロットに戻す」意）。
+           アニメーションなしで即座にスナップさせる（初期状態を「元の見た目」に瞬時に揃える）。 */
+        applyShift(draggedIdx, false);
       },0);
     });
     tab.addEventListener('dragend',()=>{

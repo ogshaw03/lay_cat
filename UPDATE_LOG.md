@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.28.009) タスクタブ並べ替え：一番左のタブをドラッグ開始した瞬間に右側タブが動く不具合を修正
+  - v008 では初期 `applyShift(draggedIdx)` にも 200ms transition が付いていたため、`.dragging-collapse` で flexbox が瞬時に詰めた直後、右側タブが「詰まった位置 → 元位置 (+dw)」へアニメーションしてしまっていた。
+  - `applyShift(insertIdx, animate=true)` に `animate` 引数を追加。dragstart の初期スナップだけ `animate=false` を渡して transition なしで即座に配置する。以降の dragover での更新は従来通りアニメーション付き。
+
 - (dev v2026.07.28.008) タスクタブ並べ替え：ドラッグ中の半透明タブが他タブと重なる不具合を修正
   - v007 では dragged タブが opacity 0.35 のまま元スロットに残っていたため、他タブが shift でその上に重なってしまい「重なって見づらい／半透明のタブが残っている」状態だった。
   - 修正：dragstart 直後（`setTimeout(0)` で drag image 生成後）に `.dragging-collapse` クラスを付与して dragged タブの幅を 0 に潰す。flexbox が他タブを自然に詰めるので、その上に compact index ベースの `translateX(+dw)` を重ねて挿入プレビューを実現。
