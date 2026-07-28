@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.053) 3D マネキン：正中線（体の中心を通る一本線）を追加
+  - キャラクター中心の垂直軸に沿って足元 (y=-1) から頭上 (y=+0.75) までピンクの `THREE.Line` を描画。`characterGroup` の子として配置しているため、アノテ側のリング操作でキャラを 3D 回転させても正中線が追従する。`depthTest=false` で常に手前に描画するので体の裏に回っても消えず、シルエット・重心のガイドとして機能する。
+  - APP_VERSION を 2026.07.24.053 に。
+
 - (dev v2026.07.24.052) 3D マネキン：複数選択で2回目以降のドラッグが急に大回転する不具合修正
   - **原因**：TransformControls は `pointerDown` の中で `_quaternionStart = object.quaternion` を捕捉してから `mouseDown` event を dispatch する順序。前回のリセットを `mouseDown` ハンドラで行っていたため、TC は「前回のドラッグ後の proxy 回転値」を start として記録してしまい、2 回目のドラッグでは start が identity ではなくなっていた。その結果、objectChange で読み取る proxy.quaternion に前回分の回転が混ざり、delta が実際より大きく計算されて急激な回転が起きていた。
   - **修正**：proxy の identity リセットを `mouseUp`（ドラッグ終了直後）で行うようにした。TC は次回 `pointerDown` で改めて identity を start として捕捉するので、常に正しい delta 計算になる。あわせて mouseUp で proxy 位置も新しい重心へ更新（ドラッグでボーンが動いた結果を反映）。

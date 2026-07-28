@@ -327,6 +327,20 @@ function loadGLBModel(){
     const dbgInfo = 'nativeH='+heightNative.toFixed(2)+' scale='+scale.toFixed(3)+' foot.y='+footY.toFixed(2)+' hips=('+cx.toFixed(2)+','+cz.toFixed(2)+')';
     console.log('[mannequin]', dbgInfo);
 
+    /* 正中線（midline / 体の中心を通る一本線）を characterGroup 直下に追加。
+       characterGroup 座標系で（0, -1.0, 0）= 世界地面、（0, +0.7, 0）= 身長 1.7m の頭頂に対応。
+       characterGroup の 3D 回転（アノテ側のリング操作）にも自動的に追従する。
+       depthTest=false で常に手前に描画（体の裏側にあってもガイドとして見える）。 */
+    const midMat = new THREE.LineBasicMaterial({ color: 0xff7bd1, transparent:true, opacity:0.85, depthTest:false });
+    const midGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, -1.0, 0),
+      new THREE.Vector3(0,  0.75, 0)
+    ]);
+    const midLine = new THREE.Line(midGeo, midMat);
+    midLine.name = '__midline';
+    midLine.renderOrder = 998;   // joint proxy(999) より少し奥
+    characterGroup.add(midLine);
+
     // ボーンを収集してフレンドリ名にマップ
     let mappedCount = 0;
     modelRoot.traverse(o=>{
