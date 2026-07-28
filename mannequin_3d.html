@@ -130,12 +130,13 @@ controls.dampingFactor = 0.08;
 controls.minDistance = 0.3;
 controls.maxDistance = 30;
 // Maya 風カメラ操作：Alt を押している間だけマウスドラッグでカメラ操作。
-//   Alt + Left  = タンブル（回転）
-//   Alt + Middle = トラック（平行移動）
-//   Alt + Right = ドリー（ズーム）
+//   Alt + Left  = タンブル（回転）  … OrbitControls の ROTATE
+//   Alt + Middle = トラック（平行移動） … OrbitControls の PAN
+//   Alt + Right = ドリー（ズーム）  … 手動実装。横方向 X 移動で右＝寄る／左＝離れる（Maya 準拠）
 //   ホイール = ドリー（常時）
-// Alt を押していないときはカメラ操作は無効化され、Left クリックはボーン選択に使われる。
-const MAYA_BUTTONS = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.DOLLY };
+// OrbitControls の DOLLY は縦移動ベースで Maya の慣習と異なるため、Right ボタンは
+// OrbitControls に渡さず、下で自前のポインタハンドラで処理する。
+const MAYA_BUTTONS = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: null };
 const NO_BUTTONS   = { LEFT: null, MIDDLE: null, RIGHT: null };
 controls.mouseButtons = NO_BUTTONS;
 let altHeld = false;
@@ -153,6 +154,38 @@ window.addEventListener('keyup', e=>{
 window.addEventListener('blur', ()=>{ if(altHeld){ altHeld = false; updateMayaMode(); } });
 // 右クリックのブラウザ標準メニューを抑止（Alt+Right でドリー時に邪魔）
 canvas.addEventListener('contextmenu', e=> e.preventDefault());
+
+// Maya 風ドリー：Alt+Right ドラッグ。X 方向の移動で寄る／離れる。
+//   dx > 0（右へドラッグ） → 距離を縮める（寄る）
+//   dx < 0（左へドラッグ） → 距離を伸ばす（離れる）
+let _mayaDolly = null;
+const _dollyOff = new THREE.Vector3();
+canvas.addEventListener('pointerdown', ev=>{
+  if(ev.button === 2 && ev.altKey){
+    _mayaDolly = { lastX: ev.clientX, ptrId: ev.pointerId };
+    try{ canvas.setPointerCapture(ev.pointerId) }catch(_){}
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+});
+canvas.addEventListener('pointermove', ev=>{
+  if(!_mayaDolly || ev.pointerId !== _mayaDolly.ptrId) return;
+  const dx = ev.clientX - _mayaDolly.lastX;
+  _mayaDolly.lastX = ev.clientX;
+  /* 感度：1px あたり 0.7% の倍率変化。200px 右ドラッグで ~1/4 まで寄る。 */
+  const factor = Math.pow(0.993, dx);
+  _dollyOff.subVectors(camera.position, controls.target);
+  let dist = _dollyOff.length() * factor;
+  dist = Math.max(controls.minDistance, Math.min(controls.maxDistance, dist));
+  _dollyOff.setLength(dist);
+  camera.position.copy(controls.target).add(_dollyOff);
+});
+window.addEventListener('pointerup', ev=>{
+  if(_mayaDolly && ev.pointerId === _mayaDolly.ptrId){
+    try{ canvas.releasePointerCapture(ev.pointerId) }catch(_){}
+    _mayaDolly = null;
+  }
+});
 
 // Lighting
 scene.add(new THREE.HemisphereLight(0xffffff, 0x333344, 0.9));

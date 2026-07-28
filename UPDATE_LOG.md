@@ -13,6 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.048) 3D マネキン：Alt+Right ドリーを Maya 準拠（横方向・右で寄る）に
+  - OrbitControls の DOLLY は縦（Y）方向ベースで Maya の慣習と異なるため、右ボタンは
+    OrbitControls に渡さず自前のポインタハンドラで処理するように変更。
+  - Alt+Right ドラッグ時：X 方向で右へドラッグ = 寄る、左へドラッグ = 離れる（Maya 準拠）。
+    感度は 1px あたり 0.7% の倍率変化（200px ドラッグで距離 ~1/4）。
+  - APP_VERSION を 2026.07.24.048 に。
+
 - (dev v2026.07.24.047) 3D マネキン：連続 apply でキャラ増殖修正＋ URL に APP_VERSION 付与でキャッシュ破棄
   - **連続 apply でキャラが増殖する不具合修正**：`openMannEditor` のクロージャで `prev`（既存マネキン参照）が `const` パラメータとして固定されており、初回 apply で新規マネキンを作った後も `prev` は `null` のままだったため、2 回目以降の apply も「新規追加」分岐に入り続けていた。`prev` を `let` に変え、新規作成後に `prev = target` を代入して以降の apply は同じマネキンの pose 更新に切り替える。
   - **`mannequin_3d.html` の URL に APP_VERSION クエリを付けてキャッシュ破棄**：3D エディタ（`window.open`）・headless iframe（`f.src`）とも同一 URL を使っていたためブラウザ側でアグレッシブにキャッシュされ、`mannequin_3d.html` の更新（カメラ操作 Maya 化・マット質感・正面向き 等）が反映されないケースがあった。`?v=<APP_VERSION>` を付与して dev バージョンが上がるたびに強制リロード。
