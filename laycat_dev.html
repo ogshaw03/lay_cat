@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.023';
+const APP_VERSION='2026.07.28.024';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4170,6 +4170,7 @@ function buildTaskTabs(root){
       const tabs=[...strip.querySelectorAll('.task-tab[data-tab-id]')];
       const rects=tabs.map(t=>t.getBoundingClientRect());
       const draggedIdx=tabs.indexOf(tab);
+      if(draggedIdx<0)return;   /* tab が strip に含まれない不整合ケース（render 差し替え中など）は安全に降りる */
       const dr=rects[draggedIdx];
       const offsetX=ev.clientX-dr.left;
       const w_dragged=dr.width;
@@ -4184,9 +4185,12 @@ function buildTaskTabs(root){
           dragging=true;didDrag=true;
           try{tab.setPointerCapture(e.pointerId)}catch(_){}
           /* 独自プレビュー：dragged タブのクローンを position:fixed で body 直下に。
-             top は strip の Y に固定・left のみカーソル X に追従で更新する。 */
+             top は strip の Y に固定・left のみカーソル X に追従で更新する。
+             top / left は「ゴースト生成時点の tab 実位置」を再取得して使う（pointerdown 時の
+             dr が古くなっていても、ここで再測することで確実に現在のタブ位置から浮かせる）。 */
+          const freshDr=tab.getBoundingClientRect();
           const ghost=tab.cloneNode(true);
-          ghost.style.cssText='position:fixed;top:'+dr.top+'px;left:'+dr.left+'px;width:'+dr.width+'px;height:'+dr.height+'px;pointer-events:none;opacity:.9;z-index:2000;box-shadow:0 6px 18px rgba(0,0,0,.4);border-radius:6px;background:var(--bg2);transition:none';
+          ghost.style.cssText='position:fixed;top:'+freshDr.top+'px;left:'+freshDr.left+'px;width:'+freshDr.width+'px;height:'+freshDr.height+'px;pointer-events:none;opacity:.9;z-index:2000;box-shadow:0 6px 18px rgba(0,0,0,.4);border-radius:6px;background:var(--bg2);transition:none';
           document.body.appendChild(ghost);
           dragCtx={tabs,rects,draggedIdx,dragId:id,insertIdx:draggedIdx,ghost,offsetX};
           tab.classList.add('dragging','dragging-collapse');
