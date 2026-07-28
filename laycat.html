@@ -8045,7 +8045,8 @@ function openReview(nodeId,versionId,opts){
   const zrBtn=el('button','btn btn-ghost btn-sm','等倍');zrBtn.title='ズームリセット';
   const handBtn=el('button','btn btn-ghost btn-sm tool','✋ トラック');handBtn.title='ドラッグで表示位置を移動（中ボタンドラッグでも可）';
   const flipBtn=el('button','btn btn-ghost btn-sm tool','⇋ 反転');flipBtn.title='表示を左右反転（鏡像）。ショートカット: V。描画・コメント座標はメディア基準のまま保持。「等倍」でリセット。';
-  const LASSO_SVG='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 2"><path d="M12 3c5 0 9 3 9 7s-4 7-9 7c-2 0-4-.5-5.5-1.4"/><path d="M6.5 15.6C5.5 17 5 18.2 6 19c1 .8 2.5.5 3.5-.5"/></svg>';
+  /* 投げ縄アイコン：Photoshop 風ロープループ。輪の下部から縄の端が短く垂れて先端が丸まる。 */
+  const LASSO_SVG='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8c0-2.5 3.5-4.5 7.5-4.5s7.5 2 7.5 4.5-3.5 4.5-7.5 4.5c-1.6 0-3.1-.3-4.4-.9"/><path d="M7 12L5.5 17"/><circle cx="5.5" cy="17" r="1.2" fill="currentColor"/></svg>';
   const RECT_SVG='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 2"><rect x="4" y="5" width="16" height="14" rx="1"/></svg>';
   const lassoBtn=_iconBtn('','範囲選択：クリック=単独選択／ドラッグ=範囲選択（投げ縄/四角形）／中央=移動／四隅=拡縮／上端=回転／Delete=削除／Esc=解除',LASSO_SVG);
   /* 選択モード：'lasso'（フリーハンド）or 'rect'（矩形範囲）。ドロップダウンで切替。既定は投げ縄。 */
