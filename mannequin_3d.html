@@ -53,8 +53,8 @@
   <div id="stage">
     <canvas id="cv"></canvas>
     <div id="hud">
-      <b>マウス：</b> ドラッグでカメラ回転 ／ ホイールでズーム ／ 右ドラッグで平行移動<br>
-      <b>ボーン：</b> クリックで選択 → 右パネルで XYZ 回転
+      <b>カメラ (Maya 風)：</b> Alt+左 = 回転 ／ Alt+中 = 平行移動 ／ Alt+右 or ホイール = ズーム<br>
+      <b>ボーン：</b> クリックで選択 → 右パネル or ジンバルで回転
     </div>
   </div>
   <aside>
@@ -85,12 +85,12 @@
     </div>
     <div class="sect">
       <div class="helpTxt">
-        <b style="color:#a0a0b0">Phase 1 テスト実装</b><br>
-        手続き型プリミティブの簡易マネキン。glTF・IK は後続 Phase。<br>
+        <b style="color:#a0a0b0">カメラ操作（Maya 風）</b><br>
+        <kbd>Alt</kbd>+<kbd>左</kbd> 回転 ／ <kbd>Alt</kbd>+<kbd>中</kbd> パン ／ <kbd>Alt</kbd>+<kbd>右</kbd> ズーム<br>
+        <kbd>Wheel</kbd> ズーム（Alt 不要）<br>
         <br>
-        <b style="color:#a0a0b0">操作</b><br>
-        <kbd>Left</kbd> 回転 ／ <kbd>Right</kbd> パン ／ <kbd>Wheel</kbd> ズーム<br>
-        <kbd>R</kbd> 選択ボーンをリセット ／ <kbd>Esc</kbd> 選択解除
+        <b style="color:#a0a0b0">ボーン</b><br>
+        <kbd>Left</kbd> クリックで選択 ／ <kbd>R</kbd> リセット ／ <kbd>Esc</kbd> 選択解除
       </div>
     </div>
   </aside>
@@ -127,9 +127,32 @@ const controls = new OrbitControls(camera, canvas);
 controls.target.set(0, 1.0, 0);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
-controls.minDistance = 1.5;
-controls.maxDistance = 15;
-controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+controls.minDistance = 0.3;
+controls.maxDistance = 30;
+// Maya 風カメラ操作：Alt を押している間だけマウスドラッグでカメラ操作。
+//   Alt + Left  = タンブル（回転）
+//   Alt + Middle = トラック（平行移動）
+//   Alt + Right = ドリー（ズーム）
+//   ホイール = ドリー（常時）
+// Alt を押していないときはカメラ操作は無効化され、Left クリックはボーン選択に使われる。
+const MAYA_BUTTONS = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.DOLLY };
+const NO_BUTTONS   = { LEFT: null, MIDDLE: null, RIGHT: null };
+controls.mouseButtons = NO_BUTTONS;
+let altHeld = false;
+function updateMayaMode(){
+  controls.mouseButtons = altHeld ? MAYA_BUTTONS : NO_BUTTONS;
+  stage.style.cursor = altHeld ? 'grab' : '';
+}
+window.addEventListener('keydown', e=>{
+  if(e.key === 'Alt' && !altHeld){ altHeld = true; updateMayaMode(); e.preventDefault(); }
+});
+window.addEventListener('keyup', e=>{
+  if(e.key === 'Alt' && altHeld){ altHeld = false; updateMayaMode(); e.preventDefault(); }
+});
+// タブブラー時に Alt キーが押しっぱなし状態のまま残らないように解除
+window.addEventListener('blur', ()=>{ if(altHeld){ altHeld = false; updateMayaMode(); } });
+// 右クリックのブラウザ標準メニューを抑止（Alt+Right でドリー時に邪魔）
+canvas.addEventListener('contextmenu', e=> e.preventDefault());
 
 // Lighting
 scene.add(new THREE.HemisphereLight(0xffffff, 0x333344, 0.9));
@@ -368,6 +391,7 @@ function displayName(n){
 
 canvas.addEventListener('pointerdown', ev=>{
   if(ev.button !== 0) return;
+  if(ev.altKey) return;    // Alt はカメラ操作モード（Maya 風）— ボーン選択を封じる
   if(tc.dragging) return;   // TransformControls をドラッグ中はボーン選択を封じる
   const r = canvas.getBoundingClientRect();
   mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
