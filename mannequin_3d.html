@@ -206,21 +206,24 @@ function loadGLBModel(){
   showLoadingHud('mannequin_model.glb を取得中…');
   gltfLoader.load('mannequin_model.glb', (gltf)=>{
     modelRoot = gltf.scene;
-    // characterGroup 直下に配置。ピボット原点（腰）が世界の (0,1.0,0) にくるよう
-    // characterGroup.position で既に上げ、モデルは腰基準で -1.0 だけ下げる（腰の高さ）。
+    // characterGroup 直下に配置。characterGroup.position.y=1.0 だが、モデル自体は
+    // 「足が世界の地面 y=0 に来る」ように配置し直す。
     characterGroup.add(modelRoot);
-    // Vroid モデルは Y-up・Z-forward・単位メートル・センチキャラの多くが身長 1.5〜1.7m。
-    // 実際の bounding box から中心・高さを測ってスケール／位置を自動調整。
+    // Vroid モデルは通常 Y-up・Z-forward。身長は 1.5〜1.7m だが FBX 経由でセンチ単位
+    // (~150) や独自スケールになっている場合もあるため、bounding box から身長を測って
+    // 1.7m にリスケール。
     const bbox = new THREE.Box3().setFromObject(modelRoot);
     const size = new THREE.Vector3(); bbox.getSize(size);
-    const center = new THREE.Vector3(); bbox.getCenter(center);
     const targetHeight = 1.7;
     const scale = size.y > 0.01 ? (targetHeight / size.y) : 1;
     modelRoot.scale.setScalar(scale);
-    // 再測してモデルの足を y=-1.0（世界の地面 y=0 に相当）に、モデル中心を x=0/z=0 に揃える
+    // スケール後に再測してモデル中心を x=0/z=0、足を世界の地面 y=0 に合わせる。
+    // setFromObject は world-space bbox を返すので、`characterGroup.y=1.0` を差し引く必要は無い
+    // （modelRoot.position を bbox.min.y の逆分だけシフトすればちょうど地面に着地する）。
     const bbox2 = new THREE.Box3().setFromObject(modelRoot);
     const c2 = new THREE.Vector3(); bbox2.getCenter(c2);
-    modelRoot.position.set(-c2.x, -1.0 - bbox2.min.y, -c2.z);
+    modelRoot.position.set(-c2.x, -bbox2.min.y, -c2.z);
+    console.log('[mannequin] loaded. bbox size:', size.x.toFixed(2), size.y.toFixed(2), size.z.toFixed(2), 'scale:', scale.toFixed(3));
 
     // ボーンを収集してフレンドリ名にマップ
     let mappedCount = 0;
