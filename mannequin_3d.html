@@ -83,7 +83,9 @@
         両手・両足を IK でドラッグ
       </label>
       <div class="helpTxt" style="margin-top:6px">
-        ON にすると手首・足首に色付きの■ハンドルが出ます。ハンドルをクリック→Move ギズモで引っ張ると肩・肘・股・膝が自動追従します（Two-bone IK）。
+        ON にすると手首・足首に色付きの■ハンドル、肘・膝の外側に◇ポールハンドル（線でつながる）が出ます。<br>
+        ・■ハンドルを Move で引っ張る → 肩・肘・股・膝が自動追従<br>
+        ・◇ポールを Move で動かす → 肘・膝の折れ曲がる向きを制御
       </div>
     </div>
     <div class="sect">
@@ -627,8 +629,26 @@ canvas.addEventListener('pointerdown', ev=>{
   mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
   mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
-  /* IK ON 中は、まず IK target ハンドルを優先で当たり判定 */
+  /* IK ON 中は、まず pole ハンドル、次に tip ハンドルを優先で当たり判定 */
   if(ikEnabled && ikChains.length){
+    /* pole ハンドル（小さい octahedron）を先にチェック — 前面に描画されているので tip より当てやすい優先度が必要 */
+    const poleMeshes = ikChains.map(c=>c.poleTarget).filter(Boolean);
+    const poleHits = raycaster.intersectObjects(poleMeshes, false);
+    if(poleHits.length){
+      const cName = poleHits[0].object.userData.__chainName;
+      const chain = ikChains.find(c=>c.name === cName);
+      if(chain){
+        selectedSet.clear(); selected = null; setHighlight(); refreshBoneList();
+        document.getElementById('selInfo').textContent = 'IK ポール: ' + chain.label;
+        document.getElementById('selInfo').classList.remove('none');
+        document.getElementById('rotCtl').style.display = 'none';
+        tc.setMode('translate');
+        tc.attach(chain.poleTarget);
+        ikActiveChain = chain;
+        ev.stopPropagation();
+        return;
+      }
+    }
     const ikMeshes = ikChains.map(c=>c.target);
     const ikHits = raycaster.intersectObjects(ikMeshes, false);
     if(ikHits.length){
@@ -815,7 +835,28 @@ function initIK(){
     target.userData.__ikTarget = true;
     target.userData.__chainName = def.name;
     scene.add(target);
-    ikChains.push({ ...def, rBone, mBone, tBone, rAim, mAim, L1, L2, poleDir, target });
+    /* ポールベクター用ハンドル：肘/膝の bend 方向を明示的に制御する。
+       初期位置は現 elbow/knee のワールド位置から pole 方向へ 0.3m 外側。 */
+    const POLE_OFFSET = 0.3;
+    const poleGeo = new THREE.OctahedronGeometry(0.035);
+    const poleMat = new THREE.MeshBasicMaterial({ color: def.color, wireframe:true, transparent:true, opacity:0.7, depthTest:false });
+    const poleTarget = new THREE.Mesh(poleGeo, poleMat);
+    poleTarget.position.copy(mPos).addScaledVector(poleDir, POLE_OFFSET);
+    poleTarget.renderOrder = 1001;
+    poleTarget.visible = false;
+    poleTarget.userData.__ikPoleTarget = true;
+    poleTarget.userData.__chainName = def.name;
+    scene.add(poleTarget);
+    /* 肘/膝 とポール間の視線ガイド（点線） */
+    const poleLineMat = new THREE.LineDashedMaterial({ color: def.color, dashSize:0.03, gapSize:0.02, transparent:true, opacity:0.55, depthTest:false });
+    const poleLineGeo = new THREE.BufferGeometry();
+    poleLineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    const poleLine = new THREE.Line(poleLineGeo, poleLineMat);
+    poleLine.renderOrder = 1000;
+    poleLine.visible = false;
+    poleLine.frustumCulled = false;
+    scene.add(poleLine);
+    ikChains.push({ ...def, rBone, mBone, tBone, rAim, mAim, L1, L2, poleDir, target, poleTarget, poleLine });
   }
 }
 
@@ -829,9 +870,11 @@ function aimBoneAt(bone, worldDir, localAim){
   bone.quaternion.copy(q);
 }
 
-/* Two-bone IK：target のワールド位置を目標にチェーン (root→mid→tip) を解く */
+/* Two-bone IK：target のワールド位置を目標にチェーン (root→mid→tip) を解く。
+   pole 方向は poleTarget ハンドルの位置から動的に算出。ハンドルが root→tip 軸に近い
+   ときは前回の poleDir を fallback として使用。 */
 function solveIK(chain){
-  const {rBone, mBone, tBone, rAim, mAim, L1, L2, poleDir, target} = chain;
+  const {rBone, mBone, tBone, rAim, mAim, L1, L2, target, poleTarget} = chain;
   modelRoot.updateMatrixWorld(true);
   const P0 = new THREE.Vector3(); rBone.getWorldPosition(P0);
   const T = target.position;
@@ -847,8 +890,24 @@ function solveIK(chain){
   const cosA = (L1*L1 + D*D - L2*L2) / (2*L1*D);
   const A = Math.acos(Math.max(-1, Math.min(1, cosA)));
 
+  /* pole 方向：pole ハンドルの位置から root→tip 軸に対する垂直成分を取り出す。
+     ハンドルが軸と平行に近い場合は chain.poleDir を fallback として使用。 */
+  let poleWorld;
+  if(poleTarget){
+    const poleVec = new THREE.Vector3().subVectors(poleTarget.position, P0);
+    const parallel = dirRT.clone().multiplyScalar(poleVec.dot(dirRT));
+    const perp = poleVec.clone().sub(parallel);
+    if(perp.lengthSq() < 1e-4){
+      poleWorld = chain.poleDir.clone().normalize();
+    } else {
+      poleWorld = perp.normalize();
+      chain.poleDir.copy(poleWorld);   /* 最新の有効値をキャッシュ */
+    }
+  } else {
+    poleWorld = chain.poleDir.clone().normalize();
+  }
+
   /* bend 面：root→target ラインと pole ベクトルで作る平面。この面内で bend する。 */
-  const poleWorld = poleDir.clone().normalize();
   let bendNormal = new THREE.Vector3().crossVectors(dirRT, poleWorld);
   if(bendNormal.lengthSq() < 1e-6){
     bendNormal.set(1, 0, 0).cross(dirRT);
@@ -885,10 +944,20 @@ function syncIKTargets(){
   }
 }
 
-/* IK ON/OFF：target 表示切替。OFF 時は tc からも外す。 */
+/* IK ON/OFF：target・pole 表示切替。OFF 時は tc からも外す。
+   ON 時は pole ハンドル位置を現 elbow/knee + 0.3m*bendDir にリセット（前回の残留位置を避ける）。 */
 function setIKEnabled(on){
   ikEnabled = !!on;
-  for(const c of ikChains){ c.target.visible = ikEnabled; }
+  const mp = new THREE.Vector3();
+  for(const c of ikChains){
+    c.target.visible = ikEnabled;
+    if(c.poleTarget) c.poleTarget.visible = ikEnabled;
+    if(c.poleLine)   c.poleLine.visible   = ikEnabled;
+    if(ikEnabled && c.poleTarget){
+      c.mBone.getWorldPosition(mp);
+      c.poleTarget.position.copy(mp).addScaledVector(c.poleDir, 0.3);
+    }
+  }
   if(!ikEnabled && ikActiveChain){
     try{ tc.detach() }catch(_){}
     ikActiveChain = null;
@@ -897,6 +966,22 @@ function setIKEnabled(on){
   }
   const cb = document.getElementById('ikToggle');
   if(cb) cb.checked = ikEnabled;
+}
+
+/* IK の pole ライン（肘/膝 → pole ハンドル）を tick 毎に更新 */
+const _polTmp = new THREE.Vector3();
+function updateIKPoleLines(){
+  if(!ikChains.length) return;
+  for(const c of ikChains){
+    if(!c.poleLine || !c.poleTarget || !c.poleLine.visible) continue;
+    c.mBone.getWorldPosition(_polTmp);
+    const arr = c.poleLine.geometry.attributes.position.array;
+    arr[0] = _polTmp.x; arr[1] = _polTmp.y; arr[2] = _polTmp.z;
+    arr[3] = c.poleTarget.position.x; arr[4] = c.poleTarget.position.y; arr[5] = c.poleTarget.position.z;
+    c.poleLine.geometry.attributes.position.needsUpdate = true;
+    try{ c.poleLine.computeLineDistances(); }catch(_){}
+    c.poleLine.geometry.computeBoundingSphere();
+  }
 }
 {
   const cb = document.getElementById('ikToggle');
@@ -1059,12 +1144,12 @@ function snapshotDataURL(w=800, h=800){
   tc.visible = false;
   const jpVis = jointProxies.map(jp=>jp.mesh.visible);
   for(const jp of jointProxies) jp.mesh.visible = false;
-  const ikVis = ikChains.map(c=>c.target.visible);
-  for(const c of ikChains) c.target.visible = false;
+  const ikVis = ikChains.map(c=>({ t:c.target.visible, p:c.poleTarget&&c.poleTarget.visible, l:c.poleLine&&c.poleLine.visible }));
+  for(const c of ikChains){ c.target.visible = false; if(c.poleTarget) c.poleTarget.visible = false; if(c.poleLine) c.poleLine.visible = false; }
   renderer.render(scene, cam);
   const data = renderer.domElement.toDataURL('image/png');
   jointProxies.forEach((jp,i)=>{ jp.mesh.visible = jpVis[i]; });
-  ikChains.forEach((c,i)=>{ c.target.visible = ikVis[i]; });
+  ikChains.forEach((c,i)=>{ c.target.visible = ikVis[i].t; if(c.poleTarget) c.poleTarget.visible = ikVis[i].p; if(c.poleLine) c.poleLine.visible = ikVis[i].l; });
   grid.visible = true;
   tc.visible = tcVisPrev;
   renderer.setClearColor(0x0e0e12, 1);
@@ -1201,6 +1286,7 @@ function tick(){
   controls.update();
   syncJointProxies();
   syncIKTargets();
+  updateIKPoleLines();
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
@@ -1259,14 +1345,14 @@ if(isHeadless){
       tc.visible = false;
       const jpVis = jointProxies.map(jp=>jp.mesh.visible);
       for(const jp of jointProxies) jp.mesh.visible = false;   // headless では選択球も隠す
-      const ikVis = ikChains.map(c=>c.target.visible);
-      for(const c of ikChains) c.target.visible = false;   // IK ハンドルも隠す
+      const ikVis = ikChains.map(c=>({ t:c.target.visible, p:c.poleTarget&&c.poleTarget.visible, l:c.poleLine&&c.poleLine.visible }));
+      for(const c of ikChains){ c.target.visible = false; if(c.poleTarget) c.poleTarget.visible = false; if(c.poleLine) c.poleLine.visible = false; }
       syncJointProxies();   // pose 反映後の位置に更新（隠す前にやっても大差なし）
       renderer.render(scene, cam);
       const img = renderer.domElement.toDataURL('image/png');
       const rings = computeGizmoRings(cam);
       jointProxies.forEach((jp,i)=>{ jp.mesh.visible = jpVis[i]; });
-      ikChains.forEach((c,i)=>{ c.target.visible = ikVis[i]; });
+      ikChains.forEach((c,i)=>{ c.target.visible = ikVis[i].t; if(c.poleTarget) c.poleTarget.visible = ikVis[i].p; if(c.poleLine) c.poleLine.visible = ikVis[i].l; });
       grid.visible = true;
       tc.visible = tcVisPrev;
       renderer.setClearColor(0x0e0e12, 1);

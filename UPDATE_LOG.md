@@ -13,6 +13,15 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.058) 3D マネキン：IK にポールベクター（bend 方向制御）追加
+  - 各 IK チェーンに◇ポールハンドル（`OctahedronGeometry` wireframe）を追加。初期位置は肘・膝のワールド位置から現 bend 方向へ 0.3m 外側。
+  - `solveIK` が pole ハンドル位置を root→tip 軸に垂直な成分に分解して bend 平面を動的に決定（handle 位置が軸に近すぎるときは前回の poleDir を fallback）。
+  - ポールハンドルは pointerdown で tip ハンドルより先に当たり判定して TC を translate モードで attach。ドラッグすると肘・膝の折れ曲がる向きが変化。
+  - 肘/膝 → ポールを繋ぐダッシュ線を毎フレーム更新（視覚ガイド）。
+  - IK ON 時にポール位置を「現 elbow + 0.3m*bendDir」にリセットして、前回の残留位置を避ける。
+  - snapshot / headless render では tip ハンドルに加えてポールハンドル・ポール線も非表示。
+  - APP_VERSION を 2026.07.24.058 に。
+
 - (dev v2026.07.24.057) 3D マネキン：Two-bone IK 実装（両腕・両脚）
   - **チェーン**：`leftArm(shoulder→elbow→wrist)` / `rightArm` / `leftLeg(hip→knee→ankle)` / `rightLeg` の 4 チェーン。init 時に各ボーンの aim direction（子ボーンのローカル位置）・骨長・初期 bend 方向（pole）を計算。
   - **ソルバ**：Two-bone IK。target までの距離 D から三角形の余弦定理で root/mid の角度を求め、pole 方向で bend 平面を決定。`aimBoneAt` で親フレームに変換した world 方向にボーンの aim ベクトルを合わせるように quaternion を計算・set。
