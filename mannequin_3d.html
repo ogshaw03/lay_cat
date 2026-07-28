@@ -269,15 +269,6 @@ const gltfLoader = new GLTFLoader();
 gltfLoader.setDRACOLoader(dracoLoader);
 
 let modelLoaded = false, modelRoot = null;
-/* 正中線（脊柱を辿る折れ線）— tick 毎に更新 */
-let midLine = null, midlineGeo = null;
-const midlineMaxPts = 16;
-/* 正中線を通すボーンのフレンドリ名（頭上 → 首 → 胸 → 背骨 → 腰 → 足中点 の順）。
-   モデルに存在するボーンだけ順に採用する。 */
-const MIDLINE_CHAIN = ['head', 'neck', 'upperChest', 'chest', 'spine', 'root'];
-/* ボーンごとの体の厚み（前後方向）の半分。腰・胸は厚め、首・足は細め。
-   カメラのいる側（前 or 後）へこの距離だけボーン位置をオフセットして表面に貼りつかせる。 */
-const MIDLINE_THICKNESS = { headTop:0.08, head:0.10, neck:0.05, upperChest:0.11, chest:0.11, spine:0.10, root:0.10, footMid:0.05 };
 function showLoadingHud(msg, isError){
   const hud = document.getElementById('hud');
   hud.innerHTML = '<b>'+(isError?'エラー':'読み込み中')+'：</b>'+msg;
@@ -336,19 +327,8 @@ function loadGLBModel(){
     const dbgInfo = 'nativeH='+heightNative.toFixed(2)+' scale='+scale.toFixed(3)+' foot.y='+footY.toFixed(2)+' hips=('+cx.toFixed(2)+','+cz.toFixed(2)+')';
     console.log('[mannequin]', dbgInfo);
 
-    /* 正中線（midline）：頭頂 → 首 → 胸 → 背骨 → 腰 → 両足中点をボーンの
-       ワールド位置で結んだポリライン。tick 毎に world 位置から再構築するので、
-       ポーズを変えたり characterGroup を回転させても体の中心線に追従する
-       （テクスチャのように貼りついた見た目）。scene 直下に置き、depthTest=false で
-        体の裏側にあっても常に手前描画。 */
-    const midMat = new THREE.LineBasicMaterial({ color: 0xff7bd1, transparent:true, opacity:0.9, depthTest:false, linewidth:2 });
-    midlineGeo = new THREE.BufferGeometry();
-    midlineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(midlineMaxPts * 3), 3));
-    midLine = new THREE.Line(midlineGeo, midMat);
-    midLine.name = '__midline';
-    midLine.renderOrder = 998;   // joint proxy(999) より少し奥
-    midLine.frustumCulled = false;
-    scene.add(midLine);
+    /* 正中線はランタイム描画では体の凹凸に完全追従できないため、テクスチャで対応する方針に変更。
+       ユーザーが用意した texture 入り GLB に差し替えるまでこの位置には何も描画しない。 */
 
     // ボーンを収集してフレンドリ名にマップ
     let mappedCount = 0;
@@ -1037,73 +1017,9 @@ function syncJointProxies(){
   }
 }
 
-/* 正中線を各フレームで再構築。
-   ・ボーンのワールド位置を辿って脊柱に沿った折れ線を作る（ポーズ追従）
-   ・さらにキャラクターの前後軸に沿ってオフセットし、体の「表面」に貼りつかせる：
-     カメラが前面側にいれば腹側、背面側にいれば背中側にラインが移動する。
-   これで前・後どちらから見ても表面にテクスチャのように見える。
-   カメラは 3D エディタ側（controls 使用）とアノテ側（headless render で作った cam）が
-   別インスタンスなので、引数で受け取れるようにする。 */
-const _midTmp = new THREE.Vector3(), _midTmp2 = new THREE.Vector3();
-const _charForward = new THREE.Vector3();
-const _camRel = new THREE.Vector3();
-function updateMidline(useCam){
-  if(!midLine || !midlineGeo) return;
-  const cam = useCam || camera;
-  const posAttr = midlineGeo.attributes.position;
-  const arr = posAttr.array;
-
-  /* キャラクター前方向をワールド座標で算出。modelRoot を Y 180° 回転させたので、
-     characterGroup 系の「+Z」がキャラクターの正面。 */
-  characterGroup.updateMatrixWorld(true);
-  _charForward.set(0, 0, 1).applyQuaternion(characterGroup.getWorldQuaternion(new THREE.Quaternion())).normalize();
-  /* オフセット符号：カメラが前面側なら +1、背面側なら -1。
-     参照点は腰位置（無ければキャラクター原点）でカメラ方向との内積を取る。 */
-  const refPt = bones.root ? bones.root.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3();
-  _camRel.subVectors(cam.position, refPt);
-  const sign = _camRel.dot(_charForward) >= 0 ? 1 : -1;
-
-  let n = 0;
-  const pushOffset = (p, thicknessKey)=>{
-    if(n >= midlineMaxPts) return;
-    const t = MIDLINE_THICKNESS[thicknessKey] || 0.09;
-    arr[n*3    ] = p.x + _charForward.x * t * sign;
-    arr[n*3 + 1] = p.y + _charForward.y * t * sign;
-    arr[n*3 + 2] = p.z + _charForward.z * t * sign;
-    n++;
-  };
-  /* 頭頂：head ボーン位置から少し上に延長（頭のトップ側まで線を伸ばす） */
-  if(bones.head){
-    bones.head.getWorldPosition(_midTmp);
-    _midTmp.y += 0.14;   /* 頭サイズ相当だけ上へ */
-    pushOffset(_midTmp, 'headTop');
-  }
-  /* head → neck → upperChest → chest → spine → root（存在するものだけ順に採用） */
-  for(const name of MIDLINE_CHAIN){
-    const b = bones[name]; if(!b) continue;
-    b.getWorldPosition(_midTmp);
-    pushOffset(_midTmp, name);
-  }
-  /* 両足中点：レッグの平均で終端 */
-  const lf = bones.leftFoot, rf = bones.rightFoot;
-  if(lf && rf){
-    lf.getWorldPosition(_midTmp);
-    rf.getWorldPosition(_midTmp2);
-    _midTmp.set((_midTmp.x + _midTmp2.x) * 0.5, (_midTmp.y + _midTmp2.y) * 0.5, (_midTmp.z + _midTmp2.z) * 0.5);
-    pushOffset(_midTmp, 'footMid');
-  } else if(lf || rf){
-    (lf || rf).getWorldPosition(_midTmp);
-    pushOffset(_midTmp, 'footMid');
-  }
-  midlineGeo.setDrawRange(0, n);
-  posAttr.needsUpdate = true;
-  midlineGeo.computeBoundingSphere();
-}
-
 function tick(){
   controls.update();
   syncJointProxies();
-  updateMidline();
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
@@ -1163,7 +1079,6 @@ if(isHeadless){
       const jpVis = jointProxies.map(jp=>jp.mesh.visible);
       for(const jp of jointProxies) jp.mesh.visible = false;   // headless では選択球も隠す
       syncJointProxies();   // pose 反映後の位置に更新（隠す前にやっても大差なし）
-      updateMidline(cam);   // アノテ用カメラ位置に対して正中線の表面側を計算
       renderer.render(scene, cam);
       const img = renderer.domElement.toDataURL('image/png');
       const rings = computeGizmoRings(cam);
