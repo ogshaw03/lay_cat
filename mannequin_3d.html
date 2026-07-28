@@ -113,7 +113,9 @@
         <kbd>Left</kbd> クリック=選択 ／ 空白ドラッグ=範囲選択（複数）<br>
         <kbd>Shift</kbd>+クリック/ドラッグ で追加選択<br>
         空白クリック / <kbd>Esc</kbd> で選択解除<br>
-        <kbd>R</kbd> 選択中を bind pose にリセット ／ <kbd>F</kbd> 選択中に寄る
+        <br>
+        <b style="color:#a0a0b0">マニピュレータ (Maya)</b><br>
+        <kbd>W</kbd> 移動 ／ <kbd>E</kbd> 回転 ／ <kbd>F</kbd> 選択に寄る ／ <kbd>R</kbd> リセット
       </div>
     </div>
   </aside>
@@ -378,7 +380,8 @@ function loadGLBModel(){
     initIK();   // 手足の IK ハンドルとチェーンを準備
     document.getElementById('hud').innerHTML =
       '<b>カメラ (Maya)：</b> Alt+左=回転／Alt+中=パン／Alt+右=ドリー(右で寄る)／ホイール=ズーム<br>'+
-      '<b>ボーン：</b> クリック=選択 ／ 空白ドラッグ=範囲選択（複数） ／ Shift=追加選択 ／ 空白クリック=解除 ／ '+mappedCount+' マップ済';
+      '<b>ボーン：</b> クリック=選択 ／ 空白ドラッグ=範囲選択 ／ Shift=追加選択 ／ 空白クリック=解除<br>'+
+      '<b>マニピュレータ：</b> <kbd>W</kbd>=移動 ／ <kbd>E</kbd>=回転 ／ <kbd>F</kbd>=選択に寄る ／ <kbd>R</kbd>=リセット （'+mappedCount+' マップ済）';
   }, (xhr)=>{
     if(xhr.total) showLoadingHud('mannequin_model.glb を取得中… '+Math.round(xhr.loaded/xhr.total*100)+'%');
   }, (err)=>{
@@ -556,6 +559,18 @@ function centroidOfSelection(){
   return c;
 }
 
+/* Maya の W=移動 / E=回転 に合わせたユーザーの好みモード。単独ボーン選択のときだけ
+   TC モードとして採用。IK ハンドルや複数選択時は用途固定（translate / rotate）で上書き。 */
+let userPreferredMode = 'rotate';
+function setUserMode(mode){
+  userPreferredMode = mode;
+  /* 現在 attach 中の対象が単独ボーンなら即反映（IK target / pole / multiProxy は用途固定） */
+  const obj = tc && tc.object;
+  if(obj && obj !== multiProxy && !obj.userData?.__ikTarget && !obj.userData?.__ikPoleTarget){
+    tc.setMode(mode);
+  }
+}
+
 function updateSelectionUI(){
   const info = document.getElementById('selInfo');
   const ctl = document.getElementById('rotCtl');
@@ -574,6 +589,7 @@ function updateSelectionUI(){
     info.classList.remove('none');
     ctl.style.display = '';
     syncSlidersFromBone();
+    tc.setMode(userPreferredMode);   /* W/E で選んだモードを尊重（既定 rotate） */
     tc.attach(bones[name]);
   } else {
     /* 複数選択：共有 proxy にギズモをアタッチして同時回転可能に。件数のみ表示。 */
@@ -581,6 +597,8 @@ function updateSelectionUI(){
     info.textContent = selectedSet.size + ' 個のボーンを選択中（ギズモで一括回転）';
     info.classList.remove('none');
     ctl.style.display = 'none';
+    /* 複数選択のソルバは rotation delta 前提なので、W が押されていても rotate に上書き */
+    tc.setMode('rotate');
     /* proxy を選択重心に配置、rotation は identity（ワールド軸ギズモ表示） */
     multiProxy.position.copy(centroidOfSelection());
     multiProxy.quaternion.identity();
@@ -703,8 +721,8 @@ canvas.addEventListener('pointerdown', ev=>{
   const hits = raycaster.intersectObjects(meshes, false);
   if(hits.length){
     /* 見えるボーンに当たった：単独クリック（Shift で追加トグル） */
-    /* IK 中でも FK 選択に戻れるように、まず TC を rotate に戻す */
-    if(ikActiveChain){ ikActiveChain = null; tc.setMode('rotate'); }
+    /* IK モードから抜ける（TC モードは updateSelectionUI が userPreferredMode に戻す） */
+    if(ikActiveChain){ ikActiveChain = null; }
     const bn = hits[0].object.userData.__boneName;
     selectBone(bn, {additive: ev.shiftKey});
     ev.stopPropagation();
@@ -1258,6 +1276,16 @@ window.addEventListener('keydown', e=>{
   /* テキスト入力中はショートカットを無視 */
   const t = e.target;
   if(t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+  if(e.key === 'w' || e.key === 'W'){
+    setUserMode('translate');   /* Maya の W = 移動マニピュレータ */
+    e.preventDefault();
+    return;
+  }
+  if(e.key === 'e' || e.key === 'E'){
+    setUserMode('rotate');       /* Maya の E = 回転マニピュレータ */
+    e.preventDefault();
+    return;
+  }
   if(e.key === 'Escape'){ selectBone(null); }
   else if(e.key === 'r' || e.key === 'R'){
     /* 選択中の全ボーンを bind pose にリセット（複数選択対応） */
