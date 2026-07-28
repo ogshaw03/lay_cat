@@ -39,6 +39,7 @@
   #boneList button{padding:5px 6px;background:#1c1c22;border:1px solid #26262e;color:#a0a0b0;border-radius:4px;font-size:10.5px;cursor:pointer;text-align:left}
   #boneList button:hover{background:#26262e;color:#c8dcff}
   #boneList button.active{background:#3a2a5a;color:#e0d0ff;border-color:#5a4a8a}
+  #rectSel{position:absolute;border:1px dashed #a5c8ff;background:rgba(120,170,255,.10);pointer-events:none;display:none;z-index:5}
 </style>
 </head>
 <body>
@@ -52,6 +53,7 @@
   </header>
   <div id="stage">
     <canvas id="cv"></canvas>
+    <div id="rectSel"></div>
     <div id="hud">
       <b>カメラ (Maya 風)：</b> Alt+左 = 回転 ／ Alt+中 = 平行移動 ／ Alt+右 or ホイール = ズーム<br>
       <b>ボーン：</b> クリックで選択 → 右パネル or ジンバルで回転
@@ -60,7 +62,7 @@
   <aside>
     <div class="sect">
       <h3>選択中</h3>
-      <div id="selInfo" class="selInfo none">ボーンをクリックして選択</div>
+      <div id="selInfo" class="selInfo none">ボーンをクリックして選択（範囲ドラッグで複数選択）</div>
       <div id="rotCtl" style="display:none">
         <div class="row"><label class="lx">X</label><input type="range" id="rx" min="-180" max="180" step="1" value="0"><span class="val" id="rxV">0°</span></div>
         <div class="row"><label class="ly">Y</label><input type="range" id="ry" min="-180" max="180" step="1" value="0"><span class="val" id="ryV">0°</span></div>
@@ -90,7 +92,9 @@
         <kbd>Wheel</kbd> ズーム（Alt 不要）<br>
         <br>
         <b style="color:#a0a0b0">ボーン</b><br>
-        <kbd>Left</kbd> クリックで選択 ／ <kbd>R</kbd> リセット ／ <kbd>Esc</kbd> 選択解除
+        <kbd>Left</kbd> クリック=選択 ／ 空白ドラッグ=範囲選択（複数）<br>
+        <kbd>Shift</kbd>+クリック/ドラッグ で追加選択<br>
+        空白クリック / <kbd>Esc</kbd> で選択解除 ／ <kbd>R</kbd> 選択中を bind pose にリセット
       </div>
     </div>
   </aside>
@@ -344,8 +348,8 @@ function loadGLBModel(){
     modelLoaded = true;
     refreshBoneList();
     document.getElementById('hud').innerHTML =
-      '<b>マウス：</b> ドラッグでカメラ回転 ／ ホイールでズーム ／ 右ドラッグで平行移動<br>'+
-      '<b>ボーン：</b> クリックで選択 → 右パネルで XYZ 回転 ／ '+mappedCount+' ボーンをマップ済み';
+      '<b>カメラ (Maya)：</b> Alt+左=回転／Alt+中=パン／Alt+右=ドリー(右で寄る)／ホイール=ズーム<br>'+
+      '<b>ボーン：</b> クリック=選択 ／ 空白ドラッグ=範囲選択（複数） ／ Shift=追加選択 ／ 空白クリック=解除 ／ '+mappedCount+' マップ済';
   }, (xhr)=>{
     if(xhr.total) showLoadingHud('mannequin_model.glb を取得中… '+Math.round(xhr.loaded/xhr.total*100)+'%');
   }, (err)=>{
@@ -366,17 +370,20 @@ function pickJointSize(name){
 loadGLBModel();
 
 // ---------- Selection ----------
-let selected = null;   // bone name
+// selectedSet：現在選択中のボーン名の集合（複数選択に対応）
+// selected   ：単一選択時の active ボーン（TransformControls / スライダー用）。
+//              複数選択されているときは null（TC・スライダーは非表示）。
+let selected = null;
+const selectedSet = new Set();
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
-function setHighlight(boneName){
-  // 前回の proxy 色を戻す
+function setHighlight(){
+  // まず全 proxy を通常マテリアルに戻す
   for(const jp of jointProxies){ jp.mesh.material = jp.mesh.userData.__origMat || JOINT_MAT; }
-  if(!boneName) return;
-  // 選択中の proxy をハイライト
+  // selectedSet に含まれる proxy をハイライト
   for(const jp of jointProxies){
-    if(jp.mesh.userData.__boneName === boneName){ jp.mesh.material = JOINT_MAT_HL; break; }
+    if(selectedSet.has(jp.mesh.userData.__boneName)) jp.mesh.material = JOINT_MAT_HL;
   }
 }
 
@@ -390,25 +397,55 @@ scene.add(tc);
 tc.addEventListener('dragging-changed', ev => { controls.enabled = !ev.value; });
 tc.addEventListener('objectChange', () => { if(selected) syncSlidersFromBone(); });
 
-function selectBone(name){
-  selected = name;
-  setHighlight(name);
+function updateSelectionUI(){
   const info = document.getElementById('selInfo');
   const ctl = document.getElementById('rotCtl');
-  if(!name || !bones[name]){
+  setHighlight();
+  if(selectedSet.size === 0){
     selected = null;
-    info.textContent = 'ボーンをクリックして選択';
+    info.textContent = 'ボーンをクリックして選択（範囲ドラッグで複数選択）';
     info.classList.add('none');
     ctl.style.display = 'none';
     tc.detach();
-  } else {
+  } else if(selectedSet.size === 1){
+    const name = [...selectedSet][0];
+    if(!bones[name]){ selectedSet.clear(); updateSelectionUI(); return; }
+    selected = name;
     info.textContent = displayName(name);
     info.classList.remove('none');
     ctl.style.display = '';
     syncSlidersFromBone();
     tc.attach(bones[name]);
+  } else {
+    /* 複数選択：TC・スライダーは非表示。件数だけ表示。 */
+    selected = null;
+    info.textContent = selectedSet.size + ' 個のボーンを選択中';
+    info.classList.remove('none');
+    ctl.style.display = 'none';
+    tc.detach();
   }
   refreshBoneList();
+}
+
+/* 単一選択：opts.additive=true なら selectedSet にトグル追加、それ以外は入れ替え */
+function selectBone(name, opts){
+  opts = opts || {};
+  if(!name){
+    selectedSet.clear();
+  } else if(opts.additive){
+    if(selectedSet.has(name)) selectedSet.delete(name); else selectedSet.add(name);
+  } else {
+    selectedSet.clear();
+    selectedSet.add(name);
+  }
+  updateSelectionUI();
+}
+
+/* 範囲選択で複数ボーンを一度に選択（既存の選択は置き換え） */
+function selectBones(names){
+  selectedSet.clear();
+  for(const n of names) if(bones[n]) selectedSet.add(n);
+  updateSelectionUI();
 }
 
 function displayName(n){
@@ -422,6 +459,33 @@ function displayName(n){
   return map[n] || n;
 }
 
+/* 範囲選択（rectangle marquee）用の状態と DOM */
+const rectSel = document.getElementById('rectSel');
+let _rectDrag = null;   // { startX, startY, additive, ptrId }
+const RECT_DRAG_THRESH = 4;  // これ以下の移動量ならクリック扱いで空白 → 選択解除
+
+/* joint proxy をワールド座標 → 画面ピクセルに投影して、指定した矩形（stage 内座標）に
+   含まれる proxy のボーン名一覧を返す。 */
+function bonesInScreenRect(x0, y0, x1, y1){
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const rectMinX = Math.min(x0, x1), rectMaxX = Math.max(x0, x1);
+  const rectMinY = Math.min(y0, y1), rectMaxY = Math.max(y0, y1);
+  const p = new THREE.Vector3();
+  const out = [];
+  for(const jp of jointProxies){
+    if(!jp.bone) continue;
+    jp.bone.getWorldPosition(p);
+    p.project(camera);   /* -1..1 NDC */
+    /* NDC → 画面ピクセル（canvas 左上原点） */
+    const sx = (p.x + 1) * 0.5 * w;
+    const sy = (1 - (p.y + 1) * 0.5) * h;
+    /* z が -1..1 の範囲外ならカメラ背面／クリップ外なので除外 */
+    if(p.z < -1 || p.z > 1) continue;
+    if(sx >= rectMinX && sx <= rectMaxX && sy >= rectMinY && sy <= rectMaxY) out.push(jp.mesh.userData.__boneName);
+  }
+  return out;
+}
+
 canvas.addEventListener('pointerdown', ev=>{
   if(ev.button !== 0) return;
   if(ev.altKey) return;    // Alt はカメラ操作モード（Maya 風）— ボーン選択を封じる
@@ -430,14 +494,65 @@ canvas.addEventListener('pointerdown', ev=>{
   mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
   mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
-  // 見える joint proxy 群のみを対象にする（スキンメッシュ自体はクリック不可の代替）
   const meshes = jointProxies.map(jp=>jp.mesh);
   const hits = raycaster.intersectObjects(meshes, false);
   if(hits.length){
+    /* 見えるボーンに当たった：単独クリック（Shift で追加トグル） */
     const bn = hits[0].object.userData.__boneName;
-    selectBone(bn);
+    selectBone(bn, {additive: ev.shiftKey});
     ev.stopPropagation();
+    return;
   }
+  /* 空白ドラッグ：矩形範囲選択を開始（Shift 押しなら既存選択に追加） */
+  _rectDrag = {
+    startX: ev.clientX - r.left,
+    startY: ev.clientY - r.top,
+    additive: ev.shiftKey,
+    prevSelection: ev.shiftKey ? new Set(selectedSet) : null,
+    ptrId: ev.pointerId,
+    moved: false
+  };
+  try{ canvas.setPointerCapture(ev.pointerId) }catch(_){}
+  ev.stopPropagation();
+});
+canvas.addEventListener('pointermove', ev=>{
+  if(!_rectDrag || ev.pointerId !== _rectDrag.ptrId) return;
+  const r = canvas.getBoundingClientRect();
+  const cx = ev.clientX - r.left, cy = ev.clientY - r.top;
+  const dx = cx - _rectDrag.startX, dy = cy - _rectDrag.startY;
+  if(!_rectDrag.moved && (Math.abs(dx) > RECT_DRAG_THRESH || Math.abs(dy) > RECT_DRAG_THRESH)){
+    _rectDrag.moved = true;
+    rectSel.style.display = 'block';
+  }
+  if(_rectDrag.moved){
+    const l = Math.min(cx, _rectDrag.startX), t = Math.min(cy, _rectDrag.startY);
+    const w = Math.abs(dx), h = Math.abs(dy);
+    rectSel.style.left = l + 'px'; rectSel.style.top = t + 'px';
+    rectSel.style.width = w + 'px'; rectSel.style.height = h + 'px';
+  }
+});
+canvas.addEventListener('pointerup', ev=>{
+  if(!_rectDrag || ev.pointerId !== _rectDrag.ptrId) return;
+  const r = canvas.getBoundingClientRect();
+  const cx = ev.clientX - r.left, cy = ev.clientY - r.top;
+  rectSel.style.display = 'none';
+  try{ canvas.releasePointerCapture(ev.pointerId) }catch(_){}
+  if(_rectDrag.moved){
+    /* 範囲選択確定 */
+    const hits = bonesInScreenRect(_rectDrag.startX, _rectDrag.startY, cx, cy);
+    if(_rectDrag.additive && _rectDrag.prevSelection){
+      /* Shift：既存 + 新規 */
+      const merged = new Set(_rectDrag.prevSelection);
+      for(const n of hits) merged.add(n);
+      selectBones([...merged]);
+    } else {
+      selectBones(hits);   /* 空でも実行 → 全選択解除 */
+    }
+  } else {
+    /* 何もない場所を単純クリック → 選択解除（Shift 押しなら既存維持） */
+    if(!_rectDrag.additive) selectBone(null);
+  }
+  _rectDrag = null;
 });
 
 // ---------- Rotation sliders ----------
@@ -488,8 +603,8 @@ function refreshBoneList(){
     if(!bones[n]) continue;
     const b = document.createElement('button');
     b.textContent = displayName(n);
-    if(n === selected) b.classList.add('active');
-    b.onclick = ()=> selectBone(n);
+    if(selectedSet.has(n)) b.classList.add('active');
+    b.onclick = (ev)=> selectBone(n, {additive: ev.shiftKey});
     list.appendChild(b);
   }
 }
@@ -695,11 +810,12 @@ document.getElementById('btnReset').onclick = ()=>{
 window.addEventListener('keydown', e=>{
   if(e.key === 'Escape'){ selectBone(null); }
   else if(e.key === 'r' || e.key === 'R'){
-    if(selected){
-      const b = bones[selected]; const init = bindMap[selected].initEuler;
-      b.rotation.set(init[0], init[1], init[2]);
-      syncSlidersFromBone();
+    /* 選択中の全ボーンを bind pose にリセット（複数選択対応） */
+    for(const name of selectedSet){
+      const b = bones[name], info = bindMap[name];
+      if(b && info) b.rotation.set(info.initEuler[0], info.initEuler[1], info.initEuler[2]);
     }
+    if(selected) syncSlidersFromBone();
   }
 });
 
