@@ -109,6 +109,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 // ---------- Scene setup ----------
 const stage = document.getElementById('stage');
@@ -150,175 +152,144 @@ const characterGroup = new THREE.Group();
 characterGroup.position.set(0, 1.0, 0);
 scene.add(characterGroup);
 
-// ---------- Procedural humanoid ----------
-// Simple stick-and-joint figure: each bone is a Group; parts are Meshes attached.
-const MAT_BODY = new THREE.MeshPhongMaterial({color:0xd8d8e0, shininess:15});
-const MAT_JOINT = new THREE.MeshPhongMaterial({color:0xb0b0c0, shininess:20});
-const MAT_HL = new THREE.MeshPhongMaterial({color:0xff9dfa, emissive:0x552255, shininess:30});
+// ---------- GLB モデル読み込み（VRM/Vroid スタイル） ----------
+// 外部 .glb を GLTFLoader + DRACOLoader で読み込み、リグ付きスキンメッシュとして表示。
+// ボーンは J_Bip_C_Hips 等の Bip 命名を、既存のフレンドリ名（root/spine/…）にマップして
+// 既存 UI・プリセット・回転操作をそのまま流用する。
+// GLB が読めなかった場合（ネットワーク切断・ファイル未配置）はエラー表示のみ。
+const MAT_HL = new THREE.MeshPhongMaterial({color:0xff9dfa, emissive:0x552255, shininess:30, transparent:true, opacity:0.7});
+const JOINT_MAT = new THREE.MeshBasicMaterial({color:0x8080a0, transparent:true, opacity:0.35, depthTest:false});
+const JOINT_MAT_HL = new THREE.MeshBasicMaterial({color:0xff9dfa, transparent:true, opacity:0.85, depthTest:false});
 
-const bones = {};   // name -> Group
-const partMap = new Map();   // Mesh -> bone name
-const bindMap = {};  // name -> {parent, offset:[x,y,z], initEuler:[x,y,z]}
+const bones = {};   // フレンドリ名 -> Bone (or Group)
+const partMap = new Map();   // クリック可能な proxy Mesh -> フレンドリ名
+const bindMap = {};  // フレンドリ名 -> {parent, offset, initEuler}
+const jointProxies = [];   // 選択用の見えない小球（ボーン位置に配置）
 
-function makeLimb(len, r0, r1){
-  const g = new THREE.CylinderGeometry(r1, r0, len, 14, 1);
-  g.translate(0, -len/2, 0);   // pivot at top
-  return new THREE.Mesh(g, MAT_BODY);
+// VRM Bip 命名 → 既存フレンドリ名（既存プリセット・UI 互換のため）
+const VRM_MAP = {
+  'J_Bip_C_Hips':'root',
+  'J_Bip_C_Spine':'spine',
+  'J_Bip_C_Chest':'chest',
+  'J_Bip_C_UpperChest':'upperChest',
+  'J_Bip_C_Neck':'neck',
+  'J_Bip_C_Head':'head',
+  'J_Bip_L_Shoulder':'leftShoulder',
+  'J_Bip_L_UpperArm':'leftUpperArm',
+  'J_Bip_L_LowerArm':'leftLowerArm',
+  'J_Bip_L_Hand':'leftHand',
+  'J_Bip_R_Shoulder':'rightShoulder',
+  'J_Bip_R_UpperArm':'rightUpperArm',
+  'J_Bip_R_LowerArm':'rightLowerArm',
+  'J_Bip_R_Hand':'rightHand',
+  'J_Bip_L_UpperLeg':'leftUpperLeg',
+  'J_Bip_L_LowerLeg':'leftLowerLeg',
+  'J_Bip_L_Foot':'leftFoot',
+  'J_Bip_R_UpperLeg':'rightUpperLeg',
+  'J_Bip_R_LowerLeg':'rightLowerLeg',
+  'J_Bip_R_Foot':'rightFoot'
+};
+
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+const gltfLoader = new GLTFLoader();
+gltfLoader.setDRACOLoader(dracoLoader);
+
+let modelLoaded = false, modelRoot = null;
+function showLoadingHud(msg, isError){
+  const hud = document.getElementById('hud');
+  hud.innerHTML = '<b>'+(isError?'エラー':'読み込み中')+'：</b>'+msg;
+  hud.style.color = isError ? '#ff8b8b' : '#a0a0b0';
 }
-function makeJoint(r){
-  return new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), MAT_JOINT);
-}
 
-// Build bone as a Group with a visual mesh + joint sphere at origin
-function bone(name, parent, offset, buildVisual){
-  const g = new THREE.Group();
-  g.name = name;
-  g.position.set(offset[0], offset[1], offset[2]);
-  bindMap[name] = {parent: parent ? parent.name : null, offset:[...offset], initEuler:[0,0,0]};
-  bones[name] = g;
-  if(parent) parent.add(g); else scene.add(g);
-  if(buildVisual){
-    const visual = buildVisual();
-    if(Array.isArray(visual)){
-      visual.forEach(v=>{ g.add(v); partMap.set(v, name); });
-    } else {
-      g.add(visual); partMap.set(visual, name);
+function loadGLBModel(){
+  showLoadingHud('mannequin_model.glb を取得中…');
+  gltfLoader.load('mannequin_model.glb', (gltf)=>{
+    modelRoot = gltf.scene;
+    // characterGroup 直下に配置。ピボット原点（腰）が世界の (0,1.0,0) にくるよう
+    // characterGroup.position で既に上げ、モデルは腰基準で -1.0 だけ下げる（腰の高さ）。
+    characterGroup.add(modelRoot);
+    // Vroid モデルは Y-up・Z-forward・単位メートル・センチキャラの多くが身長 1.5〜1.7m。
+    // 実際の bounding box から中心・高さを測ってスケール／位置を自動調整。
+    const bbox = new THREE.Box3().setFromObject(modelRoot);
+    const size = new THREE.Vector3(); bbox.getSize(size);
+    const center = new THREE.Vector3(); bbox.getCenter(center);
+    const targetHeight = 1.7;
+    const scale = size.y > 0.01 ? (targetHeight / size.y) : 1;
+    modelRoot.scale.setScalar(scale);
+    // 再測してモデルの足を y=-1.0（世界の地面 y=0 に相当）に、モデル中心を x=0/z=0 に揃える
+    const bbox2 = new THREE.Box3().setFromObject(modelRoot);
+    const c2 = new THREE.Vector3(); bbox2.getCenter(c2);
+    modelRoot.position.set(-c2.x, -1.0 - bbox2.min.y, -c2.z);
+
+    // ボーンを収集してフレンドリ名にマップ
+    let mappedCount = 0;
+    modelRoot.traverse(o=>{
+      if(!o.isBone && !(o.type==='Bone')) return;
+      const friendly = VRM_MAP[o.name];
+      if(!friendly) return;
+      bones[friendly] = o;
+      bindMap[friendly] = { parent:null, offset:[o.position.x,o.position.y,o.position.z], initEuler:[o.rotation.x,o.rotation.y,o.rotation.z] };
+      mappedCount++;
+    });
+
+    // 「chest」が UpperChest しか無いモデルも救う（プリセット互換）
+    if(!bones.chest && bones.upperChest){ bones.chest = bones.upperChest; bindMap.chest = bindMap.upperChest; }
+
+    // クリック用の見える小球をボーンごとに配置。scene 直下に置き、毎フレームボーン
+    // ワールド位置に追従させる（スキンメッシュだと bone がクリック不可のため）。
+    const rootPos = new THREE.Vector3();
+    for(const [name, b] of Object.entries(bones)){
+      const size = pickJointSize(name);
+      const s = new THREE.Mesh(new THREE.SphereGeometry(size, 12, 8), JOINT_MAT);
+      s.renderOrder = 999;   // 常に最前面
+      s.userData.__boneName = name;
+      s.userData.__origMat = JOINT_MAT;
+      scene.add(s);
+      partMap.set(s, name);
+      jointProxies.push({mesh:s, bone:b});
     }
-  }
-  return g;
+
+    // ハイライトのために SkinnedMesh を記録（マテリアル差し替えでハイライト）
+    modelRoot.traverse(o=>{ if(o.isMesh){ o.userData.__origMat = o.material; } });
+
+    modelLoaded = true;
+    refreshBoneList();
+    document.getElementById('hud').innerHTML =
+      '<b>マウス：</b> ドラッグでカメラ回転 ／ ホイールでズーム ／ 右ドラッグで平行移動<br>'+
+      '<b>ボーン：</b> クリックで選択 → 右パネルで XYZ 回転 ／ '+mappedCount+' ボーンをマップ済み';
+  }, (xhr)=>{
+    if(xhr.total) showLoadingHud('mannequin_model.glb を取得中… '+Math.round(xhr.loaded/xhr.total*100)+'%');
+  }, (err)=>{
+    console.warn('GLB load failed', err);
+    showLoadingHud('mannequin_model.glb を読み込めませんでした（ファイル配置・CORS を確認）', true);
+  });
 }
 
-// ROOT — pelvis at world (0, 0.95, 0). bone() added it to scene; move it under characterGroup
-// and adjust local position so its world position stays (0, 0.95, 0) given characterGroup at (0, 1.0, 0).
-const root = bone('root', null, [0, 0.95, 0], () => {
-  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.20), MAT_BODY);
-  hips.position.y = -0.05;
-  return hips;
-});
-scene.remove(root);
-characterGroup.add(root);
-root.position.set(0, -0.05, 0);
-bindMap.root.offset = [0, -0.05, 0];
-
-// Spine → chest → neck → head
-const spine = bone('spine', root, [0, 0.05, 0], () => makeJoint(0.06));
-const chest = bone('chest', spine, [0, 0.32, 0], () => {
-  const t = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.32, 0.22), MAT_BODY);
-  t.position.y = -0.16;
-  const j = makeJoint(0.055);
-  return [t, j];
-});
-const neck = bone('neck', chest, [0, 0.05, 0], () => {
-  const n = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.09, 12), MAT_BODY);
-  n.position.y = 0.045;
-  return n;
-});
-const head = bone('head', neck, [0, 0.11, 0], () => {
-  const h = new THREE.Mesh(new THREE.SphereGeometry(0.13, 20, 16), MAT_BODY);
-  h.position.y = 0.13;
-  h.scale.set(0.9, 1.05, 0.95);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.05, 8), MAT_JOINT);
-  nose.position.set(0, 0.11, 0.115);
-  nose.rotation.x = Math.PI/2;
-  return [h, nose];
-});
-
-// Arms (T-pose default: X-rotation 0, arms extend horizontally via bone offsets & rotations)
-// leftShoulder at chest top
-const lSh = bone('leftShoulder', chest, [0.15, 0.03, 0], () => makeJoint(0.055));
-// Upper arm should extend to the LEFT (character's left = viewer's right); apply Z rotation to point limb outward
-const lUpArm = bone('leftUpperArm', lSh, [0, 0, 0], () => makeLimb(0.32, 0.05, 0.045));
-lUpArm.rotation.z = Math.PI/2;  // T-pose — points to +X (character's left)
-bindMap.leftUpperArm.initEuler = [0, 0, Math.PI/2];
-const lLoArm = bone('leftLowerArm', lUpArm, [0, -0.32, 0], () => {
-  makeJoint(0.045);
-  const g = makeLimb(0.28, 0.045, 0.035);
-  const j = makeJoint(0.045);
-  return [g, j];
-});
-const lHand = bone('leftHand', lLoArm, [0, -0.28, 0], () => {
-  const h = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.04), MAT_BODY);
-  h.position.y = -0.07;
-  return h;
-});
-
-const rSh = bone('rightShoulder', chest, [-0.15, 0.03, 0], () => makeJoint(0.055));
-const rUpArm = bone('rightUpperArm', rSh, [0, 0, 0], () => makeLimb(0.32, 0.05, 0.045));
-rUpArm.rotation.z = -Math.PI/2;
-bindMap.rightUpperArm.initEuler = [0, 0, -Math.PI/2];
-const rLoArm = bone('rightLowerArm', rUpArm, [0, -0.32, 0], () => {
-  const g = makeLimb(0.28, 0.045, 0.035);
-  const j = makeJoint(0.045);
-  return [g, j];
-});
-const rHand = bone('rightHand', rLoArm, [0, -0.28, 0], () => {
-  const h = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.04), MAT_BODY);
-  h.position.y = -0.07;
-  return h;
-});
-
-// Legs — hips → upperLeg (down) → lowerLeg → foot
-const lHip = bone('leftHip', root, [0.09, -0.05, 0], () => makeJoint(0.06));
-const lUpLeg = bone('leftUpperLeg', lHip, [0, 0, 0], () => makeLimb(0.42, 0.06, 0.05));
-const lLoLeg = bone('leftLowerLeg', lUpLeg, [0, -0.42, 0], () => {
-  const g = makeLimb(0.40, 0.05, 0.04);
-  const j = makeJoint(0.05);
-  return [g, j];
-});
-const lFoot = bone('leftFoot', lLoLeg, [0, -0.40, 0], () => {
-  const f = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.20), MAT_BODY);
-  f.position.set(0, -0.025, 0.06);
-  return f;
-});
-
-const rHip = bone('rightHip', root, [-0.09, -0.05, 0], () => makeJoint(0.06));
-const rUpLeg = bone('rightUpperLeg', rHip, [0, 0, 0], () => makeLimb(0.42, 0.06, 0.05));
-const rLoLeg = bone('rightLowerLeg', rUpLeg, [0, -0.42, 0], () => {
-  const g = makeLimb(0.40, 0.05, 0.04);
-  const j = makeJoint(0.05);
-  return [g, j];
-});
-const rFoot = bone('rightFoot', rLoLeg, [0, -0.40, 0], () => {
-  const f = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.20), MAT_BODY);
-  f.position.set(0, -0.025, 0.06);
-  return f;
-});
-
-// Snapshot the initial (T-pose) rotations as bind pose
-for(const [name, b] of Object.entries(bones)){
-  const cur = bindMap[name].initEuler;
-  // If initEuler was set above (e.g. T-pose arms), use those; else read current
-  if(cur[0]===0 && cur[1]===0 && cur[2]===0){
-    bindMap[name].initEuler = [b.rotation.x, b.rotation.y, b.rotation.z];
-  } else {
-    b.rotation.set(cur[0], cur[1], cur[2]);
-  }
+function pickJointSize(name){
+  // 大きい関節は大きめ・指先は小さめの見た目にする
+  if(name==='root') return 0.09;
+  if(/Hand|Foot/.test(name)) return 0.05;
+  if(/Shoulder|Hip/.test(name)) return 0.055;
+  if(name==='head' || name==='neck') return 0.055;
+  return 0.045;
 }
+
+loadGLBModel();
 
 // ---------- Selection ----------
 let selected = null;   // bone name
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
-const highlighted = new Set();   // meshes currently swapped to MAT_HL
-const origMat = new Map();
 
 function setHighlight(boneName){
-  // Restore previous
-  for(const m of highlighted){
-    m.material = origMat.get(m) || MAT_BODY;
-  }
-  highlighted.clear();
-  origMat.clear();
+  // 前回の proxy 色を戻す
+  for(const jp of jointProxies){ jp.mesh.material = jp.mesh.userData.__origMat || JOINT_MAT; }
   if(!boneName) return;
-  const b = bones[boneName];
-  if(!b) return;
-  b.traverse(o=>{
-    if(o.isMesh){
-      origMat.set(o, o.material);
-      o.material = MAT_HL;
-      highlighted.add(o);
-    }
-  });
+  // 選択中の proxy をハイライト
+  for(const jp of jointProxies){
+    if(jp.mesh.userData.__boneName === boneName){ jp.mesh.material = JOINT_MAT_HL; break; }
+  }
 }
 
 // TransformControls: rotate gizmo on selected bone (3D interactive manipulator).
@@ -336,7 +307,8 @@ function selectBone(name){
   setHighlight(name);
   const info = document.getElementById('selInfo');
   const ctl = document.getElementById('rotCtl');
-  if(!name){
+  if(!name || !bones[name]){
+    selected = null;
     info.textContent = 'ボーンをクリックして選択';
     info.classList.add('none');
     ctl.style.display = 'none';
@@ -369,10 +341,11 @@ canvas.addEventListener('pointerdown', ev=>{
   mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
   mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
-  const meshes = [...partMap.keys()];
+  // 見える joint proxy 群のみを対象にする（スキンメッシュ自体はクリック不可の代替）
+  const meshes = jointProxies.map(jp=>jp.mesh);
   const hits = raycaster.intersectObjects(meshes, false);
   if(hits.length){
-    const bn = partMap.get(hits[0].object);
+    const bn = hits[0].object.userData.__boneName;
     selectBone(bn);
     ev.stopPropagation();
   }
@@ -583,17 +556,15 @@ function snapshotDataURL(w=800, h=800){
   renderer.setPixelRatio(1);
   renderer.setSize(w, h, false);
   renderer.setClearColor(0x000000, 0);   // transparent
-  // Hide grid and gizmo for snapshot
+  // Hide grid, gizmo, and joint proxies for snapshot（見えない proxy はスクショに残さない）
   grid.visible = false;
   const tcVisPrev = tc.visible;
   tc.visible = false;
-  // Restore highlight temporarily
-  const hlSnapshot = [...highlighted];
-  for(const m of hlSnapshot){ m.material = origMat.get(m) || MAT_BODY; }
+  const jpVis = jointProxies.map(jp=>jp.mesh.visible);
+  for(const jp of jointProxies) jp.mesh.visible = false;
   renderer.render(scene, cam);
   const data = renderer.domElement.toDataURL('image/png');
-  // Restore
-  for(const m of hlSnapshot){ m.material = MAT_HL; }
+  jointProxies.forEach((jp,i)=>{ jp.mesh.visible = jpVis[i]; });
   grid.visible = true;
   tc.visible = tcVisPrev;
   renderer.setClearColor(0x0e0e12, 1);
@@ -670,8 +641,20 @@ resize();
 canvas.addEventListener('pointerdown', ()=> stage.classList.add('dragging'));
 window.addEventListener('pointerup', ()=> stage.classList.remove('dragging'));
 
+// 各フレームで見える joint proxy 球をボーンのワールド位置に追従させる。
+// スキンメッシュ上のボーンはクリック不可なので、この見える proxy がクリック対象になる。
+const _tmpV = new THREE.Vector3();
+function syncJointProxies(){
+  for(const jp of jointProxies){
+    if(!jp.bone) continue;
+    jp.bone.getWorldPosition(_tmpV);
+    jp.mesh.position.copy(_tmpV);
+  }
+}
+
 function tick(){
   controls.update();
+  syncJointProxies();
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
@@ -728,9 +711,13 @@ if(isHeadless){
       grid.visible = false;
       const tcVisPrev = tc.visible;
       tc.visible = false;
+      const jpVis = jointProxies.map(jp=>jp.mesh.visible);
+      for(const jp of jointProxies) jp.mesh.visible = false;   // headless では選択球も隠す
+      syncJointProxies();   // pose 反映後の位置に更新（隠す前にやっても大差なし）
       renderer.render(scene, cam);
       const img = renderer.domElement.toDataURL('image/png');
       const rings = computeGizmoRings(cam);
+      jointProxies.forEach((jp,i)=>{ jp.mesh.visible = jpVis[i]; });
       grid.visible = true;
       tc.visible = tcVisPrev;
       renderer.setClearColor(0x0e0e12, 1);

@@ -13,6 +13,15 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.041) 3D マネキンをカスタム GLB モデル（VRM/Vroid スタイル）に差し替え
+  - **プロシージャル人体を GLB モデルロードに置き換え**：`mannequin_3d.html` の手続き型ボーン生成コードを撤去し、`GLTFLoader + DRACOLoader`（DRACO decoder は `https://www.gstatic.com/draco/versioned/decoders/1.5.6/`）で `mannequin_model.glb`（DRACO 圧縮済み・1.6 MB）を読み込むように変更。
+  - **VRM Bip 命名を既存フレンドリ名にマップ**：`J_Bip_C_Hips` → `root`、`J_Bip_L_UpperArm` → `leftUpperArm` などのマップテーブル（`VRM_MAP`）で 20 ボーンを既存 UI・プリセット・回転操作にブリッジ。
+  - **クリック用 joint proxy 追加**：スキンメッシュ上のボーンは raycast で直接クリックできないので、各ボーンのワールド位置に見える小球（半透明・常に最前面）を追随させ、それを raycast 対象にする。tick 毎に `getWorldPosition` で位置同期。
+  - **モデルの自動スケール／位置補正**：bounding box から身長を測って 1.7m にスケール、モデル中心を x=0/z=0、足を地面 y=-1（`characterGroup` の +1.0 と合わせて世界 y=0）に合わせる。
+  - **snapshotDataURL / headless render** で joint proxy を非表示にしてスクショに写り込まないよう修正。
+  - APP_VERSION（laycat_dev.html 側）を 2026.07.24.041 に。
+  - **既知事項**：VRM のバインドポーズは T ポーズではないため、既存プリセット（走り・座り 等）は差分量が合わずポーズが不自然になる可能性があります。実機で確認しつつプリセット値を再調整予定。
+
 - (dev v2026.07.24.040) コメント編集フィールドをスクショの上に配置＋UI 内 D&D で誤アップロードを防止
   - **コメント編集欄がスクショの下に出る問題を修正**：`ed.onclick` が `note.appendChild(ta)` を末尾に付けていたため、`.note-shot` の下にテキストエリアが出現し、視線移動が大きく編集しづらかった。`.note-shot` が存在すればその直前（＝テキスト直下）に textarea + 保存/キャンセル行を差し込むよう変更。
   - **UI 内 D&D でアップロードモーダルが誤って開くのを防止**：レビューページ表示中は window レベルの `dragenter/dragover/drop` を常時受け付けていたため、FB オーバーレイ／サブミット窓／通常モーダル／レビュードロワーが開いている状態でファイルをドロップしても、裏側のショットに対するアップロードモーダルが起動していた。`dropCtx` を「オーバーレイが開いていない」「ドロップ先が既存 dropzone / input / textarea / button / select / a 上ではない」と組み合わせて判定するよう変更し、FB 内で誤って開かないようにした。
