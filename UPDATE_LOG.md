@@ -13,6 +13,27 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+---
+
+## 反映済み beta v0.0.6（2026-07-28）
+
+### A. 3D マネキン刷新（パッチノート掲載）
+GLB モデル差し替え／Maya 準拠カメラ／複数選択マニピュレータ／Two-bone IK＋ポールベクター／腕・脚別 IK トグル／IK コントローラー統合（W/E で位置＋姿勢）／腰移動時の足接地維持／F=選択に寄る／ギズモサイズ ± ／自由回転範囲拡大 など、`mannequin_3d.html` の主要機能を一新。
+
+### B. アノテ／コメント UX 改善（パッチノート掲載）
+ペン／消しゴム別ボタン化＋アイコン化、投げ縄／範囲選択、シェイプ（四角／丸／矢印）、担当バッジ、工程順序表示、描画＋コメントを 1 ノートに集約、コメントログにスクショサムネ表示、送信の体感速度改善、コメント編集フィールド位置修正、UI 内 D&D 誤動作防止、空白クリック解除／矩形選択。
+
+### C. 内部安定性・バグ修正（パッチノートには記載なし）
+以下は Beta には反映済みだが `PATCH_NOTES.md` には記載しない：
+- **JSON 読み込みタイミング整合強化**（v036/v037）：3-way マージの `_mergeShotFile3` 追加、`_saveShotWithLock` に楽観ロック baseline、`refreshFromFolders` 後の rev 同期、`_applyShotFileIntoDB` の `_deepMergeInPlace` 化（Object.assign で外部参照が孤児化する不具合修正）、削除同期での baseline ガード。
+- **3D マネキン中間トライアル**：v041-v043 のスケール計算調整（Box3 ベース → ボーンベース）、v053-v056 のランタイム正中線試作→撤去（テクスチャ方式に切替待ち）、v052 の複数選択 2 回目大回転修正、v047 の IK apply でキャラ増殖修正＋URL に APP_VERSION 付与でキャッシュ破棄、v059 の IK ポール方向 kind ベース補正（肘が前に折れる不具合修正）。
+- **intro.html に 3D マネキン紹介セクション追加**：顔の向きガイドの次、および「他のツールには無い」セクションに 3D ポーズ diff-block 追加。
+
+### D. 詳細な dev コミット履歴（参考）
+<details>
+<summary>dev v2026.07.24.023 〜 v2026.07.24.065 の詳細（クリックで展開）</summary>
+
 - (intro) 3D マネキン紹介セクションを intro.html に追加
   - 顔の向きガイドの次に「ポーズは、3D マネキンで指示。」セクションを新設。IK ハンドルでポーズを作ったスクショ (`mann_intro_ik.png`) を掲載。既存 feature-row の左右交互パターンを維持するため、以降のセクション（Shots View / Progress / Cloud / Review Queue / Reel）の reverse を全て反転。
 
@@ -315,6 +336,9 @@
   - `access-console.html`：opArea 先頭に「📋 監査ログ」カードを追加。カードは常時表示、ボタン活性は運営（operatorEmails）登録者のみ、それ以外には「未登録のため閲覧不可」の案内文を表示。`admin-audit.html` を新規タブで開く。Firestore rules に `laynaAudit/{docId}` を追加（read=operatorEmails のみ、write=false → Worker の SA でルール bypass 書込）。
   - **監査ログのアクセス権限は「運営（operatorEmails）のみ」に限定**（管理者/adminEmails では閲覧不可）：セキュリティ最優先の設計で、最上位権限だけが監査ログを見られる。
   - Beta 反映前に **Firebase コンソールで Firestore セキュリティルールを更新する必要あり**（access-console 表示のルールに `laynaAudit` セクションが追加されている）。
+
+
+</details>
 
 ---
 
