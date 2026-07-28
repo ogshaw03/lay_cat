@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.025';
+const APP_VERSION='2026.07.28.026';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4247,17 +4247,32 @@ function buildTaskTabs(root){
       };
       const onEnd=e=>{
         if(didDrag&&dragCtx){
-          /* 視覚（applyShift）と実挿入位置は同じ dragCtx.insertIdx を使う（v021 の
-             2 系統分離は撤去）。「中央同士がすれ違ったら切り替わる」ルールで K を
-             動かしているので、視覚上ゴーストが乗っている場所 = 実挿入位置になる。 */
+          /* dragCtx.insertIdx は「visible の中の compact index」（0..visible.length）。
+             state.openTasks は別プロジェクトのタブも保持しているので、visible index を
+             そのまま splice すると別プロジェクト分がずれて、EP01 が最左に飛ぶような
+             現象になる。visible index → openTasks index に変換してから splice する。 */
           const arr=(state.openTasks||[]).slice();
           const srcIdx=arr.indexOf(id);
           if(srcIdx>=0){
             arr.splice(srcIdx,1);
-            let insertIdx=dragCtx.insertIdx;
-            if(insertIdx<0)insertIdx=0;
-            if(insertIdx>arr.length)insertIdx=arr.length;
-            arr.splice(insertIdx,0,id);
+            const visWithout=visible.filter(v=>v!==id);
+            let vi=dragCtx.insertIdx;
+            if(vi<0)vi=0;
+            if(vi>visWithout.length)vi=visWithout.length;
+            /* insertIdx==0 なら現プロジェクトの先頭タブの直前、
+               insertIdx==visWithout.length なら末尾タブの直後、
+               その中間なら visWithout[vi-1] の直後（＝ visWithout[vi] の直前）に挿入。 */
+            let openIdx;
+            if(vi===0){
+              const firstId=visWithout[0];
+              openIdx = firstId ? arr.indexOf(firstId) : arr.length;
+              if(openIdx<0)openIdx=arr.length;
+            }else{
+              const prevId=visWithout[vi-1];
+              const p=prevId ? arr.indexOf(prevId) : -1;
+              openIdx = p>=0 ? p+1 : arr.length;
+            }
+            arr.splice(openIdx,0,id);
             state.openTasks=arr;
           }
           cleanup();
