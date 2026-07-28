@@ -206,7 +206,23 @@ function loadGLBModel(){
   showLoadingHud('mannequin_model.glb を取得中…');
   gltfLoader.load('mannequin_model.glb', (gltf)=>{
     modelRoot = gltf.scene;
+    // Vroid/VRM 出力は正面 = -Z の慣習。Three.js カメラは -Z を向くので、
+    // そのまま置くと背中がカメラに向く。180° 回して正面を向かせる。
+    modelRoot.rotation.y = Math.PI;
     characterGroup.add(modelRoot);
+    // マテリアルをマットに調整（PBR で metallic を下げ roughness を上げる）。
+    // FBX2glTF が metallic=0.4 / roughness=0.23 の光沢寄りで書き出すためテカテカに見える。
+    modelRoot.traverse(o=>{
+      if(!o.isMesh) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for(const m of mats){
+        if(!m) continue;
+        if('metalness' in m) m.metalness = 0.0;
+        if('roughness' in m) m.roughness = 0.95;
+        if('envMapIntensity' in m) m.envMapIntensity = 0.4;
+        m.needsUpdate = true;
+      }
+    });
     // SkinnedMesh の boundingBox はスキニング前の生の頂点範囲を返すため、
     // Box3.setFromObject は実際の見た目サイズを反映しない（Vroid だと 170m 等の異常値）。
     // 代わりにボーン位置（頭 - 足）で身長を実測してスケールを決める。
