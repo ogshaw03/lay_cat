@@ -2905,7 +2905,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.005';
+const APP_VERSION='2026.07.28.006';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4156,15 +4156,37 @@ function buildTaskTabs(root){
       const srcIdx=arr.indexOf(srcId);
       if(srcIdx<0)return;
       arr.splice(srcIdx,1);
-      /* drop 先の位置を再計算：削除後の配列で id の index を取り、mouse 位置が左半分なら前、右半分なら後 */
       let destIdx=arr.indexOf(id);
       if(destIdx<0)destIdx=arr.length;
       const r=tab.getBoundingClientRect();
       const before=(ev.clientX-r.left)<r.width/2;
       if(!before)destIdx++;
       arr.splice(destIdx,0,srcId);
+      /* FLIP アニメーション：並べ替え前のタブ位置を記録 → render → 新位置との差分だけ translateX で
+         逆補正 → 次フレームで transition ON にして 0 まで戻すことで Chrome 風スライドを実現。 */
+      const prevRects={};
+      strip.querySelectorAll('.task-tab[data-tab-id]').forEach(t=>{
+        prevRects[t.dataset.tabId]=t.getBoundingClientRect();
+      });
       state.openTasks=arr;
       render();syncHash();
+      requestAnimationFrame(()=>{
+        document.querySelectorAll('.task-tab[data-tab-id]').forEach(t=>{
+          const tid=t.dataset.tabId;
+          const old=prevRects[tid]; if(!old) return;
+          const now=t.getBoundingClientRect();
+          const dx=old.left-now.left;
+          if(Math.abs(dx)<1) return;
+          t.style.transition='none';
+          t.style.transform='translateX('+dx+'px)';
+          /* 強制リフローで初期状態を適用してから transition ON */
+          void t.offsetWidth;
+          t.style.transition='transform 240ms cubic-bezier(0.25,0.8,0.3,1)';
+          t.style.transform='';
+          const cleanup=()=>{t.style.transition='';t.style.transform='';t.removeEventListener('transitionend',cleanup)};
+          t.addEventListener('transitionend',cleanup);
+        });
+      });
     });
     tab.onclick=()=>{state.currentId=id;state.projTab='browse';state.pmPick=null;state.search='';$('#searchInput').value='';for(const x of pathOf(id))state.expanded.add(x.id);render();syncHash();
       /* タスクタブ切替：フォルダから最新を取り込み（fire-and-forget）。補正 render は入れない */
