@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.015';
+const APP_VERSION='2026.07.28.016';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4235,9 +4235,14 @@ function buildTaskTabs(root){
           }
           cleanup();
           /* pointerup 直後に発火する click イベントを 1 回だけ抑止（ドラッグ終了で
-             タブが誤アクティブ化されるのを防ぐ）。 */
-          const stopClick=cev=>{cev.stopPropagation();cev.preventDefault();window.removeEventListener('click',stopClick,true)};
+             タブが誤アクティブ化されるのを防ぐ）。ただし render() で古いタブ要素が
+             DOM から外れる場合ブラウザが click を発火しないことがあり、その場合
+             stopClick が window に居残って次のクリック（別タブへの切替など）を
+             食べてしまう ─ setTimeout で必ず解除する保険を付ける。 */
+          const remove=()=>window.removeEventListener('click',stopClick,true);
+          const stopClick=cev=>{cev.stopPropagation();cev.preventDefault();remove()};
           window.addEventListener('click',stopClick,true);
+          setTimeout(remove,250);
           render();syncHash();
         }else{
           /* ドラッグしていないただのクリック → 何もしない（下の tab.onclick が発火する） */

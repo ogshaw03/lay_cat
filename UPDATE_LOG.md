@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.28.016) タスクタブ：クリックで切り替わらないことが結構ある不具合を修正
+  - v015 で追加したドラッグ終了時の `stopClick`（1回限りの click 抑止リスナー）が、`render()` で古いタブ要素が DOM から外れると click が発火せず居残り、次の別タブへのクリックを食べてしまっていた。
+  - `setTimeout(remove, 250)` で必ず解除する保険を追加。ドラッグ由来の click は 250ms 以内に来るので誤動作しない。
+
 - (dev v2026.07.28.015) タスクタブ並べ替え：HTML5 D&D をやめて pointer events で書き直し（🚫 チカチカを根本解決）
   - v012〜v014 で試したどの手を打っても、HTML5 D&D 仕様上 dragstart → 最初の dragover が preventDefault されるまでの数フレーム、ブラウザが標準の「ドロップ不可」カーソル (🚫 / 点線四角) を必ず一瞬描いてしまうことが判明。
   - `tab.draggable=true` + dragstart/dragover/drop/dragend/dragleave の HTML5 D&D 実装を全撤去し、`pointerdown`/`pointermove`/`pointerup`/`pointercancel` の pointer events で自前実装に置き換え。ブラウザは一切ゴーストもカーソルも描かず、我々の ghost 要素と `document.body.style.cursor='grabbing'` だけで完結する。
