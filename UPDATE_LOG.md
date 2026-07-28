@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.052) 3D マネキン：複数選択で2回目以降のドラッグが急に大回転する不具合修正
+  - **原因**：TransformControls は `pointerDown` の中で `_quaternionStart = object.quaternion` を捕捉してから `mouseDown` event を dispatch する順序。前回のリセットを `mouseDown` ハンドラで行っていたため、TC は「前回のドラッグ後の proxy 回転値」を start として記録してしまい、2 回目のドラッグでは start が identity ではなくなっていた。その結果、objectChange で読み取る proxy.quaternion に前回分の回転が混ざり、delta が実際より大きく計算されて急激な回転が起きていた。
+  - **修正**：proxy の identity リセットを `mouseUp`（ドラッグ終了直後）で行うようにした。TC は次回 `pointerDown` で改めて identity を start として捕捉するので、常に正しい delta 計算になる。あわせて mouseUp で proxy 位置も新しい重心へ更新（ドラッグでボーンが動いた結果を反映）。
+  - APP_VERSION を 2026.07.24.052 に。
+
 - (dev v2026.07.24.051) 3D マネキン：F キーで選択に寄る／複数選択の逆挙動修正／Alt 中は回転無効／ギズモサイズ ±
   - **F キー = Frame Selected**：Maya 準拠。選択中のボーン群 (無選択なら全ボーン) の重心＋最大半径で bounding sphere を計算し、視線方向を保ったまま `controls.target` と `camera.position` を再配置してビューに収める。
   - **複数選択マニピュレータの逆挙動修正**：これまでは delta を各ボーンのローカル軸に post-multiply していたため、両腕・両脚など軸方向が対になっているボーン群で回転方向が視覚的に反転して見えていた。世界空間で delta を適用し、`newLocal = parentQInv * delta * parentQ * initLocal` で親フレームに変換してからローカルにセットする方式に変更。

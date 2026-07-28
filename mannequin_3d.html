@@ -419,13 +419,10 @@ let _multiDragStart = null;
 
 tc.addEventListener('mouseDown', ()=>{
   if(selectedSet.size > 1){
-    /* multiProxy を identity に戻し、この時点からの delta が世界空間の回転として
-       取り出せるようにする。各ボーンについて
-         ・初期ローカル quaternion
-         ・親のワールド quaternion（と逆）
-       をスナップショット。 */
-    multiProxy.quaternion.identity();
-    multiProxy.rotation.set(0,0,0);
+    /* この時点で TC は既に multiProxy.quaternion を _quaternionStart として記録済み。
+       前回 mouseUp で proxy を identity に戻しているので _quaternionStart は identity 相当。
+       ドラッグ中に proxy.quaternion に付く回転は世界空間の delta として扱える。
+       各ボーンの初期ローカル quaternion と親ワールド quaternion（と逆）をスナップ。 */
     _multiDragStart = { bones: {} };
     const pQ = new THREE.Quaternion();
     for(const name of selectedSet){
@@ -441,7 +438,18 @@ tc.addEventListener('mouseDown', ()=>{
     }
   }
 });
-tc.addEventListener('mouseUp', ()=>{ _multiDragStart = null; });
+tc.addEventListener('mouseUp', ()=>{
+  _multiDragStart = null;
+  /* proxy を identity にリセット。TC は次回 pointerDown で改めて
+     `_quaternionStart = object.quaternion`（＝ identity）を捕捉するので、
+     次のドラッグで正しく「identity からの delta」として振る舞う。
+     mouseDown 側で identity 化しても TC の start 捕捉より遅くて古い値が残るためこちらで処理。 */
+  if(selectedSet.size > 1){
+    multiProxy.position.copy(centroidOfSelection());
+    multiProxy.quaternion.identity();
+    multiProxy.rotation.set(0,0,0);
+  }
+});
 
 /* ギズモサイズ調整（＋/− ボタン）。setSize は掛け算スケールなので 0.15 刻みで
    0.25〜2.5 の範囲を上下する。ローカルストレージに保存して次回起動時にも復元。 */
