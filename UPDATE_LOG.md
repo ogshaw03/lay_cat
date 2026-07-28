@@ -380,8 +380,9 @@ GLB モデル差し替え／Maya 準拠カメラ／複数選択マニピュレ�
 ## 反映済み・パッチノート記載なし（Beta 反映済み・PATCH_NOTES.md 未記載）
 
 - **【2026-07-28 Beta v0.0.6 再反映（バージョン据え置き）】** 以下は laycat_dev.html → laycat.html にコピー済みだが PATCH_NOTES.md には記載せず beta v0.0.6 のまま：
-  - **3D エディタのプリセット UI 撤去**（dev v2026.07.28.001）：サイドバーの `<h3>プリセット</h3>` セクションと `.presetGrid` の HTML/CSS を削除。「初期ポーズ」ボタン（ヘッダ）は残置。`PRESETS` オブジェクト・`applyPreset` 関数は「初期ポーズ」用に温存。※`mannequin_3d.html` は dev/beta 共有ファイルなので変更は既に反映されているが、beta 側の URL キャッシュキーが `?v=beta v0.0.6` のままなので、beta ユーザーは Ctrl+Shift+R で強制リロードが必要。
+  - **3D エディタのプリセット UI 撤去**（dev v2026.07.28.001）：サイドバーの `<h3>プリセット</h3>` セクションと `.presetGrid` の HTML/CSS を削除。「初期ポーズ」ボタン（ヘッダ）は残置。`PRESETS` オブジェクト・`applyPreset` 関数は「初期ポーズ」用に温存。
   - **投げ縄アイコンを Photoshop 風ロープループに差し替え**（dev v2026.07.28.002/.003）：従来の破線楕円＋尻尾から実線ロープ＋短い縄尻に変更。`LASSO_SVG` のみ変更、ロジックは無変更。
+  - **`MANN_VERSION` 定数を追加してmannequin_3d.html のキャッシュを独立に破棄可能に**（dev v2026.07.28.004）：dev/beta 共有ファイルの `mannequin_3d.html` を更新した場合、APP_VERSION 据え置きだと URL クエリ `?v=<APP_VERSION>` が変わらずブラウザに強制リロードさせられなかった。新たに `MANN_VERSION`（現在 `'2'`）を追加し、URL を `?v=<APP_VERSION>&mv=<MANN_VERSION>` に。mannequin_3d.html を触るたびに MANN_VERSION を +1 すれば、APP_VERSION を bump せずにキャッシュを破棄できる。今回の投げ縄アイコン差し替え・プリセット撤去も、次回 laycat.html をリロード（HTML 自体の TTL は短いので通常のページ再訪で反映）した後の 3D エディタ／アノテ窓オープンで自動的に新 mannequin_3d.html が取得される。
 
 - **【2026-07-24 Beta v0.0.5 再反映（バージョン据え置き）】** 以下は laycat_dev.html → laycat.html にコピー済みだが PATCH_NOTES.md には記載せず beta v0.0.5 のまま:
   - **EXR データ系レイヤーはデフォルトガンマ 1.0（リニア）で表示**：Depth / Normal / Motion Vector / Position / UV / Cryptomatte を `_isDataLayer(name, lay)` で判定し `_defaultGammaForLayer` を通す。切替後はスライダで自由に調整可能。レイヤー切替時／リセットボタン／初回ロードのいずれでも適用（保存済み gamma が明示的にある場合はそれを優先）。
