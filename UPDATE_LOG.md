@@ -13,6 +13,15 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.065) 3D マネキン：IK コントローラーで移動＋回転を統合／tip 関節ボールの重複解消
+  - **症状**：IK ON 中も手首・足首の位置に FK 用の関節ボール（joint proxy）と IK ハンドル（■）が重なって表示され、どちらをつかむべきか分かりづらかった。また IK ハンドルは translate 専用で、手首/足首の姿勢を変えるには一旦 IK OFF にして FK 回転する必要があった。
+  - **修正**：
+    - IK ON にした kind の tip ボーン (`leftHand` / `rightHand` / `leftFoot` / `rightFoot`) の joint proxy を非表示にして、選択・範囲選択の対象からも外す (`updateIKSuppression`)。IK ハンドル 1 つだけが選択対象に。
+    - IK ハンドル選択時の TC モードを `userPreferredMode` に従うよう変更（W=移動 / E=回転 で切替可）。`setUserMode` も IK ハンドルに対して mode 反映するように更新。
+    - `objectChange` で IK ハンドルが rotate ドラッグされた場合、`target.quaternion` を `tipTargetWorldQuat` に反映して solveIK が tip の世界回転として保持するように。
+    - `setIKEnabled` / `refreshIKTargetsFromCurrentPose` / `syncIKTargets` で target Mesh の quaternion も tip 世界回転に同期し、rotate ハンドルとして正しい初期姿勢を表示。
+  - APP_VERSION を 2026.07.24.065 に。
+
 - (dev v2026.07.24.064) 3D マネキン：IK トグルを腕・脚で分離
   - **UI**：「両手・両足を IK でドラッグ」の 1 個から「両腕を IK でドラッグ」「両脚を IK でドラッグ」の 2 個に分割。
   - **状態管理**：`ikEnabled` を `{ arm: false, leg: false }` に変更。`setIKEnabled(kind, on)` シグネチャに変更。

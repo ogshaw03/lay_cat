@@ -538,10 +538,19 @@ document.getElementById('btnGizmoMinus').onclick = ()=> setGizmoSize(gizmoSize -
 document.getElementById('btnGizmoPlus').onclick  = ()=> setGizmoSize(gizmoSize + 0.15);
 
 tc.addEventListener('objectChange', () => {
-  /* IK モード：target が動いた → 該当チェーンを解く */
+  /* IK モード：target/pole が動いた → 該当チェーンを解く。
+     tip target が rotate ドラッグされた場合は target.quaternion を tipTargetWorldQuat に
+     反映して、以降の solveIK が tip の世界回転として保持する。 */
   if(ikActiveChain && !_ikSolving){
     _ikSolving = true;
-    try{ solveIK(ikActiveChain); } finally { _ikSolving = false; }
+    try{
+      if(tc.object === ikActiveChain.target){
+        /* target 自体をドラッグ中：位置は target.position、回転は target.quaternion。
+           target は scene 直下なので world quat = local quat。 */
+        ikActiveChain.tipTargetWorldQuat = ikActiveChain.target.quaternion.clone();
+      }
+      solveIK(ikActiveChain);
+    } finally { _ikSolving = false; }
     return;
   }
   if(selectedSet.size > 1 && _multiDragStart){
@@ -588,11 +597,15 @@ function centroidOfSelection(){
 let userPreferredMode = 'rotate';
 function setUserMode(mode){
   userPreferredMode = mode;
-  /* 現在 attach 中の対象が単独ボーンなら即反映（IK target / pole / multiProxy は用途固定） */
   const obj = tc && tc.object;
-  if(obj && obj !== multiProxy && !obj.userData?.__ikTarget && !obj.userData?.__ikPoleTarget){
-    tc.setMode(mode);
-  }
+  if(!obj) return;
+  /* multiProxy はソルバが rotation のみ扱うので rotate 固定 */
+  if(obj === multiProxy) return;
+  /* pole ハンドルは位置のみ意味を持つので translate 固定 */
+  if(obj.userData?.__ikPoleTarget){ tc.setMode('translate'); return; }
+  /* IK tip ハンドルは translate=位置 / rotate=tip 姿勢 の両対応（W/E で切替） */
+  /* 通常のボーンも W/E に追従 */
+  tc.setMode(mode);
 }
 
 function updateSelectionUI(){
@@ -679,6 +692,7 @@ function bonesInScreenRect(x0, y0, x1, y1){
   const out = [];
   for(const jp of jointProxies){
     if(!jp.bone) continue;
+    if(jp.mesh.userData.__ikSuppressed) continue;   /* IK 抑制中の tip は範囲選択にも入れない */
     jp.bone.getWorldPosition(p);
     p.project(camera);   /* -1..1 NDC */
     /* NDC → 画面ピクセル（canvas 左上原点） */
@@ -726,15 +740,15 @@ canvas.addEventListener('pointerdown', ev=>{
       const cName = ikHits[0].object.userData.__chainName;
       const chain = ikChains.find(c=>c.name === cName);
       if(chain){
-        /* IK モードで tc を translate に切替、target に attach */
+        /* IK ハンドルに attach。W/E で選んだ移動/回転どちらでも操作可（tip の位置＋世界回転）。 */
         selectedSet.clear();
         selected = null;
         setHighlight();
         refreshBoneList();
-        document.getElementById('selInfo').textContent = 'IK: ' + chain.label;
+        document.getElementById('selInfo').textContent = 'IK: ' + chain.label + '（W=移動 / E=回転）';
         document.getElementById('selInfo').classList.remove('none');
         document.getElementById('rotCtl').style.display = 'none';
-        tc.setMode('translate');
+        tc.setMode(userPreferredMode);
         tc.attach(chain.target);
         ikActiveChain = chain;
         ev.stopPropagation();
@@ -742,7 +756,8 @@ canvas.addEventListener('pointerdown', ev=>{
       }
     }
   }
-  const meshes = jointProxies.map(jp=>jp.mesh);
+  /* IK 抑制された（＝IK controller に置き換えられた）proxy は選択対象から除外 */
+  const meshes = jointProxies.filter(jp=>!jp.mesh.userData.__ikSuppressed).map(jp=>jp.mesh);
   const hits = raycaster.intersectObjects(meshes, false);
   if(hits.length){
     /* 見えるボーンに当たった：単独クリック（Shift で追加トグル） */
@@ -1036,7 +1051,7 @@ function solveIK(chain){
    - IK ON 時は target を tip に追随「させない」＝target 位置を世界固定にする。
      これで腰などをFKで動かしても足が置いてけぼりで固定され、続く tickIK() で
      IK ソルバが upperLeg/lowerLeg を再計算して足元をキープする（Maya の IK 挙動）。 */
-const _ikSyncTmp = new THREE.Vector3();
+const _ikSyncTmp = new THREE.Vector3(), _ikSyncQ = new THREE.Quaternion();
 function syncIKTargets(){
   if(!ikChains.length) return;
   for(const c of ikChains){
@@ -1044,6 +1059,9 @@ function syncIKTargets(){
     if(isChainIKOn(c)) continue;
     c.tBone.getWorldPosition(_ikSyncTmp);
     c.target.position.copy(_ikSyncTmp);
+    /* target 表示の向きも tip の世界回転に追随（次に IK ON にした時の初期姿勢） */
+    c.tBone.getWorldQuaternion(_ikSyncQ);
+    c.target.quaternion.copy(_ikSyncQ);
   }
 }
 
@@ -1077,6 +1095,7 @@ function setIKEnabled(kind, on){
       c.target.position.copy(tp);
       c.tBone.getWorldQuaternion(q);
       c.tipTargetWorldQuat = q.clone();
+      c.target.quaternion.copy(q);   /* target 表示の向きも tip の世界回転に合わせる（rotate ハンドル用） */
       if(c.poleTarget){
         c.mBone.getWorldPosition(mp);
         c.poleTarget.position.copy(mp).addScaledVector(c.poleDir, 0.3);
@@ -1089,9 +1108,27 @@ function setIKEnabled(kind, on){
     ikActiveChain = null;
     updateSelectionUI();
   }
+  updateIKSuppression();
   const cbId = (kind === 'arm') ? 'ikArmsToggle' : 'ikLegsToggle';
   const cb = document.getElementById(cbId);
   if(cb) cb.checked = !!on;
+}
+
+/* IK ON のチェーンでは tip ボーン（手首・足首）の joint proxy を非表示にして
+   IK コントローラー（■ハンドル）だけ操作対象になるようにする（コントローラー重複解消）。 */
+function updateIKSuppression(){
+  const suppressed = new Set();
+  for(const c of ikChains){
+    if(!isChainIKOn(c)) continue;
+    /* 現状は tip のみ抑制。root/mid をユーザーが FK 選択したい場面（肩ひねり等）を残す。 */
+    suppressed.add(c.tipName);
+  }
+  for(const jp of jointProxies){
+    const name = jp.mesh.userData.__boneName;
+    const isSup = suppressed.has(name);
+    jp.mesh.userData.__ikSuppressed = isSup;
+    jp.mesh.visible = !isSup;
+  }
 }
 
 /* IK の pole ライン（肘/膝 → pole ハンドル）を tick 毎に更新 */
@@ -1189,6 +1226,7 @@ function refreshIKTargetsFromCurrentPose(){
     c.target.position.copy(tp);
     c.tBone.getWorldQuaternion(q);
     c.tipTargetWorldQuat = q.clone();
+    c.target.quaternion.copy(q);
     if(c.poleTarget){
       c.mBone.getWorldPosition(mp);
       c.poleTarget.position.copy(mp).addScaledVector(c.poleDir, 0.3);
