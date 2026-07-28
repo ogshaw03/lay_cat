@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.28.012) タスクタブ並べ替え：ドラッグ中にカーソルに 🚫 や点線四角が出るのを修正
+  - strip 外に出ると誰も `preventDefault()` を呼ばないため、ブラウザ標準の「ドロップ不可」カーソルが出ていた。
+  - document レベルの `dragover` で、タブ D&D 種別（`application/x-laycat-tab`）を検知して `preventDefault()` + `dropEffect='move'` を呼ぶよう変更。実際に strip 外で drop された場合は同じく document レベルの `drop` が preventDefault だけ返して「何もしない = キャンセル」を実現。
+  - ゴースト非表示用の setDragImage を空 canvas から 1x1 透明 GIF (base64) に変更。空 canvas は一部ブラウザで小さな枠として見えていた。
+
 - (dev v2026.07.28.011) タスクタブ並べ替え：ドラッグ中に上下も動いてしまうのを左右だけに固定
   - ブラウザ標準のドラッグゴーストは 2D 自由に動くのでカーソルに合わせて上下追従してしまっていた。
   - `dataTransfer.setDragImage()` に 1x1 の透明キャンバスを渡して標準ゴーストを非表示化。代わりに dragged タブのクローンを `body` 直下に `position:fixed` で配置し、`top` は strip の Y に固定・`left` のみカーソル X に追従で更新する独自プレビューを表示（Chrome タブと同じ挙動）。
