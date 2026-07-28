@@ -793,11 +793,14 @@ refreshBoneList();
 // 両腕・両脚を root/mid/tip の 3 ボーンチェーンとして扱い、tip を目標位置に近づけるよう
 // root/mid の quaternion を計算する。TC の translate モードで target を掴んで動かすと、
 // IK ソルバがチェーンを追従させる（肩・肘・股・膝は自動）。FK 操作とは独立に動作する。
+/* kind：初期 pole の向きを分けるためのタグ
+   - arm：肘は自然には「後ろ」に折れる（前腕が前へ来る）→ pole = back (-Z: キャラ背面)
+   - leg：膝は自然には「前」に折れる（脛が前へ出る、蹴りの向き）→ pole = front (+Z: キャラ正面) */
 const IK_CHAINS_DEF = [
-  { name:'leftArm',  rootName:'leftUpperArm',  midName:'leftLowerArm',  tipName:'leftHand',  color:0x66ccff, label:'左腕' },
-  { name:'rightArm', rootName:'rightUpperArm', midName:'rightLowerArm', tipName:'rightHand', color:0xff6699, label:'右腕' },
-  { name:'leftLeg',  rootName:'leftUpperLeg',  midName:'leftLowerLeg',  tipName:'leftFoot',  color:0x99ff66, label:'左脚' },
-  { name:'rightLeg', rootName:'rightUpperLeg', midName:'rightLowerLeg', tipName:'rightFoot', color:0xffcc66, label:'右脚' }
+  { name:'leftArm',  kind:'arm', rootName:'leftUpperArm',  midName:'leftLowerArm',  tipName:'leftHand',  color:0x66ccff, label:'左腕' },
+  { name:'rightArm', kind:'arm', rootName:'rightUpperArm', midName:'rightLowerArm', tipName:'rightHand', color:0xff6699, label:'右腕' },
+  { name:'leftLeg',  kind:'leg', rootName:'leftUpperLeg',  midName:'leftLowerLeg',  tipName:'leftFoot',  color:0x99ff66, label:'左脚' },
+  { name:'rightLeg', kind:'leg', rootName:'rightUpperLeg', midName:'rightLowerLeg', tipName:'rightFoot', color:0xffcc66, label:'右脚' }
 ];
 const ikChains = [];
 let ikEnabled = false;
@@ -819,11 +822,24 @@ function initIK(){
     tBone.getWorldPosition(tPos);
     const L1 = rPos.distanceTo(mPos);
     const L2 = mPos.distanceTo(tPos);
-    /* 初期 pole direction：現在の bend 方向（elbow/knee がどちら側に出ているか）を採用 */
+    /* 初期 pole direction：まず現在の bend 方向（elbow/knee がどちら側に出ているか）を採用。
+       T ポーズ相当でほぼ直線 → 垂直成分が微小になる場合は kind に応じた既定値：
+         arm=キャラ後方(-Z)　肘は後ろに折れる（前腕が前へ来る natural motion）
+         leg=キャラ前方(+Z)　膝は前に折れる（蹴りの向き） */
     const rtDir = new THREE.Vector3().subVectors(tPos, rPos).normalize();
     const rmVec = new THREE.Vector3().subVectors(mPos, rPos);
     const poleDir = rmVec.clone().sub(rtDir.clone().multiplyScalar(rmVec.dot(rtDir)));
-    if(poleDir.lengthSq() < 1e-4) poleDir.set(0, 0, 1);
+    /* 現 bend 方向の情報が薄い（＝ほぼ直線）ときは kind ベースのデフォルトへ */
+    const CHAR_FRONT = new THREE.Vector3(0, 0, 1);   /* modelRoot Y 180° 回転済のためキャラ正面 = +Z */
+    const defaultPole = (def.kind === 'arm') ? CHAR_FRONT.clone().negate() : CHAR_FRONT.clone();
+    if(poleDir.lengthSq() < 1e-3){
+      poleDir.copy(defaultPole);
+    } else {
+      poleDir.normalize();
+      /* さらに符号チェック：現 pole が kind の想定側と大きく外れている（内積が負）場合は反転する。
+         VRoid の A-pose では肘が微妙に前に曲がっていることがあり、その場合の誤検出を防ぐ。 */
+      if(poleDir.dot(defaultPole) < 0) poleDir.negate();
+    }
     poleDir.normalize();
     /* target proxy：色付き Box。IK OFF 時は非表示。 */
     const geo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
@@ -1366,7 +1382,7 @@ if(isHeadless){
 tick();
 
 // Expose for debugging
-window.__mannequin = { bones, bindMap, serializePose, loadPose, applyPreset };
+window.__mannequin = { bones, bindMap, serializePose, loadPose, applyPreset, ikChains, solveIK, setIKEnabled };
 </script>
 </body>
 </html>

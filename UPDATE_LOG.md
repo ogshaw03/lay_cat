@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.24.059) 3D マネキン：IK 初期ポール方向を kind ベースで補正（肘が前に折れる不具合修正）
+  - **原因**：VRoid の bind pose がほぼ T ポーズで、腕の rmVec が rtDir とほぼ平行になり pole の垂直成分が微小 → 従来 fallback `(0,0,1)` を使っていた。character が +Z を正面としているため pole=+Z は「正面」を意味し、肘が正面（前）に折れていた。
+  - **修正**：チェーン定義に `kind: 'arm'|'leg'` を追加。腕は自然に「後ろ」に折れる（-Z）、脚は「前」に折れる（+Z）を default pole に。垂直成分が閾値 1e-3 未満なら default を採用、有効値が取れた場合でも default と内積が負なら反転する（VRoid 微小 A-pose での誤検出防止）。
+  - デバッグ用に `window.__mannequin.ikChains / solveIK / setIKEnabled` を expose。
+  - APP_VERSION を 2026.07.24.059 に。
+
 - (dev v2026.07.24.058) 3D マネキン：IK にポールベクター（bend 方向制御）追加
   - 各 IK チェーンに◇ポールハンドル（`OctahedronGeometry` wireframe）を追加。初期位置は肘・膝のワールド位置から現 bend 方向へ 0.3m 外側。
   - `solveIK` が pole ハンドル位置を root→tip 軸に垂直な成分に分解して bend 平面を動的に決定（handle 位置が軸に近すぎるときは前回の poleDir を fallback）。
