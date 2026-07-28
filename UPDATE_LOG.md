@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.28.014) タスクタブ並べ替え：🚫/点線四角の三度目の修正（ゴースト画像と strip dragover 両方）
+  - `setDragImage(new Image(data:URL))` は dragstart 時に画像がロード完了していない場合ブラウザが「ソースタブそのもの」をフォールバックゴーストにしてしまい、薄い枠付きのタブがマウスに追従して見えていた。
+  - オフスクリーンの `<div>` (1x1, opacity 0, position:fixed で -9999px) を DOM に付けてから `setDragImage` に渡す方式に変更（ロード待ちなしで確実に「見えないゴースト」を成立させる）。
+  - strip 側の dragover にも残っていた `types.includes('application/x-laycat-tab')` 判定を撤去し、`dragCtx` の有無だけで判定するように統一。
+
 - (dev v2026.07.28.013) タスクタブ並べ替え：🚫 カーソル問題の再修正（判定を dragCtx ベースに）
   - v012 では document dragover/drop で `dataTransfer.types.includes('application/x-laycat-tab')` を判定していたが、一部ブラウザ（Chromium 系のセキュリティ制限）では dragover 中に custom MIME 型が types に現れないため preventDefault が呼ばれず 🚫 が残っていた。
   - 判定を「`dragCtx` が set されているか」に変更。dragCtx はタブ D&D 中しか生きないので、これ自体が「タブ D&D 中」の判定として機能する。

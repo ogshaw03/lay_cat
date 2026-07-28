@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.013';
+const APP_VERSION='2026.07.28.014';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4164,12 +4164,15 @@ function buildTaskTabs(root){
         ev.dataTransfer.setData('application/x-laycat-tab',id);
         ev.dataTransfer.effectAllowed='move';
         /* ブラウザ標準のドラッグゴーストは 2D 自由に動くので上下追従してしまう。
-           1x1 の透明 GIF をゴースト画像に指定して見えなくする（空 canvas は一部
-           ブラウザで小さな枠として見えるので base64 GIF の方が確実）。代わりに下で
-           独自クローンを Y 固定・X のみ追従で描画する（Chrome タブと同じ挙動）。 */
-        const img=new Image();
-        img.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-        ev.dataTransfer.setDragImage(img,0,0);
+           new Image() + data URL 方式だと dragstart 時にロードが間に合わず、ブラウザが
+           フォールバックでソースタブ自体をゴースト表示してしまう（＝薄い枠が付いて回る）。
+           代わりに DOM に既に居るオフスクリーンの div を setDragImage に渡すと、
+           ロード待ちなしで確実に「幅0の空要素」がゴーストになり、事実上非表示になる。 */
+        const dragImg=document.createElement('div');
+        dragImg.style.cssText='position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none';
+        document.body.appendChild(dragImg);
+        ev.dataTransfer.setDragImage(dragImg,0,0);
+        setTimeout(()=>dragImg.remove(),0);
       }catch(_){}
       tab.classList.add('dragging');
       /* スナップショット：全タブ + それぞれの初期位置。以降のシフトはこの基準からの transform で表現。 */
@@ -4271,9 +4274,10 @@ function buildTaskTabs(root){
      各タブに transform を適用してリアルタイムスライド（Chrome のタブ並び替えと同じ挙動）。 */
   strip.addEventListener('dragover',ev=>{
     if(!dragCtx)return;
-    const types=ev.dataTransfer&&ev.dataTransfer.types;
-    if(!types||![...types].includes('application/x-laycat-tab'))return;
-    ev.preventDefault();ev.dataTransfer.dropEffect='move';
+    /* types.includes('application/x-laycat-tab') 判定は一部ブラウザで custom MIME 型が
+       dragover 中に見えず preventDefault を素通りしてしまうため、dragCtx の有無で判定する。 */
+    ev.preventDefault();
+    try{ev.dataTransfer.dropEffect='move'}catch(_){}
     const x=ev.clientX;
     const dw=dragCtx.rects[dragCtx.draggedIdx].width+2;
     const N=dragCtx.tabs.length;
