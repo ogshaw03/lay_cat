@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.012';
+const APP_VERSION='2026.07.28.013';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4190,20 +4190,21 @@ function buildTaskTabs(root){
          また preventDefault + dropEffect='move' を必ず呼んで、strip 外でも「ドロップ
          不可」カーソル (🚫 / 点線四角) が出ないようにする。実際に strip 外に drop
          された場合は下の onDocDrop が空 preventDefault だけ返し、reorder は起きない。 */
+      /* 判定は「dragCtx が生きているか」で行う。dataTransfer.types で
+         `application/x-laycat-tab` を見る方法は一部ブラウザ（Chromium 系の
+         セキュリティ制限）で dragover 中に custom MIME 型が types に現れず動かない。
+         dragCtx はタブ D&D 中しか set されないので、これ自体が「タブ D&D 中」の判定になる。 */
       const onDocDrag=(e)=>{
-        if(!dragCtx||!dragCtx.ghost)return;
-        const tt=e.dataTransfer&&e.dataTransfer.types;
-        if(!tt||![...tt].includes('application/x-laycat-tab'))return;
+        if(!dragCtx)return;
         e.preventDefault();
         try{e.dataTransfer.dropEffect='move'}catch(_){}
         if(e.clientX===0&&e.clientY===0)return;
-        dragCtx.ghost.style.left=(e.clientX-dragCtx.offsetX)+'px';
+        if(dragCtx.ghost) dragCtx.ghost.style.left=(e.clientX-dragCtx.offsetX)+'px';
       };
       const onDocDrop=(e)=>{
-        const tt=e.dataTransfer&&e.dataTransfer.types;
-        if(!tt||![...tt].includes('application/x-laycat-tab'))return;
-        /* strip 外に落ちた分は「何もしない = キャンセル」。デフォルト（ブラウザによっては
-           dataTransfer 内容をアドレスバーに開こうとする）を止めるためだけの preventDefault。 */
+        if(!dragCtx)return;
+        /* strip 外に落ちた場合は「何もしない = キャンセル」。デフォルト動作
+           （ブラウザによっては dataTransfer 内容をアドレスバーに開こうとする）だけを止める。 */
         e.preventDefault();
       };
       document.addEventListener('dragover',onDocDrag);

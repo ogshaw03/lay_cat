@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.28.013) タスクタブ並べ替え：🚫 カーソル問題の再修正（判定を dragCtx ベースに）
+  - v012 では document dragover/drop で `dataTransfer.types.includes('application/x-laycat-tab')` を判定していたが、一部ブラウザ（Chromium 系のセキュリティ制限）では dragover 中に custom MIME 型が types に現れないため preventDefault が呼ばれず 🚫 が残っていた。
+  - 判定を「`dragCtx` が set されているか」に変更。dragCtx はタブ D&D 中しか生きないので、これ自体が「タブ D&D 中」の判定として機能する。
+
 - (dev v2026.07.28.012) タスクタブ並べ替え：ドラッグ中にカーソルに 🚫 や点線四角が出るのを修正
   - strip 外に出ると誰も `preventDefault()` を呼ばないため、ブラウザ標準の「ドロップ不可」カーソルが出ていた。
   - document レベルの `dragover` で、タブ D&D 種別（`application/x-laycat-tab`）を検知して `preventDefault()` + `dropEffect='move'` を呼ぶよう変更。実際に strip 外で drop された場合は同じく document レベルの `drop` が preventDefault だけ返して「何もしない = キャンセル」を実現。
