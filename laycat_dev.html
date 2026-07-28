@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.016';
+const APP_VERSION='2026.07.28.017';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4191,8 +4191,10 @@ function buildTaskTabs(root){
         }
         if(!dragCtx)return;
         dragCtx.ghost.style.left=(e.clientX-offsetX)+'px';
-        /* 挿入位置を dragged を除いた compact 配列上の index として計算 */
-        const x=e.clientX;
+        /* 挿入位置は「ゴーストの中央 X」で判定する ─ カーソル X で判定すると、
+           タブの右寄りを掴んだ場合 offsetX が大きくなり、視覚上ゴーストがまだ左に
+           居るのに挿入位置が右へ進んで「思っていた場所より左に入る」現象になる。 */
+        const x=e.clientX-offsetX+rects[draggedIdx].width/2;
         const dw=rects[draggedIdx].width+2;
         const N=tabs.length;
         let insertIdx=N-1;
