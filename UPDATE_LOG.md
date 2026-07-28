@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.28.008) タスクタブ並べ替え：ドラッグ中の半透明タブが他タブと重なる不具合を修正
+  - v007 では dragged タブが opacity 0.35 のまま元スロットに残っていたため、他タブが shift でその上に重なってしまい「重なって見づらい／半透明のタブが残っている」状態だった。
+  - 修正：dragstart 直後（`setTimeout(0)` で drag image 生成後）に `.dragging-collapse` クラスを付与して dragged タブの幅を 0 に潰す。flexbox が他タブを自然に詰めるので、その上に compact index ベースの `translateX(+dw)` を重ねて挿入プレビューを実現。
+  - `applyShift` / dragover / drop のロジックを compact 配列（dragged を除いた並び）基準に統一。挿入位置 `insertIdx` はそのまま `state.openTasks.splice` に使えるように単純化（従来の `insertIdx--` 調整を撤去）。
+
 - (dev v2026.07.28.007) タスクタブ並べ替え：ドラッグ中もリアルタイムに他タブがスライドするよう改良
   - v006 の FLIP アニメは drop 後のみだったが、Chrome のタブと同じく **ドラッグしている最中に他タブがスライドして道を開ける** 挙動に変更。
   - dragstart で全タブの初期位置をスナップショット (`dragCtx`)。strip 全体で dragover を捕捉して、カーソル X 位置から挿入位置 `insertIdx` を再計算。挿入位置が変わったら各タブに `translateX(±dw)` を `transform 200ms` transition 付きで適用。

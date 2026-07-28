@@ -223,10 +223,19 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .task-tab .tt-close{border:none;background:none;color:var(--text3);font-size:10px;padding:0 3px;line-height:1;border-radius:4px;flex-shrink:0;opacity:.5}
 .task-tab:hover .tt-close,.task-tab.on .tt-close{opacity:1}
 .task-tab .tt-close:hover{background:rgba(255,255,255,.14);color:var(--text)}
-/* タブの並べ替え D&D 中のビジュアルフィードバック */
+/* タブの並べ替え D&D 中のビジュアルフィードバック。
+   .dragging：ドラッグ開始直後の見た目（drag image 生成のためにここでは幅を残す）。
+   .dragging-collapse：drag image 取得後（setTimeout 経由）に幅を 0 に潰して DOM 上から
+     除去。flexbox が自然に他タブを詰め、その上に applyShift の transform を重ねて
+     Chrome ライクなリアルタイム挿入プレビューを実現する。 */
 .task-tab.dragging{opacity:.35}
-.task-tab.drop-before{box-shadow:inset 3px 0 0 var(--accent2)}
-.task-tab.drop-after{box-shadow:inset -3px 0 0 var(--accent2)}
+.task-tab.dragging-collapse{
+  opacity:0!important;
+  width:0!important;min-width:0!important;max-width:0!important;
+  padding-left:0!important;padding-right:0!important;
+  margin:0!important;border:0!important;overflow:hidden;
+  pointer-events:none;
+}
 /* タスクタブ列の最右：すべてのタブを一括で閉じる */
 .tt-clear{margin-left:auto;align-self:center;border:1px solid var(--border2);background:none;color:var(--text3);font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;flex-shrink:0;margin-bottom:4px;white-space:nowrap}
 .tt-clear:hover{background:var(--bg3);color:var(--text2);border-color:var(--border2)}
@@ -2905,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.007';
+const APP_VERSION='2026.07.28.008';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4118,19 +4127,19 @@ function buildTaskTabs(root){
     return strip;
   }
   /* タブ並べ替え D&D の状態（Chrome 風にリアルタイムでスライドさせるため strip 全体で管理）。
-     dragCtx: dragstart 時に captured されるスナップショット。 */
+     dragCtx: dragstart 時に captured されるスナップショット。
+     insertIdx は「dragged を除いた compact 配列」上の挿入位置（0..N-1）。 */
   let dragCtx=null;
   const applyShift=(insertIdx)=>{
     if(!dragCtx)return;
     const dw=dragCtx.rects[dragCtx.draggedIdx].width+2;   /* 隙間分 +2px */
     for(let i=0;i<dragCtx.tabs.length;i++){
       if(i===dragCtx.draggedIdx)continue;
-      let shift=0;
-      if(i<dragCtx.draggedIdx){
-        if(i>=insertIdx)shift=dw;
-      }else{
-        if((i-1)<insertIdx)shift=-dw;
-      }
+      /* dragged を DOM から抜いた（.dragging-collapse で幅0）後の compact index。
+         flexbox が dragged 以降のタブを自動で dw だけ左に詰めるので、shift は
+         「compact index が insertIdx 以上なら dw 右へ寄せる」で挿入プレビューが成立。 */
+      const j = i<dragCtx.draggedIdx ? i : i-1;
+      const shift = (j>=insertIdx) ? dw : 0;
       const t=dragCtx.tabs[i];
       t.style.transition='transform 200ms cubic-bezier(0.25,0.8,0.3,1)';
       t.style.transform=shift?('translateX('+shift+'px)'):'';
@@ -4153,10 +4162,24 @@ function buildTaskTabs(root){
       /* スナップショット：全タブ + それぞれの初期位置。以降のシフトはこの基準からの transform で表現。 */
       const tabs=[...strip.querySelectorAll('.task-tab[data-tab-id]')];
       const rects=tabs.map(t=>t.getBoundingClientRect());
-      dragCtx={tabs,rects,draggedIdx:tabs.indexOf(tab),dragId:id,insertIdx:tabs.indexOf(tab)};
+      const draggedIdx=tabs.indexOf(tab);
+      dragCtx={tabs,rects,draggedIdx,dragId:id,insertIdx:draggedIdx};
+      /* drag image がブラウザに捕捉された直後に、dragged タブを width 0 に潰して
+         DOM 上から実質的に除去する。flexbox が自動で他タブを詰める → applyShift の
+         translateX と組み合わせて Chrome ライクな挿入プレビューを実現。setTimeout(0)
+         を挟まないと drag image が「幅0のタブ」で captured されてしまい半透明の
+         ゴーストが消えるので必須。 */
+      setTimeout(()=>{
+        if(!dragCtx)return;
+        tab.classList.add('dragging-collapse');
+        /* 初期は「dragged 元位置」を維持したいので、compact 側は dragged 以降を dw 右に寄せて
+           flexbox 詰めを相殺する（insertIdx = draggedIdx が「元スロットに戻す」意）。 */
+        applyShift(draggedIdx);
+      },0);
     });
     tab.addEventListener('dragend',()=>{
       tab.classList.remove('dragging');
+      tab.classList.remove('dragging-collapse');
       if(dragCtx){ clearShifts(); dragCtx=null; }
     });
     tab.onclick=()=>{state.currentId=id;state.projTab='browse';state.pmPick=null;state.search='';$('#searchInput').value='';for(const x of pathOf(id))state.expanded.add(x.id);render();syncHash();
@@ -4200,11 +4223,18 @@ function buildTaskTabs(root){
     if(!types||![...types].includes('application/x-laycat-tab'))return;
     ev.preventDefault();ev.dataTransfer.dropEffect='move';
     const x=ev.clientX;
-    let insertIdx=dragCtx.tabs.length;
-    for(let i=0;i<dragCtx.tabs.length;i++){
+    const dw=dragCtx.rects[dragCtx.draggedIdx].width+2;
+    const N=dragCtx.tabs.length;
+    /* compact 配列は長さ N-1、挿入位置は 0..N-1（末尾含む）。 */
+    let insertIdx=N-1;
+    for(let i=0;i<N;i++){
       if(i===dragCtx.draggedIdx)continue;
-      const mid=dragCtx.rects[i].left+dragCtx.rects[i].width/2;
-      if(x<mid){ insertIdx=i; break; }
+      const r=dragCtx.rects[i];
+      /* dragged 以降のタブは flexbox で dw 左に詰まっているので、compact 上の中央を計算。 */
+      const compactLeft = i<dragCtx.draggedIdx ? r.left : r.left-dw;
+      const mid = compactLeft + r.width/2;
+      const j = i<dragCtx.draggedIdx ? i : i-1;
+      if(x<mid){ insertIdx=j; break; }
     }
     if(insertIdx!==dragCtx.insertIdx){
       dragCtx.insertIdx=insertIdx;
@@ -4220,9 +4250,8 @@ function buildTaskTabs(root){
     const srcIdx=arr.indexOf(srcId);
     if(srcIdx<0)return;
     arr.splice(srcIdx,1);
-    /* insertIdx は元の DOM 位置基準。dragged を配列から除いた後の index に変換。 */
+    /* insertIdx は既に「dragged を除いた compact 配列上の挿入位置」なので、そのまま splice。 */
     let insertIdx=dragCtx.insertIdx;
-    if(insertIdx>dragCtx.draggedIdx)insertIdx--;
     if(insertIdx<0)insertIdx=0;
     if(insertIdx>arr.length)insertIdx=arr.length;
     arr.splice(insertIdx,0,srcId);
