@@ -395,7 +395,56 @@ tc.setSize(0.7);
 tc.setSpace('local');   // Rotate around bone's own axes (natural for FK)
 scene.add(tc);
 tc.addEventListener('dragging-changed', ev => { controls.enabled = !ev.value; });
-tc.addEventListener('objectChange', () => { if(selected) syncSlidersFromBone(); });
+
+// 複数選択時の共有ピボット proxy：選択ボーン群の重心に置き、TC で回転させて delta を
+// 各ボーンにローカル rotation として post-multiply することで、選択中の全ボーンを
+// 「自分のローカル軸まわりに同じ角度だけ回転」させる（Maya の "each" 相当）。
+const multiProxy = new THREE.Object3D();
+multiProxy.name = '__multiProxy';
+scene.add(multiProxy);
+let _multiDragStart = null;
+
+tc.addEventListener('mouseDown', ()=>{
+  if(selectedSet.size > 1){
+    /* multiProxy を identity に戻し、この時点からの delta が取り出せるように。
+       各ボーンの初期 quaternion もスナップショット。 */
+    multiProxy.quaternion.identity();
+    multiProxy.rotation.set(0,0,0);
+    _multiDragStart = { bones: {} };
+    for(const name of selectedSet){
+      if(bones[name]) _multiDragStart.bones[name] = bones[name].quaternion.clone();
+    }
+  }
+});
+tc.addEventListener('mouseUp', ()=>{ _multiDragStart = null; });
+
+tc.addEventListener('objectChange', () => {
+  if(selectedSet.size > 1 && _multiDragStart){
+    /* multiProxy.quaternion は identity からの delta。
+       各ボーンの初期 quaternion に post-multiply（＝ボーンのローカル軸まわりで delta を適用）。 */
+    const delta = multiProxy.quaternion;
+    for(const name of selectedSet){
+      const init = _multiDragStart.bones[name];
+      if(init && bones[name]) bones[name].quaternion.copy(init).multiply(delta);
+    }
+  } else if(selected){
+    syncSlidersFromBone();
+  }
+});
+
+/* 選択中ボーン群の重心を返す（複数選択時のギズモ配置用） */
+function centroidOfSelection(){
+  const c = new THREE.Vector3(), tmp = new THREE.Vector3();
+  let n = 0;
+  for(const name of selectedSet){
+    const b = bones[name];
+    if(!b) continue;
+    b.getWorldPosition(tmp);
+    c.add(tmp); n++;
+  }
+  if(n) c.divideScalar(n);
+  return c;
+}
 
 function updateSelectionUI(){
   const info = document.getElementById('selInfo');
@@ -417,12 +466,16 @@ function updateSelectionUI(){
     syncSlidersFromBone();
     tc.attach(bones[name]);
   } else {
-    /* 複数選択：TC・スライダーは非表示。件数だけ表示。 */
+    /* 複数選択：共有 proxy にギズモをアタッチして同時回転可能に。件数のみ表示。 */
     selected = null;
-    info.textContent = selectedSet.size + ' 個のボーンを選択中';
+    info.textContent = selectedSet.size + ' 個のボーンを選択中（ギズモで一括回転）';
     info.classList.remove('none');
     ctl.style.display = 'none';
-    tc.detach();
+    /* proxy を選択重心に配置、rotation は identity（ワールド軸ギズモ表示） */
+    multiProxy.position.copy(centroidOfSelection());
+    multiProxy.quaternion.identity();
+    multiProxy.rotation.set(0,0,0);
+    tc.attach(multiProxy);
   }
   refreshBoneList();
 }
