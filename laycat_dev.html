@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.018';
+const APP_VERSION='2026.07.28.019';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4198,12 +4198,16 @@ function buildTaskTabs(root){
            だけで「隣タブの compact mid」を跨いでしまい、右側が急激にスライドしていた。 */
         const G=e.clientX-offsetX+rects[draggedIdx].width/2;
         const N=tabs.length;
+        /* 境界は「隣り合う slot 中央の中点」= Chrome 風「隣タブの半分に乗った時点で
+           スワップ」を意味する。元 mid そのものを境界にしていた頃はゴーストが隣タブを
+           完全に覆うまでスワップが起きず「思っていた場所より 1 つ左に入る」現象に。
+           uniform 幅前提で、slot K の中央 = rects[K].mid（K=draggedIdx 含む）となる
+           ので、k と k+1 の間の境界 = (mids[k]+mids[k+1])/2。 */
+        const mids=rects.map(r=>r.left+r.width/2);
         let insertIdx=N-1;
-        for(let i=0;i<N;i++){
-          if(i===draggedIdx)continue;
-          const mid = rects[i].left + rects[i].width/2;
-          const j = i<draggedIdx ? i : i-1;
-          if(G<mid){ insertIdx=j; break; }
+        for(let k=0;k<N-1;k++){
+          const boundary=(mids[k]+mids[k+1])/2;
+          if(G<boundary){ insertIdx=k; break; }
         }
         if(insertIdx!==dragCtx.insertIdx){
           dragCtx.insertIdx=insertIdx;
