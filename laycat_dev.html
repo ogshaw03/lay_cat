@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.017';
+const APP_VERSION='2026.07.28.018';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4191,20 +4191,19 @@ function buildTaskTabs(root){
         }
         if(!dragCtx)return;
         dragCtx.ghost.style.left=(e.clientX-offsetX)+'px';
-        /* 挿入位置は「ゴーストの中央 X」で判定する ─ カーソル X で判定すると、
-           タブの右寄りを掴んだ場合 offsetX が大きくなり、視覚上ゴーストがまだ左に
-           居るのに挿入位置が右へ進んで「思っていた場所より左に入る」現象になる。 */
-        const x=e.clientX-offsetX+rects[draggedIdx].width/2;
-        const dw=rects[draggedIdx].width+2;
+        /* 挿入位置は「ゴーストの中央 X vs 各タブの元の mid」で判定する。
+           applyShift の結果、非 dragged タブは（K が正しければ）元の位置に配置される
+           ので、元の rects[i] の中央が挿入境界になる。以前は compact 化された座標
+           （flexbox 詰め後の位置）と比較していたため、ゴーストが元位置からわずか動く
+           だけで「隣タブの compact mid」を跨いでしまい、右側が急激にスライドしていた。 */
+        const G=e.clientX-offsetX+rects[draggedIdx].width/2;
         const N=tabs.length;
         let insertIdx=N-1;
         for(let i=0;i<N;i++){
           if(i===draggedIdx)continue;
-          const r=rects[i];
-          const compactLeft = i<draggedIdx ? r.left : r.left-dw;
-          const mid = compactLeft + r.width/2;
+          const mid = rects[i].left + rects[i].width/2;
           const j = i<draggedIdx ? i : i-1;
-          if(x<mid){ insertIdx=j; break; }
+          if(G<mid){ insertIdx=j; break; }
         }
         if(insertIdx!==dragCtx.insertIdx){
           dragCtx.insertIdx=insertIdx;
