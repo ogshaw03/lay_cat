@@ -2905,7 +2905,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.006';
+const APP_VERSION='2026.07.28.007';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4117,76 +4117,47 @@ function buildTaskTabs(root){
     strip.appendChild(el('span','task-tabs-empty','左のツリーやショットからタスクを開くとタブで並びます'));
     return strip;
   }
+  /* タブ並べ替え D&D の状態（Chrome 風にリアルタイムでスライドさせるため strip 全体で管理）。
+     dragCtx: dragstart 時に captured されるスナップショット。 */
+  let dragCtx=null;
+  const applyShift=(insertIdx)=>{
+    if(!dragCtx)return;
+    const dw=dragCtx.rects[dragCtx.draggedIdx].width+2;   /* 隙間分 +2px */
+    for(let i=0;i<dragCtx.tabs.length;i++){
+      if(i===dragCtx.draggedIdx)continue;
+      let shift=0;
+      if(i<dragCtx.draggedIdx){
+        if(i>=insertIdx)shift=dw;
+      }else{
+        if((i-1)<insertIdx)shift=-dw;
+      }
+      const t=dragCtx.tabs[i];
+      t.style.transition='transform 200ms cubic-bezier(0.25,0.8,0.3,1)';
+      t.style.transform=shift?('translateX('+shift+'px)'):'';
+    }
+  };
+  const clearShifts=()=>{
+    if(!dragCtx)return;
+    for(const t of dragCtx.tabs){ t.style.transition=''; t.style.transform=''; }
+  };
   for(const id of visible){
     const n=getNode(id);if(!n)continue;
     const active=state.currentId===id;
     const tab=el('div','task-tab'+(active?' on':''));
-    tab.appendChild(el('span','tt-name',shotOf(n)||n.name)); /* タブはショット名のみ（工程はタスクページ側で表示） */
-    /* 並べ替え用に HTML5 D&D。ドラッグ開始時に元の id、ドロップ時に位置を計算して openTasks を並べ替える。 */
+    tab.appendChild(el('span','tt-name',shotOf(n)||n.name));
     tab.draggable=true;
     tab.dataset.tabId=id;
     tab.addEventListener('dragstart',ev=>{
       try{ev.dataTransfer.setData('application/x-laycat-tab',id);ev.dataTransfer.effectAllowed='move';}catch(_){}
       tab.classList.add('dragging');
+      /* スナップショット：全タブ + それぞれの初期位置。以降のシフトはこの基準からの transform で表現。 */
+      const tabs=[...strip.querySelectorAll('.task-tab[data-tab-id]')];
+      const rects=tabs.map(t=>t.getBoundingClientRect());
+      dragCtx={tabs,rects,draggedIdx:tabs.indexOf(tab),dragId:id,insertIdx:tabs.indexOf(tab)};
     });
     tab.addEventListener('dragend',()=>{
-      tab.classList.remove('dragging','drop-before','drop-after');
-      /* 全タブから残留クラスを掃除 */
-      strip.querySelectorAll('.task-tab').forEach(t=>t.classList.remove('drop-before','drop-after'));
-    });
-    tab.addEventListener('dragover',ev=>{
-      /* 別プロジェクトタブや外部ソースは受け付けない */
-      const types=ev.dataTransfer&&ev.dataTransfer.types;
-      if(!types||![...types].includes('application/x-laycat-tab'))return;
-      ev.preventDefault();ev.dataTransfer.dropEffect='move';
-      const r=tab.getBoundingClientRect();
-      const before=(ev.clientX-r.left)<r.width/2;
-      tab.classList.toggle('drop-before',before);
-      tab.classList.toggle('drop-after',!before);
-    });
-    tab.addEventListener('dragleave',()=>{
-      tab.classList.remove('drop-before','drop-after');
-    });
-    tab.addEventListener('drop',ev=>{
-      const srcId=ev.dataTransfer&&ev.dataTransfer.getData('application/x-laycat-tab');
-      tab.classList.remove('drop-before','drop-after');
-      if(!srcId||srcId===id)return;
-      ev.preventDefault();
-      const arr=(state.openTasks||[]).slice();
-      const srcIdx=arr.indexOf(srcId);
-      if(srcIdx<0)return;
-      arr.splice(srcIdx,1);
-      let destIdx=arr.indexOf(id);
-      if(destIdx<0)destIdx=arr.length;
-      const r=tab.getBoundingClientRect();
-      const before=(ev.clientX-r.left)<r.width/2;
-      if(!before)destIdx++;
-      arr.splice(destIdx,0,srcId);
-      /* FLIP アニメーション：並べ替え前のタブ位置を記録 → render → 新位置との差分だけ translateX で
-         逆補正 → 次フレームで transition ON にして 0 まで戻すことで Chrome 風スライドを実現。 */
-      const prevRects={};
-      strip.querySelectorAll('.task-tab[data-tab-id]').forEach(t=>{
-        prevRects[t.dataset.tabId]=t.getBoundingClientRect();
-      });
-      state.openTasks=arr;
-      render();syncHash();
-      requestAnimationFrame(()=>{
-        document.querySelectorAll('.task-tab[data-tab-id]').forEach(t=>{
-          const tid=t.dataset.tabId;
-          const old=prevRects[tid]; if(!old) return;
-          const now=t.getBoundingClientRect();
-          const dx=old.left-now.left;
-          if(Math.abs(dx)<1) return;
-          t.style.transition='none';
-          t.style.transform='translateX('+dx+'px)';
-          /* 強制リフローで初期状態を適用してから transition ON */
-          void t.offsetWidth;
-          t.style.transition='transform 240ms cubic-bezier(0.25,0.8,0.3,1)';
-          t.style.transform='';
-          const cleanup=()=>{t.style.transition='';t.style.transform='';t.removeEventListener('transitionend',cleanup)};
-          t.addEventListener('transitionend',cleanup);
-        });
-      });
+      tab.classList.remove('dragging');
+      if(dragCtx){ clearShifts(); dragCtx=null; }
     });
     tab.onclick=()=>{state.currentId=id;state.projTab='browse';state.pmPick=null;state.search='';$('#searchInput').value='';for(const x of pathOf(id))state.expanded.add(x.id);render();syncHash();
       /* タスクタブ切替：フォルダから最新を取り込み（fire-and-forget）。補正 render は入れない */
@@ -4220,6 +4191,54 @@ function buildTaskTabs(root){
     render();syncHash();
   };
   strip.appendChild(clr);
+
+  /* Strip 全体で dragover/drop を受け付ける。dragover 中はカーソル X 位置から挿入位置を計算し、
+     各タブに transform を適用してリアルタイムスライド（Chrome のタブ並び替えと同じ挙動）。 */
+  strip.addEventListener('dragover',ev=>{
+    if(!dragCtx)return;
+    const types=ev.dataTransfer&&ev.dataTransfer.types;
+    if(!types||![...types].includes('application/x-laycat-tab'))return;
+    ev.preventDefault();ev.dataTransfer.dropEffect='move';
+    const x=ev.clientX;
+    let insertIdx=dragCtx.tabs.length;
+    for(let i=0;i<dragCtx.tabs.length;i++){
+      if(i===dragCtx.draggedIdx)continue;
+      const mid=dragCtx.rects[i].left+dragCtx.rects[i].width/2;
+      if(x<mid){ insertIdx=i; break; }
+    }
+    if(insertIdx!==dragCtx.insertIdx){
+      dragCtx.insertIdx=insertIdx;
+      applyShift(insertIdx);
+    }
+  });
+  strip.addEventListener('drop',ev=>{
+    if(!dragCtx)return;
+    const srcId=ev.dataTransfer&&ev.dataTransfer.getData('application/x-laycat-tab');
+    if(!srcId)return;
+    ev.preventDefault();
+    const arr=(state.openTasks||[]).slice();
+    const srcIdx=arr.indexOf(srcId);
+    if(srcIdx<0)return;
+    arr.splice(srcIdx,1);
+    /* insertIdx は元の DOM 位置基準。dragged を配列から除いた後の index に変換。 */
+    let insertIdx=dragCtx.insertIdx;
+    if(insertIdx>dragCtx.draggedIdx)insertIdx--;
+    if(insertIdx<0)insertIdx=0;
+    if(insertIdx>arr.length)insertIdx=arr.length;
+    arr.splice(insertIdx,0,srcId);
+    /* transform 掃除は render で DOM 再生成されるため自動的にクリア。
+       他タブは既にドラッグ中に visual final position まで動いているのでスナップは発生しない。 */
+    state.openTasks=arr;
+    render();syncHash();
+  });
+  strip.addEventListener('dragleave',ev=>{
+    /* strip 外に完全に出た場合のみリセット（子タブ間の遷移では無視） */
+    if(!dragCtx)return;
+    const rt=ev.relatedTarget;
+    if(rt&&strip.contains(rt))return;
+    dragCtx.insertIdx=dragCtx.draggedIdx;
+    applyShift(dragCtx.insertIdx);
+  });
   return strip;
 }
 /* 保存先フォルダ未設定の警告バナー（動画はフォルダにしか保存できないため） */

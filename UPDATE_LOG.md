@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.28.007) タスクタブ並べ替え：ドラッグ中もリアルタイムに他タブがスライドするよう改良
+  - v006 の FLIP アニメは drop 後のみだったが、Chrome のタブと同じく **ドラッグしている最中に他タブがスライドして道を開ける** 挙動に変更。
+  - dragstart で全タブの初期位置をスナップショット (`dragCtx`)。strip 全体で dragover を捕捉して、カーソル X 位置から挿入位置 `insertIdx` を再計算。挿入位置が変わったら各タブに `translateX(±dw)` を `transform 200ms` transition 付きで適用。
+  - dragged 前のタブ：新挿入位置以降なら右へ、それ未満なら 0。dragged 後のタブ：新挿入位置未満（compact 済み index）なら左へ、それ以上なら 0（一度左に詰めてから右へ戻る差分がキャンセル）。
+  - drop で `state.openTasks` を並べ替えて render。他タブは既に visual final position に居るのでスナップは起きない。dragleave で strip 外に出たら shift をリセット。
+
 - (dev v2026.07.28.006) タスクタブ並べ替えに Chrome 風 FLIP アニメーション追加
   - drop 時に「並べ替え前の各タブ位置を記録 → render → 新位置との差分を translateX で逆補正 → 次フレームで transition ON にして 0 まで戻す」FLIP パターン。
   - `transform 240ms cubic-bezier(0.25,0.8,0.3,1)` で自然なスライド。`transitionend` で inline style を掃除。
