@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.28.010) タスクタブを D&D した際に「動画・画像ファイルをドロップしてください」トーストが出る不具合を修正
+  - window レベルの `dragover`/`drop` は `dropCtx()` で判定していたが、`dropCtx` に「Files 種別しか受けない」チェックが無かったため、タブ D&D（`application/x-laycat-tab`）でも `preventDefault` → drop 到達 → files.length=0 → 無関係なトースト発火。
+  - `dropCtx` 内で `dataTransfer.types` に `'Files'` が含まれない D&D を早期リターンして無視するように修正。
+
 - (dev v2026.07.28.009) タスクタブ並べ替え：一番左のタブをドラッグ開始した瞬間に右側タブが動く不具合を修正
   - v008 では初期 `applyShift(draggedIdx)` にも 200ms transition が付いていたため、`.dragging-collapse` で flexbox が瞬時に詰めた直後、右側タブが「詰まった位置 → 元位置 (+dw)」へアニメーションしてしまっていた。
   - `applyShift(insertIdx, animate=true)` に `animate` 引数を追加。dragstart の初期スナップだけ `animate=false` を渡して transition なしで即座に配置する。以降の dragover での更新は従来通りアニメーション付き。

@@ -2914,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.009';
+const APP_VERSION='2026.07.28.010';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11431,6 +11431,11 @@ const dropCtx=e=>{
   if(!storage.mode||!state.currentId)return null;
   if(dropOverlayOpen())return null;
   if(e&&e.target&&e.target.closest&&e.target.closest('.dropzone,.drop,input,textarea,button,select,a'))return null;
+  /* OS からのファイル D&D 以外（タブ並べ替え等の内部 D&D）は無視する。
+     types に 'Files' が含まれるのは OS からのファイルドラッグのみ。これを見ないと
+     タブ D&D で dragover が preventDefault → drop 到達 → files 空 → 意味不明な
+     「動画・画像ファイルをドロップしてください」トーストが出る事故になる。 */
+  if(e&&e.dataTransfer&&e.dataTransfer.types&&![...e.dataTransfer.types].includes('Files'))return null;
   const n=getNode(state.currentId);return(n&&n.type==='review')?n:null;
 };
 window.addEventListener('dragenter',e=>{
