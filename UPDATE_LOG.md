@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.039) REEL Ctrl+Z / Ctrl+Y キーバインド追加＋アノテ窓のクリアで REEL 由来 embed も削除
+  - REEL: `reelWin.keydown` に `Ctrl+Z`（undo）／`Ctrl+Y` または `Ctrl+Shift+Z`（redo）を追加。テキスト入力中は無効。
+  - REEL: `undoB` / `redoB` の onclick 末尾で `reelAfterEdit` を呼び、pending 復元後に v.review.notes の同期＋persist も走らせる。
+  - アノテ窓: `clearBtn` を「現在フレーム範囲内の pending＋動画埋め込み専用ノート（noteEmbedOnly, `reel_emb_` 含む）」もまとめて削除するよう改修。`_ntomb` に記録して 3-way マージで復活しない。
+
 - (dev v2026.07.29.038) REEL：drawAnno で pending 描画を復活・重複は `reel_emb_` 除外で回避
   - v036 で pending 描画を止めていたため、投げ縄の移動中／拡縮／回転がリアルタイム反映されず、pointerup（or タイムスライダ操作）まで表示が古いままだった。
   - `drawAnno` の v.review.notes 描画から `reel_emb_` プレフィックスの embed ノートを除外＋pending 描画を復活。二重描画にならず、pending 更新はすべてリアルタイム反映される。

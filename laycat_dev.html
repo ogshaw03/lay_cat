@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.038';
+const APP_VERSION='2026.07.29.039';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -9762,11 +9762,27 @@ function openReview(nodeId,versionId,opts){
   function doRedo(){if(_histIdx>=_hist.length-1)return;_histIdx++;_restore(_hist[_histIdx]);drawAll();drawTimeline();updSubmit();}
   undoBtn.onclick=doUndo;redoBtn.onclick=doRedo;
   clearBtn.onclick=()=>{
-    /* 現在フレームのアノテのみクリア。他フレームの未送信内容は保持。 */
+    /* 現在フレームのアノテをクリア（pending＋現在フレームの動画埋め込み専用ノート）。他フレームは保持。
+       REEL で描いた embed ノート（noShot=true, reel_emb_... 含む）もこのクリアで消せるようにする。 */
     const cf=isVideo?dispFrame():null;
     if(isVideo){
-      pending=pending.filter(p=>(p.f!=null?p.f:cf)!==cf);
-      if(stroke&&(stroke.f!=null?stroke.f:cf)===cf)stroke=null;
+      const pdur=parseInt(durSel.value)||1;
+      const inWinP=p=>(p.f!=null?p.f:cf)===cf;
+      pending=pending.filter(p=>!inWinP(p));
+      if(stroke&&inWinP(stroke))stroke=null;
+      /* v.review.notes 内の現在フレーム範囲の埋め込み専用ノートも削除＋_ntomb */
+      const inWinN=n=>n.frame!=null&&cf>=n.frame&&cf<n.frame+(parseInt(n.dur)||1);
+      const removed=[];
+      v.review.notes=v.review.notes.filter(n=>{
+        if(noteEmbedOnly(n)&&inWinN(n)){removed.push(n);return false}
+        return true;
+      });
+      if(removed.length){
+        v._ntomb=Array.isArray(v._ntomb)?v._ntomb:[];
+        const nk=x=>x.id||((x.time||'')+'|'+(x.text||'')+'|'+(x.frame!=null?x.frame:''));
+        for(const n of removed){const tk=nk(n);if(!v._ntomb.some(t=>t&&t.k===tk))v._ntomb.push({k:tk,at:nowIso()})}
+        committedDirty=true;
+      }
     }else{pending=[];stroke=null}
     headActive=null;redoStack=[];drawAll();drawTimeline();updSubmit();_pushHist();
   };
@@ -11432,11 +11448,22 @@ function openReel(){
     drawAnno();drawFTL();updUnsent();_pushHistR();
     try{reelAfterEdit(reelUI.clips[reelUI.cur],affected)}catch(_){}
   }
-  /* Delete = 削除／Esc = 選択解除。既存 keydown ハンドラは keys.js 相当なし → reelWin にリスナ追加。
-     アノテ窓と挙動を揃える（テキスト入力中は無効）。 */
+  /* Delete = 削除／Esc = 選択解除／Ctrl+Z = undo／Ctrl+Y または Ctrl+Shift+Z = redo。
+     テキスト入力中（コメント欄など）は無効。 */
   reelWin.addEventListener('keydown',e=>{
+    const tag=(e.target&&e.target.tagName)||'';
+    if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
+    /* Undo / Redo — アノテ窓と挙動を揃える */
+    if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')){
+      e.preventDefault();
+      if(e.shiftKey)redoB.click();else undoB.click();
+      return;
+    }
+    if((e.ctrlKey||e.metaKey)&&(e.key==='y'||e.key==='Y')){
+      e.preventDefault();redoB.click();return;
+    }
+    /* 投げ縄の選択操作 */
     if(RV.tool!=='lasso'||!rLassoSel)return;
-    const tag=(e.target&&e.target.tagName)||'';if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
     if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();reelLassoDelete()}
     else if(e.key==='Escape'){e.preventDefault();reelLassoClearSelection()}
   });
@@ -11503,8 +11530,8 @@ function openReel(){
   fpsS.onchange=()=>{RV.FPS=parseInt(fpsS.value)||24;const c=reelUI.clips[reelUI.cur];if(c)c.fps=RV.FPS;RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));RV.last=-1;drawFTL()};
   durS.onchange=()=>{drawAnno();drawFTL()};
   eyeB.onclick=()=>{RV.eye=!RV.eye;eyeB.classList.toggle('on',RV.eye);drawAnno()};
-  undoB.onclick=()=>{if(RV.histIdx<=0)return;RV.histIdx--;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent()};
-  redoB.onclick=()=>{if(RV.histIdx>=RV.hist.length-1)return;RV.histIdx++;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent()};
+  undoB.onclick=()=>{if(RV.histIdx<=0)return;RV.histIdx--;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent();try{reelAfterEdit(reelUI.clips[reelUI.cur])}catch(_){}};
+  redoB.onclick=()=>{if(RV.histIdx>=RV.hist.length-1)return;RV.histIdx++;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent();try{reelAfterEdit(reelUI.clips[reelUI.cur])}catch(_){}};
   clrB.onclick=()=>{
     /* 現在フレーム（表示 dur 範囲内で可視のもの）の pending をクリア。他フレーム＆他クリップの未送信は保持。
        クリア後は v.review.notes 側の REEL embed ノートも同期される（reelAfterEdit 内 → syncFrame で該当フレーム分削除）。 */
