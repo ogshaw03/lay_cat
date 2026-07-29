@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.037) REEL：描画直後にアノテが一瞬消える現象を修正
+  - v036 で `drawAnno` の pending 描画を停止した副作用で、pointerup 直後に呼ばれる `drawAnno` は「pending 描画なし＋ v.review.notes に embed 未追加」の一瞬の隙間で何も表示しない状態になっていた。
+  - `reelAfterEdit` の末尾で `drawAnno()` を呼ぶことで、同期直後に v.review.notes 経由で再描画されるように。
+
 - (dev v2026.07.29.036) REEL：pending と v.review.notes を「常時同期」する統一モデル（描いたら即タスクページに反映）
   - 真実のソースは `v.review.notes`。REEL の pending はセッション中の表示ミラーに位置付ける。
   - 描画完了・クリア・消しゴム・投げ縄削除の各操作後に `reelAfterEdit` が対象フレームだけ `reelSyncEmbedFrame` で再構築（id=`reel_emb_<nodeId>_<frame>` の固定 ID、1 フレーム 1 embed ノート、`noShot=true`）→ debounce 400ms で `persist`。

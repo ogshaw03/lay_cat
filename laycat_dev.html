@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.036';
+const APP_VERSION='2026.07.29.037';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11593,12 +11593,16 @@ function openReel(){
     if(_reelPersistTimer)clearTimeout(_reelPersistTimer);
     _reelPersistTimer=setTimeout(()=>{_reelPersistTimer=null;persist().catch(e=>{try{console.warn('persist(reel sync) failed',e)}catch(_){}})},400);
   }
-  /* 変更後に呼ぶユーティリティ（対象フレームだけ or 全体同期） */
+  /* 変更後に呼ぶユーティリティ（対象フレームだけ or 全体同期）。
+     drawAnno を末尾で呼ぶ：pointerup 直後は pending は空、v.review.notes 側もまだ embed 追加前で
+     drawAnno を先に呼ぶと一瞬「何も描画されない」状態になり、書いた直後にアノテが消える現象になる。
+     同期の直後に drawAnno を再度呼ぶことで即座に v.review.notes 経由で表示復元される。 */
   function reelAfterEdit(c,frames){
     if(!c)return;
     if(!frames){reelSyncEmbedAll(c)}
     else{const set=frames instanceof Set?frames:new Set(frames);for(const fr of set)reelSyncEmbedFrame(c,fr)}
     scheduleReelPersist();
+    try{drawAnno()}catch(_){}
   }
   /* 旧 reelEmbedPending：beforeunload 救済用にシンプル化（全同期＋即 persist）。以前の noShot=true 汎用生成は不要に。 */
   function reelEmbedPending(c){
