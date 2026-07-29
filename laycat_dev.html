@@ -531,7 +531,9 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .subl-item .nm{font-family:var(--font-body);font-weight:700;font-size:16px;letter-spacing:.02em;font-variant-numeric:tabular-nums}
 .subl-item .mt{color:var(--text3);font-size:12px}
 .subl-item .thumbs{display:flex;gap:5px;margin-left:auto}
+.subl-item .thumbs .tc{display:flex;flex-direction:column;align-items:center;gap:3px}
 .subl-item .thumbs .th{width:60px;height:34px;border-radius:4px;background:#000 center/cover no-repeat;border:1px solid var(--border)}
+.subl-item .thumbs .tc-lbl{font-size:9.5px;color:var(--text3);font-family:var(--font-code);font-variant-numeric:tabular-nums;line-height:1;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
 .sub-block{border:1px solid var(--border);border-radius:12px;background:var(--bg2);margin-bottom:16px;overflow:hidden}
 .sub-block .bh{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)}
 .sub-block .bh .st{display:inline-block;padding:2px 9px;border-radius:5px;font-size:11px;font-weight:700;color:#101013}
@@ -2914,7 +2916,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.001';
+const APP_VERSION='2026.07.29.002';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3534,7 +3536,19 @@ function subShowList(){
     const bd=el('div');bd.appendChild(el('div','nm',sb.name));bd.appendChild(el('div','mt',(sb.items?sb.items.length:0)+' 件・'+fmt(sb.createdAt)));
     it.appendChild(bd);
     const ths=el('div','thumbs');
-    for(const item of (sb.items||[]).slice(0,5)){const n=getNode(item.nodeId);const v=n&&n.versions.find(x=>x.id===item.versionId);const th=el('div','th');if(v&&v.thumb)storage.getURL(v.thumb).then(u=>{if(u)th.style.backgroundImage='url("'+u+'")'});ths.appendChild(th)}
+    for(const item of (sb.items||[]).slice(0,5)){
+      const n=getNode(item.nodeId);
+      const v=n&&n.versions.find(x=>x.id===item.versionId);
+      const shot=n&&n.parentId?getNode(n.parentId):null;
+      const tc=el('div','tc');
+      const th=el('div','th');
+      if(v&&v.thumb)storage.getURL(v.thumb).then(u=>{if(u)th.style.backgroundImage='url("'+u+'")'});
+      tc.appendChild(th);
+      /* サムネイル下にカット番号（ショット名）バッジ。ショット無ければ工程名でフォールバック */
+      const lbl=(shot&&shot.name)||(n&&n.name)||'';
+      if(lbl){const l=el('div','tc-lbl',lbl);l.title=lbl;tc.appendChild(l)}
+      ths.appendChild(tc);
+    }
     it.appendChild(ths);
     it.onclick=()=>subShowView(sb);
     wrap.appendChild(it);
@@ -4531,7 +4545,19 @@ function renderProjSubmits(main,root){
     }
     it.appendChild(bd);
     const ths=el('div','thumbs');
-    for(const item of (sb.items||[]).slice(0,5)){const n=getNode(item.nodeId);const v=n&&n.versions.find(x=>x.id===item.versionId);const th=el('div','th');if(v&&v.thumb)storage.getURL(v.thumb).then(u=>{if(u)th.style.backgroundImage='url("'+u+'")'});ths.appendChild(th)}
+    for(const item of (sb.items||[]).slice(0,5)){
+      const n=getNode(item.nodeId);
+      const v=n&&n.versions.find(x=>x.id===item.versionId);
+      const shot=n&&n.parentId?getNode(n.parentId):null;
+      const tc=el('div','tc');
+      const th=el('div','th');
+      if(v&&v.thumb)storage.getURL(v.thumb).then(u=>{if(u)th.style.backgroundImage='url("'+u+'")'});
+      tc.appendChild(th);
+      /* サムネイル下にカット番号（ショット名）バッジ。ショット無ければ工程名でフォールバック */
+      const lbl=(shot&&shot.name)||(n&&n.name)||'';
+      if(lbl){const l=el('div','tc-lbl',lbl);l.title=lbl;tc.appendChild(l)}
+      ths.appendChild(tc);
+    }
     it.appendChild(ths);
     it.onclick=()=>openSubmitDrawer(sb.id);
     w.appendChild(it);
