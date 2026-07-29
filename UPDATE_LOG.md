@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.042) REEL：右クリック水平ドラッグでズームできるように（アノテ窓と同じ挙動）
+  - stage の pointerdown で `button===2 && !altKey && pointerType!=='pen'` を検出 → `RZ.zooming=true` にしてポインタ捕捉、`stage.cursor='zoom-in'`。
+  - pointermove で `Math.exp((clientX-zx0)*0.006)` で滑らかにズーム倍率変化、rZoomTo で反映。
+  - ペン(Windows Ink)のサイドボタン(button===2)は従来通りパン扱い、Alt+右はブラシサイズ調整に譲る。
+
 - (dev v2026.07.29.041) REEL：ツール未選択でもマウス操作が描画されてしまう問題を修正
   - 原因：`setRTool` が初期化時に呼ばれず、anno（canvas）の CSS デフォルト `pointer-events:auto` のままだった。ツール未選択でも anno がクリックを受け、pointerdown 分岐で仕様上何も起きないはずでも一部条件で意図せぬ挙動になっていた。
   - 対応：初期化直後に `anno.style.pointerEvents='none'` を明示。`anno.onpointerdown` の先頭に `if(!RV.tool)return;` と `if(e.button!==0)return;` を追加（左クリックのみ・ツール選択時のみ受け付け）。

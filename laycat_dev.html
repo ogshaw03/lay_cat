@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.041';
+const APP_VERSION='2026.07.29.042';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11028,12 +11028,24 @@ function openReel(){
       ],it=>setRTool(it.tool));
       return;
     }
+    /* 右クリック＋水平ドラッグでズーム（Alt+右はブラシサイズ調整に譲る）。
+       マウス右クリはズーム／ペン(Windows Ink)のサイドボタン(button===2)はパン扱い（アノテ窓と同じ挙動）。 */
+    if(e.button===2&&!e.altKey&&e.pointerType!=='pen'){
+      const r=stage.getBoundingClientRect();
+      RZ.zooming=true;RZ.zx0=e.clientX;RZ.zs0=RZ.s;RZ.zcx=e.clientX-r.left;RZ.zcy=e.clientY-r.top;
+      try{stage.setPointerCapture(e.pointerId)}catch(_){}
+      stage.style.cursor='zoom-in';e.preventDefault();return;
+    }
     if(!(RZ.hand||e.button===1||(e.pointerType==='pen'&&e.button===2)))return;
     if(RZ.s<=1)return;
     RZ.panning=true;RZ.px=e.clientX;RZ.py=e.clientY;stage.style.cursor='grabbing';e.preventDefault();
   }); /* ペン(Windows Ink)のサイドボタン(button===2)もパン扱い */
-  stage.addEventListener('pointermove',e=>{if(!RZ.panning)return;RZ.x+=e.clientX-RZ.px;RZ.y+=e.clientY-RZ.py;RZ.px=e.clientX;RZ.py=e.clientY;applyRZoom()});
-  stage.addEventListener('pointerup',()=>{RZ.panning=false;stage.style.cursor=RZ.hand?'grab':''});
+  stage.addEventListener('pointermove',e=>{
+    if(RZ.zooming){const ns=RZ.zs0*Math.exp((e.clientX-RZ.zx0)*0.006);rZoomTo(ns,RZ.zcx,RZ.zcy);return}
+    if(!RZ.panning)return;
+    RZ.x+=e.clientX-RZ.px;RZ.y+=e.clientY-RZ.py;RZ.px=e.clientX;RZ.py=e.clientY;applyRZoom();
+  });
+  stage.addEventListener('pointerup',()=>{RZ.panning=false;RZ.zooming=false;stage.style.cursor=RZ.hand?'grab':''});
   /* タイムライン：全クリップ（全体フレーム）＋各動画のフレーム目盛り */
   function drawFTL(){
     const W=ftlWrap.clientWidth-28;if(W<=0)return;
