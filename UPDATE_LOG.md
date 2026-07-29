@@ -13,6 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.017) フォント：可愛い太字を保つため `--font-head` / `--font-code` は Space Grotesk に戻し、`.fb-title` だけ `--font-ui`（OS ネイティブ）に切替
+  - v016 で全体を OS ネイティブ (`--font-ui`) に統一したが「太字で可愛かったフォントまで変わってしまった」というフィードバックを受けて再修正。
+  - `--font-head` / `--font-code` を `'Space Grotesk','Noto Sans JP',sans-serif` に、`--font-body` を `'Noto Sans JP',sans-serif` に戻す（v015 相当）。Google Fonts の `<link>` にも Space Grotesk を復活。
+  - `--font-ui` は残しつつ、実際に使うのは **アノテ窓の動画タイトル (`.fb-title`) のみ**に限定。「読みづらい」問題は装飾フォントを避けたい特定箇所だけ個別に切り替える方針。
+  - `access-console.html` / `admin-audit.html` の `--font-head` も Space Grotesk に戻す。
+  - CLAUDE.md のフォントルールも更新（Syne 禁止・変数の役割・`--font-ui` は個別上書き用と明記）。
+
 - (dev v2026.07.29.016) フォントを OS ネイティブ優先 (`system-ui`) に統一：Space Grotesk も撤去
   - v015 で Syne から Space Grotesk に切り替えたが「もう少し普通のフォントが良い」というフィードバックを受けて再修正。
   - `--font-ui:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Hiragino Sans','Yu Gothic UI','Meiryo','Noto Sans JP',sans-serif` を導入し、`--font-head` / `--font-body` / `--font-code` すべて同じスタックを指すよう統一。macOS = San Francisco/Hiragino、Windows = Segoe UI/Yu Gothic UI、Linux/フォールバック = Noto Sans JP。

@@ -31,9 +31,12 @@
 
 ## フォント
 - **`Syne` は使わない**（読みづらいため廃止済み）。新しく `--font-head` を定義したり Google Fonts を追加する際も Syne を復活させないこと。
-- **`Space Grotesk` も装飾寄りで避ける**。ユーザーは「普通のフォント」を望んでいる。
-- 標準は OS ネイティブフォント優先：`system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Hiragino Sans','Yu Gothic UI','Meiryo','Noto Sans JP',sans-serif`（macOS: San Francisco/Hiragino、Windows: Segoe UI/Yu Gothic UI、フォールバックに Noto Sans JP）。
-- `--font-head` / `--font-body` / `--font-code` はすべて同じスタック（`--font-ui`）を指す。数字を tabular にしたい箇所は CSS の `font-variant-numeric:tabular-nums` を付ける（フォント側で分けない）。
+- 標準フォント変数：
+  - `--font-head: 'Space Grotesk','Noto Sans JP',sans-serif` … 見出し・タイトル系（太字で "可愛い" 見た目、ユーザー好み）。
+  - `--font-body: 'Noto Sans JP',sans-serif` … 本文。
+  - `--font-code: 'Space Grotesk','Noto Sans JP',sans-serif` … 数値・コード系（`font-variant-numeric:tabular-nums` と併用）。
+  - `--font-ui: system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Hiragino Sans','Yu Gothic UI','Meiryo','Noto Sans JP',sans-serif` … **読みやすさ最優先の場所だけ個別指定**するための OS ネイティブフォントスタック。
+- 現状 `--font-ui` を使っているのは `.fb-title`（アノテ窓の動画タイトル）のみ。可読性トラブルが起きた特定箇所だけ `--font-ui` に切り替える方針で、全体を OS フォントに寄せない（v015→v016 で全体切り替えたところ「可愛い雰囲気が消えた」というフィードバックあり）。
 
 ## パッチノート運用
 - `PATCH_NOTES.md` はユーザーに見せる**確定パッチノート**。**通常の更新では追記しない**（全部書くときりがないため）。
