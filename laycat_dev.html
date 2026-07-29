@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.044';
+const APP_VERSION='2026.07.29.045';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10580,6 +10580,8 @@ function openReel(){
   ztrans.appendChild(anno);
   let rGhost=false,rTraceOp=0;
   const RZ={s:1,x:0,y:0,rot:0,flip:1,hand:false,panning:false,zooming:false,spinning:false,px:0,py:0,sx0:0,sr0:0,zx0:0,zs0:1,zcx:0,zcy:0};
+  /* Space キー押下フラグ（アノテ窓と統一：Space+ドラッグ=パン/Shift/Ctrl 併用で回転/ズーム、Space タップ=再生） */
+  let spaceDown=false,spaceDrag=false;
   const opt=(sel,label,val)=>{const o=d.createElement('option');o.textContent=label;o.value=String(val);sel.appendChild(o)};
   const fbar=ce(d,'div','ctr');
   const mkB=(t,tt)=>{const b=ce(d,'button','btn',t);if(tt)b.title=tt;return b};
@@ -11028,12 +11030,18 @@ function openReel(){
       ],it=>setRTool(it.tool));
       return;
     }
-    /* Shift+右ドラッグ：画面回転（クリスタ準拠）。ビュー中心を軸に、横方向のドラッグ量で回す。
-       stopPropagation で下位要素の pointerdown / click 系リスナへの伝播を止め、意図せず再生などが発動しないようにする。 */
-    if(e.button===2&&e.shiftKey&&e.pointerType!=='pen'){
-      RZ.spinning=true;RZ.sx0=e.clientX;RZ.sr0=RZ.rot||0;
+    /* Space+Shift+ドラッグ：画面回転（クリスタ準拠、アノテ窓と統一）。ビュー中心を軸に、横方向のドラッグ量で回す。 */
+    if(spaceDown&&e.shiftKey){
+      spaceDrag=true;RZ.spinning=true;RZ.sx0=e.clientX;RZ.sr0=RZ.rot||0;
       try{stage.setPointerCapture(e.pointerId)}catch(_){}
       stage.style.cursor='grabbing';e.preventDefault();e.stopPropagation();return;
+    }
+    /* Space+Ctrl(Meta)+ドラッグ：ズーム（アノテ窓と統一） */
+    if(spaceDown&&(e.ctrlKey||e.metaKey)){
+      spaceDrag=true;const r=stage.getBoundingClientRect();
+      RZ.zooming=true;RZ.zx0=e.clientX;RZ.zs0=RZ.s;RZ.zcx=e.clientX-r.left;RZ.zcy=e.clientY-r.top;
+      try{stage.setPointerCapture(e.pointerId)}catch(_){}
+      stage.style.cursor='zoom-in';e.preventDefault();e.stopPropagation();return;
     }
     /* 右クリック＋水平ドラッグでズーム（Alt+右はブラシサイズ調整に譲る）。
        マウス右クリはズーム／ペン(Windows Ink)のサイドボタン(button===2)はパン扱い（アノテ窓と同じ挙動）。 */
@@ -11043,8 +11051,10 @@ function openReel(){
       try{stage.setPointerCapture(e.pointerId)}catch(_){}
       stage.style.cursor='zoom-in';e.preventDefault();e.stopPropagation();return;
     }
-    if(!(RZ.hand||e.button===1||(e.pointerType==='pen'&&e.button===2)))return;
-    if(RZ.s<=1)return;
+    /* Space単体+ドラッグ もパン扱い（アノテ窓と統一）。RZ.hand（✋トラック）、中ボタン、ペンのサイドボタンもパン。 */
+    if(!(RZ.hand||spaceDown||e.button===1||(e.pointerType==='pen'&&e.button===2)))return;
+    if(!spaceDown&&RZ.s<=1)return; /* Space+ドラッグは等倍でも受け付ける（ただ何も動かないだけ） */
+    if(spaceDown)spaceDrag=true;
     RZ.panning=true;RZ.px=e.clientX;RZ.py=e.clientY;stage.style.cursor='grabbing';e.preventDefault();
   }); /* ペン(Windows Ink)のサイドボタン(button===2)もパン扱い */
   stage.addEventListener('pointermove',e=>{
@@ -11934,7 +11944,7 @@ function openReel(){
     if(e.key===','&&!e.shiftKey&&!e.altKey){e.preventDefault();inB.onclick();return} /* , = IN */
     if(e.key==='.'&&!e.shiftKey&&!e.altKey){e.preventDefault();outB.onclick();return} /* . = OUT */
     if(k==='x'&&!e.altKey){e.preventDefault();rangeClrB.onclick();return} /* X = 範囲解除 */
-    if(e.key===' '||e.key==='Spacebar'){e.preventDefault();if(cs().length)play.onclick()} /* 再生/停止 */
+    if(e.key===' '||e.key==='Spacebar'){e.preventDefault();spaceDown=true;stage.style.cursor='grab'} /* Space=パン/回転/ズームの修飾。keyup で spaceDrag=false なら再生（アノテ窓と統一） */
     else if(e.key==='ArrowLeft'){e.preventDefault();pF.onclick()} /* 1フレーム戻る */
     else if(e.key==='ArrowRight'){e.preventDefault();nF.onclick()} /* 1フレーム進む */
     else if(e.key==='ArrowUp'||e.key==='ArrowDown'){
@@ -11957,6 +11967,17 @@ function openReel(){
       if(e.key==='ArrowUp'){target=sorted.find(x=>x>gCur);if(target==null)target=sorted[0]}
       else{const revs=sorted.slice().reverse();target=revs.find(x=>x<gCur);if(target==null)target=sorted[sorted.length-1]}
       gSeek(target);
+    }
+  });
+  /* Space タップ = 再生／Space+ドラッグ = パン等（再生しない）。アノテ窓と同じ挙動。 */
+  d.addEventListener('keyup',e=>{
+    if(e.key===' '||e.key==='Spacebar'){
+      const wasDown=spaceDown;spaceDown=false;
+      const tg=e.target&&e.target.tagName;
+      const inText=tg==='TEXTAREA'||tg==='INPUT'||tg==='SELECT';
+      if(wasDown&&!spaceDrag&&!inText&&cs().length)play.onclick();
+      spaceDrag=false;
+      stage.style.cursor=RZ.hand?'grab':'';
     }
   });
   reelUI.updTitle=updReelTitle; /* メインウィンドウから開いたときのタイトル更新用 */

@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.045) REEL：Space+ドラッグ系ショートカットをアノテ窓と統一
+  - 回転：**Space+Shift+ドラッグ**（v043 の Shift+右ドラッグは廃止）。
+  - ズーム：**Space+Ctrl(Meta)+ドラッグ**（併せて右クリック水平ドラッグは維持）。
+  - パン：**Space単体+ドラッグ**（併せて ✋トラック／中ボタン／ペンサイドボタンは維持）。
+  - Space タップ = 再生／Space+ドラッグ = 再生しない（アノテ窓と統一）。従来 keydown 直後に `play.onclick()` していたため Space 押下瞬間に再生されてしまっていた。keyup で `spaceDrag=false` の時だけ再生に変更。
+
 - (dev v2026.07.29.044) REEL：Shift+右ドラッグ／右ドラッグ で意図せず再生される問題を軽減
   - Shift+右ドラッグ（回転）と 右ドラッグ（ズーム）の pointerdown で `e.stopPropagation()` を追加。下位要素（video / bridge など）や親要素の pointerdown / click 系リスナへの伝播を止める。
   - preventDefault は既に付いているが、propagation を追加で止めることで video 要素の click / Space スペルキーなど周辺挙動の巻き込みを防ぐ。
