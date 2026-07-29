@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.043) REEL：画面回転（Shift+右ドラッグ）追加＋ブラシサイズ円カーソル（アノテ窓と統一）
+  - **回転**：`RZ.rot` / `RZ.spinning` を追加、`applyRZoom` で `flipEl` に `rotate` を適用、`stage.pointerdown` で `Shift+右ドラッグ` を検出（クリスタ準拠、横ドラッグ量 × 0.35°）。パン中も回転補正で自然にドラッグ方向へ動く（rot 分逆回転して補正）。`zrBtn`（等倍）で回転もリセット。zoomLab に度数表示。
+  - **ブラシサイズカーソル**：draw / erase 時に `anno` の `cursor='none'` にし、既存 `szRing` を `anno.onpointermove` でリアルタイム追従表示（サイズは `brushW`/`eraseW` × `RZ.s`）。`pointerleave` で非表示。それ以外のツールは `crosshair`。
+  - `pointercancel` を追加：ペン離脱・OS 割込などでも panning/zooming/spinning を確実に解除。
+
 - (dev v2026.07.29.042) REEL：右クリック水平ドラッグでズームできるように（アノテ窓と同じ挙動）
   - stage の pointerdown で `button===2 && !altKey && pointerType!=='pen'` を検出 → `RZ.zooming=true` にしてポインタ捕捉、`stage.cursor='zoom-in'`。
   - pointermove で `Math.exp((clientX-zx0)*0.006)` で滑らかにズーム倍率変化、rZoomTo で反映。
