@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.040';
+const APP_VERSION='2026.07.29.041';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11111,6 +11111,9 @@ function openReel(){
   function setRTool(t){RV.tool=t;drawB.classList.toggle('on',t==='draw');eraseB.classList.toggle('on',t==='erase');headB.classList.toggle('on',t==='head');shapeB.classList.toggle('on',t==='shape');lassoB.classList.toggle('on',t==='lasso');mannB.classList.toggle('on',t==='mann');if(t!=='head'){rHeadActive=null;rHeadDrag=null}if(t!=='shape'){rShapeDraft=null}if(t!=='lasso'){try{reelLassoClearSelection()}catch(_){}}if(t!=='mann'){reelSelectedMann=null;reelMannDrag=null;reelMannHoverAxis=null}anno.style.pointerEvents=t?'auto':'none';anno.style.cursor=t?'crosshair':'';if(t){RZ.hand=false;handB.classList.remove('on');stage.style.cursor='';video.pause()}try{rebuildRSizeSel()}catch(_){}}
   /* 初期化：ツール未選択でも一覧を作っておく（disable 状態） */
   try{RV.brushW=RV.brushW||4;RV.eraseW=RV.eraseW||16;rebuildRSizeSel()}catch(_){}
+  /* 初期状態は「ツール未選択」— 明示的に anno の pointer-events を none にしないと canvas の CSS デフォルト（auto）で
+     マウス操作が anno に届いてしまい、意図せずクリック位置に点が描かれる。 */
+  anno.style.pointerEvents='none';anno.style.cursor='';
   /* 顔ガイドの操作状態（アノテ窓と同じ形式） */
   let rHeadActive=null,rHeadDrag=null;
   /* 図形の描画中ドラフト（アノテ窓の shapeDraft と同じ形式） */
@@ -11489,6 +11492,8 @@ function openReel(){
     drawAnno();drawFTL();updUnsent();_pushHistR();
   }
   anno.onpointerdown=e=>{
+    if(!RV.tool)return; /* ツール未選択なら何もしない（保険） */
+    if(e.button!==0)return; /* 左ボタンのみ（右クリックは stage 側の pie menu / パンに譲る） */
     if(RV.tool==='draw'){anno.setPointerCapture(e.pointerId);const p0=ptA(e);{const pr=samplePressure(e);if(pr!=null)p0.push(pr)}RV.stroke={color:colorI.value,points:[p0],f:dispF(),layer:RV.activeLayer,w:RV.brushW/anno.width}}
     else if(RV.tool==='erase'){anno.setPointerCapture(e.pointerId);RV.erasing=true;eraseR(e)}
     else if(RV.tool==='head'){reelHeadDown(e)}

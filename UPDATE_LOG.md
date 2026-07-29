@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.041) REEL：ツール未選択でもマウス操作が描画されてしまう問題を修正
+  - 原因：`setRTool` が初期化時に呼ばれず、anno（canvas）の CSS デフォルト `pointer-events:auto` のままだった。ツール未選択でも anno がクリックを受け、pointerdown 分岐で仕様上何も起きないはずでも一部条件で意図せぬ挙動になっていた。
+  - 対応：初期化直後に `anno.style.pointerEvents='none'` を明示。`anno.onpointerdown` の先頭に `if(!RV.tool)return;` と `if(e.button!==0)return;` を追加（左クリックのみ・ツール選択時のみ受け付け）。
+
 - (dev v2026.07.29.040) REEL：タイムスライダ即時更新＋描画ツールのカーソル修正
   - `reelAfterEdit` の末尾で `drawFTL` と `reelNotes` も呼ぶように。クリア後にタイムラインのマーカーが即消える／コメント欄も即更新される。
   - `setRTool` のカーソルを `t?'crosshair':''` に統一。ペン／消しゴム時に矢印のままだった問題を解消（描画時は全ツール crosshair 表示）。
