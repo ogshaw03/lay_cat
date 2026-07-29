@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.026';
+const APP_VERSION='2026.07.29.027';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10713,23 +10713,23 @@ function openReel(){
   /* コメントパネル（FBと同じ・noteBlock共用） */
   const cside=ce(d,'div','fb-side');
   cside.appendChild(ce(d,'div','fb-side-head','コメント / FB'));
-  /* 現在のクリップ（ショットの工程）のステータスをプルダウンで変更（レビューのアノテ画面と同じ形式） */
-  const statusBar=ce(d,'div','reel-status');cside.appendChild(statusBar);
+  /* 現在のクリップ（ショットの工程）のステータスをプルダウンで変更（レビューのアノテ画面と同じ形式）。
+     アノテ窓と揃えるため、cside 上部ではなくヘッダの clipInfo（レビュー担当バッジの隣）に配置する。
+     旧 statusBar 要素は非表示のプレースホルダとして残置。 */
+  const statusBar=ce(d,'div','reel-status');statusBar.style.display='none';cside.appendChild(statusBar);
   function updReelStatus(){
-    statusBar.innerHTML='';
     const c=reelUI.clips[reelUI.cur];const n=c&&c.nodeId?getNode(c.nodeId):null;
-    if(!n){statusBar.style.display='none';return}
-    statusBar.style.display='';
-    const shot=n.parentId?getNode(n.parentId):null;
-    statusBar.appendChild(ce(d,'span','rs-lab',(shot?shot.name+' / ':'')+n.name));
+    if(!n)return;
     const cur=nodeStatus(n);const _ps=projStatuses(n);
     const sel=ce(d,'select','reel-status-sel');
+    sel.style.cssText='font-size:11px;padding:1px 6px;border-radius:10px;background:transparent;font-weight:600;white-space:nowrap;height:22px';
     {const o=ce(d,'option',null,'未着手');o.value='empty';if(cur==='empty')o.selected=true;sel.appendChild(o)}
     for(const stt of _ps){const o=ce(d,'option',null,stt.label);o.value=stt.id;if(cur===stt.id)o.selected=true;sel.appendChild(o)}
     if(cur!=='empty'&&!_ps.some(s=>s.id===cur)){const o=ce(d,'option',null,'（不明: '+cur+'）');o.value=cur;o.selected=true;sel.appendChild(o)} /* 未知IDでも消さず保持 */
     const c2=(cur==='empty')?STAGE_GRAY:((_ps.find(s=>s.id===cur)||{}).color||STAGE_GRAY);sel.style.borderColor=c2;sel.style.color=c2;
-    sel.onchange=async()=>{if(sel.value==='empty')delete n.status;else n.status=sel.value;await persist();updReelStatus();try{render();resolveThumbs()}catch(_){}try{reelRender()}catch(_){}};
-    statusBar.appendChild(sel);
+    sel.onchange=async()=>{if(sel.value==='empty')delete n.status;else n.status=sel.value;await persist();updReelHeaderInfo();try{render();resolveThumbs()}catch(_){}try{reelRender()}catch(_){}};
+    /* clipInfo には updReelHeaderInfo が名前・バッジを埋めた後に append される（loadCur の呼び出し順で担保） */
+    clipInfo.appendChild(sel);
   }
   reelUI.updStatus=updReelStatus;
   /* ヘッダ (REEL / LayCAT の隣) に「ショット名 / 工程名」と担当・レビュー担当バッジを表示。
@@ -10760,6 +10760,8 @@ function openReel(){
     };
     clipInfo.appendChild(mkChip('担当',asg,'#7AB6FF'));
     if(rev)clipInfo.appendChild(mkChip('レビュー',rev,'#A56BF0'));
+    /* レビューバッジの右にステータスプルダウンを追加（アノテ窓と揃える） */
+    try{updReelStatus()}catch(_){}
   }
   reelUI.updHeader=updReelHeaderInfo;
   const clist=ce(d,'div','fb-notes');cside.appendChild(clist);
@@ -11446,7 +11448,7 @@ function openReel(){
     cta.value=(c&&c.commentDraft)||''; /* コメント下書きはカットごとに保持 */
     resetRZoom(); /* クリップ切替時はズーム/トラックをリセット */
     const dt=rvData();RV.FPS=(c&&c.fps)||(dt&&dt.v.fps)||24;fpsS.value=String(RV.FPS);
-    buildLayerPanel();reelNotes();updUnsent();updReelStatus();updReelHeaderInfo();
+    buildLayerPanel();reelNotes();updUnsent();updReelHeaderInfo();/* updReelStatus は updReelHeaderInfo が末尾で呼ぶ */
     if(!c){hideBridge();activate(idleVid);reelRender();return}
     const target=getVid(c.url); /* キャッシュ済みなら即・デコード済みで先頭待機 */
     if(target===video){
