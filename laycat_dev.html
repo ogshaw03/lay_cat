@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.024';
+const APP_VERSION='2026.07.29.025';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10577,6 +10577,31 @@ function openReel(){
   const _reelEraserSvg='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H7L3 16c-.5-.5-.5-1.5 0-2L14 3c.5-.5 1.5-.5 2 0l5 5c.5.5.5 1.5 0 2L10 21"/><path d="M14 6l4 4"/></svg>';
   const drawB=mkB('','ペン（クリックで ON/OFF）');drawB.innerHTML=_reelPenSvg;drawB.style.padding='4px 8px';
   const eraseB=mkB('','消しゴム（クリックで ON/OFF・なぞって消す・選択中レイヤーのみ）');eraseB.innerHTML=_reelEraserSvg;eraseB.style.padding='4px 8px';
+  /* 顔の向きガイド（アノテ窓の headBtn と同じ挙動）— ドラッグ=回転／Shift=傾き／Ctrl=大きさ／中心=移動。消しゴムで削除。 */
+  const headB=mkB('◑ 顔の向き','顔の向きガイド（正中線）を3D的に配置。ドラッグ=回転／Shift+ドラッグ=傾き（ロール）／Ctrl+ドラッグ=大きさ／中心をドラッグ=移動。消しゴムで削除。');
+  /* 図形（四角／丸／矢印）— アノテ窓の shapeBtn と同じホバードロップダウン方式 */
+  const R_RECT_SVG='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="1"/></svg>';
+  const R_ELLIPSE_SVG='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg>';
+  const R_ARROW_SVG='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="12,5 19,5 19,12"/></svg>';
+  const R_SHAPE_ICONS={rect:R_RECT_SVG,ellipse:R_ELLIPSE_SVG,arrow:R_ARROW_SVG};
+  const R_SHAPE_LABELS={rect:'四角',ellipse:'丸',arrow:'矢印'};
+  let rShapeMode='rect';
+  const shapeB=mkB('','図形（クリックで ON/OFF・ホバーで種類選択）');shapeB.innerHTML=R_SHAPE_ICONS[rShapeMode];shapeB.style.padding='4px 8px';
+  const shapeWrap=ce(d,'div');shapeWrap.style.cssText='position:relative;display:inline-block;line-height:0';
+  shapeWrap.appendChild(shapeB);
+  const shapeDD=ce(d,'div');shapeDD.style.cssText='position:absolute;top:100%;left:0;margin-top:6px;background:#1c1c22;border:1px solid #2a2a32;border-radius:6px;padding:4px;z-index:1000;display:none;flex-direction:column;gap:2px;min-width:110px;box-shadow:0 6px 18px rgba(0,0,0,.4)';
+  const _rShapeDDItem=mode=>{
+    const it=ce(d,'button','btn');
+    it.innerHTML=R_SHAPE_ICONS[mode]+'<span style="margin-left:8px;font-size:12px">'+R_SHAPE_LABELS[mode]+'</span>';
+    it.style.cssText='display:flex;align-items:center;justify-content:flex-start;width:100%;padding:6px 10px;background:'+(rShapeMode===mode?'#3a2a5a':'transparent');
+    it.onmousedown=(e)=>{e.preventDefault();rShapeMode=mode;shapeB.innerHTML=R_SHAPE_ICONS[mode];shapeDD.style.display='none';setRTool('shape');for(const c of shapeDD.children)c.style.background='transparent';it.style.background='#3a2a5a'};
+    return it;
+  };
+  ['rect','ellipse','arrow'].forEach(m=>shapeDD.appendChild(_rShapeDDItem(m)));
+  shapeWrap.appendChild(shapeDD);
+  let _rShapeDDTimer=null;
+  shapeWrap.addEventListener('mouseenter',()=>{clearTimeout(_rShapeDDTimer);_rShapeDDTimer=setTimeout(()=>{shapeDD.style.display='flex'},250)});
+  shapeWrap.addEventListener('mouseleave',()=>{clearTimeout(_rShapeDDTimer);_rShapeDDTimer=setTimeout(()=>{shapeDD.style.display='none'},180)});
   /* ブラシ／消しゴムサイズはアノテ窓と同じく 1 つの selector に統合し、ツールに応じて
      プリセットとプレフィックスを切替（BRUSH_SIZES / ERASE_SIZES）。 */
   const REEL_BRUSH_SIZES=[2,4,6,10,16,24];const REEL_ERASE_SIZES=[8,16,28,44,64];
@@ -10641,7 +10666,7 @@ function openReel(){
   /* 描画ツールは動画の上側、フレーム操作は下側 */
   const fbarTop=ce(d,'div','ctr');fbarTop.style.cssText='border-top:none;border-bottom:1px solid;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1';
   /* 統合 sizeS は brushS/eraseS の代わりに 1 つだけ配置（アノテ窓と同じ配置） */
-  [drawB,eraseB,sizeS,presB,clrs,colorI,durS,ghostB,eyeB,traceB,layB,undoB,redoB,clrB].forEach(x=>fbarTop.appendChild(x));
+  [drawB,eraseB,headB,shapeWrap,sizeS,presB,clrs,colorI,durS,ghostB,eyeB,traceB,layB,undoB,redoB,clrB].forEach(x=>fbarTop.appendChild(x));
   maincol.insertBefore(fbarTop,stage);
   [pF,nF,fLab,fpsS,ziBtn,zoBtn,zoomLab,zrBtn,handB,flipB,inB,outB,rangeClrB].forEach(x=>fbar.appendChild(x));
   /* 画面操作ヒント（右寄せ・2行2列）。REELはズーム＝ホイール/ボタン、パン＝「トラック」＋ドラッグ、回転なし */
@@ -10842,6 +10867,8 @@ function openReel(){
     const inW=p=>p.f!=null&&f>=p.f&&f<p.f+pdur;
     const pend=RV.pending.filter(p=>inW(p)&&lyOn(p));if(RV.stroke&&inW(RV.stroke)&&lyOn(RV.stroke))pend.push(RV.stroke);
     paintStrokeList(ctx,anno.width,anno.height,pend,1);
+    /* 図形ドラフト（ドラッグ中プレビュー） */
+    if(RV.tool==='shape'&&rShapeDraft)paintShape(ctx,anno.width,anno.height,rShapeDraft,1);
     updateLayerPanel();
   }
   /* ==== ゴースト / トレペ / ズーム・トラック（レビューページと同じ） ==== */
@@ -10949,11 +10976,17 @@ function openReel(){
   ftl.onpointermove=e=>{if(!RV.scrub)return;gSeek(gFromX(e));RV.last=-1};
   ftl.onpointerup=()=>{RV.scrub=false;RV.scrubT=-1;RV.last=-1};
   /* ツール */
-  function setRTool(t){RV.tool=t;drawB.classList.toggle('on',t==='draw');eraseB.classList.toggle('on',t==='erase');anno.style.pointerEvents=t?'auto':'none';if(t){RZ.hand=false;handB.classList.remove('on');stage.style.cursor='';video.pause()}try{rebuildRSizeSel()}catch(_){}}
+  function setRTool(t){RV.tool=t;drawB.classList.toggle('on',t==='draw');eraseB.classList.toggle('on',t==='erase');headB.classList.toggle('on',t==='head');shapeB.classList.toggle('on',t==='shape');if(t!=='head'){rHeadActive=null;rHeadDrag=null}if(t!=='shape'){rShapeDraft=null}anno.style.pointerEvents=t?'auto':'none';anno.style.cursor=(t==='draw'||t==='erase')?'':((t==='head'||t==='shape')?'crosshair':'');if(t){RZ.hand=false;handB.classList.remove('on');stage.style.cursor='';video.pause()}try{rebuildRSizeSel()}catch(_){}}
   /* 初期化：ツール未選択でも一覧を作っておく（disable 状態） */
   try{RV.brushW=RV.brushW||4;RV.eraseW=RV.eraseW||16;rebuildRSizeSel()}catch(_){}
+  /* 顔ガイドの操作状態（アノテ窓と同じ形式） */
+  let rHeadActive=null,rHeadDrag=null;
+  /* 図形の描画中ドラフト（アノテ窓の shapeDraft と同じ形式） */
+  let rShapeDraft=null;
   drawB.onclick=()=>setRTool(RV.tool==='draw'?null:'draw');
   eraseB.onclick=()=>setRTool(RV.tool==='erase'?null:'erase');
+  headB.onclick=()=>setRTool(RV.tool==='head'?null:'head');
+  shapeB.onclick=()=>setRTool(RV.tool==='shape'?null:'shape');
   const ptA=e=>{const r=anno.getBoundingClientRect();let nx=(e.clientX-r.left)/r.width;const ny=(e.clientY-r.top)/r.height;if(RZ.flip<0)nx=1-nx;return[nx,ny]};
   function eraseR(e){
     const[x,y]=ptA(e);const r=RV.eraseW/2/anno.width;
@@ -10969,15 +11002,67 @@ function openReel(){
   const _restoreR=s=>{RV.pending.splice(0,RV.pending.length,...JSON.parse(JSON.stringify(s.pending)));RV.stroke=null};
   const _pushHistR=()=>{RV.hist=RV.hist.slice(0,RV.histIdx+1);RV.hist.push(_snapR());RV.histIdx=RV.hist.length-1;if(RV.hist.length>50){RV.hist=RV.hist.slice(-50);RV.histIdx=RV.hist.length-1}};
   _pushHistR(); /* 初期状態を履歴の起点として保存 */
+  /* 顔ガイド：アノテ窓 headPointerDown/Move と同じロジック（座標は ptA、pending は RV.pending） */
+  function reelHeadDown(e){
+    anno.setPointerCapture(e.pointerId);
+    const [x,y]=ptA(e);const f=dispF();const aspect=anno.height/anno.width;
+    let hit=null;
+    for(let i=RV.pending.length-1;i>=0;i--){const p=RV.pending[i];if(p.kind!=='head'||(p.layer||1)!==RV.activeLayer)continue;if(p.f!==f)continue;if(Math.hypot(p.cx-x,(p.cy-y)*aspect)<=(p.r||0.12)*1.3){hit=p;break}}
+    let s;
+    if(hit)s=hit;
+    else{s={kind:'head',cx:x,cy:y,r:0.12,yaw:0,pitch:0,roll:0,color:colorI.value,f,layer:RV.activeLayer};RV.pending.push(s)}
+    const d=Math.hypot(s.cx-x,(s.cy-y)*aspect);
+    let mode='rotate';
+    if(e.shiftKey)mode='roll';else if(e.ctrlKey||e.metaKey)mode='size';
+    else if(hit&&d<(s.r||0.12)*0.24)mode='move';
+    const ang0=Math.atan2((y-s.cy)*aspect,(x-s.cx));
+    rHeadDrag={s,mode,nx0:x,ny0:y,yaw0:s.yaw,pitch0:s.pitch,roll0:s.roll,r0:s.r,cx0:s.cx,cy0:s.cy,ang0,aspect};
+    rHeadActive=s;drawAnno();drawFTL();updUnsent();
+  }
+  function reelHeadMove(e){
+    if(!rHeadDrag)return;
+    const [nx,ny]=ptA(e);const s=rHeadDrag.s;
+    const ndx=nx-rHeadDrag.nx0,ndy=ny-rHeadDrag.ny0;
+    if(rHeadDrag.mode==='rotate'){const cr=Math.cos(rHeadDrag.roll0),sr=Math.sin(rHeadDrag.roll0);const ldx=ndx*cr+ndy*sr,ldy=-ndx*sr+ndy*cr;s.yaw=rHeadDrag.yaw0+ldx*Math.PI*2;s.pitch=rHeadDrag.pitch0+ldy*Math.PI*2;}
+    else if(rHeadDrag.mode==='roll'){const ang1=Math.atan2((ny-s.cy)*rHeadDrag.aspect,(nx-s.cx));s.roll=rHeadDrag.roll0-(ang1-rHeadDrag.ang0);}
+    else if(rHeadDrag.mode==='size'){s.r=Math.max(0.03,Math.min(0.6,rHeadDrag.r0+ndx));}
+    else if(rHeadDrag.mode==='move'){s.cx=rHeadDrag.cx0+ndx;s.cy=rHeadDrag.cy0+ndy;}
+    drawAnno();
+  }
+  /* 図形（アノテ窓の shapePointerDown/Move/Up と同じロジック） */
+  function reelShapeDown(e){
+    anno.setPointerCapture(e.pointerId);
+    const[x,y]=ptA(e);
+    rShapeDraft={kind:rShapeMode,x0:x,y0:y,x1:x,y1:y,color:colorI.value,w:RV.brushW/anno.width,f:dispF(),layer:RV.activeLayer};
+    drawAnno();
+  }
+  function reelShapeMove(e){
+    if(!rShapeDraft)return;
+    const[x,y]=ptA(e);
+    rShapeDraft.x1=x;rShapeDraft.y1=y;
+    drawAnno();
+  }
+  function reelShapeUp(){
+    if(!rShapeDraft)return;
+    const dx=(rShapeDraft.x1-rShapeDraft.x0)*anno.width;
+    const dy=(rShapeDraft.y1-rShapeDraft.y0)*anno.height;
+    if(Math.hypot(dx,dy)>=6){RV.pending.push(rShapeDraft)}
+    rShapeDraft=null;
+    drawAnno();drawFTL();updUnsent();_pushHistR();
+  }
   anno.onpointerdown=e=>{
     if(RV.tool==='draw'){anno.setPointerCapture(e.pointerId);const p0=ptA(e);{const pr=samplePressure(e);if(pr!=null)p0.push(pr)}RV.stroke={color:colorI.value,points:[p0],f:dispF(),layer:RV.activeLayer,w:RV.brushW/anno.width}}
     else if(RV.tool==='erase'){anno.setPointerCapture(e.pointerId);RV.erasing=true;eraseR(e)}
+    else if(RV.tool==='head'){reelHeadDown(e)}
+    else if(RV.tool==='shape'){reelShapeDown(e)}
   };
-  anno.onpointermove=e=>{if(RV.stroke){const evs=e.getCoalescedEvents?e.getCoalescedEvents():null;if(evs&&evs.length){for(const ce of evs){const p=ptA(ce);const pr=samplePressure(ce);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}}else{const p=ptA(e);const pr=samplePressure(e);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}drawAnno()}else if(RV.erasing)eraseR(e)}; /* 合体イベントで速書きの中間点も取得。ペン時は筆圧を付与 */
+  anno.onpointermove=e=>{if(RV.stroke){const evs=e.getCoalescedEvents?e.getCoalescedEvents():null;if(evs&&evs.length){for(const ce of evs){const p=ptA(ce);const pr=samplePressure(ce);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}}else{const p=ptA(e);const pr=samplePressure(e);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}drawAnno()}else if(RV.erasing)eraseR(e);else if(rHeadDrag)reelHeadMove(e);else if(RV.tool==='shape'&&rShapeDraft)reelShapeMove(e)}; /* 合体イベントで速書きの中間点も取得。ペン時は筆圧を付与 */
   anno.onpointerup=()=>{
     let changed=false;
     if(RV.stroke){RV.pending.push(RV.stroke);RV.stroke=null;drawAnno();drawFTL();updUnsent();changed=true}
     if(RV.erasing){RV.erasing=false;if(RV.eraseChanged){RV.eraseChanged=false;changed=true}}
+    if(rHeadDrag){rHeadDrag=null;drawFTL();updUnsent();changed=true}
+    if(RV.tool==='shape'&&rShapeDraft){reelShapeUp();/* _pushHistR は reelShapeUp が呼ぶので changed は false のまま */}
     if(changed)_pushHistR();
   };
   /* Alt+右ドラッグでブラシ/消しゴムサイズ調整（サイズプレビュー円付き） */

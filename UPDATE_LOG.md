@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.025) REEL：顔ガイドと図形ツールをアノテ窓から移植（Phase 3.1 + 3.2）
+  - **顔ガイド**：ツールバーに `◑ 顔の向き` ボタン追加。アノテ窓と同一ロジック（ドラッグ=回転／Shift=傾き／Ctrl=大きさ／中心をドラッグ=移動、消しゴムで削除）。`RV.pending` に `kind:'head'` を push、共通ペインタ `paintHead` で描画。undo/redo・レイヤーフィルタ・アノテ表示切替（ゴースト含む）すべて既存経路で流用。
+  - **図形**：ツールバーに図形ボタン（アイコンが選択中の種類に応じて変化）＋ホバーで四角/丸/矢印のドロップダウン。ドラッグで開始点→終点を指定、閾値(6px)以下は破棄。`RV.pending` に `kind: 'rect'|'ellipse'|'arrow'`、共通ペインタ `paintShape` で描画。ドラフト（ドラッグ中プレビュー）は `drawAnno()` 内で追加描画。
+  - `setRTool` に `head` / `shape` を対応、`anno.onpointerdown/move/up` に分岐追加。
+
 - (dev v2026.07.29.024) REEL：コメント送信フローをアノテ窓と統一（Phase 2）
   - REEL の「送信」ボタン（`csend`）を、`drafts` に積むだけの `reelRecordCur` から、現在クリップの pending＋コメントを即 `v.review.notes` に反映してその場で `persist()` する `reelSendCur` に差し替え。アノテ窓の `sendCurrent` と同じ 1 段送信フローになった。
   - 「保存」ボタン（`sendAllBtn`）は常時 `display:none` に。`updUnsent` の未送信ラベルは残す（他クリップに未送信の pending が残っているとユーザーが気付けるように）。
