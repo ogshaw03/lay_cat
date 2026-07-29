@@ -13,6 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.015) `Syne` フォント全廃 → `Space Grotesk + Noto Sans JP` に統一（読みやすさ改善）
+  - アノテ窓の動画タイトル (`.fb-title`) が読みづらいという指摘。原因は `--font-head:'Syne'` — 装飾強めで CJK も英数字も両方読みにくかった。
+  - `--font-head` を `'Space Grotesk','Noto Sans JP',sans-serif`（`--font-code` と同じスタック）に変更。ヘッダ・タイトル系 27 箇所すべてに一度に反映。
+  - Google Fonts `<link>` から `Syne:wght@...` を撤去。読み込みも減る。
+  - 同じく `access-console.html` / `admin-audit.html` の `--font-head` も同様に置換。`laycat.html`（Beta）は反映指示待ちで据え置き。`OGREF_Beta.html` は静的リファレンスなので触らず。
+  - **今後 `Syne` は使わないルール**（CLAUDE.md に方針として記録するかは別途相談）。
+
 - (dev v2026.07.29.014) アノテ窓：担当／レビューバッジがメールアドレス表示になるのを修正
   - `assignee`/`reviewer` はメンバー ID（メールアドレス）で保持しているのに、そのまま `b.textContent` に出していたため生メール表示になっていた。
   - `memberById(root, id)` で名簿から解決した `m.name` を表示するよう変更。tooltip には「表示名 <メール>」を出して元 ID もわかるように。
