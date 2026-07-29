@@ -2926,7 +2926,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.013';
+const APP_VERSION='2026.07.29.014';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7914,17 +7914,21 @@ function openReview(nodeId,versionId,opts){
   const stEl=el('span');function updSt(){const st=stInfo(node);stEl.className='badge';stEl.textContent=st.label;stEl.style.background=hexA(st.color,.18);stEl.style.color=st.color}updSt();
   top.appendChild(stEl);
   /* 作業担当者バッジ：ショット（node の親 or 自身がショット）の assignee / reviewer を表示。
-     未設定なら「担当未定」。担当ラベルは記録される担当者アイコンを既存の renderMemberChip 相当で簡略表示。 */
+     assignee はメンバー ID（メールアドレス）で持っているため、名簿から m.name に変換して表示する
+     （変換前は生のメール文字列がそのまま出ていた）。 */
   {
     /* 対象は node が review タイプならその親ショット、それ以外なら node 自身 */
     const shotForAsg=(node.type==='review'?(getNode(node.parentId)||node):node);
     const asg=shotForAsg&&shotForAsg.assignee||node.assignee||'';
     const rev=shotForAsg&&shotForAsg.reviewer||node.reviewer||'';
+    const rootProj=rootOf(node);
+    const dispName=id=>{if(!id)return '';const m=rootProj?memberById(rootProj,id):null;return m?(m.name||m.id||id):id};
     const mkChip=(label,val,col)=>{
+      const nm=dispName(val);
       const b=el('span','badge');
       b.style.cssText='background:'+hexA(col,.16)+';color:'+col+';font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600';
-      b.textContent=label+':'+(val?val:'—');
-      b.title=label+(val?('：'+val):'（未設定）');
+      b.textContent=label+':'+(nm?nm:'—');
+      b.title=label+(val?('：'+nm+(nm!==val?(' <'+val+'>'):'')):'（未設定）');
       return b;
     };
     top.appendChild(mkChip('担当',asg,'#7AB6FF'));
