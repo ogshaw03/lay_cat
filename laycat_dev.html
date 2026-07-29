@@ -2925,7 +2925,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.006';
+const APP_VERSION='2026.07.29.007';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3641,8 +3641,17 @@ function openSubPicker(){
     if(lv&&lv.v.thumb)storage.getURL(lv.v.thumb).then(u=>{if(u)th.style.backgroundImage='url("'+u+'")'});
     row.appendChild(th);
     row.appendChild(el('span','pk-nm',shot.name));
+    const chips=el('div','pk-stages');
+    for(const stg of visStages){
+      const chip=el('div','pk-chip'+(sel.has(stg.id)?' on':''));
+      const dot=el('span','pk-dot');dot.style.background=stageBadgeColor(stg);chip.appendChild(dot);
+      chip.appendChild(document.createTextNode(stg.name));
+      chip.onclick=e=>{e.stopPropagation();if(sel.has(stg.id))sel.delete(stg.id);else sel.add(stg.id);chip.classList.toggle('on',sel.has(stg.id));updCount()};
+      chips.appendChild(chip);
+    }
+    row.appendChild(chips);
     /* 作業担当者：この行の見える工程からユニークなアサイニーを集めて色ドット付きバッジで表示。
-       列幅は固定なので、担当者数や名前の長さでチップ位置がズレない（多い場合は overflow hidden）。 */
+       列は右端固定・幅固定なので、工程チップ数や担当者数に依らず列位置がブレない。 */
     const asgWrap=el('div','pk-asg');
     const uniq=[];const seen=new Set();
     for(const st of visStages){const id=st.assignee;if(!id)continue;const k=String(id).toLowerCase();if(seen.has(k))continue;seen.add(k);uniq.push(id)}
@@ -3660,15 +3669,6 @@ function openSubPicker(){
       const b=el('span','pk-ab pk-ab-none','未割り当て');asgWrap.appendChild(b);
     }
     row.appendChild(asgWrap);
-    const chips=el('div','pk-stages');
-    for(const stg of visStages){
-      const chip=el('div','pk-chip'+(sel.has(stg.id)?' on':''));
-      const dot=el('span','pk-dot');dot.style.background=stageBadgeColor(stg);chip.appendChild(dot);
-      chip.appendChild(document.createTextNode(stg.name));
-      chip.onclick=e=>{e.stopPropagation();if(sel.has(stg.id))sel.delete(stg.id);else sel.add(stg.id);chip.classList.toggle('on',sel.has(stg.id));updCount()};
-      chips.appendChild(chip);
-    }
-    row.appendChild(chips);
     return row;
   };
   function buildGrid(){
