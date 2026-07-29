@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.030';
+const APP_VERSION='2026.07.29.031';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10882,7 +10882,7 @@ function openReel(){
   function clampReelSize(){try{const w=reelWin.outerWidth,h=reelWin.outerHeight;const nw=Math.max(w,REEL_MINW),nh=Math.max(h,REEL_MINH);if(nw!==w||nh!==h)reelWin.resizeTo(nw,nh)}catch(_){}}
   reelWin.addEventListener('resize',()=>{clampReelSize();fitAnno()});
   clampReelSize();
-  reelWin.addEventListener('beforeunload',e=>{if(hasUnsent()){e.preventDefault();e.returnValue='';return ''}});
+  /* 未送信はすべて動画埋め込み扱いなので閉じる時の確認ダイアログは出さない。 */
   function drawAnno(){
     const ctx=anno.getContext('2d');ctx.clearRect(0,0,anno.width,anno.height);
     const dt=rvData();const f=dispF();
@@ -11517,27 +11517,13 @@ function openReel(){
   csend.onclick=reelSendCur;
   cta.oninput=()=>{const c=reelUI.clips[reelUI.cur];if(c){c.commentDraft=cta.value;c._mentions=(cta._mentions||[]).slice();}updUnsent()};
   cta.onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();reelSendCur()}}; /* Enter=改行、Ctrl/Cmd+Enter=送信 */
-  /* 送信バー（未送信の記入を全ショットのレビューページへ反映） */
-  const unsentBar=ce(d,'div');unsentBar.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid #2a2a2f;font-size:11px';
-  const unsentLab=ce(d,'span',null,'');unsentLab.style.color='#e0a63a';
-  const usp=ce(d,'div');usp.style.flex='1';
-  /* アノテウィンドウと同じ 1 段送信フローに統一したため「保存」ボタンは非表示にする。
-     万一の緊急救済用として要素と reelSubmit は残しておく（updUnsent 内で常に display:none）。 */
-  const sendAllBtn=ce(d,'button','btn btn-sm on','保存');sendAllBtn.title='（未使用）Reelで使用中の全ショットの未送信を一括保存';sendAllBtn.onclick=reelSubmit;sendAllBtn.style.display='none';
-  unsentBar.appendChild(unsentLab);unsentBar.appendChild(usp);unsentBar.appendChild(sendAllBtn);
-  cside.insertBefore(unsentBar,ciw);
-  /* 未送信＝記入済み下書き(drafts)＋未記入の pending アノテ＋入力中コメント。
-     どれか1つでもあれば送信ボタンを表示する（記入し忘れ・アノテのみでも送信できるように） */
-  function updUnsent(){
-    let clips=0,items=0;
-    for(const c of reelUI.clips){
-      const n=((c.drafts&&c.drafts.length)||0)+((c.pending&&c.pending.length)||0)+(((c.commentDraft||'').trim())?1:0);
-      if(n){clips++;items+=n}
-    }
-    /* 他クリップに未送信が残っているとユーザーが気付けるようラベルだけは残す */
-    unsentLab.textContent=items?('未保存: '+items+'件（'+clips+'カット）'):'';
-    sendAllBtn.style.display='none';
-  }
+  /* 送信バーは撤去（未送信はすべて動画埋め込み扱いなので表示不要）。
+     要素は他コード互換のため生成のみ行い、DOM には追加しない。 */
+  const unsentBar=ce(d,'div');unsentBar.style.display='none';
+  const unsentLab=ce(d,'span',null,'');
+  const sendAllBtn=ce(d,'button','btn btn-sm on','保存');sendAllBtn.onclick=reelSubmit;sendAllBtn.style.display='none';
+  /* 未送信＝すべて動画埋め込み扱いなので UI 表示は行わない。関数は他コード互換で残す。 */
+  function updUnsent(){}
   reelUI.updUnsent=updUnsent;
 
   /* タイムライン */
