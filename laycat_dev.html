@@ -2926,7 +2926,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.012';
+const APP_VERSION='2026.07.29.013';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6069,7 +6069,18 @@ function noteBlock(v,n,opts){
     else{note.appendChild(ta);note.appendChild(row);}
     attachMention(ta,opts.root);ta.focus();
   };
-  del.onclick=async()=>{if(!confirm('コメントを削除しますか？'))return;v.review.notes=v.review.notes.filter(x=>x!==n);if(opts.refresh)await opts.refresh()};
+  del.onclick=async()=>{
+    if(!confirm('コメントを削除しますか？'))return;
+    /* 参照比較 (x!==n) だと autoRefresh の 3-way マージで v.review.notes に新しい参照が
+       入ったあとに n が stale になって削除できないため、キー比較に統一（マージ側と同じ nk）。 */
+    const nk=x=>x.id||((x.time||'')+'|'+(x.text||'')+'|'+(x.frame!=null?x.frame:''));
+    const tk=nk(n);
+    v.review.notes=v.review.notes.filter(x=>nk(x)!==tk);
+    /* note tombstone (_ntomb) に記録：3-way マージで remote から復活しないようにする */
+    v._ntomb=Array.isArray(v._ntomb)?v._ntomb:[];
+    if(!v._ntomb.some(t=>t&&t.k===tk))v._ntomb.push({k:tk,at:nowIso()});
+    if(opts.refresh)await opts.refresh();
+  };
   return note;
 }
 
@@ -7400,8 +7411,19 @@ function _mergeNodeInto(a,b,opts){
     if(av&&v.review&&Array.isArray(v.review.notes)){
       av.review=av.review||{status:'pending',notes:[]};av.review.notes=Array.isArray(av.review.notes)?av.review.notes:[];
       const nk=n=>n.id||((n.time||'')+'|'+(n.text||'')+'|'+(n.frame!=null?n.frame:''));
+      /* note tombstone (_ntomb)：削除された note をキーで記録。union で復活しないよう
+         先に remote 側の _ntomb を local に統合し、tombstone に載る note を local からも
+         取り除いてから、新規追加時も tombstone チェックする（comment tombstone と同じパターン）。 */
+      av._ntomb=Array.isArray(av._ntomb)?av._ntomb:[];
+      if(Array.isArray(v._ntomb)&&v._ntomb.length){
+        const _tk=t=>(t&&t.k)||'';
+        const _sn=new Set(av._ntomb.map(_tk));
+        for(const t of v._ntomb){const k=_tk(t);if(k&&!_sn.has(k)){av._ntomb.push(t);_sn.add(k)}}
+      }
+      const tombNks=new Set(av._ntomb.map(t=>t&&t.k).filter(Boolean));
+      if(tombNks.size)av.review.notes=av.review.notes.filter(nt=>!tombNks.has(nk(nt)));
       const seen=new Set(av.review.notes.map(nk));
-      for(const nt of v.review.notes){const k=nk(nt);if(!seen.has(k)){av.review.notes.push(nt);seen.add(k)}}
+      for(const nt of v.review.notes){const k=nk(nt);if(tombNks.has(k))continue;if(!seen.has(k)){av.review.notes.push(nt);seen.add(k)}}
     }
     if(av&&(av.thumb==null||av.thumb==='')&&v.thumb)av.thumb=v.thumb;
   }

@@ -13,6 +13,14 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.013) コメント削除：1 回で確実に消えるように修正（参照比較→キー比較＋note tombstone `_ntomb` 追加）
+  - 原因 1：`del.onclick` が `filter(x=>x!==n)` の参照比較で削除していたため、autoRefresh の 3-way マージで `v.review.notes` の各 note に新しい参照が入ると `n` が stale になって filter で消えない → 「もう一度削除ボタンを押さないと消えない」現象。
+  - 原因 2：削除しても remote 側にはまだそのノートが残っているので、次の autoRefresh でマージされて復活する可能性があった（note tombstone が無かった）。
+  - 修正：
+    - `del.onclick` を `nk(x)=x.id||time+text+frame` によるキー比較に変更（マージ側と同じ nk）。
+    - 削除時に `v._ntomb.push({k, at})` で note tombstone を記録。
+    - `_mergeNodeInto` の notes 統合部で `_ntomb` を先に統合し、tombstone に載る note は local からも取り除き、remote から新規に来た note も tombstone チェックしてスキップ（既存 `_ctomb` と同じパターン）。
+
 - (dev v2026.07.29.012) アノテ窓：送信バー（未保存 N 件 / 保存ボタン）自体を非表示化
   - v011 で「他フレームに N 件」表記だけ外したが、「未保存 N 件」自体も動画埋め込み目的の下書きが残っているだけで通知の必要が無いというフィードバックを受けて `updSubmit()` を常に非表示にする実装に変更。
   - 送信ボタン自体は入力欄側 (`sb`) に別途あるので通常の送信フローには影響なし。
