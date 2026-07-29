@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.035';
+const APP_VERSION='2026.07.29.036';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10873,8 +10873,12 @@ function openReel(){
     const dt=rvData();clist.innerHTML='';
     if(!dt){clist.appendChild(ce(d,'div','log-empty-note','クリップ未選択'));return}
     const cc=reelUI.clips[reelUI.cur];const cdr=(cc&&cc.drafts)||[];
+    /* REEL 同期モデルで自動生成された embed ノート（id=reel_emb_<node>_<frame>）は pending として anno に描画されるので、
+       コメント欄には出さない（重複防止）。それ以外の旧 noShot=true ノートは削除 UI 付きで表示する。 */
+    const _reelPfx='reel_emb_';
+    const isReelSync=n=>n&&n.id&&n.id.indexOf(_reelPfx)===0;
     const shown=dt.v.review.notes.filter(n=>!noteEmbedOnly(n));
-    const embeds=dt.v.review.notes.filter(n=>noteEmbedOnly(n)); /* 動画埋め込み専用ノート */
+    const embeds=dt.v.review.notes.filter(n=>noteEmbedOnly(n)&&!isReelSync(n));
     if(!shown.length&&!cdr.length&&!embeds.length)clist.appendChild(ce(d,'div','log-empty-note','コメントはまだありません。'));
     const refresh=async()=>{await persist();reelNotes();drawAnno();drawFTL()};
     const shot={fileRef:dt.v.file,fps:dt.v.fps||24,isVideo:true};
@@ -10944,7 +10948,10 @@ function openReel(){
     }
     const pdur=parseInt(durS.value)||1;
     const inW=p=>p.f!=null&&f>=p.f&&f<p.f+pdur;
-    const pend=RV.pending.filter(p=>inW(p)&&lyOn(p));if(RV.stroke&&inW(RV.stroke)&&lyOn(RV.stroke))pend.push(RV.stroke);
+    /* pending は v.review.notes 内の REEL embed ノート（reel_emb_ prefix）として上の描画ループで既に描画される。
+       ここでは RV.stroke（描画中のライブストローク）だけを追加描画する。RV.eye が false のときは
+       上ブロックが走らないので pending 相当も見えなくなる（＝アノテ表示切替と一貫する）。 */
+    const pend=[];if(RV.stroke&&inW(RV.stroke)&&lyOn(RV.stroke))pend.push(RV.stroke);
     paintStrokeList(ctx,anno.width,anno.height,pend,1);
     /* 図形ドラフト（ドラッグ中プレビュー） */
     if(RV.tool==='shape'&&rShapeDraft)paintShape(ctx,anno.width,anno.height,rShapeDraft,1);
@@ -11243,9 +11250,10 @@ function openReel(){
     const[x,y]=ptA(e);const r=RV.eraseW/2/anno.width;
     const f=dispF();const pdur=parseInt(durS.value)||1;
     const cand=[],rest=[];
-    for(const p of RV.pending)((p.f!=null&&f>=p.f&&f<p.f+pdur)?cand:rest).push(p);
+    const affected=new Set();
+    for(const p of RV.pending){if(p.f!=null&&f>=p.f&&f<p.f+pdur){cand.push(p);affected.add(p.f)}else{rest.push(p)}}
     const res=eraseFromList(cand,x,y,r,anno.height/anno.width,RV.activeLayer);
-    if(res){RV.pending.splice(0,RV.pending.length,...rest,...res);drawAnno();drawFTL();RV.eraseChanged=true}
+    if(res){RV.pending.splice(0,RV.pending.length,...rest,...res);drawAnno();drawFTL();RV.eraseChanged=true;try{reelAfterEdit(reelUI.clips[reelUI.cur],affected)}catch(_){}}
   }
   /* Undo/Redo：描画・消しゴム両方を復元可能にする snapshot 履歴 */
   RV.hist=[];RV.histIdx=-1;RV.eraseChanged=false;
@@ -11415,11 +11423,12 @@ function openReel(){
   }
   function reelLassoDelete(){
     if(!rLassoSel)return;
-    const remove=new Set();
-    for(const it of rLassoSel.items)if(it.src==='pending')remove.add(it.stroke);
+    const remove=new Set();const affected=new Set();
+    for(const it of rLassoSel.items)if(it.src==='pending'){remove.add(it.stroke);if(it.stroke.f!=null)affected.add(it.stroke.f)}
     if(remove.size)RV.pending.splice(0,RV.pending.length,...RV.pending.filter(p=>!remove.has(p)));
     rLassoSel=null;
     drawAnno();drawFTL();updUnsent();_pushHistR();
+    try{reelAfterEdit(reelUI.clips[reelUI.cur],affected)}catch(_){}
   }
   /* Delete = 削除／Esc = 選択解除。既存 keydown ハンドラは keys.js 相当なし → reelWin にリスナ追加。
      アノテ窓と挙動を揃える（テキスト入力中は無効）。 */
@@ -11468,6 +11477,8 @@ function openReel(){
     if(RV.tool==='lasso'&&(rLassoPath||rLassoRect||rLassoDrag||rLassoStart)){reelLassoUp();/* 内部で _pushHistR / drawAnno 呼ぶ */}
     if(reelMannDrag){reelMannUp();/* 内部で _pushHistR / drawAnno / updUnsent 呼ぶ */}
     if(changed)_pushHistR();
+    /* 描画・変形が入ったら v.review.notes の REEL embed ノートを同期＋debounce persist */
+    try{reelAfterEdit(reelUI.clips[reelUI.cur])}catch(_){}
   };
   /* Alt+右ドラッグでブラシ/消しゴムサイズ調整（サイズプレビュー円付き） */
   /* 統合 sizeS：ツールに応じて brushW / eraseW を更新（アノテ窓と同じ形式） */
@@ -11493,13 +11504,16 @@ function openReel(){
   undoB.onclick=()=>{if(RV.histIdx<=0)return;RV.histIdx--;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent()};
   redoB.onclick=()=>{if(RV.histIdx>=RV.hist.length-1)return;RV.histIdx++;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent()};
   clrB.onclick=()=>{
-    /* 現在フレーム（表示 dur 範囲内で可視のもの）の pending をクリア。他フレーム＆他クリップの未送信は保持。 */
+    /* 現在フレーム（表示 dur 範囲内で可視のもの）の pending をクリア。他フレーム＆他クリップの未送信は保持。
+       クリア後は v.review.notes 側の REEL embed ノートも同期される（reelAfterEdit 内 → syncFrame で該当フレーム分削除）。 */
     const cf=dispF();const pdur=parseInt(durS.value)||1;
     const inWin=p=>p.f!=null&&cf>=p.f&&cf<p.f+pdur;
+    const affected=new Set();for(const p of RV.pending)if(inWin(p)&&p.f!=null)affected.add(p.f);
     const kept=RV.pending.filter(p=>!inWin(p));
     RV.pending.splice(0,RV.pending.length,...kept);
     if(RV.stroke&&inWin(RV.stroke))RV.stroke=null;
     drawAnno();drawFTL();updUnsent();_pushHistR();
+    try{reelAfterEdit(reelUI.clips[reelUI.cur],affected)}catch(_){}
   };
   /* 記入内容からノート配列を生成（描画は線ごとのフレームに分割）。レビューには push しない。
      レビューページ(record)と共通の buildFrameNotes を使用（ロジック分岐・フレームズレを防ぐ）。 */
@@ -11527,42 +11541,99 @@ function openReel(){
     RV.stroke=null;cta.value='';
     drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
   };
-  /* 現在クリップの pending 全てを v.review.notes に「動画埋め込み専用」ノート（noShot=true）として反映。
-     コメント欄には出さず動画にだけ埋め込まれる。 */
+  /* ─── 常時同期モデル：REEL の pending と v.review.notes 内の「REEL embed ノート」を対応付ける ───
+     真実のソースは v.review.notes。pending はセッション中の表示用ミラー。
+     embed ノート id は `reel_emb_<nodeId>_<frame>` の固定 ID。1 フレーム 1 ノート、drawing 配列に全 stroke／figure。
+     描画・クリア・消しゴム・投げ縄削除の各操作後に該当フレームを reelSyncEmbedFrame で再構築し debounce persist。
+     ⇒ REEL で描いた瞬間からタスクページ側の動画にも埋め込まれ、逆方向の変更も v.review.notes 経由で見える。 */
+  const _reelEmbPrefix=c=>'reel_emb_'+(c&&c.nodeId?c.nodeId:'unknown')+'_';
+  function _reelEmbId(c,frame){return _reelEmbPrefix(c)+frame}
+  function reelSyncEmbedFrame(c,frame){
+    if(!c)return;const vv=vOf(c);if(!vv)return;
+    const pdur=parseInt(durS.value)||1;
+    const key=_reelEmbId(c,frame);
+    /* 既存の同 id ノートを除去（tombstone は打たない：これは同期による再構築であってユーザー削除ではない） */
+    vv.review.notes=vv.review.notes.filter(n=>n.id!==key);
+    const items=(c.pending||[]).filter(p=>p.f===frame);
+    if(!items.length)return;
+    vv.review.notes.push({
+      id:key,
+      author:currentUser(),
+      time:nowIso(),
+      frame:frame,
+      dur:pdur,
+      drawing:items.map(cloneDrawItem),
+      noShot:true
+    });
+  }
+  function reelSyncEmbedAll(c){
+    if(!c)return;
+    const frames=new Set();
+    /* 既存 embed ノートのフレームも対象（そのフレームの pending が空になっていれば削除される） */
+    const vv=vOf(c);
+    if(vv){const pfx=_reelEmbPrefix(c);for(const n of vv.review.notes)if(n.id&&n.id.startsWith(pfx))frames.add(n.frame)}
+    for(const p of (c.pending||[]))if(p.f!=null)frames.add(p.f);
+    for(const fr of frames)reelSyncEmbedFrame(c,fr);
+  }
+  /* v.review.notes 内の REEL embed ノートから pending を復元（REEL 開き直し時） */
+  function reelHydratePending(c){
+    if(!c)return;const vv=vOf(c);if(!vv)return;
+    const pfx=_reelEmbPrefix(c);
+    const arr=[];
+    for(const n of vv.review.notes){
+      if(!n.id||!n.id.startsWith(pfx))continue;
+      if(!n.drawing)continue;
+      for(const s of n.drawing){const cl=cloneDrawItem(s);cl.f=n.frame;arr.push(cl)}
+    }
+    c.pending=arr;
+  }
+  /* debounce で持続的な persist（同期後の書き込みを 400ms 集約） */
+  let _reelPersistTimer=null;
+  function scheduleReelPersist(){
+    if(_reelPersistTimer)clearTimeout(_reelPersistTimer);
+    _reelPersistTimer=setTimeout(()=>{_reelPersistTimer=null;persist().catch(e=>{try{console.warn('persist(reel sync) failed',e)}catch(_){}})},400);
+  }
+  /* 変更後に呼ぶユーティリティ（対象フレームだけ or 全体同期） */
+  function reelAfterEdit(c,frames){
+    if(!c)return;
+    if(!frames){reelSyncEmbedAll(c)}
+    else{const set=frames instanceof Set?frames:new Set(frames);for(const fr of set)reelSyncEmbedFrame(c,fr)}
+    scheduleReelPersist();
+  }
+  /* 旧 reelEmbedPending：beforeunload 救済用にシンプル化（全同期＋即 persist）。以前の noShot=true 汎用生成は不要に。 */
   function reelEmbedPending(c){
     if(!c||!c.pending||!c.pending.length)return 0;
-    const vv=vOf(c);if(!vv)return 0;
-    const nd=c.nodeId?getNode(c.nodeId):null;const root=nd?rootOf(nd):curRoot();
-    const pdur=parseInt(durS.value)||1;
-    const notes=buildFrameNotes(c.pending,{text:'',curFrame:null,dur:pdur,isVideo:true,root});
-    for(const n of notes)if(n.drawing&&n.drawing.length&&!n.text)n.noShot=true;
-    for(const n of notes)vv.review.notes.push(n);
-    const cnt=c.pending.length;
-    c.pending=[];
-    return cnt;
+    reelSyncEmbedAll(c);
+    return c.pending.length;
   }
-  /* 1 段送信フロー：現在フレーム分は「コメント付き」ノートで v.review.notes に反映。
-     他フレームの pending は動画埋め込み（noShot=true）でまとめて反映して pending は空に。 */
+  /* 送信＝「現在フレーム範囲の embed ノートをコメント付きノートに昇格」する。
+     - 描画は既に自動同期で v.review.notes に embed ノート（noShot=true, id=reel_emb_...）として入っているので、
+       送信の役割は「コメントを追加して昇格させる」だけ。他フレームや他クリップの pending は触らない。
+     - コメントだけの送信も可（描画無し・text だけの note を追加）。
+     - 昇格：現在フレームの pending 分の drawing を新規 note に集約 + text を付ける + 対応 embed 削除 + pending 空に。 */
   const reelSendCur=()=>{
     const c=reelUI.clips[reelUI.cur];if(!c)return;
     c.commentDraft=cta.value;c._mentions=(cta._mentions||[]).slice();
     const cf=dispF();const pdur=parseInt(durS.value)||1;
+    const txt=(c.commentDraft||'').trim();
     const inWin=p=>p.f!=null&&cf>=p.f&&cf<p.f+pdur;
     const cur=(c.pending||[]).filter(inWin);
-    const rest=(c.pending||[]).filter(p=>!inWin(p));
-    const nd=c.nodeId?getNode(c.nodeId):null;const root=nd?rootOf(nd):curRoot();
-    const notesCur=buildFrameNotes(cur,{text:c.commentDraft||'',curFrame:cf,dur:pdur,isVideo:true,root,mentions:c._mentions||[]});
-    const notesRest=rest.length?buildFrameNotes(rest,{text:'',curFrame:null,dur:pdur,isVideo:true,root}):[];
-    if(!notesCur.length&&!notesRest.length)return;
+    if(!txt&&!cur.length)return; /* 送るものが無い */
     const vv=vOf(c);if(!vv)return;
-    /* 描画のみ（コメント無し）の note は「動画埋め込み専用」= noShot=true としてコメント欄に出さない。 */
-    for(const n of notesCur)if(n.drawing&&n.drawing.length&&!n.text)n.noShot=true;
-    for(const n of notesRest)if(n.drawing&&n.drawing.length&&!n.text)n.noShot=true;
-    for(const n of notesCur)vv.review.notes.push(n);
-    for(const n of notesRest)vv.review.notes.push(n);
-    c.pending=[];
+    const nd=c.nodeId?getNode(c.nodeId):null;const root=nd?rootOf(nd):curRoot();
+    const drawings=cur.map(cloneDrawItem);
+    const now=nowIso();const who=currentUser();
+    const newN={id:'nt_'+Math.random().toString(36).slice(2,10),author:who,time:now,frame:cf,dur:pdur};
+    if(drawings.length)newN.drawing=drawings;
+    if(txt){newN.text=txt;const mns=extractMentions(txt,root,c._mentions||[]);if(mns&&mns.length)newN.mentions=mns}
+    if(drawings.length&&!txt)newN.noShot=true; /* 描画のみ確定送信＝コメント欄には出さない */
+    vv.review.notes.push(newN);
+    /* 現在フレーム分の pending を除去 → reelAfterEdit で該当フレームの embed ノートも同期削除 */
+    const affected=new Set();for(const p of cur)if(p.f!=null)affected.add(p.f);
+    c.pending=(c.pending||[]).filter(p=>!inWin(p));
     c.commentDraft='';cta.value='';cta._mentions=[];
     RV.stroke=null;
+    try{reelAfterEdit(c,affected)}catch(_){}
     drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
     persist().catch(e=>{try{console.warn('persist(reelSendCur) failed',e);toast('保存に失敗しました')}catch(_){}});
   };
@@ -11665,7 +11736,9 @@ function openReel(){
   function loadCur(auto){
     const c=cs()[reelUI.cur];
     reelUI.ended=false; /* 新しいクリップを読み込むので終端フラグ解除 */
-    /* クリップ切替：未送信アノテはクリップごとに保持（跨いでも消えない） */
+    /* クリップ切替：未送信アノテはクリップごとに保持（跨いでも消えない）。
+       さらに v.review.notes の REEL embed ノートから pending を再構築（他ユーザー／他セッションの変更を取り込む）。 */
+    if(c){try{reelHydratePending(c)}catch(_){}}
     RV.pending=(c&&(c.pending||(c.pending=[])))||[];
     RV.stroke=null;RV.last=-1;RV.layerCount=1;
     cta.value=(c&&c.commentDraft)||''; /* コメント下書きはカットごとに保持 */

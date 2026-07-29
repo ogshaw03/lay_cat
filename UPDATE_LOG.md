@@ -13,6 +13,15 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.036) REEL：pending と v.review.notes を「常時同期」する統一モデル（描いたら即タスクページに反映）
+  - 真実のソースは `v.review.notes`。REEL の pending はセッション中の表示ミラーに位置付ける。
+  - 描画完了・クリア・消しゴム・投げ縄削除の各操作後に `reelAfterEdit` が対象フレームだけ `reelSyncEmbedFrame` で再構築（id=`reel_emb_<nodeId>_<frame>` の固定 ID、1 フレーム 1 embed ノート、`noShot=true`）→ debounce 400ms で `persist`。
+  - 「送信」ボタン：現在フレーム範囲の pending の drawing を集約して text 付きノート（noShot なし）を新規 push。対応 embed ノートは同期削除。他フレームや他クリップの pending は触らない。コメントだけの送信も可。
+  - `loadCur` で `reelHydratePending` を呼び、v.review.notes の embed ノートから pending を再構築（他ユーザー／他セッションの変更も取り込む）。
+  - `drawAnno` の pending 描画は停止（v.review.notes の embed ノート経由で描画される）。RV.stroke（描画中のライブストローク）は従来通り。
+  - **既存の運用データを保護**：id が `reel_emb_` プレフィックスのものだけを操作対象にするため、他 note（既存の noShot=true ノート含む）は一切書き換えず削除もしない。
+  - `reelNotes` で `reel_emb_` の埋め込みノートはコメント欄から除外（動画にだけ埋め込まれる）。他の noShot=true ノートは従来通り `reelEmbedBlock`（動画埋め込み チップ＋削除ボタン）で表示可能。
+
 - (dev v2026.07.29.035) REEL 潜在バグまとめ修正：クリア pdur 対応／undo/redo でドラッグ状態リセット／動画埋め込みノート削除 UI
   - **クリア**：`p.f!==cf` 完全一致から「表示 dur 範囲内」判定へ。dur=3 で F5 の描画が F5〜F7 に見えているとき、F7 でもクリアで消える。
   - **undo / redo**：`_restoreR` で `rShapeDraft` / `rLassoSel` 系 / `rHeadDrag` / `reelMannDrag` / `reelSelectedMann` / `reelMannHoverAxis` もリセット。undo 中にドラフト・選択枠がゾンビ化する現象を解消。
