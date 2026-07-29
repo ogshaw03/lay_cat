@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.029';
+const APP_VERSION='2026.07.29.030';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11474,16 +11474,21 @@ function openReel(){
     RV.stroke=null;cta.value='';
     drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
   };
-  /* アノテウィンドウの「送信」と同じ1段フロー：現在クリップの pending＋コメントを
-     drafts を経由せず即 v.review.notes へ反映し、その場で persist する。
-     旧 reelRecordCur（drafts に積むだけ）は他コード互換のため残す。 */
+  /* 1 段送信フロー：現在フレーム（表示 dur 分）の pending＋コメントだけを即 v.review.notes に反映し、
+     その場で persist する。他フレームの pending は残す（＝動画埋め込みとして残る）。 */
   const reelSendCur=()=>{
     const c=reelUI.clips[reelUI.cur];if(!c)return;
     c.commentDraft=cta.value;c._mentions=(cta._mentions||[]).slice();
-    const notes=buildNotes(c,dispF());if(!notes.length)return;
+    const cf=dispF();const pdur=parseInt(durS.value)||1;
+    const inWin=p=>p.f!=null&&cf>=p.f&&cf<p.f+pdur;
+    const cur=(c.pending||[]).filter(inWin);
+    const rest=(c.pending||[]).filter(p=>!inWin(p));
+    const nd=c.nodeId?getNode(c.nodeId):null;
+    const notes=buildFrameNotes(cur,{text:c.commentDraft||'',curFrame:cf,dur:pdur,isVideo:true,root:nd?rootOf(nd):curRoot(),mentions:c._mentions||[]});
+    if(!notes.length)return;
     const vv=vOf(c);if(!vv)return;
     for(const n of notes)vv.review.notes.push(n);
-    if(c.pending)c.pending.length=0;
+    c.pending=rest;
     c.commentDraft='';cta.value='';cta._mentions=[];
     RV.stroke=null;
     drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
@@ -11507,11 +11512,11 @@ function openReel(){
     drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
     persist().catch(e=>{try{console.warn('persist(reelSubmit) failed',e);toast('保存に失敗しました')}catch(_){}});
   }
-  /* 「送信」は drafts に積むだけ（＝動画への埋め込み）。notes への確定反映は下の「保存」ボタン。
-     アノテ窓と違い REEL は 2 段（埋め込みだけしたいケースがあるため）— Phase 2 で 1 段化していたのを差し戻し。 */
-  csend.onclick=reelRecordCur;
+  /* 送信は 1 段（アノテ窓と統一）。ただしタイムスライダの現在フレーム分の pending だけを notes に反映し、
+     他フレームの pending は残す（＝動画埋め込みとして表示される）。 */
+  csend.onclick=reelSendCur;
   cta.oninput=()=>{const c=reelUI.clips[reelUI.cur];if(c){c.commentDraft=cta.value;c._mentions=(cta._mentions||[]).slice();}updUnsent()};
-  cta.onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();reelRecordCur()}}; /* Enter=改行、Ctrl/Cmd+Enter=送信 */
+  cta.onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();reelSendCur()}}; /* Enter=改行、Ctrl/Cmd+Enter=送信 */
   /* 送信バー（未送信の記入を全ショットのレビューページへ反映） */
   const unsentBar=ce(d,'div');unsentBar.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid #2a2a2f;font-size:11px';
   const unsentLab=ce(d,'span',null,'');unsentLab.style.color='#e0a63a';
