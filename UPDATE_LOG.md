@@ -13,6 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.016) フォントを OS ネイティブ優先 (`system-ui`) に統一：Space Grotesk も撤去
+  - v015 で Syne から Space Grotesk に切り替えたが「もう少し普通のフォントが良い」というフィードバックを受けて再修正。
+  - `--font-ui:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Hiragino Sans','Yu Gothic UI','Meiryo','Noto Sans JP',sans-serif` を導入し、`--font-head` / `--font-body` / `--font-code` すべて同じスタックを指すよう統一。macOS = San Francisco/Hiragino、Windows = Segoe UI/Yu Gothic UI、Linux/フォールバック = Noto Sans JP。
+  - Google Fonts の `<link>` から `Space Grotesk` を撤去（Noto Sans JP のみ最終フォールバック用に残す）。
+  - `access-console.html` / `admin-audit.html` も同じスタックに統一。
+  - CLAUDE.md にフォントルールを追記（Syne 禁止 + Space Grotesk も避ける + 標準スタック明記）。
+
 - (dev v2026.07.29.015) `Syne` フォント全廃 → `Space Grotesk + Noto Sans JP` に統一（読みやすさ改善）
   - アノテ窓の動画タイトル (`.fb-title`) が読みづらいという指摘。原因は `--font-head:'Syne'` — 装飾強めで CJK も英数字も両方読みにくかった。
   - `--font-head` を `'Space Grotesk','Noto Sans JP',sans-serif`（`--font-code` と同じスタック）に変更。ヘッダ・タイトル系 27 箇所すべてに一度に反映。

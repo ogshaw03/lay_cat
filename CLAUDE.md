@@ -31,7 +31,9 @@
 
 ## フォント
 - **`Syne` は使わない**（読みづらいため廃止済み）。新しく `--font-head` を定義したり Google Fonts を追加する際も Syne を復活させないこと。
-- 見出し／タイトル系は `--font-head: 'Space Grotesk','Noto Sans JP',sans-serif` 統一（`--font-code` と同じスタック）。本文は `--font-body: 'Noto Sans JP',sans-serif`。
+- **`Space Grotesk` も装飾寄りで避ける**。ユーザーは「普通のフォント」を望んでいる。
+- 標準は OS ネイティブフォント優先：`system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Hiragino Sans','Yu Gothic UI','Meiryo','Noto Sans JP',sans-serif`（macOS: San Francisco/Hiragino、Windows: Segoe UI/Yu Gothic UI、フォールバックに Noto Sans JP）。
+- `--font-head` / `--font-body` / `--font-code` はすべて同じスタック（`--font-ui`）を指す。数字を tabular にしたい箇所は CSS の `font-variant-numeric:tabular-nums` を付ける（フォント側で分けない）。
 
 ## パッチノート運用
 - `PATCH_NOTES.md` はユーザーに見せる**確定パッチノート**。**通常の更新では追記しない**（全部書くときりがないため）。
