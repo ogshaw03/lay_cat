@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.039';
+const APP_VERSION='2026.07.29.040';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11108,7 +11108,7 @@ function openReel(){
   ftl.onpointermove=e=>{if(!RV.scrub)return;gSeek(gFromX(e));RV.last=-1};
   ftl.onpointerup=()=>{RV.scrub=false;RV.scrubT=-1;RV.last=-1};
   /* ツール */
-  function setRTool(t){RV.tool=t;drawB.classList.toggle('on',t==='draw');eraseB.classList.toggle('on',t==='erase');headB.classList.toggle('on',t==='head');shapeB.classList.toggle('on',t==='shape');lassoB.classList.toggle('on',t==='lasso');mannB.classList.toggle('on',t==='mann');if(t!=='head'){rHeadActive=null;rHeadDrag=null}if(t!=='shape'){rShapeDraft=null}if(t!=='lasso'){try{reelLassoClearSelection()}catch(_){}}if(t!=='mann'){reelSelectedMann=null;reelMannDrag=null;reelMannHoverAxis=null}anno.style.pointerEvents=t?'auto':'none';anno.style.cursor=(t==='draw'||t==='erase')?'':((t==='head'||t==='shape'||t==='lasso'||t==='mann')?'crosshair':'');if(t){RZ.hand=false;handB.classList.remove('on');stage.style.cursor='';video.pause()}try{rebuildRSizeSel()}catch(_){}}
+  function setRTool(t){RV.tool=t;drawB.classList.toggle('on',t==='draw');eraseB.classList.toggle('on',t==='erase');headB.classList.toggle('on',t==='head');shapeB.classList.toggle('on',t==='shape');lassoB.classList.toggle('on',t==='lasso');mannB.classList.toggle('on',t==='mann');if(t!=='head'){rHeadActive=null;rHeadDrag=null}if(t!=='shape'){rShapeDraft=null}if(t!=='lasso'){try{reelLassoClearSelection()}catch(_){}}if(t!=='mann'){reelSelectedMann=null;reelMannDrag=null;reelMannHoverAxis=null}anno.style.pointerEvents=t?'auto':'none';anno.style.cursor=t?'crosshair':'';if(t){RZ.hand=false;handB.classList.remove('on');stage.style.cursor='';video.pause()}try{rebuildRSizeSel()}catch(_){}}
   /* 初期化：ツール未選択でも一覧を作っておく（disable 状態） */
   try{RV.brushW=RV.brushW||4;RV.eraseW=RV.eraseW||16;rebuildRSizeSel()}catch(_){}
   /* 顔ガイドの操作状態（アノテ窓と同じ形式） */
@@ -11631,7 +11631,7 @@ function openReel(){
     if(!frames){reelSyncEmbedAll(c)}
     else{const set=frames instanceof Set?frames:new Set(frames);for(const fr of set)reelSyncEmbedFrame(c,fr)}
     scheduleReelPersist();
-    try{drawAnno()}catch(_){}
+    try{drawAnno();drawFTL();reelNotes()}catch(_){}
   }
   /* 旧 reelEmbedPending：beforeunload 救済用にシンプル化（全同期＋即 persist）。以前の noShot=true 汎用生成は不要に。 */
   function reelEmbedPending(c){

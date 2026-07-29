@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.040) REEL：タイムスライダ即時更新＋描画ツールのカーソル修正
+  - `reelAfterEdit` の末尾で `drawFTL` と `reelNotes` も呼ぶように。クリア後にタイムラインのマーカーが即消える／コメント欄も即更新される。
+  - `setRTool` のカーソルを `t?'crosshair':''` に統一。ペン／消しゴム時に矢印のままだった問題を解消（描画時は全ツール crosshair 表示）。
+
 - (dev v2026.07.29.039) REEL Ctrl+Z / Ctrl+Y キーバインド追加＋アノテ窓のクリアで REEL 由来 embed も削除
   - REEL: `reelWin.keydown` に `Ctrl+Z`（undo）／`Ctrl+Y` または `Ctrl+Shift+Z`（redo）を追加。テキスト入力中は無効。
   - REEL: `undoB` / `redoB` の onclick 末尾で `reelAfterEdit` を呼び、pending 復元後に v.review.notes の同期＋persist も走らせる。
