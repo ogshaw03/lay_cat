@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.034';
+const APP_VERSION='2026.07.29.035';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10847,12 +10847,35 @@ function openReel(){
     if(n.text&&n.text!=='（描画のみ）'){const tt=ce(d,'div','t');renderMentionText(tt,n.text,curRoot());b.appendChild(tt)}
     return b;
   }
+  /* 動画埋め込み専用ノート（noShot=true, drawing のみ）をコメント欄に「動画埋め込み」チップで表示・削除できるようにする。
+     REEL の beforeunload 自動保存で生成されると通常はコメント欄に出ないため、削除手段がないと幽霊化する。 */
+  function reelEmbedBlock(v,n){
+    const b=ce(d,'div','log-note draft-note');
+    const m=ce(d,'div','m');
+    m.appendChild(ce(d,'span','draft-chip','動画埋め込み'));
+    m.appendChild(ce(d,'span',null,(n.author||'-')+'・'+fmt(n.time)));
+    if(n.frame!=null){const fc=ce(d,'span','frame-chip link','F'+n.frame);fc.title='フレーム'+n.frame;fc.onclick=()=>{video.pause();seekRTr(n.frame)};m.appendChild(fc)}
+    if(n.drawing&&n.drawing.length)m.appendChild(ce(d,'span','frame-chip','✎ 描画'));
+    const acts=ce(d,'span','note-acts');const del=ce(d,'button','na','✕');del.title='削除';
+    del.onclick=async()=>{
+      const nk=x=>x.id||((x.time||'')+'|'+(x.text||'')+'|'+(x.frame!=null?x.frame:''));
+      const tk=nk(n);
+      v.review.notes=v.review.notes.filter(x=>nk(x)!==tk);
+      v._ntomb=Array.isArray(v._ntomb)?v._ntomb:[];
+      if(!v._ntomb.some(t=>t&&t.k===tk))v._ntomb.push({k:tk,at:nowIso()});
+      await persist();reelNotes();drawAnno();drawFTL();
+    };
+    acts.appendChild(del);m.appendChild(acts);
+    b.appendChild(m);
+    return b;
+  }
   function reelNotes(scrollEnd){
     const dt=rvData();clist.innerHTML='';
     if(!dt){clist.appendChild(ce(d,'div','log-empty-note','クリップ未選択'));return}
     const cc=reelUI.clips[reelUI.cur];const cdr=(cc&&cc.drafts)||[];
-    const shown=dt.v.review.notes.filter(n=>!noteEmbedOnly(n)); /* 描画のみは動画に埋め込むだけでコメント欄には出さない */
-    if(!shown.length&&!cdr.length)clist.appendChild(ce(d,'div','log-empty-note','コメントはまだありません。'));
+    const shown=dt.v.review.notes.filter(n=>!noteEmbedOnly(n));
+    const embeds=dt.v.review.notes.filter(n=>noteEmbedOnly(n)); /* 動画埋め込み専用ノート */
+    if(!shown.length&&!cdr.length&&!embeds.length)clist.appendChild(ce(d,'div','log-empty-note','コメントはまだありません。'));
     const refresh=async()=>{await persist();reelNotes();drawAnno();drawFTL()};
     const shot={fileRef:dt.v.file,fps:dt.v.fps||24,isVideo:true};
     for(const n of shown){
@@ -10874,6 +10897,7 @@ function openReel(){
       }
       clist.appendChild(bl);
     }
+    for(const n of embeds)clist.appendChild(reelEmbedBlock(dt.v,n));
     for(const n of cdr)clist.appendChild(reelDraftBlock(cc,n));
     if(scrollEnd)clist.scrollTop=clist.scrollHeight;
   }
@@ -11226,7 +11250,12 @@ function openReel(){
   /* Undo/Redo：描画・消しゴム両方を復元可能にする snapshot 履歴 */
   RV.hist=[];RV.histIdx=-1;RV.eraseChanged=false;
   const _snapR=()=>({pending:JSON.parse(JSON.stringify(RV.pending))});
-  const _restoreR=s=>{RV.pending.splice(0,RV.pending.length,...JSON.parse(JSON.stringify(s.pending)));RV.stroke=null};
+  const _restoreR=s=>{
+    RV.pending.splice(0,RV.pending.length,...JSON.parse(JSON.stringify(s.pending)));
+    RV.stroke=null;
+    /* undo/redo 時に各ツールのドラッグ状態を残すと選択枠やドラフトがゾンビ化するのでリセット */
+    try{rShapeDraft=null;rLassoSel=null;rLassoPath=null;rLassoRect=null;rLassoStart=null;rLassoDrag=null;rHeadDrag=null;rHeadActive=null;reelMannDrag=null;reelSelectedMann=null;reelMannHoverAxis=null}catch(_){}
+  };
   const _pushHistR=()=>{RV.hist=RV.hist.slice(0,RV.histIdx+1);RV.hist.push(_snapR());RV.histIdx=RV.hist.length-1;if(RV.hist.length>50){RV.hist=RV.hist.slice(-50);RV.histIdx=RV.hist.length-1}};
   _pushHistR(); /* 初期状態を履歴の起点として保存 */
   /* 顔ガイド：アノテ窓 headPointerDown/Move と同じロジック（座標は ptA、pending は RV.pending） */
@@ -11464,11 +11493,12 @@ function openReel(){
   undoB.onclick=()=>{if(RV.histIdx<=0)return;RV.histIdx--;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent()};
   redoB.onclick=()=>{if(RV.histIdx>=RV.hist.length-1)return;RV.histIdx++;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent()};
   clrB.onclick=()=>{
-    /* 現在フレームのアノテのみクリア。他フレーム＆他クリップの未送信内容は保持。 */
-    const cf=dispF();
-    const kept=RV.pending.filter(p=>(p.f!=null?p.f:cf)!==cf);
+    /* 現在フレーム（表示 dur 範囲内で可視のもの）の pending をクリア。他フレーム＆他クリップの未送信は保持。 */
+    const cf=dispF();const pdur=parseInt(durS.value)||1;
+    const inWin=p=>p.f!=null&&cf>=p.f&&cf<p.f+pdur;
+    const kept=RV.pending.filter(p=>!inWin(p));
     RV.pending.splice(0,RV.pending.length,...kept);
-    if(RV.stroke&&(RV.stroke.f!=null?RV.stroke.f:cf)===cf)RV.stroke=null;
+    if(RV.stroke&&inWin(RV.stroke))RV.stroke=null;
     drawAnno();drawFTL();updUnsent();_pushHistR();
   };
   /* 記入内容からノート配列を生成（描画は線ごとのフレームに分割）。レビューには push しない。

@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.035) REEL 潜在バグまとめ修正：クリア pdur 対応／undo/redo でドラッグ状態リセット／動画埋め込みノート削除 UI
+  - **クリア**：`p.f!==cf` 完全一致から「表示 dur 範囲内」判定へ。dur=3 で F5 の描画が F5〜F7 に見えているとき、F7 でもクリアで消える。
+  - **undo / redo**：`_restoreR` で `rShapeDraft` / `rLassoSel` 系 / `rHeadDrag` / `reelMannDrag` / `reelSelectedMann` / `reelMannHoverAxis` もリセット。undo 中にドラフト・選択枠がゾンビ化する現象を解消。
+  - **動画埋め込みノート削除 UI**：`reelEmbedBlock` を新設、`noteEmbedOnly(n)` な notes を REEL コメント欄に「動画埋め込み」チップ付きで表示、削除ボタンで `_ntomb` 記録＋persist。beforeunload 自動保存で生成された幽霊ノートも消せるように。
+
 - (dev v2026.07.29.034) REEL：v033 の描画完了ごと自動埋め込みを撤去（クリア／送信を復旧）＋送信時に描画のみノートは noShot=true 化
   - `scheduleReelAutoEmbed`（pointerup 800ms debounce で pending → v.review.notes に自動移動）を撤去。pending が pointerup 直後に空になっていたため、クリア（`clrB`）も送信（`csend`）も対象なしで無効化されていた。
   - `anno.onpointerup` と `reelMannUp` から `scheduleReelAutoEmbed()` 呼び出しを削除。関数自体は空定義で残置（互換）。
