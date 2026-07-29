@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.031';
+const APP_VERSION='2026.07.29.032';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10856,7 +10856,25 @@ function openReel(){
     if(!shown.length&&!cdr.length)clist.appendChild(ce(d,'div','log-empty-note','コメントはまだありません。'));
     const refresh=async()=>{await persist();reelNotes();drawAnno();drawFTL()};
     const shot={fileRef:dt.v.file,fps:dt.v.fps||24,isVideo:true};
-    for(const n of shown)clist.appendChild(noteBlock(dt.v,n,{refresh,onSeek:f=>{video.pause();seekRTr(f)},shot}));
+    for(const n of shown){
+      const bl=noteBlock(dt.v,n,{refresh,onSeek:f=>{video.pause();seekRTr(f)},shot});
+      /* 削除ボタンは親 window の button なので REEL ポップアップ内では click / confirm が届かない。
+         reelWin の document で作り直し、confirm 抜きでその場で削除する（未保存扱いなので確認不要）。 */
+      const oldDel=bl.querySelector('.na[title="削除"]');
+      if(oldDel){
+        const nd=ce(d,'button','na','✕');nd.title='削除';
+        nd.onclick=async()=>{
+          const nk=x=>x.id||((x.time||'')+'|'+(x.text||'')+'|'+(x.frame!=null?x.frame:''));
+          const tk=nk(n);
+          dt.v.review.notes=dt.v.review.notes.filter(x=>nk(x)!==tk);
+          dt.v._ntomb=Array.isArray(dt.v._ntomb)?dt.v._ntomb:[];
+          if(!dt.v._ntomb.some(t=>t&&t.k===tk))dt.v._ntomb.push({k:tk,at:nowIso()});
+          await refresh();
+        };
+        oldDel.parentNode.replaceChild(nd,oldDel);
+      }
+      clist.appendChild(bl);
+    }
     for(const n of cdr)clist.appendChild(reelDraftBlock(cc,n));
     if(scrollEnd)clist.scrollTop=clist.scrollHeight;
   }

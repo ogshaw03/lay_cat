@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.032) REEL：コメント削除ボタンを reelWin 側で作り直し、click / confirm が届かない問題を修正
+  - `noteBlock` は親 window の `document.createElement` で作られた button なので、REEL ポップアップに appendChild しても click ハンドラや `confirm()` ダイアログが機能しない場合があった。
+  - REEL の `reelNotes` 内で `noteBlock` 返却 DOM から `.na[title="削除"]` を取り出し、`ce(d,'button',…)` で作った同等の button に置換。confirm 抜きで即削除＋`_ntomb` 記録＋refresh。
+
 - (dev v2026.07.29.031) REEL：未保存カット表示バーと閉じる時の確認ダイアログを撤去
   - `unsentBar` を DOM に追加しない（要素は他コード互換のため生成のみ）。ラベル・保存ボタンは非表示。
   - `updUnsent()` は空関数化。未送信はすべて動画埋め込み扱いなので通知不要。
