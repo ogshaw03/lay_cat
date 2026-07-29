@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.020) タスクページ：task-topbar の下線を右方向（NOTE col 側）に延長して切れ目を解消
+  - v019 で NOTE パネルを下げたため、`.task-topbar` の `border-bottom` が main-col 幅までしか描かれず、右側の NOTE col 上部で線が途切れて見えていた。
+  - `.task-topbar::after` を追加：`position:absolute; left:100%; right:-376px; bottom:-1px; height:1px` で、note-col + gap + scroll 右パディング分（合計 376px）を横断する 1px 線を延長描画。
+  - 念のため `.scroll` に `overflow-x:hidden` を追加。延長線が万一 viewport 端を越えても水平スクロールが出ないように保険。
+  - 1 カラム時（`max-width:960px`）は `::after` を `display:none` で無効化。
+
 - (dev v2026.07.29.019) タスクページ：NOTE パネルが「＋動画／設定／削除」の task-topbar 行にも干渉する不具合を追加修正
   - v018 で 8→24px にしたが、それでも `.task-topbar`（sticky top:0、高さ約 70〜75px）の下端より上に NOTE 上端が来てしまい、右列で同じ Y にボタン行と NOTE が並んで見えていた。
   - `.review-note-col` の `top:24px` → `top:84px` に増やし、task-topbar 下端よりも確実に下に来るように。あわせて `height`/`max-height` calc を `100vh - 256px` → `100vh - 316px` に調整。
