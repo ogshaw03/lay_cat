@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.024) REEL：コメント送信フローをアノテ窓と統一（Phase 2）
+  - REEL の「送信」ボタン（`csend`）を、`drafts` に積むだけの `reelRecordCur` から、現在クリップの pending＋コメントを即 `v.review.notes` に反映してその場で `persist()` する `reelSendCur` に差し替え。アノテ窓の `sendCurrent` と同じ 1 段送信フローになった。
+  - 「保存」ボタン（`sendAllBtn`）は常時 `display:none` に。`updUnsent` の未送信ラベルは残す（他クリップに未送信の pending が残っているとユーザーが気付けるように）。
+  - `reelRecordCur` / `reelSubmit` は他コード互換のため残置（要素は保持、UI からは呼ばれない）。
+  - Ctrl/Cmd+Enter も `reelSendCur` に差し替え。
+
 - (dev v2026.07.29.023) REEL：ヘッダのサブタイトル撤去＋カット番号を中央拡大＋ブラシサイズ表示をアノテ窓と統一
   - `.hd` の「シーケンスプレイヤー — メインから動画を送って並べる」サブタイトル span を削除。
   - `.clipinfo` を `flex:1; justify-content:center` に変更して lg（左）と右側ボタン群の間で中央寄せに。カット番号フォントを 12px→15px、weight を 600→700、`max-width` を 260→320 に。
