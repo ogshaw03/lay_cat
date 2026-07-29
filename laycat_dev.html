@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.028';
+const APP_VERSION='2026.07.29.029';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10836,7 +10836,14 @@ function openReel(){
     m.appendChild(ce(d,'span',null,(n.author||'-')+'・'+fmt(n.time)));
     if(n.frame!=null){const fc=ce(d,'span','frame-chip','F'+n.frame);m.appendChild(fc)}
     if(n.drawing&&n.drawing.length)m.appendChild(ce(d,'span','frame-chip','✎ 描画'));
-    const acts=ce(d,'span','note-acts');const del=ce(d,'button','na','✕');del.title='この送信を取り消す';del.onclick=()=>{c.drafts=(c.drafts||[]).filter(x=>x!==n);reelNotes();drawAnno();drawFTL();updUnsent();reelRender()};acts.appendChild(del);m.appendChild(acts);
+    const acts=ce(d,'span','note-acts');const del=ce(d,'button','na','✕');del.title='この送信を取り消す';del.onclick=()=>{
+      /* 参照比較 (x!==n) だと再描画で n が stale になり削除が効かなくなるため、
+         noteBlock と同じキー比較（id か time+text+frame）に統一。 */
+      const nk=x=>x.id||((x.time||'')+'|'+(x.text||'')+'|'+(x.frame!=null?x.frame:''));
+      const tk=nk(n);
+      c.drafts=(c.drafts||[]).filter(x=>nk(x)!==tk);
+      reelNotes();drawAnno();drawFTL();updUnsent();reelRender();
+    };acts.appendChild(del);m.appendChild(acts);
     b.appendChild(m);
     if(n.text&&n.text!=='（描画のみ）'){const tt=ce(d,'div','t');renderMentionText(tt,n.text,curRoot());b.appendChild(tt)}
     return b;
@@ -11500,9 +11507,11 @@ function openReel(){
     drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
     persist().catch(e=>{try{console.warn('persist(reelSubmit) failed',e);toast('保存に失敗しました')}catch(_){}});
   }
-  csend.onclick=reelSendCur;
+  /* 「送信」は drafts に積むだけ（＝動画への埋め込み）。notes への確定反映は下の「保存」ボタン。
+     アノテ窓と違い REEL は 2 段（埋め込みだけしたいケースがあるため）— Phase 2 で 1 段化していたのを差し戻し。 */
+  csend.onclick=reelRecordCur;
   cta.oninput=()=>{const c=reelUI.clips[reelUI.cur];if(c){c.commentDraft=cta.value;c._mentions=(cta._mentions||[]).slice();}updUnsent()};
-  cta.onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();reelSendCur()}}; /* Enter=改行、Ctrl/Cmd+Enter=送信 */
+  cta.onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();reelRecordCur()}}; /* Enter=改行、Ctrl/Cmd+Enter=送信 */
   /* 送信バー（未送信の記入を全ショットのレビューページへ反映） */
   const unsentBar=ce(d,'div');unsentBar.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid #2a2a2f;font-size:11px';
   const unsentLab=ce(d,'span',null,'');unsentLab.style.color='#e0a63a';

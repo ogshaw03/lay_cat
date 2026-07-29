@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.029) REEL：Phase 2 の 1 段送信化を差し戻し＋ドラフトコメント削除の参照比較を修正
+  - 「送信」ボタン（`csend`）を `reelSendCur`（直接 notes 反映）から `reelRecordCur`（drafts に積む＝動画埋め込みのみ）に戻す。REEL の 2 段フロー（送信=埋め込み、保存=notes 確定）は意図的な設計のため。
+  - Ctrl/Cmd+Enter も `reelRecordCur` に。
+  - `reelDraftBlock` の削除ボタンを参照比較 `(x!==n)` からキー比較（`id` または `time+text+frame`）に変更。再描画で n が stale になった際にも確実に削除できるように。
+
 - (dev v2026.07.29.028) REEL：3D マネキンをアノテ窓から移植（Phase 3.4・親ウィンドウで 3D エディタを開く実装）
   - `🎭 3D` ボタン追加。クリックで親 window に `mannequin_3d.html` を開き、apply で REEL の pending にマネキンを追加。
   - 反映後は anno 上で移動・四隅=拡縮・4 リング=軸回転（ヨー緑／ピッチ赤／ロール青／カメラ軸黄）・本体ドラッグ=自由回転。
