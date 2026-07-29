@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.034) REEL：v033 の描画完了ごと自動埋め込みを撤去（クリア／送信を復旧）＋送信時に描画のみノートは noShot=true 化
+  - `scheduleReelAutoEmbed`（pointerup 800ms debounce で pending → v.review.notes に自動移動）を撤去。pending が pointerup 直後に空になっていたため、クリア（`clrB`）も送信（`csend`）も対象なしで無効化されていた。
+  - `anno.onpointerup` と `reelMannUp` から `scheduleReelAutoEmbed()` 呼び出しを削除。関数自体は空定義で残置（互換）。
+  - 永続化タイミングは 「送信」時 と「REEL 閉じ (beforeunload)」時の 2 つに限定。
+  - `reelSendCur`：現在フレーム分の描画も、コメント無し（`n.text` 空）なら `noShot=true` を立てる。コメント付きだけ noteBlock に出す。
+
 - (dev v2026.07.29.033) REEL：pending を「動画埋め込みノート（noShot=true）」として自動永続化＋アノテ窓のコメント削除 confirm も撤去
   - `reelEmbedPending(c)` 追加：クリップの pending を `buildFrameNotes` → `noShot=true` → `v.review.notes.push`、pending は空に。
   - 描画完了（`anno.onpointerup` / `reelMannUp`）ごとに `scheduleReelAutoEmbed`（debounce 800ms）で全クリップの pending を自動反映＋`persist`。REEL で描いた瞬間からタスクページ側の動画にも埋め込みが反映される。

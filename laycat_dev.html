@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.033';
+const APP_VERSION='2026.07.29.034';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11211,7 +11211,6 @@ function openReel(){
     reelMannDrag=null;
     if(wasRotate)_reelMannScheduleRender(p,600);
     _pushHistR();drawAnno();updUnsent();
-    try{scheduleReelAutoEmbed()}catch(_){}
   }
   /* ダブルクリック=既存マネキンのポーズ再編集 */
   anno.addEventListener('dblclick',e=>{if(RV.tool!=='mann')return;const [x,y]=ptA(e);const hit=reelMannHitTest(x,y);if(hit){e.preventDefault();reelOpenMannEditor(hit.p)}});
@@ -11440,8 +11439,6 @@ function openReel(){
     if(RV.tool==='lasso'&&(rLassoPath||rLassoRect||rLassoDrag||rLassoStart)){reelLassoUp();/* 内部で _pushHistR / drawAnno 呼ぶ */}
     if(reelMannDrag){reelMannUp();/* 内部で _pushHistR / drawAnno / updUnsent 呼ぶ */}
     if(changed)_pushHistR();
-    /* 描画・変形が入ったら pending を「動画埋め込み」として debounce で永続化 */
-    try{scheduleReelAutoEmbed()}catch(_){}
   };
   /* Alt+右ドラッグでブラシ/消しゴムサイズ調整（サイズプレビュー円付き） */
   /* 統合 sizeS：ツールに応じて brushW / eraseW を更新（アノテ窓と同じ形式） */
@@ -11528,6 +11525,8 @@ function openReel(){
     const notesRest=rest.length?buildFrameNotes(rest,{text:'',curFrame:null,dur:pdur,isVideo:true,root}):[];
     if(!notesCur.length&&!notesRest.length)return;
     const vv=vOf(c);if(!vv)return;
+    /* 描画のみ（コメント無し）の note は「動画埋め込み専用」= noShot=true としてコメント欄に出さない。 */
+    for(const n of notesCur)if(n.drawing&&n.drawing.length&&!n.text)n.noShot=true;
     for(const n of notesRest)if(n.drawing&&n.drawing.length&&!n.text)n.noShot=true;
     for(const n of notesCur)vv.review.notes.push(n);
     for(const n of notesRest)vv.review.notes.push(n);
@@ -11537,20 +11536,11 @@ function openReel(){
     drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
     persist().catch(e=>{try{console.warn('persist(reelSendCur) failed',e);toast('保存に失敗しました')}catch(_){}});
   };
-  /* 描画完了ごとに全クリップの pending を「動画埋め込み」として自動保存（debounce 800ms）。
-     これで REEL で描いた瞬間からタスクページ側の動画にも埋め込まれる。 */
-  let _reelAutoTimer=null;
-  function scheduleReelAutoEmbed(){
-    if(_reelAutoTimer)clearTimeout(_reelAutoTimer);
-    _reelAutoTimer=setTimeout(()=>{
-      _reelAutoTimer=null;
-      let dirty=false;
-      for(const c of reelUI.clips)if(reelEmbedPending(c)>0)dirty=true;
-      if(!dirty)return;
-      drawAnno();reelNotes();
-      persist().catch(e=>{try{console.warn('persist(autoEmbed) failed',e)}catch(_){}});
-    },800);
-  }
+  /* v033 の描画完了ごとの自動埋め込みは撤去。pending を pointerup 直後に空にしてしまうと
+     クリア・送信・消しゴムなどが「対象がない」状態で無効になり、大量の重複ノートも生まれるため。
+     pending の永続化は「送信」時 と「REEL 閉じ時 (beforeunload)」の 2 タイミングだけに絞る。
+     互換のため関数は空定義で残す。 */
+  function scheduleReelAutoEmbed(){}
   reelUI.scheduleAutoEmbed=scheduleReelAutoEmbed;
   /* 送信：Reelのタイムラインで使用中の全ショット（全クリップ）の未送信内容をレビューページへ反映。
      まだ「記入」していない pending アノテーション・入力中コメントも自動で記入してから送信するので、
