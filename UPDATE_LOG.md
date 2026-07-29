@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.044) REEL：Shift+右ドラッグ／右ドラッグ で意図せず再生される問題を軽減
+  - Shift+右ドラッグ（回転）と 右ドラッグ（ズーム）の pointerdown で `e.stopPropagation()` を追加。下位要素（video / bridge など）や親要素の pointerdown / click 系リスナへの伝播を止める。
+  - preventDefault は既に付いているが、propagation を追加で止めることで video 要素の click / Space スペルキーなど周辺挙動の巻き込みを防ぐ。
+
 - (dev v2026.07.29.043) REEL：画面回転（Shift+右ドラッグ）追加＋ブラシサイズ円カーソル（アノテ窓と統一）
   - **回転**：`RZ.rot` / `RZ.spinning` を追加、`applyRZoom` で `flipEl` に `rotate` を適用、`stage.pointerdown` で `Shift+右ドラッグ` を検出（クリスタ準拠、横ドラッグ量 × 0.35°）。パン中も回転補正で自然にドラッグ方向へ動く（rot 分逆回転して補正）。`zrBtn`（等倍）で回転もリセット。zoomLab に度数表示。
   - **ブラシサイズカーソル**：draw / erase 時に `anno` の `cursor='none'` にし、既存 `szRing` を `anno.onpointermove` でリアルタイム追従表示（サイズは `brushW`/`eraseW` × `RZ.s`）。`pointerleave` で非表示。それ以外のツールは `crosshair`。

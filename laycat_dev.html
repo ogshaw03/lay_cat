@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.043';
+const APP_VERSION='2026.07.29.044';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11028,11 +11028,12 @@ function openReel(){
       ],it=>setRTool(it.tool));
       return;
     }
-    /* Shift+右ドラッグ：画面回転（クリスタ準拠）。ビュー中心を軸に、横方向のドラッグ量で回す。 */
+    /* Shift+右ドラッグ：画面回転（クリスタ準拠）。ビュー中心を軸に、横方向のドラッグ量で回す。
+       stopPropagation で下位要素の pointerdown / click 系リスナへの伝播を止め、意図せず再生などが発動しないようにする。 */
     if(e.button===2&&e.shiftKey&&e.pointerType!=='pen'){
       RZ.spinning=true;RZ.sx0=e.clientX;RZ.sr0=RZ.rot||0;
       try{stage.setPointerCapture(e.pointerId)}catch(_){}
-      stage.style.cursor='grabbing';e.preventDefault();return;
+      stage.style.cursor='grabbing';e.preventDefault();e.stopPropagation();return;
     }
     /* 右クリック＋水平ドラッグでズーム（Alt+右はブラシサイズ調整に譲る）。
        マウス右クリはズーム／ペン(Windows Ink)のサイドボタン(button===2)はパン扱い（アノテ窓と同じ挙動）。 */
@@ -11040,7 +11041,7 @@ function openReel(){
       const r=stage.getBoundingClientRect();
       RZ.zooming=true;RZ.zx0=e.clientX;RZ.zs0=RZ.s;RZ.zcx=e.clientX-r.left;RZ.zcy=e.clientY-r.top;
       try{stage.setPointerCapture(e.pointerId)}catch(_){}
-      stage.style.cursor='zoom-in';e.preventDefault();return;
+      stage.style.cursor='zoom-in';e.preventDefault();e.stopPropagation();return;
     }
     if(!(RZ.hand||e.button===1||(e.pointerType==='pen'&&e.button===2)))return;
     if(RZ.s<=1)return;
