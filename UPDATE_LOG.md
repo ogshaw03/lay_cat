@@ -13,6 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.028) REEL：3D マネキンをアノテ窓から移植（Phase 3.4・親ウィンドウで 3D エディタを開く実装）
+  - `🎭 3D` ボタン追加。クリックで親 window に `mannequin_3d.html` を開き、apply で REEL の pending にマネキンを追加。
+  - 反映後は anno 上で移動・四隅=拡縮・4 リング=軸回転（ヨー緑／ピッチ赤／ロール青／カメラ軸黄）・本体ドラッグ=自由回転。
+  - 既存マネキンがあれば mannBtn は再編集モードで開き、ダブルクリックでもポーズ再編集。
+  - グローバルの `_mannLoad`/`_mannLoadAsync`/`_mannEnsureQuat`/`_mannEnsureHeadless`/`_mannRender`/`_mannRedrawCbs`/`paintMannequin`/`_qMul`/`_qNorm`/`_qFromAxisAngle` をそのまま流用。
+  - REEL ポップアップの `unload` で `_mannRedrawCbs` からコールバック削除＋開き中のエディタ窓を close して掃除。
+
 - (dev v2026.07.29.027) REEL：ステータス切替プルダウンをヘッダ（レビュー担当バッジの隣）へ移動
   - cside 上部の statusBar から clipInfo（ヘッダ中央）へ配置変更。「担当」「レビュー」バッジと同じ行に並ぶ。
   - `updReelHeaderInfo` の末尾で `updReelStatus` を呼ぶ形に変更（clipInfo.innerHTML='' で消されないよう順序を担保）。
