@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.038) REEL：drawAnno で pending 描画を復活・重複は `reel_emb_` 除外で回避
+  - v036 で pending 描画を止めていたため、投げ縄の移動中／拡縮／回転がリアルタイム反映されず、pointerup（or タイムスライダ操作）まで表示が古いままだった。
+  - `drawAnno` の v.review.notes 描画から `reel_emb_` プレフィックスの embed ノートを除外＋pending 描画を復活。二重描画にならず、pending 更新はすべてリアルタイム反映される。
+  - v.review.notes への同期（persist）は引き続き reelAfterEdit 経由（400ms debounce）で走る。
+
 - (dev v2026.07.29.037) REEL：描画直後にアノテが一瞬消える現象を修正
   - v036 で `drawAnno` の pending 描画を停止した副作用で、pointerup 直後に呼ばれる `drawAnno` は「pending 描画なし＋ v.review.notes に embed 未追加」の一瞬の隙間で何も表示しない状態になっていた。
   - `reelAfterEdit` の末尾で `drawAnno()` を呼ぶことで、同期直後に v.review.notes 経由で再描画されるように。

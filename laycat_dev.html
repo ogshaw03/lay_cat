@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.037';
+const APP_VERSION='2026.07.29.038';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10938,20 +10938,22 @@ function openReel(){
     const ctx=anno.getContext('2d');ctx.clearRect(0,0,anno.width,anno.height);
     const dt=rvData();const f=dispF();
     const lyOn=s=>RV.layerVis[((s.layer||1)-1)];
+    /* REEL 由来の embed ノート（id=reel_emb_<node>_<frame>）は pending と重複するので v.review.notes 側では
+       描画対象から除外する。実際の描画は下の pending ブロックが担当（drag 中もリアルタイム反映）。 */
+    const isReelEmb=n=>n&&n.id&&n.id.indexOf('reel_emb_')===0;
     if(dt&&RV.eye){
       /* ゴースト：前後フレームのアノテーションを薄く表示 */
       const cc=reelUI.clips[reelUI.cur];const cdr=(cc&&cc.drafts)||[];
-      const shownN=dt.v.review.notes.concat(cdr); /* 確定＋記入下書き（このクリップ）を埋め込み表示 */
+      const shownN=dt.v.review.notes.filter(n=>!isReelEmb(n)).concat(cdr);
       if(rGhost){const GR=3,durOf=n=>{const x=parseInt(n.dur);return isNaN(x)?1:x};
         for(const n of shownN){if(!n.drawing||!n.drawing.length||n.frame==null)continue;if(f>=n.frame&&f<n.frame+durOf(n))continue;const dd=Math.min(Math.abs(n.frame-f),Math.abs(n.frame+durOf(n)-1-f));if(dd<=GR)paintStrokeList(ctx,anno.width,anno.height,n.drawing.filter(lyOn),0.3-dd*0.07)}}
       for(const n of shownN)if(n.drawing&&n.drawing.length&&n.frame!=null&&f>=n.frame&&f<n.frame+(parseInt(n.dur)||1))paintStrokeList(ctx,anno.width,anno.height,n.drawing.filter(lyOn),1);
     }
     const pdur=parseInt(durS.value)||1;
     const inW=p=>p.f!=null&&f>=p.f&&f<p.f+pdur;
-    /* pending は v.review.notes 内の REEL embed ノート（reel_emb_ prefix）として上の描画ループで既に描画される。
-       ここでは RV.stroke（描画中のライブストローク）だけを追加描画する。RV.eye が false のときは
-       上ブロックが走らないので pending 相当も見えなくなる（＝アノテ表示切替と一貫する）。 */
-    const pend=[];if(RV.stroke&&inW(RV.stroke)&&lyOn(RV.stroke))pend.push(RV.stroke);
+    /* pending をリアルタイム描画（投げ縄の移動・拡縮・回転や描画中の反映に必要）。
+       同フレームの reel_emb_ ノートは上の描画から除外済みなので二重描画にならない。 */
+    const pend=RV.pending.filter(p=>inW(p)&&lyOn(p));if(RV.stroke&&inW(RV.stroke)&&lyOn(RV.stroke))pend.push(RV.stroke);
     paintStrokeList(ctx,anno.width,anno.height,pend,1);
     /* 図形ドラフト（ドラッグ中プレビュー） */
     if(RV.tool==='shape'&&rShapeDraft)paintShape(ctx,anno.width,anno.height,rShapeDraft,1);
