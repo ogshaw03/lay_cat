@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.020';
+const APP_VERSION='2026.07.29.021';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4649,6 +4649,19 @@ function renderProjCheck(main,root){
       toast(added?added+' 件のカット（'+label+'）をタスクタブに追加しました':'すべてタブに追加済みです');
     };
     addAllHolder.appendChild(addAll);
+    /* REEL にまとめて追加：各カットの最新動画版を REEL に送る。動画無しはスキップ。 */
+    const toReel=el('button','btn btn-primary btn-sm','▶ REEL にまとめて送る ('+bucketPend.length+')');
+    toReel.title='現在表示中の担当者「'+label+'」のチェック待ちカットの最新動画をまとめて REEL に追加します';
+    toReel.style.marginLeft='6px';
+    toReel.onclick=async()=>{
+      const list=[];
+      for(const n of bucketPend){const lv=latestVideoVersionUnder(n.id);if(lv&&lv.v)list.push({n:lv.node,v:lv.v})}
+      if(!list.length){toast('REEL に送れる動画がありません');return}
+      openReel();if(!reelAlive())return;
+      for(const {n,v} of list)await reelAddClip(n,v);
+      toast(list.length+' 件のカット（'+label+'）を REEL に追加しました');
+    };
+    addAllHolder.appendChild(toReel);
   };
   /* スナップショット：タブに入った時（またはチェック待ちタブ再クリック/更新）に確定。
      以後のステータス変更ではリストからカットを消さず、済みは薄く表示のまま残す（誤操作防止）。 */

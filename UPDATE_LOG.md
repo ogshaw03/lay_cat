@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.021) チェック待ちタブ：`▶ REEL にまとめて送る` ボタンを追加
+  - 既存の `⧉ まとめてタブに追加` の隣に、同じ担当者バケット (`bucketPend`) を対象に REEL へ送るボタンを追加。
+  - 各カットの `latestVideoVersionUnder(n.id)` で最新動画版を取得し、`openReel()` → `reelAddClip(node, v)` を順次実行。動画無しのカットはスキップ。
+  - button style は `btn btn-primary btn-sm`（サブミット詳細の「▶ まとめて REEL に送る」と同じ視覚言語）。
 
 ---
 
