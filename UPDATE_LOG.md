@@ -13,6 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.033) REEL：pending を「動画埋め込みノート（noShot=true）」として自動永続化＋アノテ窓のコメント削除 confirm も撤去
+  - `reelEmbedPending(c)` 追加：クリップの pending を `buildFrameNotes` → `noShot=true` → `v.review.notes.push`、pending は空に。
+  - 描画完了（`anno.onpointerup` / `reelMannUp`）ごとに `scheduleReelAutoEmbed`（debounce 800ms）で全クリップの pending を自動反映＋`persist`。REEL で描いた瞬間からタスクページ側の動画にも埋め込みが反映される。
+  - REEL 閉じ時（`beforeunload`）にも残 pending を反映して `persist`。
+  - `reelSendCur` は現在フレーム分＝コメント付きノート、他フレーム分＝ `noShot=true` の埋め込みノートとして反映する形に更新。
+  - アノテ窓側の `noteBlock` 削除ボタンも `confirm('コメントを削除しますか？')` を撤去（REEL 側と挙動を合わせる）。
+
 - (dev v2026.07.29.032) REEL：コメント削除ボタンを reelWin 側で作り直し、click / confirm が届かない問題を修正
   - `noteBlock` は親 window の `document.createElement` で作られた button なので、REEL ポップアップに appendChild しても click ハンドラや `confirm()` ダイアログが機能しない場合があった。
   - REEL の `reelNotes` 内で `noteBlock` 返却 DOM から `.na[title="削除"]` を取り出し、`ce(d,'button',…)` で作った同等の button に置換。confirm 抜きで即削除＋`_ntomb` 記録＋refresh。

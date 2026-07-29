@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.032';
+const APP_VERSION='2026.07.29.033';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6099,7 +6099,6 @@ function noteBlock(v,n,opts){
     attachMention(ta,opts.root);ta.focus();
   };
   del.onclick=async()=>{
-    if(!confirm('コメントを削除しますか？'))return;
     /* 参照比較 (x!==n) だと autoRefresh の 3-way マージで v.review.notes に新しい参照が
        入ったあとに n が stale になって削除できないため、キー比較に統一（マージ側と同じ nk）。 */
     const nk=x=>x.id||((x.time||'')+'|'+(x.text||'')+'|'+(x.frame!=null?x.frame:''));
@@ -10900,7 +10899,13 @@ function openReel(){
   function clampReelSize(){try{const w=reelWin.outerWidth,h=reelWin.outerHeight;const nw=Math.max(w,REEL_MINW),nh=Math.max(h,REEL_MINH);if(nw!==w||nh!==h)reelWin.resizeTo(nw,nh)}catch(_){}}
   reelWin.addEventListener('resize',()=>{clampReelSize();fitAnno()});
   clampReelSize();
-  /* 未送信はすべて動画埋め込み扱いなので閉じる時の確認ダイアログは出さない。 */
+  /* 未送信はすべて動画埋め込み扱いなので閉じる時の確認ダイアログは出さない。
+     ただし残った pending は「動画埋め込み専用ノート」として同期反映してから閉じる（save race を避けるため beforeunload で state 書き込み＋persist）。 */
+  reelWin.addEventListener('beforeunload',()=>{
+    let dirty=false;
+    for(const c of reelUI.clips)if(reelEmbedPending(c)>0)dirty=true;
+    if(dirty){try{persist().catch(()=>{})}catch(_){}}
+  });
   function drawAnno(){
     const ctx=anno.getContext('2d');ctx.clearRect(0,0,anno.width,anno.height);
     const dt=rvData();const f=dispF();
@@ -11206,6 +11211,7 @@ function openReel(){
     reelMannDrag=null;
     if(wasRotate)_reelMannScheduleRender(p,600);
     _pushHistR();drawAnno();updUnsent();
+    try{scheduleReelAutoEmbed()}catch(_){}
   }
   /* ダブルクリック=既存マネキンのポーズ再編集 */
   anno.addEventListener('dblclick',e=>{if(RV.tool!=='mann')return;const [x,y]=ptA(e);const hit=reelMannHitTest(x,y);if(hit){e.preventDefault();reelOpenMannEditor(hit.p)}});
@@ -11434,6 +11440,8 @@ function openReel(){
     if(RV.tool==='lasso'&&(rLassoPath||rLassoRect||rLassoDrag||rLassoStart)){reelLassoUp();/* 内部で _pushHistR / drawAnno 呼ぶ */}
     if(reelMannDrag){reelMannUp();/* 内部で _pushHistR / drawAnno / updUnsent 呼ぶ */}
     if(changed)_pushHistR();
+    /* 描画・変形が入ったら pending を「動画埋め込み」として debounce で永続化 */
+    try{scheduleReelAutoEmbed()}catch(_){}
   };
   /* Alt+右ドラッグでブラシ/消しゴムサイズ調整（サイズプレビュー円付き） */
   /* 統合 sizeS：ツールに応じて brushW / eraseW を更新（アノテ窓と同じ形式） */
@@ -11492,8 +11500,22 @@ function openReel(){
     RV.stroke=null;cta.value='';
     drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
   };
-  /* 1 段送信フロー：現在フレーム（表示 dur 分）の pending＋コメントだけを即 v.review.notes に反映し、
-     その場で persist する。他フレームの pending は残す（＝動画埋め込みとして残る）。 */
+  /* 現在クリップの pending 全てを v.review.notes に「動画埋め込み専用」ノート（noShot=true）として反映。
+     コメント欄には出さず動画にだけ埋め込まれる。 */
+  function reelEmbedPending(c){
+    if(!c||!c.pending||!c.pending.length)return 0;
+    const vv=vOf(c);if(!vv)return 0;
+    const nd=c.nodeId?getNode(c.nodeId):null;const root=nd?rootOf(nd):curRoot();
+    const pdur=parseInt(durS.value)||1;
+    const notes=buildFrameNotes(c.pending,{text:'',curFrame:null,dur:pdur,isVideo:true,root});
+    for(const n of notes)if(n.drawing&&n.drawing.length&&!n.text)n.noShot=true;
+    for(const n of notes)vv.review.notes.push(n);
+    const cnt=c.pending.length;
+    c.pending=[];
+    return cnt;
+  }
+  /* 1 段送信フロー：現在フレーム分は「コメント付き」ノートで v.review.notes に反映。
+     他フレームの pending は動画埋め込み（noShot=true）でまとめて反映して pending は空に。 */
   const reelSendCur=()=>{
     const c=reelUI.clips[reelUI.cur];if(!c)return;
     c.commentDraft=cta.value;c._mentions=(cta._mentions||[]).slice();
@@ -11501,17 +11523,35 @@ function openReel(){
     const inWin=p=>p.f!=null&&cf>=p.f&&cf<p.f+pdur;
     const cur=(c.pending||[]).filter(inWin);
     const rest=(c.pending||[]).filter(p=>!inWin(p));
-    const nd=c.nodeId?getNode(c.nodeId):null;
-    const notes=buildFrameNotes(cur,{text:c.commentDraft||'',curFrame:cf,dur:pdur,isVideo:true,root:nd?rootOf(nd):curRoot(),mentions:c._mentions||[]});
-    if(!notes.length)return;
+    const nd=c.nodeId?getNode(c.nodeId):null;const root=nd?rootOf(nd):curRoot();
+    const notesCur=buildFrameNotes(cur,{text:c.commentDraft||'',curFrame:cf,dur:pdur,isVideo:true,root,mentions:c._mentions||[]});
+    const notesRest=rest.length?buildFrameNotes(rest,{text:'',curFrame:null,dur:pdur,isVideo:true,root}):[];
+    if(!notesCur.length&&!notesRest.length)return;
     const vv=vOf(c);if(!vv)return;
-    for(const n of notes)vv.review.notes.push(n);
-    c.pending=rest;
+    for(const n of notesRest)if(n.drawing&&n.drawing.length&&!n.text)n.noShot=true;
+    for(const n of notesCur)vv.review.notes.push(n);
+    for(const n of notesRest)vv.review.notes.push(n);
+    c.pending=[];
     c.commentDraft='';cta.value='';cta._mentions=[];
     RV.stroke=null;
     drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
     persist().catch(e=>{try{console.warn('persist(reelSendCur) failed',e);toast('保存に失敗しました')}catch(_){}});
   };
+  /* 描画完了ごとに全クリップの pending を「動画埋め込み」として自動保存（debounce 800ms）。
+     これで REEL で描いた瞬間からタスクページ側の動画にも埋め込まれる。 */
+  let _reelAutoTimer=null;
+  function scheduleReelAutoEmbed(){
+    if(_reelAutoTimer)clearTimeout(_reelAutoTimer);
+    _reelAutoTimer=setTimeout(()=>{
+      _reelAutoTimer=null;
+      let dirty=false;
+      for(const c of reelUI.clips)if(reelEmbedPending(c)>0)dirty=true;
+      if(!dirty)return;
+      drawAnno();reelNotes();
+      persist().catch(e=>{try{console.warn('persist(autoEmbed) failed',e)}catch(_){}});
+    },800);
+  }
+  reelUI.scheduleAutoEmbed=scheduleReelAutoEmbed;
   /* 送信：Reelのタイムラインで使用中の全ショット（全クリップ）の未送信内容をレビューページへ反映。
      まだ「記入」していない pending アノテーション・入力中コメントも自動で記入してから送信するので、
      アノテーションのみ・記入し忘れのカットも含めて全カットが反映される。 */
