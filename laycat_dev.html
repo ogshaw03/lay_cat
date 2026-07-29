@@ -2926,7 +2926,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.011';
+const APP_VERSION='2026.07.29.012';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -9748,19 +9748,11 @@ function openReview(nodeId,versionId,opts){
   /* 未送信＝記入済み下書き(drafts)＋未記入の pending アノテ＋入力中コメント。
      どれかあれば送信バーを表示（アノテのみ・記入し忘れでも送信できるようにリールと統一） */
   function updSubmit(){
-    /* 送信 = 現在フレームのみ即反映。他フレームに未送信の pending が残ってる場合も、
-       まとめて反映できる「保存」ボタンを出す。ラベルには drafts の未保存件数のみを表示。
-       （旧「他フレームに N 件の未送信描画」表記は情報過多で外した） */
-    const cf=isVideo?dispFrame():null;
-    const otherPending=isVideo?pending.filter(p=>(p.f!=null?p.f:cf)!==cf).length:0;
-    const total=drafts.length+otherPending;
-    if(total){
-      submitLab.textContent=drafts.length?('未保存: '+drafts.length+'件'):'';
-      submitBar.style.display='';
-    } else {
-      submitLab.textContent='';
-      submitBar.style.display='none';
-    }
+    /* 送信バーは常に非表示化。ここで扱う「未保存 (drafts)」や「他フレームの未送信」は
+       いずれも動画への埋め込み目的で残しているだけなので、状態インジケータ自体を出さない。
+       送信ボタン (sb) は入力欄側に別途あり、そちらから通常の送信は行える。 */
+    submitLab.textContent='';
+    submitBar.style.display='none';
   }
   function renderNotes(){
     list.innerHTML='';
