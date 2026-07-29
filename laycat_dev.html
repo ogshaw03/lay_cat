@@ -2925,7 +2925,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.005';
+const APP_VERSION='2026.07.29.006';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4987,7 +4987,17 @@ function pmShotBreakdown(main,p,isStage,pickId,hasStages){
       const badge=el('span','pm-badge',isStage?(ps.stageName||'未着手'):stInfo(ps.curNode||ps.shot).label);
       badge.style.background=isStage?curStageColor(ps.stageName):(stInfo(ps.curNode||ps.shot).color||'#5a5a6a');mt.appendChild(badge);
       mt.appendChild(el('span','pth',lv?('最新: '+lv.v.name):'動画なし'));bd.appendChild(mt);tile.appendChild(bd);
-      tile.onclick=()=>{if(lv)go(lv.node.id);else toast('このショットには動画がありません')};grid.appendChild(tile); /* タイル → タスクページへ */
+      tile.onclick=()=>{
+        /* 動画がある → その工程のタスクページ。動画無しでも、代表工程 (curNode)、なければ
+           ショット直下の先頭工程、最後の手段でショット自身へ遷移して「動画なし」でも作業できるようにする。 */
+        if(lv)go(lv.node.id);
+        else if(ps.curNode)go(ps.curNode.id);
+        else{
+          const kids=childrenOf(ps.shot.id).filter(n=>n.type==='review');
+          go(kids.length?kids[0].id:ps.shot.id);
+        }
+      };
+      grid.appendChild(tile); /* タイル → タスクページへ */
     }
     main.appendChild(grid);
   }else{
