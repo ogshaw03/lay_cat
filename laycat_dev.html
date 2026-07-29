@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.025';
+const APP_VERSION='2026.07.29.026';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10602,6 +10602,27 @@ function openReel(){
   let _rShapeDDTimer=null;
   shapeWrap.addEventListener('mouseenter',()=>{clearTimeout(_rShapeDDTimer);_rShapeDDTimer=setTimeout(()=>{shapeDD.style.display='flex'},250)});
   shapeWrap.addEventListener('mouseleave',()=>{clearTimeout(_rShapeDDTimer);_rShapeDDTimer=setTimeout(()=>{shapeDD.style.display='none'},180)});
+  /* 投げ縄／矩形範囲選択（アノテ窓の lassoBtn と同じ）— まずは未送信 pending のみを対象。committed 対応は後追い。 */
+  const R_LASSO_SVG='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8c0-2.5 3.5-4.5 7.5-4.5s7.5 2 7.5 4.5-3.5 4.5-7.5 4.5c-1.6 0-3.1-.3-4.4-.9"/><path d="M7 12L5.5 17"/><circle cx="5.5" cy="17" r="1.2" fill="currentColor"/></svg>';
+  const R_RECTSEL_SVG='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 2"><rect x="4" y="5" width="16" height="14" rx="1"/></svg>';
+  let rLassoMode='lasso';
+  const lassoB=mkB('','範囲選択：クリック=単独選択／ドラッグ=範囲選択／中央=移動／四隅=拡縮／上端=回転／Delete=削除／Esc=解除');lassoB.innerHTML=R_LASSO_SVG;lassoB.style.padding='4px 8px';
+  const lassoWrap=ce(d,'div');lassoWrap.style.cssText='position:relative;display:inline-block;line-height:0';
+  lassoWrap.appendChild(lassoB);
+  const lassoDD=ce(d,'div');lassoDD.style.cssText='position:absolute;top:100%;left:0;margin-top:6px;background:#1c1c22;border:1px solid #2a2a32;border-radius:6px;padding:4px;z-index:1000;display:none;flex-direction:column;gap:2px;min-width:120px;box-shadow:0 6px 18px rgba(0,0,0,.4)';
+  const _rLassoDDItem=(label,svg,mode)=>{
+    const it=ce(d,'button','btn');
+    it.innerHTML=svg+'<span style="margin-left:8px;font-size:12px">'+label+'</span>';
+    it.style.cssText='display:flex;align-items:center;justify-content:flex-start;width:100%;padding:6px 10px;background:'+(rLassoMode===mode?'#3a2a5a':'transparent');
+    it.onmousedown=(e)=>{e.preventDefault();rLassoMode=mode;lassoB.innerHTML=(mode==='rect'?R_RECTSEL_SVG:R_LASSO_SVG);lassoDD.style.display='none';setRTool('lasso');for(const c of lassoDD.children)c.style.background='transparent';it.style.background='#3a2a5a'};
+    return it;
+  };
+  lassoDD.appendChild(_rLassoDDItem('投げ縄',R_LASSO_SVG,'lasso'));
+  lassoDD.appendChild(_rLassoDDItem('四角形',R_RECTSEL_SVG,'rect'));
+  lassoWrap.appendChild(lassoDD);
+  let _rLassoDDTimer=null;
+  lassoWrap.addEventListener('mouseenter',()=>{clearTimeout(_rLassoDDTimer);_rLassoDDTimer=setTimeout(()=>{lassoDD.style.display='flex'},250)});
+  lassoWrap.addEventListener('mouseleave',()=>{clearTimeout(_rLassoDDTimer);_rLassoDDTimer=setTimeout(()=>{lassoDD.style.display='none'},180)});
   /* ブラシ／消しゴムサイズはアノテ窓と同じく 1 つの selector に統合し、ツールに応じて
      プリセットとプレフィックスを切替（BRUSH_SIZES / ERASE_SIZES）。 */
   const REEL_BRUSH_SIZES=[2,4,6,10,16,24];const REEL_ERASE_SIZES=[8,16,28,44,64];
@@ -10666,7 +10687,7 @@ function openReel(){
   /* 描画ツールは動画の上側、フレーム操作は下側 */
   const fbarTop=ce(d,'div','ctr');fbarTop.style.cssText='border-top:none;border-bottom:1px solid;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1';
   /* 統合 sizeS は brushS/eraseS の代わりに 1 つだけ配置（アノテ窓と同じ配置） */
-  [drawB,eraseB,headB,shapeWrap,sizeS,presB,clrs,colorI,durS,ghostB,eyeB,traceB,layB,undoB,redoB,clrB].forEach(x=>fbarTop.appendChild(x));
+  [drawB,eraseB,headB,shapeWrap,lassoWrap,sizeS,presB,clrs,colorI,durS,ghostB,eyeB,traceB,layB,undoB,redoB,clrB].forEach(x=>fbarTop.appendChild(x));
   maincol.insertBefore(fbarTop,stage);
   [pF,nF,fLab,fpsS,ziBtn,zoBtn,zoomLab,zrBtn,handB,flipB,inB,outB,rangeClrB].forEach(x=>fbar.appendChild(x));
   /* 画面操作ヒント（右寄せ・2行2列）。REELはズーム＝ホイール/ボタン、パン＝「トラック」＋ドラッグ、回転なし */
@@ -10869,6 +10890,34 @@ function openReel(){
     paintStrokeList(ctx,anno.width,anno.height,pend,1);
     /* 図形ドラフト（ドラッグ中プレビュー） */
     if(RV.tool==='shape'&&rShapeDraft)paintShape(ctx,anno.width,anno.height,rShapeDraft,1);
+    /* 投げ縄／矩形：描画中パス／選択枠／ハンドル／カウント */
+    if(RV.tool==='lasso'){
+      const W=anno.width,H=anno.height;
+      if(rLassoPath&&rLassoPath.length>1){
+        ctx.save();ctx.setLineDash([6,4]);ctx.strokeStyle='rgba(90,220,255,0.95)';ctx.lineWidth=1.6;
+        ctx.beginPath();ctx.moveTo(rLassoPath[0][0]*W,rLassoPath[0][1]*H);
+        for(let i=1;i<rLassoPath.length;i++)ctx.lineTo(rLassoPath[i][0]*W,rLassoPath[i][1]*H);
+        ctx.stroke();ctx.setLineDash([]);ctx.restore();
+      }
+      if(rLassoRect){
+        const r=rLassoRect;const x0=Math.min(r.x0,r.x1)*W,x1=Math.max(r.x0,r.x1)*W;const y0=Math.min(r.y0,r.y1)*H,y1=Math.max(r.y0,r.y1)*H;
+        ctx.save();ctx.setLineDash([6,4]);ctx.strokeStyle='rgba(90,220,255,0.95)';ctx.lineWidth=1.6;
+        ctx.strokeRect(x0,y0,x1-x0,y1-y0);ctx.setLineDash([]);ctx.restore();
+      }
+      if(rLassoSel){
+        const b=rLassoSel.box;const x0=b.x0*W,y0=b.y0*H,x1=b.x1*W,y1=b.y1*H;const cx=(x0+x1)/2,cy=(y0+y1)/2;
+        ctx.save();ctx.strokeStyle='rgba(90,220,255,0.95)';ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
+        ctx.strokeRect(x0,y0,x1-x0,y1-y0);ctx.setLineDash([]);
+        ctx.fillStyle='rgba(90,220,255,0.9)';const hs=8;
+        for(const [px,py] of [[x0,y0],[x1,y0],[x0,y1],[x1,y1]])ctx.fillRect(px-hs/2,py-hs/2,hs,hs);
+        const rhx=cx,rhy=y0-24;
+        ctx.beginPath();ctx.moveTo(cx,y0);ctx.lineTo(rhx,rhy);ctx.stroke();
+        ctx.beginPath();ctx.arc(rhx,rhy,6,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='rgba(220,240,255,0.9)';ctx.font='11px sans-serif';ctx.textAlign='center';
+        ctx.fillText('選択中: '+rLassoSel.items.length+' ストローク／Delete=削除／Esc=解除',cx,y1+18);
+        ctx.restore();
+      }
+    }
     updateLayerPanel();
   }
   /* ==== ゴースト / トレペ / ズーム・トラック（レビューページと同じ） ==== */
@@ -10976,17 +11025,20 @@ function openReel(){
   ftl.onpointermove=e=>{if(!RV.scrub)return;gSeek(gFromX(e));RV.last=-1};
   ftl.onpointerup=()=>{RV.scrub=false;RV.scrubT=-1;RV.last=-1};
   /* ツール */
-  function setRTool(t){RV.tool=t;drawB.classList.toggle('on',t==='draw');eraseB.classList.toggle('on',t==='erase');headB.classList.toggle('on',t==='head');shapeB.classList.toggle('on',t==='shape');if(t!=='head'){rHeadActive=null;rHeadDrag=null}if(t!=='shape'){rShapeDraft=null}anno.style.pointerEvents=t?'auto':'none';anno.style.cursor=(t==='draw'||t==='erase')?'':((t==='head'||t==='shape')?'crosshair':'');if(t){RZ.hand=false;handB.classList.remove('on');stage.style.cursor='';video.pause()}try{rebuildRSizeSel()}catch(_){}}
+  function setRTool(t){RV.tool=t;drawB.classList.toggle('on',t==='draw');eraseB.classList.toggle('on',t==='erase');headB.classList.toggle('on',t==='head');shapeB.classList.toggle('on',t==='shape');lassoB.classList.toggle('on',t==='lasso');if(t!=='head'){rHeadActive=null;rHeadDrag=null}if(t!=='shape'){rShapeDraft=null}if(t!=='lasso'){try{reelLassoClearSelection()}catch(_){}}anno.style.pointerEvents=t?'auto':'none';anno.style.cursor=(t==='draw'||t==='erase')?'':((t==='head'||t==='shape'||t==='lasso')?'crosshair':'');if(t){RZ.hand=false;handB.classList.remove('on');stage.style.cursor='';video.pause()}try{rebuildRSizeSel()}catch(_){}}
   /* 初期化：ツール未選択でも一覧を作っておく（disable 状態） */
   try{RV.brushW=RV.brushW||4;RV.eraseW=RV.eraseW||16;rebuildRSizeSel()}catch(_){}
   /* 顔ガイドの操作状態（アノテ窓と同じ形式） */
   let rHeadActive=null,rHeadDrag=null;
   /* 図形の描画中ドラフト（アノテ窓の shapeDraft と同じ形式） */
   let rShapeDraft=null;
+  /* 投げ縄／矩形選択の状態（対象は RV.pending のみ） */
+  let rLassoPath=null,rLassoRect=null,rLassoStart=null,rLassoSel=null,rLassoDrag=null;
   drawB.onclick=()=>setRTool(RV.tool==='draw'?null:'draw');
   eraseB.onclick=()=>setRTool(RV.tool==='erase'?null:'erase');
   headB.onclick=()=>setRTool(RV.tool==='head'?null:'head');
   shapeB.onclick=()=>setRTool(RV.tool==='shape'?null:'shape');
+  lassoB.onclick=()=>setRTool(RV.tool==='lasso'?null:'lasso');
   const ptA=e=>{const r=anno.getBoundingClientRect();let nx=(e.clientX-r.left)/r.width;const ny=(e.clientY-r.top)/r.height;if(RZ.flip<0)nx=1-nx;return[nx,ny]};
   function eraseR(e){
     const[x,y]=ptA(e);const r=RV.eraseW/2/anno.width;
@@ -11029,6 +11081,150 @@ function openReel(){
     else if(rHeadDrag.mode==='move'){s.cx=rHeadDrag.cx0+ndx;s.cy=rHeadDrag.cy0+ndy;}
     drawAnno();
   }
+  /* 投げ縄／矩形範囲選択（REEL は RV.pending のみを対象）— アノテ窓の lassoPointer* 系と同じロジックの縮小版 */
+  function _rDistToSegPx(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy;let u=L2?((px-ax)*dx+(py-ay)*dy)/L2:0;u=Math.max(0,Math.min(1,u));return Math.hypot(ax+u*dx-px,ay+u*dy-py)}
+  function _rPickStrokeAt(nx,ny){
+    const W=anno.width,H=anno.height,px=nx*W,py=ny*H,TOL=10;
+    const f=dispF();const pdur=parseInt(durS.value)||1;
+    const inWin=p=>p.f!=null&&f>=p.f&&f<p.f+pdur;
+    let best=null;
+    for(const st of RV.pending){
+      if(st.kind==='head'||st.kind==='mannequin')continue;
+      if(!st.points||st.points.length<2)continue;
+      if((st.layer||1)!==RV.activeLayer)continue;
+      if(!inWin(st))continue;
+      let minD=Infinity;
+      for(let i=0;i<st.points.length-1;i++){const a=st.points[i],b=st.points[i+1];const dd=_rDistToSegPx(px,py,a[0]*W,a[1]*H,b[0]*W,b[1]*H);if(dd<minD)minD=dd}
+      if(minD<TOL&&(!best||minD<best.d))best={d:minD,item:{stroke:st,base:st.points.map(p=>p.slice()),src:'pending'}};
+    }
+    return best?best.item:null;
+  }
+  function _rPtInPoly(x,y,poly){let inside=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/((yj-yi)||1e-9)+xi))inside=!inside}return inside}
+  function _rStrokeInLasso(st,poly){if(!st.points||st.points.length<2)return false;let inside=0;for(const p of st.points)if(_rPtInPoly(p[0],p[1],poly))inside++;return inside*2>=st.points.length}
+  function _rLassoBox(items){let x0=1,y0=1,x1=0,y1=0;for(const it of items){for(const p of (it.stroke.points||[])){if(p[0]<x0)x0=p[0];if(p[1]<y0)y0=p[1];if(p[0]>x1)x1=p[0];if(p[1]>y1)y1=p[1]}}return{x0,y0,x1,y1}}
+  function reelLassoClearSelection(){rLassoSel=null;rLassoDrag=null;rLassoPath=null;rLassoRect=null;rLassoStart=null;try{drawAnno()}catch(_){}}
+  function _rLassoHit(nx,ny){
+    if(!rLassoSel)return null;
+    const asp=(anno.height/anno.width)||1;const b=rLassoSel.box;const cx=(b.x0+b.x1)/2,cy=(b.y0+b.y1)/2;const cornerR=0.025;
+    const corners={tl:[b.x0,b.y0],tr:[b.x1,b.y0],bl:[b.x0,b.y1],br:[b.x1,b.y1]};
+    for(const [k,[ox,oy]] of Object.entries(corners)){if(Math.abs(nx-ox)<cornerR&&Math.abs(ny-oy)*asp<cornerR)return{mode:'scale',corner:k,cx,cy}}
+    const rhx=cx,rhy=b.y0-0.04/asp;
+    if(Math.abs(nx-rhx)<cornerR&&Math.abs(ny-rhy)*asp<cornerR)return{mode:'rotate',cx,cy};
+    if(nx>=b.x0&&nx<=b.x1&&ny>=b.y0&&ny<=b.y1)return{mode:'move',cx,cy};
+    return null;
+  }
+  function _rLassoApply(dx,dy,scale,rot,cx,cy){
+    if(!rLassoSel)return;
+    const cosA=Math.cos(rot),sinA=Math.sin(rot);const asp=(anno.height/anno.width)||1;
+    for(const it of rLassoSel.items){
+      const out=[];
+      for(const p of it.base){
+        const rxN=(p[0]-cx)*scale,ryN=(p[1]-cy)*scale,ryE=ryN*asp;
+        const xR=rxN*cosA-ryE*sinA,yR_e=rxN*sinA+ryE*cosA;
+        const x2=cx+xR+dx,y2=cy+(yR_e/asp)+dy;
+        const np=[x2,y2];if(p[2]!=null)np.push(p[2]);
+        out.push(np);
+      }
+      it.stroke.points=out;
+    }
+    rLassoSel.box=_rLassoBox(rLassoSel.items);
+  }
+  function reelLassoDown(e){
+    const [x,y]=ptA(e);
+    if(rLassoSel){
+      const hit=_rLassoHit(x,y);
+      if(hit){
+        anno.setPointerCapture(e.pointerId);
+        for(const it of rLassoSel.items)it.base=it.stroke.points.map(p=>p.slice());
+        const asp=(anno.height/anno.width)||1;
+        rLassoDrag={...hit,x0:x,y0:y,ang0:Math.atan2((y-hit.cy)*asp,x-hit.cx),box0:{...rLassoSel.box}};
+        return;
+      }
+      rLassoSel=null;
+    }
+    anno.setPointerCapture(e.pointerId);
+    rLassoStart=[x,y];
+    if(rLassoMode==='rect')rLassoRect={x0:x,y0:y,x1:x,y1:y};
+    else rLassoPath=[[x,y]];
+    drawAnno();
+  }
+  function reelLassoMove(e){
+    const [x,y]=ptA(e);
+    if(rLassoDrag){
+      const d=rLassoDrag,b=d.box0,cx=(b.x0+b.x1)/2,cy=(b.y0+b.y1)/2;
+      if(d.mode==='move'){_rLassoApply(x-d.x0,y-d.y0,1,0,cx,cy)}
+      else if(d.mode==='scale'){
+        const r0=Math.hypot(d.x0-cx,d.y0-cy)||1e-6,r1=Math.hypot(x-cx,y-cy);
+        const s=Math.max(0.1,Math.min(5,r1/r0));
+        _rLassoApply(0,0,s,0,cx,cy);
+        for(const it of rLassoSel.items)it.base=it.stroke.points.map(p=>p.slice());
+        d.x0=x;d.y0=y;
+      }
+      else if(d.mode==='rotate'){
+        const asp=(anno.height/anno.width)||1;
+        const ang=Math.atan2((y-cy)*asp,x-cx),dRot=ang-d.ang0;
+        _rLassoApply(0,0,1,dRot,cx,cy);
+        for(const it of rLassoSel.items)it.base=it.stroke.points.map(p=>p.slice());
+        d.ang0=ang;
+      }
+      drawAnno();return;
+    }
+    if(rLassoRect){rLassoRect.x1=x;rLassoRect.y1=y;drawAnno()}
+    else if(rLassoPath){rLassoPath.push([x,y]);drawAnno()}
+  }
+  function reelLassoUp(){
+    if(rLassoDrag){rLassoDrag=null;_pushHistR();drawAnno();return}
+    let clickedPt=null;
+    if(rLassoStart){
+      const s=rLassoStart;
+      let cur=null;
+      if(rLassoRect)cur=[rLassoRect.x1,rLassoRect.y1];
+      else if(rLassoPath&&rLassoPath.length)cur=rLassoPath[rLassoPath.length-1];
+      if(cur){const dxPx=(cur[0]-s[0])*anno.width,dyPx=(cur[1]-s[1])*anno.height;if(Math.hypot(dxPx,dyPx)<6)clickedPt=s}
+    }
+    rLassoStart=null;
+    if(clickedPt){
+      rLassoPath=null;rLassoRect=null;
+      const picked=_rPickStrokeAt(clickedPt[0],clickedPt[1]);
+      rLassoSel=picked?{items:[picked],box:_rLassoBox([picked])}:null;
+      drawAnno();return;
+    }
+    let polygon=null;
+    if(rLassoRect){
+      const r=rLassoRect;
+      const x0=Math.min(r.x0,r.x1),x1=Math.max(r.x0,r.x1);
+      const y0=Math.min(r.y0,r.y1),y1=Math.max(r.y0,r.y1);
+      polygon=[[x0,y0],[x1,y0],[x1,y1],[x0,y1]];rLassoRect=null;
+    }else if(rLassoPath){polygon=rLassoPath;rLassoPath=null;if(polygon.length<6){drawAnno();return}}
+    else{drawAnno();return}
+    const f=dispF();const pdur=parseInt(durS.value)||1;const inWin=p=>p.f!=null&&f>=p.f&&f<p.f+pdur;
+    const items=[];
+    for(const p of RV.pending){
+      if(p.kind==='head'||p.kind==='mannequin')continue;
+      if(!p.points||p.points.length<2)continue;
+      if((p.layer||1)!==RV.activeLayer)continue;
+      if(!inWin(p))continue;
+      if(_rStrokeInLasso(p,polygon))items.push({stroke:p,base:p.points.map(pt=>pt.slice()),src:'pending'});
+    }
+    rLassoSel=items.length?{items,box:_rLassoBox(items)}:null;
+    drawAnno();
+  }
+  function reelLassoDelete(){
+    if(!rLassoSel)return;
+    const remove=new Set();
+    for(const it of rLassoSel.items)if(it.src==='pending')remove.add(it.stroke);
+    if(remove.size)RV.pending.splice(0,RV.pending.length,...RV.pending.filter(p=>!remove.has(p)));
+    rLassoSel=null;
+    drawAnno();drawFTL();updUnsent();_pushHistR();
+  }
+  /* Delete = 削除／Esc = 選択解除。既存 keydown ハンドラは keys.js 相当なし → reelWin にリスナ追加。
+     アノテ窓と挙動を揃える（テキスト入力中は無効）。 */
+  reelWin.addEventListener('keydown',e=>{
+    if(RV.tool!=='lasso'||!rLassoSel)return;
+    const tag=(e.target&&e.target.tagName)||'';if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
+    if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();reelLassoDelete()}
+    else if(e.key==='Escape'){e.preventDefault();reelLassoClearSelection()}
+  });
   /* 図形（アノテ窓の shapePointerDown/Move/Up と同じロジック） */
   function reelShapeDown(e){
     anno.setPointerCapture(e.pointerId);
@@ -11055,14 +11251,16 @@ function openReel(){
     else if(RV.tool==='erase'){anno.setPointerCapture(e.pointerId);RV.erasing=true;eraseR(e)}
     else if(RV.tool==='head'){reelHeadDown(e)}
     else if(RV.tool==='shape'){reelShapeDown(e)}
+    else if(RV.tool==='lasso'){reelLassoDown(e)}
   };
-  anno.onpointermove=e=>{if(RV.stroke){const evs=e.getCoalescedEvents?e.getCoalescedEvents():null;if(evs&&evs.length){for(const ce of evs){const p=ptA(ce);const pr=samplePressure(ce);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}}else{const p=ptA(e);const pr=samplePressure(e);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}drawAnno()}else if(RV.erasing)eraseR(e);else if(rHeadDrag)reelHeadMove(e);else if(RV.tool==='shape'&&rShapeDraft)reelShapeMove(e)}; /* 合体イベントで速書きの中間点も取得。ペン時は筆圧を付与 */
+  anno.onpointermove=e=>{if(RV.stroke){const evs=e.getCoalescedEvents?e.getCoalescedEvents():null;if(evs&&evs.length){for(const ce of evs){const p=ptA(ce);const pr=samplePressure(ce);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}}else{const p=ptA(e);const pr=samplePressure(e);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}drawAnno()}else if(RV.erasing)eraseR(e);else if(rHeadDrag)reelHeadMove(e);else if(RV.tool==='shape'&&rShapeDraft)reelShapeMove(e);else if(RV.tool==='lasso')reelLassoMove(e)}; /* 合体イベントで速書きの中間点も取得。ペン時は筆圧を付与 */
   anno.onpointerup=()=>{
     let changed=false;
     if(RV.stroke){RV.pending.push(RV.stroke);RV.stroke=null;drawAnno();drawFTL();updUnsent();changed=true}
     if(RV.erasing){RV.erasing=false;if(RV.eraseChanged){RV.eraseChanged=false;changed=true}}
     if(rHeadDrag){rHeadDrag=null;drawFTL();updUnsent();changed=true}
     if(RV.tool==='shape'&&rShapeDraft){reelShapeUp();/* _pushHistR は reelShapeUp が呼ぶので changed は false のまま */}
+    if(RV.tool==='lasso'&&(rLassoPath||rLassoRect||rLassoDrag||rLassoStart)){reelLassoUp();/* 内部で _pushHistR / drawAnno 呼ぶ */}
     if(changed)_pushHistR();
   };
   /* Alt+右ドラッグでブラシ/消しゴムサイズ調整（サイズプレビュー円付き） */
