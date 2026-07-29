@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.001) サブミットタブ：誰が提出したかバッジを表示
+  - サブミット一覧タイル（renderProjSubmits）と右スライドドロワー（fillSubmitDrawer）に「提出」バッジを追加。`sb.byEmail` 優先で名簿引きし、メンバーカラーのドット + 名前を表示。
+  - CSS に `.mp-badge.mp-s`（青系）を追加。既存の作業／チェックバッジ（緑・アンバー）と同じ視覚言語で並ぶ。
+
 - (dev v2026.07.28.028) タスクタブ並べ替え：孤児コード掃除
   - `.task-tab.dragging` CSS ルールを撤去（`.dragging-collapse` の `opacity:0!important` で完全に打ち消されていた dead code）。
   - `tab.classList.add/remove('dragging','dragging-collapse')` を `('dragging-collapse')` 単独に簡略化。

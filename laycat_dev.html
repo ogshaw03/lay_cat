@@ -170,6 +170,8 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .mp-badge.mp-a .mp-bl{color:var(--green)}
 .mp-badge.mp-r{background:rgba(214,169,95,.13);border-color:rgba(214,169,95,.42)}
 .mp-badge.mp-r .mp-bl{color:var(--amber)}
+.mp-badge.mp-s{background:rgba(96,165,255,.13);border-color:rgba(96,165,255,.42)}
+.mp-badge.mp-s .mp-bl{color:var(--accent2)}
 /* 検索付き担当ピッカー */
 .mps{position:relative}
 .mps-input{width:100%}
@@ -2912,7 +2914,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.28.028';
+const APP_VERSION='2026.07.29.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4515,6 +4517,18 @@ function renderProjSubmits(main,root){
   for(const sb of list){
     const it=el('div','subl-item');
     const bd=el('div');bd.appendChild(el('div','nm',sb.name));bd.appendChild(el('div','mt',((sb.items&&sb.items.length)||0)+' 件・'+fmt(sb.createdAt)));
+    /* 提出者バッジ：byEmail（優先） or by で名簿引き、なければ生の by を表示 */
+    const subId=sb.byEmail||sb.by;
+    if(subId){
+      const m=memberById(root,subId);
+      const bs=el('div','mp-badges');
+      const b=el('span','mp-badge mp-s');
+      if(m&&m.color){const d=el('span','mp-dot');d.style.background=m.color;b.appendChild(d)}
+      b.appendChild(el('span','mp-bl','提出'));
+      b.appendChild(el('span','mp-bn',m?(m.name||m.id):(sb.by||subId)));
+      bs.appendChild(b);
+      bd.appendChild(bs);
+    }
     it.appendChild(bd);
     const ths=el('div','thumbs');
     for(const item of (sb.items||[]).slice(0,5)){const n=getNode(item.nodeId);const v=n&&n.versions.find(x=>x.id===item.versionId);const th=el('div','th');if(v&&v.thumb)storage.getURL(v.thumb).then(u=>{if(u)th.style.backgroundImage='url("'+u+'")'});ths.appendChild(th)}
@@ -5353,6 +5367,19 @@ function fillSubmitDrawer(){
   const lk=el('button','btn btn-ghost btn-sm','🔗 リンク');lk.title='この提出ページへのリンクをコピー（提出連絡に添付できます）';lk.onclick=copyShareLink;back._acts.appendChild(lk);
   const toReel=el('button','btn btn-primary btn-sm','▶ まとめて REEL に送る');toReel.onclick=()=>subSendToReel(sb);back._acts.appendChild(toReel);
   const body=back._body;body.innerHTML='';curUploadUI=null;
+  /* 提出者バッジ（誰がサブミットしたか）：byEmail 優先で名簿引き、色ドット付きで表示 */
+  const subId=sb.byEmail||sb.by;
+  const rootProj=sb.projectId?getNode(sb.projectId):null;
+  if(subId&&rootProj){
+    const m=memberById(rootProj,subId);
+    const bs=el('div','mp-badges');bs.style.marginBottom='10px';
+    const b=el('span','mp-badge mp-s');
+    if(m&&m.color){const d=el('span','mp-dot');d.style.background=m.color;b.appendChild(d)}
+    b.appendChild(el('span','mp-bl','提出'));
+    b.appendChild(el('span','mp-bn',m?(m.name||m.id):(sb.by||subId)));
+    bs.appendChild(b);
+    body.appendChild(bs);
+  }
   if(sb.comment){const bc=el('div','sub-viewcmt');bc.appendChild(elIco('div','ttl','folder','サブミットへのコメント'));bc.appendChild(el('div','tx',sb.comment));body.appendChild(bc);}
   /* 提出物ヘッダ：まとめて全カットをタブに追加するボタンを配置 */
   const sl=el('div','section-label');sl.appendChild(el('span',null,'提出物（タイルをクリックすると下にタスクページを表示）'));
