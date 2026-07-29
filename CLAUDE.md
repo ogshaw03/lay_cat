@@ -29,6 +29,10 @@
 - `laycat.html`（Beta）の `APP_VERSION` は `beta v0.0.1` から始まり、パッチノート更新のタイミングでのみ上げる。
 - `laycat_dev.html`（Dev）の `APP_VERSION` は日付ベース `YYYY.MM.DD.NNN`（例：`2026.07.17.139`）。**dev コミットごとに末尾番号を +1** して上げる（開発者／テスターが Dev の更新を確認するための識別子）。日付が変わったら末尾を `.001` からリセット。
 
+## フォント
+- **`Syne` は使わない**（読みづらいため廃止済み）。新しく `--font-head` を定義したり Google Fonts を追加する際も Syne を復活させないこと。
+- 見出し／タイトル系は `--font-head: 'Space Grotesk','Noto Sans JP',sans-serif` 統一（`--font-code` と同じスタック）。本文は `--font-body: 'Noto Sans JP',sans-serif`。
+
 ## パッチノート運用
 - `PATCH_NOTES.md` はユーザーに見せる**確定パッチノート**。**通常の更新では追記しない**（全部書くときりがないため）。
 - 代わりに `UPDATE_LOG.md`（git 管理）に、コミット単位で今回の変更を1〜2行追記していく。
