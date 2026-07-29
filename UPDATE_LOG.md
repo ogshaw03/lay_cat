@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.018) タスクページ：NOTE パネルが上部のタスクタブバーとくっついて見える不具合を修正
+  - `.review-note-col` の `position:sticky; top:8px` → `top:24px` に変更（上部の `.task-tabs` strip との間に 24px の余白）。
+  - あわせて `height` / `max-height` の calc を `100vh - 240px` → `100vh - 256px` に調整し、下端が画面外に出ないように。
+
 - (dev v2026.07.29.017) フォント：可愛い太字を保つため `--font-head` / `--font-code` は Space Grotesk に戻し、`.fb-title` だけ `--font-ui`（OS ネイティブ）に切替
   - v016 で全体を OS ネイティブ (`--font-ui`) に統一したが「太字で可愛かったフォントまで変わってしまった」というフィードバックを受けて再修正。
   - `--font-head` / `--font-code` を `'Space Grotesk','Noto Sans JP',sans-serif` に、`--font-body` を `'Noto Sans JP',sans-serif` に戻す（v015 相当）。Google Fonts の `<link>` にも Space Grotesk を復活。
