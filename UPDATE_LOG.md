@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.019) タスクページ：NOTE パネルが「＋動画／設定／削除」の task-topbar 行にも干渉する不具合を追加修正
+  - v018 で 8→24px にしたが、それでも `.task-topbar`（sticky top:0、高さ約 70〜75px）の下端より上に NOTE 上端が来てしまい、右列で同じ Y にボタン行と NOTE が並んで見えていた。
+  - `.review-note-col` の `top:24px` → `top:84px` に増やし、task-topbar 下端よりも確実に下に来るように。あわせて `height`/`max-height` calc を `100vh - 256px` → `100vh - 316px` に調整。
+
 - (dev v2026.07.29.018) タスクページ：NOTE パネルが上部のタスクタブバーとくっついて見える不具合を修正
   - `.review-note-col` の `position:sticky; top:8px` → `top:24px` に変更（上部の `.task-tabs` strip との間に 24px の余白）。
   - あわせて `height` / `max-height` の calc を `100vh - 240px` → `100vh - 256px` に調整し、下端が画面外に出ないように。

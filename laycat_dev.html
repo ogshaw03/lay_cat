@@ -122,10 +122,11 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .review-layout.single-col{min-height:0}
 .review-main-col{flex:1 1 auto;min-width:0}
 /* NOTE パネルの高さ：グローバルヘッダー + パンくず + プロジェクトタブ + タスク topbar 分を控除
-   だいたい 256px 相当。画面に完全に収まるよう保守的に設定。
-   sticky top は 24px：上部のタスクタブ strip（`.task-tabs`）と NOTE 上端がくっついて
-   見えないよう余白を確保する。 */
-.review-note-col{flex:0 0 340px;position:sticky;top:24px;height:calc(100vh - 256px);max-height:calc(100vh - 256px);align-self:flex-start;display:flex;flex-direction:column;overflow:hidden}
+   だいたい 316px 相当。画面に完全に収まるよう保守的に設定。
+   sticky top は 84px：`.task-topbar`（＋動画/設定/削除ボタン列、sticky top:0）の
+   下端（padding+ボタン+border+margin-bottom 合計で約 70〜75px）よりも下に来るようにする。
+   これで NOTE 上端が上部ボタンバーと同じ Y に並んで干渉して見えるのを防ぐ。 */
+.review-note-col{flex:0 0 340px;position:sticky;top:84px;height:calc(100vh - 316px);max-height:calc(100vh - 316px);align-self:flex-start;display:flex;flex-direction:column;overflow:hidden}
 @media (max-width:960px){.review-layout{flex-direction:column;min-height:0}.review-note-col{flex:1 1 auto;position:static;height:auto;max-height:none;width:100%;overflow:visible}}
 /* NOTE パネル：右カラム全体を埋める */
 .task-note{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:12px;display:flex;flex-direction:column;gap:8px;flex:1 1 auto;min-height:0;box-sizing:border-box}
@@ -2936,7 +2937,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.018';
+const APP_VERSION='2026.07.29.019';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
