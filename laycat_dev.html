@@ -503,7 +503,8 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .log-title{font-weight:600;font-size:15px;display:flex;align-items:center;gap:10px;flex:1;min-width:0}
 .log-meta{font-size:11px;color:var(--text3);white-space:nowrap}
 .log-notes{padding:10px 16px 14px;display:flex;flex-direction:column;gap:8px}
-.log-note{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 12px}
+.log-note{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 12px;border-left:3px solid transparent;padding-left:9px;transition:border-left-color .15s}
+.log-note.at-cur{border-left-color:#4dff88}
 .log-note .m{font-size:11px;color:var(--text3);margin-bottom:4px}
 .log-note .t{font-size:13px;color:var(--text);white-space:pre-wrap;word-break:break-word;line-height:1.65}
 .log-note-input{display:flex;gap:8px;padding:0 16px 16px}
@@ -2942,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.046';
+const APP_VERSION='2026.07.29.047';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6053,6 +6054,8 @@ function buildFrameNotes(pending,opts){
 function noteBlock(v,n,opts){
   opts=opts||{};
   const note=el('div','log-note');
+  /* シンクスケッチ風の「現在フレームハイライト」用データ属性。frame を持つノートだけ書き出す。 */
+  if(n.frame!=null){note.dataset.frame=n.frame;note.dataset.dur=(parseInt(n.dur)||1)}
   const m=el('div','m');
   m.appendChild(el('span',null,n.author+'・'+fmt(n.time)+(n.edited?'（編集済）':'')));
   if(n.frame!=null){
@@ -9802,7 +9805,7 @@ function openReview(nodeId,versionId,opts){
     if(!alive)return; /* この窓が閉じられていればループを止める（再オープンで同名 #fbOverlay が居てもゾンビ化しない） */
     if(isVideo){
       const f=dispFrame();
-      if(f!==lastFrame||force){lastFrame=f;refreshView()}
+      if(f!==lastFrame||force){lastFrame=f;refreshView();try{paintCurrentHighlight()}catch(_){}}
       if(cmpOn&&bVid&&!media.paused&&!scrubbing)cmpFrameSync(); /* 再生中は毎フレーム B を A の現在フレームへ精密シーク（速度は変えない） */
       requestAnimationFrame(()=>sync(false));
     }else drawAll();
@@ -9812,6 +9815,7 @@ function openReview(nodeId,versionId,opts){
   /* --- コメント --- */
   function draftBlock(n){
     const b=el('div','log-note draft-note');
+    if(n.frame!=null){b.dataset.frame=n.frame;b.dataset.dur=(parseInt(n.dur)||1)}
     const m=el('div','m');
     m.appendChild(el('span','draft-chip','未保存'));
     m.appendChild(el('span',null,(n.author||'-')+'・'+fmt(n.time)));
@@ -9833,15 +9837,29 @@ function openReview(nodeId,versionId,opts){
     submitLab.textContent='';
     submitBar.style.display='none';
   }
-  function renderNotes(){
+  function renderNotes(scrollEnd){
     list.innerHTML='';
-    const shown=v.review.notes.filter(n=>!noteEmbedOnly(n)); /* 描画のみは動画に埋め込むだけでコメント欄には出さない */
+    /* シンクスケッチ風：フレーム順ソート（frame 昇順、frame 無しは末尾） */
+    const shown=v.review.notes.filter(n=>!noteEmbedOnly(n)).slice()
+      .sort((a,b)=>(((a.frame==null?1e9:a.frame))-((b.frame==null?1e9:b.frame)))||String(a.time||'').localeCompare(String(b.time||'')));
     if(!shown.length&&!drafts.length)list.appendChild(el('div','log-empty-note','コメントはまだありません。'));
     const refresh=async()=>{await persist();renderNotes();drawAll();drawTimeline()};
     const shotForNote={fileRef:v.file,fps:v.fps||24,isVideo};
     for(const n of shown)list.appendChild(noteBlock(v,n,{refresh,onSeek:isVideo?seekFrame:null,shot:shotForNote}));
-    for(const n of drafts)list.appendChild(draftBlock(n));
-    list.scrollTop=list.scrollHeight;
+    /* drafts は末尾固定（未保存の視認性を優先） */
+    const dsorted=drafts.slice().sort((a,b)=>(((a.frame==null?1e9:a.frame))-((b.frame==null?1e9:b.frame))));
+    for(const n of dsorted)list.appendChild(draftBlock(n));
+    if(scrollEnd)list.scrollTop=list.scrollHeight;
+    try{paintCurrentHighlight()}catch(_){}
+  }
+  /* 現在フレームに該当する note の左端に緑バーを表示（DOM class トグルのみ、再描画しない） */
+  function paintCurrentHighlight(){
+    if(!isVideo)return;
+    const cf=dispFrame();
+    list.querySelectorAll('.log-note[data-frame]').forEach(el=>{
+      const f=+el.dataset.frame,d=+el.dataset.dur||1;
+      el.classList.toggle('at-cur', cf>=f && cf<f+d);
+    });
   }
   renderNotes();updSubmit();
   /* 記入：コメント／アノテーションを下書き(drafts)に積む。まだレビューページには反映しない。
@@ -9896,7 +9914,7 @@ function openReview(nodeId,versionId,opts){
     if(!drafts.length)return;
     for(const n of drafts){delete n._draft;v.review.notes.push(n)}
     drafts=[];
-    renderNotes();drawAll();drawTimeline();updSubmit();
+    renderNotes(true);drawAll();drawTimeline();updSubmit();
     persist().then(()=>{try{renderBody();resolveThumbs()}catch(_){}}).catch(e=>{try{console.warn('persist(submit) failed',e);toast('保存に失敗しました')}catch(_){}});
   }
   /* 送信 = 「現在フレームのコメント+アノテだけ」を即タスクページに反映（他フレームの pending は残す）。
@@ -9908,7 +9926,7 @@ function openReview(nodeId,versionId,opts){
     for(const n of drafts){delete n._draft;v.review.notes.push(n)}
     drafts=[];
     /* UI を先に更新（送信の体感速度をゼロレイテンシに） */
-    renderNotes();drawAll();drawTimeline();updSubmit();
+    renderNotes(true);drawAll();drawTimeline();updSubmit();
     /* 保存はバックグラウンド。_persistChain で直列化されるので連続送信も安全 */
     persist().then(()=>{try{renderBody();resolveThumbs()}catch(_){}}).catch(e=>{try{console.warn('persist(sendCurrent) failed',e);toast('保存に失敗しました')}catch(_){}});
   }
@@ -10487,7 +10505,8 @@ function openReel(){
    +'.mention-pop{background:#141416;border:1px solid #3a3a42;border-radius:8px;box-shadow:0 8px 26px rgba(0,0,0,.55);overflow:hidden;max-height:260px;overflow-y:auto;font-family:inherit}'
    +'.mention-opt{display:flex;align-items:baseline;gap:8px;padding:7px 11px;cursor:pointer;font-size:13px}.mention-opt.on{background:#1c1c1f}'
    +'.mention-opt .mo-nm{font-weight:600;color:#e8e8ec;white-space:nowrap}.mention-opt.is-role .mo-nm{color:#d6a95f}.mention-opt .mo-sub{font-size:11px;color:#5a5a6a;white-space:nowrap}'
-   +'.log-note{background:#1c1c1f;border:1px solid #2a2a2f;border-radius:8px;padding:9px 12px}'
+   +'.log-note{background:#1c1c1f;border:1px solid #2a2a2f;border-radius:8px;padding:9px 12px;border-left:3px solid transparent;padding-left:9px;transition:border-left-color .15s}'
+   +'.log-note.at-cur{border-left-color:#4dff88}'
    +'.log-note.draft-note{border-color:#e0a63a;border-style:dashed;background:rgba(224,166,58,.06)}'
    +'.draft-chip{font-size:10px;font-weight:700;color:#1a1200;background:#e0a63a;border-radius:8px;padding:1px 7px;margin-right:6px}'
    +'.log-note .m{font-size:11px;color:#5a5a6a;margin-bottom:4px;display:flex;align-items:center;flex-wrap:wrap;gap:2px}'
@@ -10895,6 +10914,7 @@ function openReel(){
   /* コメントパネル（noteBlock共用。編集/削除/Fジャンプ/スクショはFBと同じ） */
   function reelDraftBlock(c,n){
     const b=ce(d,'div','log-note draft-note');
+    if(n.frame!=null){b.dataset.frame=n.frame;b.dataset.dur=(parseInt(n.dur)||1)}
     const m=ce(d,'div','m');
     m.appendChild(ce(d,'span','draft-chip','未保存'));
     m.appendChild(ce(d,'span',null,(n.author||'-')+'・'+fmt(n.time)));
@@ -10916,6 +10936,7 @@ function openReel(){
      REEL の beforeunload 自動保存で生成されると通常はコメント欄に出ないため、削除手段がないと幽霊化する。 */
   function reelEmbedBlock(v,n){
     const b=ce(d,'div','log-note draft-note');
+    if(n.frame!=null){b.dataset.frame=n.frame;b.dataset.dur=(parseInt(n.dur)||1)}
     const m=ce(d,'div','m');
     m.appendChild(ce(d,'span','draft-chip','動画埋め込み'));
     m.appendChild(ce(d,'span',null,(n.author||'-')+'・'+fmt(n.time)));
@@ -10942,8 +10963,11 @@ function openReel(){
        コメント欄には出さない（重複防止）。それ以外の旧 noShot=true ノートは削除 UI 付きで表示する。 */
     const _reelPfx='reel_emb_';
     const isReelSync=n=>n&&n.id&&n.id.indexOf(_reelPfx)===0;
-    const shown=dt.v.review.notes.filter(n=>!noteEmbedOnly(n));
-    const embeds=dt.v.review.notes.filter(n=>noteEmbedOnly(n)&&!isReelSync(n));
+    /* シンクスケッチ風：フレーム順ソート（frame 昇順、frame 無しは末尾） */
+    const _sortByFrame=(a,b)=>(((a.frame==null?1e9:a.frame))-((b.frame==null?1e9:b.frame)))||String(a.time||'').localeCompare(String(b.time||''));
+    const shown=dt.v.review.notes.filter(n=>!noteEmbedOnly(n)).slice().sort(_sortByFrame);
+    const embeds=dt.v.review.notes.filter(n=>noteEmbedOnly(n)&&!isReelSync(n)).slice().sort(_sortByFrame);
+    const cdrSorted=cdr.slice().sort(_sortByFrame);
     if(!shown.length&&!cdr.length&&!embeds.length)clist.appendChild(ce(d,'div','log-empty-note','コメントはまだありません。'));
     const refresh=async()=>{await persist();reelNotes();drawAnno();drawFTL()};
     const shot={fileRef:dt.v.file,fps:dt.v.fps||24,isVideo:true};
@@ -10967,8 +10991,17 @@ function openReel(){
       clist.appendChild(bl);
     }
     for(const n of embeds)clist.appendChild(reelEmbedBlock(dt.v,n));
-    for(const n of cdr)clist.appendChild(reelDraftBlock(cc,n));
+    for(const n of cdrSorted)clist.appendChild(reelDraftBlock(cc,n));
     if(scrollEnd)clist.scrollTop=clist.scrollHeight;
+    try{paintReelCurrentHighlight()}catch(_){}
+  }
+  /* 現在フレームに該当する REEL コメントの左端に緑バー（DOM class トグル、再描画なし） */
+  function paintReelCurrentHighlight(){
+    const cf=dispF();
+    clist.querySelectorAll('.log-note[data-frame]').forEach(el=>{
+      const f=+el.dataset.frame,dur=+el.dataset.dur||1;
+      el.classList.toggle('at-cur', cf>=f && cf<f+dur);
+    });
   }
   function seekRTr(f){
     f=Math.max(0,Math.min(f,RV.total-1));RV.seekF=f;const t=f/RV.FPS+0.0001;
@@ -12141,6 +12174,7 @@ function openReel(){
       /* 動画ごとのフレーム＋全体フレームの両方を表示 */
       fLab.textContent='F '+f+'/'+(RV.total-1)+'　全体 '+(gOffset(reelUI.cur)+f)+'/'+(gTotal()-1);
       drawAnno();drawFTL();
+      try{paintReelCurrentHighlight()}catch(_){}
     }
     /* 再生範囲：毎フレーム tick で判定（rAF 経由の _rangeWatchR が発火しないケースを冗長にカバー） */
     if(!video.paused&&!RV.scrub&&_hasRangeR()){

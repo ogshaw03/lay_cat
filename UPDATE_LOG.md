@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.047) FB / REEL コメント欄をシンクスケッチ風に（フレーム順ソート＋現在フレームハイライト）
+  - **ソート**：`renderNotes` / `reelNotes` で `n.frame` 昇順、`frame==null` は末尾。drafts / embeds も同じ並び。
+  - **現在フレームハイライト**：`.log-note` の左端に 3px の緑バー（`#4dff88`）を `.at-cur` クラスで表示。`noteBlock` / `draftBlock` / `reelDraftBlock` / `reelEmbedBlock` に `data-frame`/`data-dur` を書き出し、フレーム変化時に `paintCurrentHighlight` / `paintReelCurrentHighlight` が `classList.toggle` で切替（DOM 再描画なし、毎フレーム約 0.1ms）。
+  - `sync()` と REEL の `tick()` の「フレーム変化イベント」内で 1 回だけ呼ぶ。
+  - `renderNotes` に `scrollEnd` 引数を追加、送信直後の呼び出しだけ末尾スクロール（削除や refresh 時は現在位置を保持）。
+
 - (dev v2026.07.29.046) REEL 基本 UX をアノテ窓に統一（#1,#2,#4,#5,#6,#7,#10 一括修正）
   - **#5**：ツールバーの並び順を `[pen, erase, size, pres, shape, lasso, head, mann, color, ...]` に統一。
   - **#10**：色パレットに黒（#000000）を先頭追加、選択中の `.sel` ハイライト＋`colorI` 変更で解除。
