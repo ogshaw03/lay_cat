@@ -2943,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.047';
+const APP_VERSION='2026.07.29.048';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6056,6 +6056,16 @@ function noteBlock(v,n,opts){
   const note=el('div','log-note');
   /* シンクスケッチ風の「現在フレームハイライト」用データ属性。frame を持つノートだけ書き出す。 */
   if(n.frame!=null){note.dataset.frame=n.frame;note.dataset.dur=(parseInt(n.dur)||1)}
+  /* コメントブロック全体クリックで該当フレームへシーク（ボタン・入力欄などのインタラクティブ子要素は除外）。 */
+  if(opts.onSeek&&n.frame!=null){
+    note.style.cursor='pointer';
+    note.addEventListener('click',e=>{
+      const t=e.target;const tag=t&&t.tagName;
+      if(tag==='BUTTON'||tag==='A'||tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
+      if(t&&t.closest&&(t.closest('button')||t.closest('a')||t.closest('textarea')||t.closest('input')||t.closest('select')||t.closest('.frame-chip')||t.closest('.note-shot')))return;
+      opts.onSeek(n.frame);
+    });
+  }
   const m=el('div','m');
   m.appendChild(el('span',null,n.author+'・'+fmt(n.time)+(n.edited?'（編集済）':'')));
   if(n.frame!=null){
@@ -8743,10 +8753,10 @@ function openReview(nodeId,versionId,opts){
     const pdur=parseInt(durSel.value)||1;
     ctx.fillStyle='rgba(224,138,74,.5)';
     for(const p of pending)if(p.f!=null)ctx.fillRect(p.f*fw,2,Math.max(3,fw*pdur),7);
-    /* コメント＝赤の菱形（最前面レイヤー） */
+    /* コメント＝赤の菱形（最前面レイヤー）。菱形の中心を目盛り＆プレイヘッドと同じ「フレーム左端」に揃える。 */
     for(const n of shownNotes()){
       if(n.frame==null||(n.drawing&&n.drawing.length))continue;
-      const cx=n.frame*fw+fw/2;
+      const cx=n.frame*fw;
       ctx.fillStyle=n._draft?'rgba(255,90,90,.6)':'#ff5a5a';
       ctx.beginPath();ctx.moveTo(cx,2);ctx.lineTo(cx+5,7);ctx.lineTo(cx,12);ctx.lineTo(cx-5,7);ctx.closePath();ctx.fill();
       ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=1;ctx.stroke();
@@ -9816,6 +9826,16 @@ function openReview(nodeId,versionId,opts){
   function draftBlock(n){
     const b=el('div','log-note draft-note');
     if(n.frame!=null){b.dataset.frame=n.frame;b.dataset.dur=(parseInt(n.dur)||1)}
+    /* コメントブロック全体クリックで該当フレームへシーク */
+    if(isVideo&&n.frame!=null){
+      b.style.cursor='pointer';
+      b.addEventListener('click',e=>{
+        const t=e.target;const tag=t&&t.tagName;
+        if(tag==='BUTTON'||tag==='A'||tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
+        if(t&&t.closest&&(t.closest('button')||t.closest('.frame-chip')))return;
+        seekFrame(n.frame);
+      });
+    }
     const m=el('div','m');
     m.appendChild(el('span','draft-chip','未保存'));
     m.appendChild(el('span',null,(n.author||'-')+'・'+fmt(n.time)));
@@ -10915,6 +10935,15 @@ function openReel(){
   function reelDraftBlock(c,n){
     const b=ce(d,'div','log-note draft-note');
     if(n.frame!=null){b.dataset.frame=n.frame;b.dataset.dur=(parseInt(n.dur)||1)}
+    if(n.frame!=null){
+      b.style.cursor='pointer';
+      b.addEventListener('click',e=>{
+        const t=e.target;const tag=t&&t.tagName;
+        if(tag==='BUTTON'||tag==='A'||tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
+        if(t&&t.closest&&(t.closest('button')||t.closest('.frame-chip')))return;
+        video.pause();seekRTr(n.frame);
+      });
+    }
     const m=ce(d,'div','m');
     m.appendChild(ce(d,'span','draft-chip','未保存'));
     m.appendChild(ce(d,'span',null,(n.author||'-')+'・'+fmt(n.time)));
@@ -10937,6 +10966,15 @@ function openReel(){
   function reelEmbedBlock(v,n){
     const b=ce(d,'div','log-note draft-note');
     if(n.frame!=null){b.dataset.frame=n.frame;b.dataset.dur=(parseInt(n.dur)||1)}
+    if(n.frame!=null){
+      b.style.cursor='pointer';
+      b.addEventListener('click',e=>{
+        const t=e.target;const tag=t&&t.tagName;
+        if(tag==='BUTTON'||tag==='A'||tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
+        if(t&&t.closest&&(t.closest('button')||t.closest('.frame-chip')))return;
+        video.pause();seekRTr(n.frame);
+      });
+    }
     const m=ce(d,'div','m');
     m.appendChild(ce(d,'span','draft-chip','動画埋め込み'));
     m.appendChild(ce(d,'span',null,(n.author||'-')+'・'+fmt(n.time)));

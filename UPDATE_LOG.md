@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.048) FB コメント：ブロック全体クリックでシーク＋タイムライン菱形マーカー位置ズレ修正
+  - **ブロック全体クリック**：`noteBlock` / `draftBlock` / `reelDraftBlock` / `reelEmbedBlock` の `.log-note` 全体に click リスナ追加。cursor:pointer で押せる感じに。ボタン／入力欄／フレームチップ／スクショなどインタラクティブ子要素はクリック除外（既存動作を保護）。REEL 側は `video.pause()+seekRTr(n.frame)`、アノテ窓は `seekFrame(n.frame)`。
+  - **タイムライン菱形マーカーのズレ修正**：`drawTimeline` でコメント菱形の中心 X を `n.frame*fw + fw/2`（フレーム中央）から `n.frame*fw`（フレーム左端）に変更。目盛り／プレイヘッド／オレンジバーと同じ位置に揃うようになった。
+
 - (dev v2026.07.29.047) FB / REEL コメント欄をシンクスケッチ風に（フレーム順ソート＋現在フレームハイライト）
   - **ソート**：`renderNotes` / `reelNotes` で `n.frame` 昇順、`frame==null` は末尾。drafts / embeds も同じ並び。
   - **現在フレームハイライト**：`.log-note` の左端に 3px の緑バー（`#4dff88`）を `.at-cur` クラスで表示。`noteBlock` / `draftBlock` / `reelDraftBlock` / `reelEmbedBlock` に `data-frame`/`data-dur` を書き出し、フレーム変化時に `paintCurrentHighlight` / `paintReelCurrentHighlight` が `classList.toggle` で切替（DOM 再描画なし、毎フレーム約 0.1ms）。
