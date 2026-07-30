@@ -13,6 +13,16 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.046) REEL 基本 UX をアノテ窓に統一（#1,#2,#4,#5,#6,#7,#10 一括修正）
+  - **#5**：ツールバーの並び順を `[pen, erase, size, pres, shape, lasso, head, mann, color, ...]` に統一。
+  - **#10**：色パレットに黒（#000000）を先頭追加、選択中の `.sel` ハイライト＋`colorI` 変更で解除。
+  - **#6**：REEL の `Delete`/`Backspace` でマネキン選択削除に対応、`Esc` で選択解除。
+  - **#4**：アノテ窓の `_restore` で `shapeDraft`/`lassoSel` 系/`headDrag`/`mannDrag`/`selectedMann`/`mannHoverAxis` もリセット（undo/redo でドラフト・選択枠のゾンビ化を解消）。
+  - **#1**：REEL の消しゴム(`eraseR`)を `v.review.notes[*].drawing` の committed も対象に拡張。`reel_emb_` 系は同期モデル経由なので除外し、通常の送信済み drawing だけ部分消し。drawing が空になった note は自動掃除、変更時 `scheduleReelPersist`。
+  - **#2**：REEL のレイヤーカードに `✕` 削除ボタン追加。`reelDeleteLayer(i)` は pending / stroke / `v.review.notes[*].drawing` の該当レイヤーを削除＋以降のレイヤー番号を shift。confirm 付き、`layerVis` 詰め、activeLayer 補正、`reelAfterEdit` で同期＋persist。
+  - **#7**：REEL の投げ縄を committed 対応。`_rPickStrokeAt` と範囲選択 `reelLassoUp` に `noteRef` 付きで committed drawing を追加、`_rLassoApply` は committed 側にも `n.edited=true` を立てる。`reelLassoDelete` で committed drawing を `noteRef.drawing` から除去＋空 note の掃除＋`scheduleReelPersist`。移動/拡縮/回転の pointerup で committed を触ったら persist スケジュール。
+  - **#8**（保存フロー）はユーザー確認により **現状維持**（v036 の常時同期モデル）。
+
 - (dev v2026.07.29.045) REEL：Space+ドラッグ系ショートカットをアノテ窓と統一
   - 回転：**Space+Shift+ドラッグ**（v043 の Shift+右ドラッグは廃止）。
   - ズーム：**Space+Ctrl(Meta)+ドラッグ**（併せて右クリック水平ドラッグは維持）。

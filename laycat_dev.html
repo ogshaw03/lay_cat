@@ -2942,7 +2942,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.045';
+const APP_VERSION='2026.07.29.046';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7906,7 +7906,16 @@ function openReview(nodeId,versionId,opts){
   let redoStack=[];
   let _hist=[],_histIdx=-1,_eraseChanged=false;
   const _snap=()=>({pending:JSON.parse(JSON.stringify(pending)),notes:v.review.notes.filter(n=>n.drawing&&n.drawing.length).map(n=>({id:n.id,drawing:JSON.parse(JSON.stringify(n.drawing))}))});
-  const _restore=s=>{pending=JSON.parse(JSON.stringify(s.pending));for(const b of s.notes){const n=v.review.notes.find(x=>x.id===b.id);if(n){n.drawing=JSON.parse(JSON.stringify(b.drawing));n.edited=true;committedDirty=true}}headActive=null;stroke=null};
+  const _restore=s=>{
+    pending=JSON.parse(JSON.stringify(s.pending));
+    for(const b of s.notes){const n=v.review.notes.find(x=>x.id===b.id);if(n){n.drawing=JSON.parse(JSON.stringify(b.drawing));n.edited=true;committedDirty=true}}
+    headActive=null;stroke=null;
+    /* undo/redo 時は各ツールのドラッグ状態も全リセット（ドラフト・選択枠のゾンビ化を防ぐ） */
+    try{if(typeof shapeDraft!=='undefined')shapeDraft=null}catch(_){}
+    try{if(typeof lassoSel!=='undefined'){lassoSel=null;lassoPath=null;lassoRect=null;lassoStart=null;lassoDrag=null}}catch(_){}
+    try{if(typeof headDrag!=='undefined')headDrag=null}catch(_){}
+    try{if(typeof mannDrag!=='undefined'){mannDrag=null;selectedMann=null;mannHoverAxis=null}}catch(_){}
+  };
   const _pushHist=()=>{_hist=_hist.slice(0,_histIdx+1);_hist.push(_snap());_histIdx=_hist.length-1;if(_hist.length>50){_hist=_hist.slice(-50);_histIdx=_hist.length-1}};
   _pushHist(); /* 初期状態を履歴の起点として保存 */
   /* 比較再生（A/B）：B は同じウィンドウ内で横並び表示・A に同期。アノテーションは A（開いている版）に描く */
@@ -10664,7 +10673,14 @@ function openReel(){
   presB.onclick=()=>{const nv=!isPressureOn();setPressureOn(nv);presB.classList.toggle('on',nv);try{toast('筆圧検知：'+(nv?'ON':'OFF'))}catch(_){}};
   const colorI=d.createElement('input');colorI.type='color';colorI.value='#ff4d4d';
   const clrs=ce(d,'span');clrs.style.cssText='display:inline-flex;gap:4px;align-items:center';
-  ['#ff4d4d','#ff9f2e','#ffe34d','#4dff88','#4da6ff','#ffffff'].forEach(c=>{const b=ce(d,'button','clr');b.style.background=c;b.onclick=()=>{colorI.value=c};clrs.appendChild(b)});
+  /* アノテ窓と同じ 7 色（先頭に黒を追加）＋クリック時に .sel ハイライト、colorI 変更で解除 */
+  const _rClrBtns=[];
+  ['#000000','#ff4d4d','#ff9f2e','#ffe34d','#4dff88','#4da6ff','#ffffff'].forEach(c=>{
+    const b=ce(d,'button','clr');b.style.background=c;
+    b.onclick=()=>{colorI.value=c;for(const x of _rClrBtns)x.classList.remove('sel');b.classList.add('sel')};
+    clrs.appendChild(b);_rClrBtns.push(b);
+  });
+  colorI.oninput=()=>{for(const x of _rClrBtns)x.classList.remove('sel')};
   const durS=d.createElement('select');[[1,'表示 1F'],[2,'表示 2F'],[3,'表示 3F'],[5,'表示 5F'],[10,'表示 10F'],[9999,'持続']].forEach(([v2,l])=>opt(durS,l,v2));
   const ghostB=mkB('ゴースト','前後フレームのアノテーションを半透明表示');
   const eyeB=mkB('👁','アノテーション表示/非表示');eyeB.classList.add('on');
@@ -10706,7 +10722,8 @@ function openReel(){
   /* 描画ツールは動画の上側、フレーム操作は下側 */
   const fbarTop=ce(d,'div','ctr');fbarTop.style.cssText='border-top:none;border-bottom:1px solid;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1';
   /* 統合 sizeS は brushS/eraseS の代わりに 1 つだけ配置（アノテ窓と同じ配置） */
-  [drawB,eraseB,headB,mannB,shapeWrap,lassoWrap,sizeS,presB,clrs,colorI,durS,ghostB,eyeB,traceB,layB,undoB,redoB,clrB].forEach(x=>fbarTop.appendChild(x));
+  /* アノテ窓と同順（pen,erase,size,pres,shape,lasso,head,mann,color,dur,ghost,eye,trace,layer,undo,redo,clear） */
+  [drawB,eraseB,sizeS,presB,shapeWrap,lassoWrap,headB,mannB,clrs,colorI,durS,ghostB,eyeB,traceB,layB,undoB,redoB,clrB].forEach(x=>fbarTop.appendChild(x));
   maincol.insertBefore(fbarTop,stage);
   [pF,nF,fLab,fpsS,ziBtn,zoBtn,zoomLab,zrBtn,handB,flipB,inB,outB,rangeClrB].forEach(x=>fbar.appendChild(x));
   /* 画面操作ヒント（右寄せ・2行2列）。REELはズーム＝ホイール/ボタン、パン＝「トラック」＋ドラッグ、回転なし */
@@ -10822,12 +10839,42 @@ function openReel(){
       h.appendChild(ce(d,'span','nm','L'+i));
       const eye=ce(d,'span','lyr-eye','👁');
       eye.onclick=ev=>{ev.stopPropagation();RV.layerVis[i-1]=!RV.layerVis[i-1];drawAnno()};
-      h.appendChild(eye);card.appendChild(h);
+      h.appendChild(eye);
+      const del=ce(d,'span','lyr-del','✕');del.title='このレイヤーを削除';del.onclick=ev=>{ev.stopPropagation();reelDeleteLayer(i)};h.appendChild(del);
+      card.appendChild(h);
       const cv=ce(d,'canvas','lyr-prev');cv.width=134;cv.height=75;card.appendChild(cv);
       card.onclick=()=>{RV.activeLayer=i;drawAnno()};
       lyrList.appendChild(card);lyrCards.push({card,cv,eye,i});
     }
     updateLayerPanel();
+  }
+  /* レイヤー削除（アノテ窓 deleteLayer と同構造）。pending / stroke / v.review.notes[*].drawing の layer 番号を shift。 */
+  function reelDeleteLayer(i){
+    if(!reelWin.confirm('レイヤー L'+i+' を削除しますか？（このレイヤーの描画が削除されます。保存済みの描画も対象です）'))return;
+    const shift=arr=>{for(const s of arr){const L=s.layer||1;if(L>i)s.layer=L-1}};
+    const kept=RV.pending.filter(p=>(p.layer||1)!==i);shift(kept);
+    RV.pending.splice(0,RV.pending.length,...kept);
+    if(RV.stroke){const L=RV.stroke.layer||1;if(L===i)RV.stroke=null;else if(L>i)RV.stroke.layer=L-1}
+    /* 保存済み（v.review.notes）の描画も同様に。reel_emb_ 系は同期で再構築されるが安全のため一緒に。 */
+    const c=reelUI.clips[reelUI.cur];const vv=c?vOf(c):null;
+    let committed=false;
+    if(vv){
+      for(const n of vv.review.notes){
+        if(!n.drawing||!n.drawing.length)continue;
+        const before=n.drawing.length;
+        n.drawing=n.drawing.filter(s=>(s.layer||1)!==i);
+        let shifted=false;for(const s of n.drawing){const L=s.layer||1;if(L>i){s.layer=L-1;shifted=true}}
+        if(n.drawing.length!==before||shifted)committed=true;
+      }
+      if(committed)vv.review.notes=vv.review.notes.filter(n=>n.kind||(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length));
+    }
+    RV.layerVis.splice(i-1,1);RV.layerVis.push(true);
+    if(RV.layerCount>1)RV.layerCount--;
+    if(RV.activeLayer>RV.layerCount)RV.activeLayer=RV.layerCount;if(RV.activeLayer<1)RV.activeLayer=1;
+    buildLayerPanel();drawAnno();drawFTL();updUnsent();_pushHistR();
+    /* 同期＋persist */
+    try{reelAfterEdit(c)}catch(_){}
+    if(committed)scheduleReelPersist();
   }
   function updateLayerPanel(){
     const dt=rvData();const f=dispF();
@@ -11303,13 +11350,29 @@ function openReel(){
   anno.addEventListener('dblclick',e=>{if(RV.tool!=='mann')return;const [x,y]=ptA(e);const hit=reelMannHitTest(x,y);if(hit){e.preventDefault();reelOpenMannEditor(hit.p)}});
   const ptA=e=>{const r=anno.getBoundingClientRect();let nx=(e.clientX-r.left)/r.width;const ny=(e.clientY-r.top)/r.height;if(RZ.flip<0)nx=1-nx;return[nx,ny]};
   function eraseR(e){
-    const[x,y]=ptA(e);const r=RV.eraseW/2/anno.width;
+    const[x,y]=ptA(e);const r=RV.eraseW/2/anno.width;const asp=anno.height/anno.width;
     const f=dispF();const pdur=parseInt(durS.value)||1;
+    let any=false;const affected=new Set();
+    /* 未送信 pending を消す */
     const cand=[],rest=[];
-    const affected=new Set();
     for(const p of RV.pending){if(p.f!=null&&f>=p.f&&f<p.f+pdur){cand.push(p);affected.add(p.f)}else{rest.push(p)}}
-    const res=eraseFromList(cand,x,y,r,anno.height/anno.width,RV.activeLayer);
-    if(res){RV.pending.splice(0,RV.pending.length,...rest,...res);drawAnno();drawFTL();RV.eraseChanged=true;try{reelAfterEdit(reelUI.clips[reelUI.cur],affected)}catch(_){}}
+    const res=eraseFromList(cand,x,y,r,asp,RV.activeLayer);
+    if(res){RV.pending.splice(0,RV.pending.length,...rest,...res);any=true}
+    /* 送信済み drawing もその場で編集（reel_emb_ 系は同期経由で書き換わるので除外し、noteBlock 由来の確定ノートのみ対象） */
+    const c=reelUI.clips[reelUI.cur];const vv=c?vOf(c):null;
+    let dirty=false;
+    if(vv){
+      for(const n of vv.review.notes){
+        if(!n.drawing||!n.drawing.length)continue;
+        if(n.id&&n.id.indexOf('reel_emb_')===0)continue; /* 同期モデルの embed は pending 経由で消えるのでスキップ */
+        if(!(n.frame!=null&&f>=n.frame&&f<n.frame+(parseInt(n.dur)||1)))continue;
+        const r2=eraseFromList(n.drawing,x,y,r,asp,RV.activeLayer);
+        if(r2){n.drawing=r2;n.edited=true;any=true;dirty=true}
+      }
+      /* drawing もテキストも無くなった送信済みノートは掃除（kind 付きは残す） */
+      if(dirty)vv.review.notes=vv.review.notes.filter(n=>n.kind||(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length));
+    }
+    if(any){drawAnno();drawFTL();RV.eraseChanged=true;try{reelAfterEdit(c,affected)}catch(_){}if(dirty)scheduleReelPersist()}
   }
   /* Undo/Redo：描画・消しゴム両方を復元可能にする snapshot 履歴 */
   RV.hist=[];RV.histIdx=-1;RV.eraseChanged=false;
@@ -11356,14 +11419,22 @@ function openReel(){
     const f=dispF();const pdur=parseInt(durS.value)||1;
     const inWin=p=>p.f!=null&&f>=p.f&&f<p.f+pdur;
     let best=null;
-    for(const st of RV.pending){
-      if(st.kind==='head'||st.kind==='mannequin')continue;
-      if(!st.points||st.points.length<2)continue;
-      if((st.layer||1)!==RV.activeLayer)continue;
-      if(!inWin(st))continue;
+    const test=(st,src,noteRef)=>{
+      if(st.kind==='head'||st.kind==='mannequin')return;
+      if(!st.points||st.points.length<2)return;
+      if((st.layer||1)!==RV.activeLayer)return;
       let minD=Infinity;
       for(let i=0;i<st.points.length-1;i++){const a=st.points[i],b=st.points[i+1];const dd=_rDistToSegPx(px,py,a[0]*W,a[1]*H,b[0]*W,b[1]*H);if(dd<minD)minD=dd}
-      if(minD<TOL&&(!best||minD<best.d))best={d:minD,item:{stroke:st,base:st.points.map(p=>p.slice()),src:'pending'}};
+      if(minD<TOL&&(!best||minD<best.d))best={d:minD,item:{stroke:st,base:st.points.map(p=>p.slice()),src,noteRef}};
+    };
+    for(const p of RV.pending){if(!inWin(p))continue;test(p,'pending',null)}
+    /* committed（v.review.notes[*].drawing）も選択対象。ただし reel_emb_ 系は pending として既に処理済みなので除外。 */
+    const c=reelUI.clips[reelUI.cur];const vv=c?vOf(c):null;
+    if(vv)for(const n of vv.review.notes){
+      if(!n.drawing||!n.drawing.length)continue;
+      if(n.id&&n.id.indexOf('reel_emb_')===0)continue;
+      if(!(n.frame!=null&&f>=n.frame&&f<n.frame+(parseInt(n.dur)||1)))continue;
+      for(const p of n.drawing)test(p,'committed',n);
     }
     return best?best.item:null;
   }
@@ -11394,6 +11465,7 @@ function openReel(){
         out.push(np);
       }
       it.stroke.points=out;
+      if(it.src==='committed'&&it.noteRef){it.noteRef.edited=true}
     }
     rLassoSel.box=_rLassoBox(rLassoSel.items);
   }
@@ -11441,7 +11513,13 @@ function openReel(){
     else if(rLassoPath){rLassoPath.push([x,y]);drawAnno()}
   }
   function reelLassoUp(){
-    if(rLassoDrag){rLassoDrag=null;_pushHistR();drawAnno();return}
+    if(rLassoDrag){
+      const hadCommitted=rLassoSel&&rLassoSel.items.some(it=>it.src==='committed');
+      rLassoDrag=null;_pushHistR();drawAnno();
+      /* 移動/拡縮/回転で committed drawing を書き換えた場合は persist を確定させる */
+      if(hadCommitted)scheduleReelPersist();
+      return;
+    }
     let clickedPt=null;
     if(rLassoStart){
       const s=rLassoStart;
@@ -11472,7 +11550,20 @@ function openReel(){
       if(!p.points||p.points.length<2)continue;
       if((p.layer||1)!==RV.activeLayer)continue;
       if(!inWin(p))continue;
-      if(_rStrokeInLasso(p,polygon))items.push({stroke:p,base:p.points.map(pt=>pt.slice()),src:'pending'});
+      if(_rStrokeInLasso(p,polygon))items.push({stroke:p,base:p.points.map(pt=>pt.slice()),src:'pending',noteRef:null});
+    }
+    /* committed（送信済み）drawing も範囲選択の対象。reel_emb_ 系は pending 経由なので除外。 */
+    const c=reelUI.clips[reelUI.cur];const vv=c?vOf(c):null;
+    if(vv)for(const n of vv.review.notes){
+      if(!n.drawing||!n.drawing.length)continue;
+      if(n.id&&n.id.indexOf('reel_emb_')===0)continue;
+      if(!(n.frame!=null&&f>=n.frame&&f<n.frame+(parseInt(n.dur)||1)))continue;
+      for(const p of n.drawing){
+        if(p.kind==='head'||p.kind==='mannequin')continue;
+        if(!p.points||p.points.length<2)continue;
+        if((p.layer||1)!==RV.activeLayer)continue;
+        if(_rStrokeInLasso(p,polygon))items.push({stroke:p,base:p.points.map(pt=>pt.slice()),src:'committed',noteRef:n});
+      }
     }
     rLassoSel=items.length?{items,box:_rLassoBox(items)}:null;
     drawAnno();
@@ -11480,11 +11571,23 @@ function openReel(){
   function reelLassoDelete(){
     if(!rLassoSel)return;
     const remove=new Set();const affected=new Set();
-    for(const it of rLassoSel.items)if(it.src==='pending'){remove.add(it.stroke);if(it.stroke.f!=null)affected.add(it.stroke.f)}
+    let committedChanged=false;
+    for(const it of rLassoSel.items){
+      if(it.src==='pending'){remove.add(it.stroke);if(it.stroke.f!=null)affected.add(it.stroke.f)}
+      else if(it.src==='committed'&&it.noteRef){
+        const idx=it.noteRef.drawing.indexOf(it.stroke);
+        if(idx>=0)it.noteRef.drawing.splice(idx,1);
+        it.noteRef.edited=true;committedChanged=true;
+      }
+    }
     if(remove.size)RV.pending.splice(0,RV.pending.length,...RV.pending.filter(p=>!remove.has(p)));
+    /* committed 側で drawing が空になったノートは掃除 */
+    const c=reelUI.clips[reelUI.cur];const vv=c?vOf(c):null;
+    if(committedChanged&&vv)vv.review.notes=vv.review.notes.filter(n=>n.kind||(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length));
     rLassoSel=null;
     drawAnno();drawFTL();updUnsent();_pushHistR();
-    try{reelAfterEdit(reelUI.clips[reelUI.cur],affected)}catch(_){}
+    try{reelAfterEdit(c,affected)}catch(_){}
+    if(committedChanged)scheduleReelPersist();
   }
   /* Delete = 削除／Esc = 選択解除／Ctrl+Z = undo／Ctrl+Y または Ctrl+Shift+Z = redo。
      テキスト入力中（コメント欄など）は無効。 */
@@ -11499,6 +11602,19 @@ function openReel(){
     }
     if((e.ctrlKey||e.metaKey)&&(e.key==='y'||e.key==='Y')){
       e.preventDefault();redoB.click();return;
+    }
+    /* マネキン選択中の Delete/Backspace＝削除、Esc=選択解除（アノテ窓と同じ挙動） */
+    if(RV.tool==='mann'&&reelSelectedMann){
+      if(e.key==='Delete'||e.key==='Backspace'){
+        e.preventDefault();
+        const p=reelSelectedMann;const affected=new Set();if(p.f!=null)affected.add(p.f);
+        RV.pending.splice(0,RV.pending.length,...RV.pending.filter(x=>x!==p));
+        reelSelectedMann=null;reelMannDrag=null;reelMannHoverAxis=null;
+        drawAnno();drawFTL();updUnsent();_pushHistR();
+        try{reelAfterEdit(reelUI.clips[reelUI.cur],affected)}catch(_){}
+        return;
+      }
+      if(e.key==='Escape'){e.preventDefault();reelSelectedMann=null;reelMannHoverAxis=null;drawAnno();return}
     }
     /* 投げ縄の選択操作 */
     if(RV.tool!=='lasso'||!rLassoSel)return;
