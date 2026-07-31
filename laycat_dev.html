@@ -741,11 +741,13 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .fb-depth-wrap{display:inline-flex;align-items:center;gap:6px}
 /* アノテ窓の動画タイトルは長いショット名・工程名・版名が並ぶので、装飾系ではなく OS
    ネイティブフォント (--font-ui) で最優先で読みやすさを確保する */
-.fb-title{font-family:var(--font-ui);font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+/* タイトルは動画名が長くなりがちなので、画面幅の 60% までは切らずに表示。それより長ければ省略記号で切る。 */
+.fb-title{font-family:var(--font-ui);font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(60vw,600px)}
 /* アノテ窓ヘッダの「情報グループ」コンテナ。タイトル・現在ステータスbadge・担当/レビューchip・by/at・ステータスプルダウン
    を 1 つに集約して REEL の clipInfo（updReelHeaderInfo）と同じ設計思想に揃える。
-   flex:1 で伸びるので後続の操作ボタン群（比較・REEL送信・EXR系・全画面・閉じる）が自然に右寄せになる。 */
-.fb-clipinfo{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;flex:1 1 auto}
+   flex:1 で伸びるので後続の操作ボタン群（比較・REEL送信・EXR系・全画面・閉じる）が自然に右寄せになる。
+   justify-content:center で情報グループを中央に配置（REEL の clipInfo と同じ挙動、狭くて全幅を埋める場合は自動的に左寄せ相当になる）。 */
+.fb-clipinfo{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;flex:1 1 auto;justify-content:center}
 .fb-fs{flex-shrink:0}
 .fb-top{padding-right:48px} /* 右上の閉じるボタン用に余白を確保 */
 .fb-close{position:absolute;top:8px;right:10px;z-index:6;font-size:14px;color:var(--text2);width:30px;height:30px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);background:var(--bg2);cursor:pointer}
@@ -2947,7 +2949,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.062';
+const APP_VERSION='2026.07.29.063';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */

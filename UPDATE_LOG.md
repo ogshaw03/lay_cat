@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.063) アノテ窓ヘッダの clipInfo を中央配置＋タイトル最大幅を拡張
+  - `.fb-clipinfo` に `justify-content:center` を追加。情報グループが fb-top の中央に配置される（REEL の clipInfo と同じ挙動）。狭くて全幅を埋める場合は自動的に左寄せ相当。
+  - `.fb-title` の `max-width` を `280px` → `min(60vw,600px)` に拡張。動画名が長くなりがちなので、画面幅の 60% までは切らずに表示、それより長い場合のみ省略記号で切る。
+
 - (dev v2026.07.29.062) アノテ窓ヘッダを REEL 風に集約（元 #11 ヘッダ集約レイアウト）
   - **`.fb-clipinfo` コンテナ新設**：fb-top 直下に `flex:1 1 auto` で伸びる「情報グループ」コンテナを設置。REEL の updReelHeaderInfo が使う clipInfo と同じ設計思想。
   - **集約対象**：タイトル (`.fb-title`) ／ 現在ステータス badge (`stEl`) ／ 担当・レビュー chip (`asgHolder`/`revHolder`) ／ アップロード者・日時 (`.log-meta`) ／ ステータスプルダウン (`.status-sel`) の 5 種を全部 clipInfo に詰める。
