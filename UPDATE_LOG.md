@@ -13,6 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.062) アノテ窓ヘッダを REEL 風に集約（元 #11 ヘッダ集約レイアウト）
+  - **`.fb-clipinfo` コンテナ新設**：fb-top 直下に `flex:1 1 auto` で伸びる「情報グループ」コンテナを設置。REEL の updReelHeaderInfo が使う clipInfo と同じ設計思想。
+  - **集約対象**：タイトル (`.fb-title`) ／ 現在ステータス badge (`stEl`) ／ 担当・レビュー chip (`asgHolder`/`revHolder`) ／ アップロード者・日時 (`.log-meta`) ／ ステータスプルダウン (`.status-sel`) の 5 種を全部 clipInfo に詰める。
+  - **spacer 撤去**：従来の `<div class="spacer">` は削除。clipInfo が `flex:1` で伸びるため、後続の操作ボタン群（⇄ 比較 / REEL に送る / EXR 系 / 全画面 / 閉じる）が自然に右寄せになる。
+  - **意味論的整理**：従来「情報」と「操作」が spacer を挟んで混在していたのを、「clipInfo（情報）」と「右側の操作ボタン群」に完全分離。ステータスプルダウンも従来は spacer の右（操作扱い）だったが、現在ステータス badge と同居させて情報側に移した。
+  - **タイトル max-width 制御**：`.fb-title` に `max-width:280px` を追加。集約で他の要素と横並びになるので、長いタイトルで他が押し出されないよう省略記号で切る。
+
 - (dev v2026.07.29.061) REEL 投げ縄まわりの dead code 掃除（v058 で到達不能化した committed 分岐を削除）
   - `_rLassoApply`：`if(it.src==='committed'&&it.noteRef){it.noteRef.edited=true}` を削除。items は必ず pending のみ。
   - `reelLassoUp`：`hadCommitted` 判定と `if(hadCommitted)scheduleReelPersist()` を削除。移動／拡縮／回転で committed を触るケースが v058 で消滅済み。

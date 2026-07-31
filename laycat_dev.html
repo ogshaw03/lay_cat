@@ -741,7 +741,11 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .fb-depth-wrap{display:inline-flex;align-items:center;gap:6px}
 /* アノテ窓の動画タイトルは長いショット名・工程名・版名が並ぶので、装飾系ではなく OS
    ネイティブフォント (--font-ui) で最優先で読みやすさを確保する */
-.fb-title{font-family:var(--font-ui);font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fb-title{font-family:var(--font-ui);font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+/* アノテ窓ヘッダの「情報グループ」コンテナ。タイトル・現在ステータスbadge・担当/レビューchip・by/at・ステータスプルダウン
+   を 1 つに集約して REEL の clipInfo（updReelHeaderInfo）と同じ設計思想に揃える。
+   flex:1 で伸びるので後続の操作ボタン群（比較・REEL送信・EXR系・全画面・閉じる）が自然に右寄せになる。 */
+.fb-clipinfo{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;flex:1 1 auto}
 .fb-fs{flex-shrink:0}
 .fb-top{padding-right:48px} /* 右上の閉じるボタン用に余白を確保 */
 .fb-close{position:absolute;top:8px;right:10px;z-index:6;font-size:14px;color:var(--text2);width:30px;height:30px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);background:var(--bg2);cursor:pointer}
@@ -2943,7 +2947,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.061';
+const APP_VERSION='2026.07.29.062';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8039,11 +8043,15 @@ function openReview(nodeId,versionId,opts){
   function fbBackdropEnsure(){let bd=$('#fbBackdrop');if(!bd){bd=el('div','fb-backdrop');bd.id='fbBackdrop';bd.onclick=()=>close();if(ov.parentNode)ov.parentNode.insertBefore(bd,ov);else document.body.appendChild(bd)}return bd}
   function fbApplyMode(){if(fbFullscreen){ov.classList.remove('fb-modal');const bd=$('#fbBackdrop');if(bd)bd.remove()}else{ov.classList.add('fb-modal');fbBackdropEnsure()}if(fsBtn){fsBtn.textContent=fbFullscreen?'❐':'⛶';fsBtn.title=fbFullscreen?'モーダル表示に戻す':'全画面表示'}}
 
-  /* --- トップバー --- */
+  /* --- トップバー ---
+     REEL の clipInfo と同じ「情報グループ集約」設計。fb-top 直下に .fb-clipinfo を 1 つ置き、
+     タイトル・現在ステータスbadge・担当/レビュー chip・by/at メタ・ステータスプルダウンを全部その中に。
+     .fb-clipinfo は flex:1 で伸びるので、続く操作ボタン群（比較・REEL 送信・EXR 系・全画面・閉じる）は自然に右寄せになる。 */
   const top=el('div','fb-top');
-  const tt=el('div','fb-title',node.name+' — '+v.name);top.appendChild(tt);
+  const clipInfo=el('div','fb-clipinfo');top.appendChild(clipInfo);
+  const tt=el('div','fb-title',node.name+' — '+v.name);clipInfo.appendChild(tt);
   const stEl=el('span');function updSt(){const st=stInfo(node);stEl.className='badge';stEl.textContent=st.label;stEl.style.background=hexA(st.color,.18);stEl.style.color=st.color}updSt();
-  top.appendChild(stEl);
+  clipInfo.appendChild(stEl);
   /* 作業担当者／チェック担当者バッジ：クリックでその場のメンバーピッカーを開いて変更できる。
      ・保存先は node[field]（工程＝review タスク自身）。タスクページの taskAssignTopPicker と同じ挙動。
      ・表示は node の値を優先し、未設定ならショット親の値を fallback で継承する。
@@ -8052,8 +8060,8 @@ function openReview(nodeId,versionId,opts){
     const shotForAsg=(node.type==='review'?(getNode(node.parentId)||node):node);
     const rootProj=rootOf(node);
     const dispName=id=>{if(!id)return '';const m=rootProj?memberById(rootProj,id):null;return m?(m.name||m.id||id):id};
-    const asgHolder=el('span');top.appendChild(asgHolder);
-    const revHolder=el('span');top.appendChild(revHolder);
+    const asgHolder=el('span');clipInfo.appendChild(asgHolder);
+    const revHolder=el('span');clipInfo.appendChild(revHolder);
     function rebuildAsgChips(){
       const mk=(holder,field,label,col)=>{
         holder.innerHTML='';
@@ -8074,9 +8082,10 @@ function openReview(nodeId,versionId,opts){
     }
     rebuildAsgChips();
   }
-  top.appendChild(el('span','log-meta','by '+(v.uploadedBy||'-')+'・'+fmt(v.uploadedAt)));
-  top.appendChild(el('div','spacer'));
-  /* ステータスはレビューページ単位（プロジェクトのカスタム定義から生成）。プルダウンで切替 */
+  clipInfo.appendChild(el('span','log-meta','by '+(v.uploadedBy||'-')+'・'+fmt(v.uploadedAt)));
+  /* ステータスはレビューページ単位（プロジェクトのカスタム定義から生成）。プルダウンで切替。
+     clipInfo に含めることで「情報グループ」の一部として扱う（従来は spacer の右にあり操作扱いだったが、
+     REEL の clipInfo と同じく情報側にまとめる方が意味論的に自然）。 */
   {
     const stSel=el('select','status-sel');const _ps=projStatuses(node);const cur=nodeStatus(node);
     {const o=el('option',null,'未着手');o.value='empty';if(cur==='empty')o.selected=true;stSel.appendChild(o)}
@@ -8085,7 +8094,7 @@ function openReview(nodeId,versionId,opts){
     const stSelStyle=()=>{const c=(stSel.value==='empty')?STAGE_GRAY:((_ps.find(s=>s.id===stSel.value)||{}).color||STAGE_GRAY);stSel.style.borderColor=c;stSel.style.color=c};
     stSelStyle();
     stSel.onchange=async()=>{if(stSel.value==='empty')delete node.status;else node.status=stSel.value;await persist();updSt();stSelStyle();try{render();resolveThumbs()}catch(_){}};
-    top.appendChild(stSel);
+    clipInfo.appendChild(stSel);
   }
   if(isVideo){cmpBtn=el('button','btn btn-ghost btn-sm','⇄ 比較');cmpBtn.title='別の版・カットと横並びで比較（アノテーション可）';cmpBtn.onclick=()=>{if(cmpOn)exitCompare();else openComparePicker(node,v,(bN,bV)=>enterCompare(bN,bV))};top.appendChild(cmpBtn)}
   if(isVideo){const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);top.appendChild(rb)}
