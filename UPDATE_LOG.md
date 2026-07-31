@@ -13,6 +13,15 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.058) REEL：送信済み drawing は Undo/Redo・消しゴム・投げ縄の対象外に（保護方針への回帰）
+  - **設計変更の意図**：v052〜v057 で「送信済み drawing も Undo/Redo できるようにする」方向で修正を重ねたが、他クリップ pending 巻き戻り／text 巻き添え削除／reelSendCur 履歴問題など連鎖バグが増える一方だった。方針を反転し「送信＝ユーザーが明示的にコミットした確定物」として保護する。
+  - **消しゴム `eraseR`**：pending のみ対象。送信済み drawing への部分消しは不可（削除したいときは note のゴミ箱ボタン経由）。
+  - **投げ縄 `_rPickStrokeAt` / `reelLassoUp`**：pending のみ選択対象。送信済み drawing は選択・変形・削除の対象外。
+  - **`_snapR` / `_restoreR`**：`RV.pending` のみをスナップ／リストア（v054 以前と同等）。全クリップの v.review.notes を触っていた V2〜V2-N1 の 50 行を撤去し、5 行のシンプル実装に。`_isReelEmb` ヘルパーも削除。
+  - **`loadCur` に履歴リセット追加**：クリップ切替で `RV.pending` が別クリップの `c.pending` 参照に切り替わるので、履歴もリセット。N2-pending バグ（Undo で別クリップの pending に流入）を根本解決。
+  - **`reelSendCur` で履歴リセット**：送信＝ pending 空化なので「送信済み ⇔ 未送信」の境界。Undo で送信取消できると意図と噛み合わないため、送信で履歴を切り直す。
+  - **副作用（意図的）**：REEL の Ctrl+Z で戻せる範囲は「現在クリップの現在フレームの未送信 pending のみ」。送信済み drawing を誤って完全削除しても復元不可（削除は note のゴミ箱経由でしかできないので、事故確率は低い）。
+
 - (dev v2026.07.29.057) V2-N1 の filter で text 巻き添え削除、送信 note の Undo 消失を修正
   - **N1-B text+drawing 併存 note の Redo で text ごと消えるバグを修正**：`_restoreR` の filter を map ベースに変更。「snap にない drawing 付き note」を機械的に丸ごと除去するのではなく、`drawing:[]` にクリアして note 自体は残す。text/kind/mentions が残るなら保持、全部空なら null で除去（drawing-only note の除去挙動は従来通り）。従来 drawing だけ消しゴムで消した後の Ctrl+Y で text も消えていた。
   - **C1 reelSendCur が履歴を積まない問題を修正**：`reelSendCur` 末尾の persist 前に `_pushHistR()` を追加。V2-N1 の filter が「送信 note を snap に含まないため Undo で削除」する回帰があったので、送信を履歴の境界点にして snap に含める。

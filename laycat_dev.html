@@ -2943,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.057';
+const APP_VERSION='2026.07.29.058';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11603,85 +11603,26 @@ function openReel(){
     const[x,y]=ptA(e);const r=RV.eraseW/2/anno.width;const asp=anno.height/anno.width;
     const f=dispF();const pdur=parseInt(durS.value)||1;
     let any=false;const affected=new Set();
-    /* 未送信 pending を消す */
+    /* 未送信 pending のみを消す。送信済み drawing はユーザーの明示的コミット物なので保護
+       （消去→Undo で戻せない事故を防ぐため touch 不可。削除したいときは note のゴミ箱ボタン経由）。 */
     const cand=[],rest=[];
     for(const p of RV.pending){if(p.f!=null&&f>=p.f&&f<p.f+pdur){cand.push(p);affected.add(p.f)}else{rest.push(p)}}
     const res=eraseFromList(cand,x,y,r,asp,RV.activeLayer);
     if(res){RV.pending.splice(0,RV.pending.length,...rest,...res);any=true}
-    /* 送信済み drawing もその場で編集（reel_emb_ 系は同期経由で書き換わるので除外し、noteBlock 由来の確定ノートのみ対象） */
-    const c=reelUI.clips[reelUI.cur];const vv=c?vOf(c):null;
-    let dirty=false;
-    if(vv){
-      for(const n of vv.review.notes){
-        if(!n.drawing||!n.drawing.length)continue;
-        if(n.id&&n.id.indexOf('reel_emb_')===0)continue; /* 同期モデルの embed は pending 経由で消えるのでスキップ */
-        if(!(n.frame!=null&&f>=n.frame&&f<n.frame+(parseInt(n.dur)||1)))continue;
-        const r2=eraseFromList(n.drawing,x,y,r,asp,RV.activeLayer);
-        if(r2){n.drawing=r2;n.edited=true;any=true;dirty=true}
-      }
-      /* drawing もテキストも無くなった送信済みノートは掃除（kind 付きは残す） */
-      if(dirty)vv.review.notes=vv.review.notes.filter(n=>n.kind||(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length));
-    }
-    if(any){drawAnno();drawFTL();RV.eraseChanged=true;try{reelAfterEdit(c,affected)}catch(_){}if(dirty)scheduleReelPersist()}
+    if(any){drawAnno();drawFTL();RV.eraseChanged=true;try{reelAfterEdit(reelUI.clips[reelUI.cur],affected)}catch(_){}}
   }
-  /* Undo/Redo：描画・消しゴム両方を復元可能にする snapshot 履歴。
-     RV.pending だけでなく、全クリップの v.review.notes 内の committed drawing 付き note を
-     「note 全体まるごと」スナップし、restore 時に snap と一致するよう差し引き適用する。
-     - V2 修正で note 全体保存に（drawing だけだと note ごと消えたケースを復元できないため）
-     - V2-N2 修正：reel_emb_ 系は pending の同期モデルで再構築されるので履歴には載せない
-       （載せると他クリップの pending 状態まで undo で巻き戻す副作用が出る）
-     - V2-N1 修正：restore 時に「snap に含まれない drawing 付き note を除去」する処理を追加
-       （追加しないと Redo で「消した状態」に戻せない non-symmetric バグになる） */
+  /* Undo/Redo：pending のみを対象とする（送信済み drawing は保護方針＝touch 不可なので履歴不要）。
+     V2 で試みた「全クリップの v.review.notes を snap」方式は下記の連鎖問題が消せず撤回：
+       - 他クリップの pending 巻き戻り（RV.pending が c.pending への参照のため）
+       - text+drawing 併存 note の Redo で text 巻き添え削除
+       - reelSendCur が履歴を積まない設計との衝突
+     eraseR/reelLassoDelete/_rPickStrokeAt/reelLassoUp から committed touch を撤去したので、
+     Undo 対象は pending だけで十分。切替時は loadCur 側で履歴リセットする。 */
   RV.hist=[];RV.histIdx=-1;RV.eraseChanged=false;
-  const _isReelEmb=n=>!!(n&&n.id&&n.id.indexOf('reel_emb_')===0);
-  const _snapR=()=>{
-    const notes=[];
-    for(const c of (reelUI.clips||[])){
-      if(!c||!c.nodeId||!c.vId)continue;
-      const nd=getNode(c.nodeId);if(!nd||!nd.versions)continue;
-      const vv=nd.versions.find(x=>x.id===c.vId);if(!vv||!vv.review||!Array.isArray(vv.review.notes))continue;
-      for(const n of vv.review.notes){
-        if(!n.drawing||!n.drawing.length)continue;
-        if(_isReelEmb(n))continue; /* V2-N2：reel_emb_ 系は履歴対象外（同期経由で再構築） */
-        /* note 全体を deep clone（author/time/frame/dur/text/noShot/mentions/kind 等のメタも保存） */
-        notes.push({nodeId:c.nodeId,vId:c.vId,note:JSON.parse(JSON.stringify(n))});
-      }
-    }
-    return {pending:JSON.parse(JSON.stringify(RV.pending)),notes};
-  };
+  const _snapR=()=>({pending:JSON.parse(JSON.stringify(RV.pending))});
   const _restoreR=s=>{
     RV.pending.splice(0,RV.pending.length,...JSON.parse(JSON.stringify(s.pending)));
     RV.stroke=null;
-    /* V2-N1：snap 側の (nodeId+vId+id) キーセットを作り、
-       「snap にない drawing 付き note（かつ reel_emb_ 以外）」を各クリップから除去する。
-       これが無いと、削除→undo→redo したときに undo で復活した note が redo でも残ってしまう。 */
-    const snapKeys=new Set();
-    for(const b of (s.notes||[])){snapKeys.add(b.nodeId+'/'+b.vId+'/'+b.note.id)}
-    for(const c of (reelUI.clips||[])){
-      if(!c||!c.nodeId||!c.vId)continue;
-      const nd=getNode(c.nodeId);if(!nd||!nd.versions)continue;
-      const vv=nd.versions.find(x=>x.id===c.vId);if(!vv||!vv.review||!Array.isArray(vv.review.notes))continue;
-      /* N1-B 修正：filter で機械的に除去すると text+drawing 併存 note の drawing 消去→Ctrl+Y で text
-         ごと消える回帰があった。map で drawing だけクリアし、text/kind/mentions が残るなら note 自体は
-         保持、全部空になったときだけ null で除去する（drawing-only note の除去挙動は従来通り）。 */
-      vv.review.notes=vv.review.notes.map(n=>{
-        if(!n.drawing||!n.drawing.length)return n; /* drawing 無しは snap 対象外なので保持 */
-        if(_isReelEmb(n))return n; /* reel_emb_ は同期モデルで再構築、履歴で触らない */
-        if(snapKeys.has(c.nodeId+'/'+c.vId+'/'+n.id))return n; /* snap にあり→後で write-back される */
-        const t=Object.assign({},n,{drawing:[]});
-        if(!t.kind&&!(t.text&&String(t.text).trim()))return null;
-        return t;
-      }).filter(Boolean);
-    }
-    /* snap にある note を書き戻し（find hit）／復活 push（find miss=note ごと消されたケース） */
-    for(const b of (s.notes||[])){
-      const nd=getNode(b.nodeId);if(!nd||!nd.versions)continue;
-      const vv=nd.versions.find(x=>x.id===b.vId);if(!vv||!vv.review||!Array.isArray(vv.review.notes))continue;
-      const snap=JSON.parse(JSON.stringify(b.note));
-      const n=vv.review.notes.find(x=>x.id===snap.id);
-      if(n){Object.assign(n,snap);n.edited=true}
-      else{vv.review.notes.push(snap)}
-    }
     /* undo/redo 時に各ツールのドラッグ状態を残すと選択枠やドラフトがゾンビ化するのでリセット */
     try{rShapeDraft=null;rLassoSel=null;rLassoPath=null;rLassoRect=null;rLassoStart=null;rLassoDrag=null;rHeadDrag=null;rHeadActive=null;rHoverPt=null;reelMannDrag=null;reelSelectedMann=null;reelMannHoverAxis=null}catch(_){}
   };
@@ -11729,15 +11670,8 @@ function openReel(){
       for(let i=0;i<st.points.length-1;i++){const a=st.points[i],b=st.points[i+1];const dd=_rDistToSegPx(px,py,a[0]*W,a[1]*H,b[0]*W,b[1]*H);if(dd<minD)minD=dd}
       if(minD<TOL&&(!best||minD<best.d))best={d:minD,item:{stroke:st,base:st.points.map(p=>p.slice()),src,noteRef}};
     };
+    /* pending のみ選択対象。送信済み drawing は投げ縄選択対象外（誤変形・誤削除を防止） */
     for(const p of RV.pending){if(!inWin(p))continue;test(p,'pending',null)}
-    /* committed（v.review.notes[*].drawing）も選択対象。ただし reel_emb_ 系は pending として既に処理済みなので除外。 */
-    const c=reelUI.clips[reelUI.cur];const vv=c?vOf(c):null;
-    if(vv)for(const n of vv.review.notes){
-      if(!n.drawing||!n.drawing.length)continue;
-      if(n.id&&n.id.indexOf('reel_emb_')===0)continue;
-      if(!(n.frame!=null&&f>=n.frame&&f<n.frame+(parseInt(n.dur)||1)))continue;
-      for(const p of n.drawing)test(p,'committed',n);
-    }
     return best?best.item:null;
   }
   function _rPtInPoly(x,y,poly){let inside=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/((yj-yi)||1e-9)+xi))inside=!inside}return inside}
@@ -11854,19 +11788,7 @@ function openReel(){
       if(!inWin(p))continue;
       if(_rStrokeInLasso(p,polygon))items.push({stroke:p,base:p.points.map(pt=>pt.slice()),src:'pending',noteRef:null});
     }
-    /* committed（送信済み）drawing も範囲選択の対象。reel_emb_ 系は pending 経由なので除外。 */
-    const c=reelUI.clips[reelUI.cur];const vv=c?vOf(c):null;
-    if(vv)for(const n of vv.review.notes){
-      if(!n.drawing||!n.drawing.length)continue;
-      if(n.id&&n.id.indexOf('reel_emb_')===0)continue;
-      if(!(n.frame!=null&&f>=n.frame&&f<n.frame+(parseInt(n.dur)||1)))continue;
-      for(const p of n.drawing){
-        if(p.kind==='head'||p.kind==='mannequin')continue;
-        if(!p.points||p.points.length<2)continue;
-        if((p.layer||1)!==RV.activeLayer)continue;
-        if(_rStrokeInLasso(p,polygon))items.push({stroke:p,base:p.points.map(pt=>pt.slice()),src:'committed',noteRef:n});
-      }
-    }
+    /* 送信済み drawing は範囲選択対象外（誤変形・誤削除を防止）。src==='committed' 分岐は今後到達しない */
     rLassoSel=items.length?{items,box:_rLassoBox(items)}:null;
     drawAnno();
   }
@@ -12139,9 +12061,9 @@ function openReel(){
     RV.stroke=null;
     try{reelAfterEdit(c,affected)}catch(_){}
     drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
-    /* C1 修正：送信直後を履歴の境界にする（V2-N1 の filter が送信 note を snap に含めるため。
-       これがないと送信直後に別操作→Undo で送信 note が消える回帰が起きる） */
-    try{_pushHistR()}catch(_){}
+    /* 送信＝pending が空になる操作。送信前の pending への Undo は「送信取消」相当になってしまうため、
+       送信で履歴をリセットして「送信済み ⇔ 未送信」の境界を明示する。 */
+    try{RV.hist=[];RV.histIdx=-1;_pushHistR()}catch(_){}
     persist().catch(e=>{try{console.warn('persist(reelSendCur) failed',e);toast('保存に失敗しました')}catch(_){}});
   };
   /* v033 の描画完了ごとの自動埋め込みは撤去。pending を pointerup 直後に空にしてしまうと
@@ -12248,6 +12170,10 @@ function openReel(){
     if(c){try{reelHydratePending(c)}catch(_){}}
     RV.pending=(c&&(c.pending||(c.pending=[])))||[];
     RV.stroke=null;RV.last=-1;RV.layerCount=1;
+    /* クリップ切替で RV.pending が別クリップの c.pending 参照に切り替わる。古い履歴を残すと
+       Undo で「A クリップの pending 状態を B クリップの c.pending に書き込む」事故（N2-pending）が
+       起きるため、切替の都度リセットして現在クリップの pending から履歴を積み直す。 */
+    try{RV.hist=[];RV.histIdx=-1;if(typeof _pushHistR==='function')_pushHistR()}catch(_){}
     cta.value=(c&&c.commentDraft)||''; /* コメント下書きはカットごとに保持 */
     resetRZoom(); /* クリップ切替時はズーム/トラックをリセット */
     const dt=rvData();RV.FPS=(c&&c.fps)||(dt&&dt.v.fps)||24;fpsS.value=String(RV.FPS);
