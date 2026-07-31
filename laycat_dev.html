@@ -2943,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.056';
+const APP_VERSION='2026.07.29.057';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11661,11 +11661,17 @@ function openReel(){
       if(!c||!c.nodeId||!c.vId)continue;
       const nd=getNode(c.nodeId);if(!nd||!nd.versions)continue;
       const vv=nd.versions.find(x=>x.id===c.vId);if(!vv||!vv.review||!Array.isArray(vv.review.notes))continue;
-      vv.review.notes=vv.review.notes.filter(n=>{
-        if(!n.drawing||!n.drawing.length)return true; /* drawing 無し（text-only 等）は snap 対象外なので保持 */
-        if(_isReelEmb(n))return true; /* reel_emb_ は同期モデルで再構築、履歴で触らない */
-        return snapKeys.has(c.nodeId+'/'+c.vId+'/'+n.id);
-      });
+      /* N1-B 修正：filter で機械的に除去すると text+drawing 併存 note の drawing 消去→Ctrl+Y で text
+         ごと消える回帰があった。map で drawing だけクリアし、text/kind/mentions が残るなら note 自体は
+         保持、全部空になったときだけ null で除去する（drawing-only note の除去挙動は従来通り）。 */
+      vv.review.notes=vv.review.notes.map(n=>{
+        if(!n.drawing||!n.drawing.length)return n; /* drawing 無しは snap 対象外なので保持 */
+        if(_isReelEmb(n))return n; /* reel_emb_ は同期モデルで再構築、履歴で触らない */
+        if(snapKeys.has(c.nodeId+'/'+c.vId+'/'+n.id))return n; /* snap にあり→後で write-back される */
+        const t=Object.assign({},n,{drawing:[]});
+        if(!t.kind&&!(t.text&&String(t.text).trim()))return null;
+        return t;
+      }).filter(Boolean);
     }
     /* snap にある note を書き戻し（find hit）／復活 push（find miss=note ごと消されたケース） */
     for(const b of (s.notes||[])){
@@ -12133,6 +12139,9 @@ function openReel(){
     RV.stroke=null;
     try{reelAfterEdit(c,affected)}catch(_){}
     drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
+    /* C1 修正：送信直後を履歴の境界にする（V2-N1 の filter が送信 note を snap に含めるため。
+       これがないと送信直後に別操作→Undo で送信 note が消える回帰が起きる） */
+    try{_pushHistR()}catch(_){}
     persist().catch(e=>{try{console.warn('persist(reelSendCur) failed',e);toast('保存に失敗しました')}catch(_){}});
   };
   /* v033 の描画完了ごとの自動埋め込みは撤去。pending を pointerup 直後に空にしてしまうと

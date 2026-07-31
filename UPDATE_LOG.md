@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.057) V2-N1 の filter で text 巻き添え削除、送信 note の Undo 消失を修正
+  - **N1-B text+drawing 併存 note の Redo で text ごと消えるバグを修正**：`_restoreR` の filter を map ベースに変更。「snap にない drawing 付き note」を機械的に丸ごと除去するのではなく、`drawing:[]` にクリアして note 自体は残す。text/kind/mentions が残るなら保持、全部空なら null で除去（drawing-only note の除去挙動は従来通り）。従来 drawing だけ消しゴムで消した後の Ctrl+Y で text も消えていた。
+  - **C1 reelSendCur が履歴を積まない問題を修正**：`reelSendCur` 末尾の persist 前に `_pushHistR()` を追加。V2-N1 の filter が「送信 note を snap に含まないため Undo で削除」する回帰があったので、送信を履歴の境界点にして snap に含める。
+
 - (dev v2026.07.29.056) V2 修正で新規に生じた 2 件のリグレッションを修正（Undo/Redo 対称化＋reel_emb_ 除外）
   - **V2-N1 Redo で「消した状態」に戻せない非対称バグを修正**：`_restoreR` に「snap にない drawing 付き note を各クリップから除去」する処理を追加。従来は「find で書き戻し／無ければ push で復活」しか無かったので、削除→undo→redo の redo で復活した note が残り続けていた。snap 側で `(nodeId+vId+id)` のキーセットを作り、それに無い drawing 付き note（reel_emb_ 除く）は filter で除去。
   - **V2-N2 `_snapR` に reel_emb_ 系除外を追加**：`eraseR` / `reelLassoDelete` と同じく `reel_emb_<nodeId>_<frame>` を履歴対象から外す。載せていると undo で reel_emb_ が push で復活 → 他クリップに切替時 `reelHydratePending` が pending を再構築 → 他クリップの pending 状態まで巻き戻る副作用があった。同期モデル（v036）は pending の Undo で自動的に整合するので、reel_emb_ を履歴に載せる必要は無い。
