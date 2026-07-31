@@ -2943,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.060';
+const APP_VERSION='2026.07.29.061';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11718,7 +11718,7 @@ function openReel(){
         out.push(np);
       }
       it.stroke.points=out;
-      if(it.src==='committed'&&it.noteRef){it.noteRef.edited=true}
+      /* v058 で送信済み touch を撤去、items は必ず pending のみ */
     }
     rLassoSel.box=_rLassoBox(rLassoSel.items);
   }
@@ -11767,10 +11767,9 @@ function openReel(){
   }
   function reelLassoUp(){
     if(rLassoDrag){
-      const hadCommitted=rLassoSel&&rLassoSel.items.some(it=>it.src==='committed');
+      /* v058 で送信済み touch を撤去、pending のみ操作するので scheduleReelPersist 不要
+         （embed 再構築は _pushHistR に続く操作フローで反映される） */
       rLassoDrag=null;_pushHistR();drawAnno();
-      /* 移動/拡縮/回転で committed drawing を書き換えた場合は persist を確定させる */
-      if(hadCommitted)scheduleReelPersist();
       return;
     }
     let clickedPt=null;
@@ -11811,24 +11810,16 @@ function openReel(){
   }
   function reelLassoDelete(){
     if(!rLassoSel)return;
+    /* v058 で送信済み touch を撤去、items は必ず pending のみ */
     const remove=new Set();const affected=new Set();
-    let committedChanged=false;
     for(const it of rLassoSel.items){
-      if(it.src==='pending'){remove.add(it.stroke);if(it.stroke.f!=null)affected.add(it.stroke.f)}
-      else if(it.src==='committed'&&it.noteRef){
-        const idx=it.noteRef.drawing.indexOf(it.stroke);
-        if(idx>=0)it.noteRef.drawing.splice(idx,1);
-        it.noteRef.edited=true;committedChanged=true;
-      }
+      remove.add(it.stroke);
+      if(it.stroke.f!=null)affected.add(it.stroke.f);
     }
     if(remove.size)RV.pending.splice(0,RV.pending.length,...RV.pending.filter(p=>!remove.has(p)));
-    /* committed 側で drawing が空になったノートは掃除 */
-    const c=reelUI.clips[reelUI.cur];const vv=c?vOf(c):null;
-    if(committedChanged&&vv)vv.review.notes=vv.review.notes.filter(n=>n.kind||(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length));
     rLassoSel=null;
     drawAnno();drawFTL();updUnsent();_pushHistR();
-    try{reelAfterEdit(c,affected)}catch(_){}
-    if(committedChanged)scheduleReelPersist();
+    try{reelAfterEdit(reelUI.clips[reelUI.cur],affected)}catch(_){}
   }
   /* Delete = 削除／Esc = 選択解除／Ctrl+Z = undo／Ctrl+Y または Ctrl+Shift+Z = redo。
      テキスト入力中（コメント欄など）は無効。 */

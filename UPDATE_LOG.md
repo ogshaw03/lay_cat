@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.061) REEL 投げ縄まわりの dead code 掃除（v058 で到達不能化した committed 分岐を削除）
+  - `_rLassoApply`：`if(it.src==='committed'&&it.noteRef){it.noteRef.edited=true}` を削除。items は必ず pending のみ。
+  - `reelLassoUp`：`hadCommitted` 判定と `if(hadCommitted)scheduleReelPersist()` を削除。移動／拡縮／回転で committed を触るケースが v058 で消滅済み。
+  - `reelLassoDelete`：`committedChanged` 分岐（committed 削除・note 掃除・scheduleReelPersist）を削除、pending 削除ループを簡素化。行数は 8 行減。
+  - どれも動作影響なし（v058 検証で dead-code 化していたのを整理しただけ）。src/noteRef プロパティ自体は items 構造として残置（将来「送信済み選択を復活させる」議論の足場に）。
+
 - (dev v2026.07.29.060) サブミット一覧／モーダルの各カードに 🔗 リンクコピーボタン追加
   - フルページのサブミットタブ（`renderProjSubmits`）とモーダル一覧（`subShowList`）の両方の各 `.subl-item` に「🔗」ボタンを追加。クリックでそのサブミット単体への URL をクリップボードにコピー。
   - 共通ヘルパー `copySubmitLink(sb)` と `makeSubmitLinkBtn(sb)` を新設。URL は既存の routing（`#/n/<projectId>/submit/s/<submitId>`）と一致するため貼り付ければ相手側で該当サブミットが直接開く。
