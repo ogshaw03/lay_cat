@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.059) REEL：reelSendCur の pending 更新を in-place にして参照剥がれによるデータ損失を修正
+  - **症状**：REEL で「送信」した直後、同じクリップに描いた新しい線が保存されない（画面には見えるが、リロード後・別クリップ切替で消える）。さらに v058 の履歴リセットと組み合わさると、送信直後の Undo で「送信前の pending が全部復活」する挙動になっていた（コメントの意図と真逆）。
+  - **原因**：`reelSendCur` L12059 の `c.pending=(c.pending||[]).filter(...)` が新配列を返すため、`c.pending` の参照が差し替わる。しかし `RV.pending` は `loadCur` で `c.pending` の参照を掴んだままなので、以降 stale な古い配列を指すことになっていた。pointerup で RV.pending.push しても c.pending に反映されず、reelSyncEmbedAll が embed 化できず永続化されない → データ損失。
+  - **修正**：`c.pending.splice(0, c.pending.length, ...kept)` で in-place 更新。RV.pending との同一参照が維持され、以降の描画は c.pending にも即反映される。v058 の履歴リセットも正しく「送信後の空 pending」を snap するようになる。
+  - **発見経緯**：v058 の再解析（HIST-VER / REG-VER）が pre-existing bug として指摘。v058 の履歴リセットで顕在化しやすくなっていたので v058 の一部として即修正。
+
 - (dev v2026.07.29.058) REEL：送信済み drawing は Undo/Redo・消しゴム・投げ縄の対象外に（保護方針への回帰）
   - **設計変更の意図**：v052〜v057 で「送信済み drawing も Undo/Redo できるようにする」方向で修正を重ねたが、他クリップ pending 巻き戻り／text 巻き添え削除／reelSendCur 履歴問題など連鎖バグが増える一方だった。方針を反転し「送信＝ユーザーが明示的にコミットした確定物」として保護する。
   - **消しゴム `eraseR`**：pending のみ対象。送信済み drawing への部分消しは不可（削除したいときは note のゴミ箱ボタン経由）。

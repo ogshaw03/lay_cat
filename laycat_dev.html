@@ -2943,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.058';
+const APP_VERSION='2026.07.29.059';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12054,9 +12054,17 @@ function openReel(){
     if(txt){newN.text=txt;const mns=extractMentions(txt,root,c._mentions||[]);if(mns&&mns.length)newN.mentions=mns}
     if(drawings.length&&!txt)newN.noShot=true; /* 描画のみ確定送信＝コメント欄には出さない */
     vv.review.notes.push(newN);
-    /* 現在フレーム分の pending を除去 → reelAfterEdit で該当フレームの embed ノートも同期削除 */
+    /* 現在フレーム分の pending を除去 → reelAfterEdit で該当フレームの embed ノートも同期削除。
+       **重要**：c.pending は RV.pending と同一参照（loadCur で RV.pending = c.pending にバインド済み）。
+       filter で新配列を返して代入すると参照が剥がれ、以降 RV.pending は stale な古い配列を指すことになる：
+       - 送信後に描いた線が RV.pending に入るのに c.pending には反映されない
+       - reelSyncEmbedAll は c.pending を見るので新規描画が embed 化されず永続化されない（データ損失）
+       - v058 の履歴リセットは stale RV.pending を snap するので、Undo で送信前 pending が復活する
+       これを避けるため in-place（splice）で更新して参照を維持する。 */
     const affected=new Set();for(const p of cur)if(p.f!=null)affected.add(p.f);
-    c.pending=(c.pending||[]).filter(p=>!inWin(p));
+    if(!c.pending)c.pending=[];
+    const kept=c.pending.filter(p=>!inWin(p));
+    c.pending.splice(0,c.pending.length,...kept);
     c.commentDraft='';cta.value='';cta._mentions=[];
     RV.stroke=null;
     try{reelAfterEdit(c,affected)}catch(_){}
