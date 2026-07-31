@@ -2943,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.053';
+const APP_VERSION='2026.07.29.054';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10778,17 +10778,18 @@ function openReel(){
     for(const nn of sizes){const o=d.createElement('option');o.textContent=prefix+nn;o.value=String(nn);sizeS.appendChild(o)}
     if(!sizes.includes(cur)){const o=d.createElement('option');o.textContent=prefix+Math.round(cur);o.value=String(cur);o.dataset.live='1';sizeS.appendChild(o)}
     sizeS.value=String(cur);
-    sizeS.disabled=!RV.tool;
+    sizeS.disabled=!RV.tool||RV.tool==='head'; /* head ツール中はブラシ／消しゴムサイズを無効化（アノテ窓 rebuildSizeSel と揃える） */
   }
   /* 筆圧トグル（環境設定・localStorage 共有） */
   const presB=mkB('✒ 筆圧','ペンタブ等の筆圧に応じて線の太さを可変にする。マウスでは無効。');if(isPressureOn())presB.classList.add('on');
   presB.onclick=()=>{const nv=!isPressureOn();setPressureOn(nv);presB.classList.toggle('on',nv);try{toast('筆圧検知：'+(nv?'ON':'OFF'))}catch(_){}};
   const colorI=d.createElement('input');colorI.type='color';colorI.value='#ff4d4d';
   const clrs=ce(d,'span');clrs.style.cssText='display:inline-flex;gap:4px;align-items:center';
-  /* アノテ窓と同じ 7 色（先頭に黒を追加）＋クリック時に .sel ハイライト、colorI 変更で解除 */
+  /* アノテ窓と同じ 7 色配列＋初期 .sel（先頭）。並び順・黒の色コード（#111111）まで揃える。
+     colorI 変更（カラーピッカー任意色）で .sel は解除。 */
   const _rClrBtns=[];
-  ['#000000','#ff4d4d','#ff9f2e','#ffe34d','#4dff88','#4da6ff','#ffffff'].forEach(c=>{
-    const b=ce(d,'button','clr');b.style.background=c;
+  ['#ff4d4d','#ff9f2e','#ffe34d','#4dff88','#4da6ff','#ffffff','#111111'].forEach((c,i)=>{
+    const b=ce(d,'button','clr'+(i===0?' sel':''));b.style.background=c;
     b.onclick=()=>{colorI.value=c;for(const x of _rClrBtns)x.classList.remove('sel');b.classList.add('sel')};
     clrs.appendChild(b);_rClrBtns.push(b);
   });
@@ -11017,14 +11018,16 @@ function openReel(){
       b.addEventListener('click',e=>{
         const t=e.target;const tag=t&&t.tagName;
         if(tag==='BUTTON'||tag==='A'||tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
-        if(t&&t.closest&&(t.closest('button')||t.closest('.frame-chip')))return;
+        /* 除外セットは noteBlock（送信済みブロック共通）と統一：将来メンションチップや編集 UI が
+           内部に生えたときの誤シークを防ぐ */
+        if(t&&t.closest&&(t.closest('button')||t.closest('a')||t.closest('textarea')||t.closest('input')||t.closest('select')||t.closest('.frame-chip')||t.closest('.note-shot')))return;
         video.pause();seekRTr(n.frame);
       });
     }
     const m=ce(d,'div','m');
     m.appendChild(ce(d,'span','draft-chip','未保存'));
     m.appendChild(ce(d,'span',null,(n.author||'-')+'・'+fmt(n.time)));
-    if(n.frame!=null){const fc=ce(d,'span','frame-chip','F'+n.frame);m.appendChild(fc)}
+    if(n.frame!=null){const fc=ce(d,'span','frame-chip link','F'+n.frame);fc.title='フレーム'+n.frame;fc.onclick=()=>{video.pause();seekRTr(n.frame)};m.appendChild(fc)}
     if(n.drawing&&n.drawing.length)m.appendChild(ce(d,'span','frame-chip','✎ 描画'));
     const acts=ce(d,'span','note-acts');const del=ce(d,'button','na','✕');del.title='この送信を取り消す';del.onclick=()=>{
       /* 参照比較 (x!==n) だと再描画で n が stale になり削除が効かなくなるため、
@@ -11048,7 +11051,9 @@ function openReel(){
       b.addEventListener('click',e=>{
         const t=e.target;const tag=t&&t.tagName;
         if(tag==='BUTTON'||tag==='A'||tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
-        if(t&&t.closest&&(t.closest('button')||t.closest('.frame-chip')))return;
+        /* 除外セットは noteBlock（送信済みブロック共通）と統一：将来メンションチップや編集 UI が
+           内部に生えたときの誤シークを防ぐ */
+        if(t&&t.closest&&(t.closest('button')||t.closest('a')||t.closest('textarea')||t.closest('input')||t.closest('select')||t.closest('.frame-chip')||t.closest('.note-shot')))return;
         video.pause();seekRTr(n.frame);
       });
     }
@@ -11168,6 +11173,23 @@ function openReel(){
        同フレームの reel_emb_ ノートは上の描画から除外済みなので二重描画にならない。 */
     const pend=RV.pending.filter(p=>inW(p)&&lyOn(p));if(RV.stroke&&inW(RV.stroke)&&lyOn(RV.stroke))pend.push(RV.stroke);
     paintStrokeList(ctx,anno.width,anno.height,pend,1);
+    /* head ツール中：ホバー時に既存 head ガイドの中心ハンドル（破線円）を描く。アノテ窓 drawMoveHandle と同じ意匠。
+       これがないと「掴めるかどうか」の視覚フィードバックが無く、head 編集の入口が分かりにくい。 */
+    if(RV.tool==='head'&&rHoverPt){
+      const asp=anno.height/anno.width;
+      for(const p of RV.pending){
+        if(p.kind!=='head'||(p.layer||1)!==RV.activeLayer)continue;
+        if(p.f!==f)continue;
+        if(Math.hypot(p.cx-rHoverPt[0],(p.cy-rHoverPt[1])*asp)<=(p.r||0.12)*1.15){
+          const W=anno.width,H=anno.height,cx=(p.cx||0)*W,cy=(p.cy||0)*H,R=Math.max(6,(p.r||0.12)*W),hr=R*0.24,col=p.color||'#ff4d4d';
+          ctx.save();
+          ctx.beginPath();ctx.arc(cx,cy,hr,0,2*Math.PI);ctx.fillStyle=col;ctx.globalAlpha=0.13;ctx.fill();
+          ctx.beginPath();ctx.arc(cx,cy,hr,0,2*Math.PI);ctx.strokeStyle=col;ctx.globalAlpha=0.6;ctx.lineWidth=Math.max(1,R*0.012);ctx.setLineDash([R*0.05,R*0.05]);ctx.stroke();ctx.setLineDash([]);
+          ctx.beginPath();ctx.arc(cx,cy,Math.max(1.5,R*0.03),0,2*Math.PI);ctx.fillStyle=col;ctx.globalAlpha=1;ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
     /* 図形ドラフト（ドラッグ中プレビュー） */
     if(RV.tool==='shape'&&rShapeDraft)paintShape(ctx,anno.width,anno.height,rShapeDraft,1);
     /* 3D マネキンツール中：選択枠・4 隅・投影済みジンバル 3 リング・中央ハンドルを描画（アノテ窓 drawAll と揃える）。
@@ -11356,7 +11378,12 @@ function openReel(){
       if(vv)for(const n of vv.review.notes){
         if(n.frame==null)continue;const gx=(off+n.frame)*fw;
         if(n.drawing&&n.drawing.length){ctx.fillStyle='#e08a4a';ctx.fillRect(gx,10,Math.max(2.5,fw*(parseInt(n.dur)||1)),5)}
-        else{ctx.fillStyle='#ff5a5a';ctx.fillRect(gx,10,Math.max(2.5,fw),5)}
+        else{
+          /* コメントのみ（drawing なし）は赤い菱形。中心 gx（フレーム左端）でプレイヘッド／目盛りと揃える。
+             アノテ窓 drawTimeline と同じ意匠、REEL の複数クリップ連結でも識別性を確保。 */
+          ctx.fillStyle='#ff5a5a';
+          ctx.beginPath();ctx.moveTo(gx,9);ctx.lineTo(gx+4,12.5);ctx.lineTo(gx,16);ctx.lineTo(gx-4,12.5);ctx.closePath();ctx.fill();
+        }
       }
       off+=cf;
     });
@@ -11412,6 +11439,9 @@ function openReel(){
   anno.style.pointerEvents='none';anno.style.cursor='';
   /* 顔ガイドの操作状態（アノテ窓と同じ形式） */
   let rHeadActive=null,rHeadDrag=null;
+  /* head ツールのホバー座標（アノテ窓 hoverPt と同じ役割）。pointermove で更新、pointerleave でクリア。
+     drawAnno は rHoverPt がセットされている時だけ head ホバー移動ハンドル（破線円）を描く。 */
+  let rHoverPt=null;
   /* 図形の描画中ドラフト（アノテ窓の shapeDraft と同じ形式） */
   let rShapeDraft=null;
   /* 投げ縄／矩形選択の状態（対象は RV.pending のみ） */
@@ -11621,7 +11651,7 @@ function openReel(){
       if(n){n.drawing=JSON.parse(JSON.stringify(b.drawing));n.edited=true}
     }
     /* undo/redo 時に各ツールのドラッグ状態を残すと選択枠やドラフトがゾンビ化するのでリセット */
-    try{rShapeDraft=null;rLassoSel=null;rLassoPath=null;rLassoRect=null;rLassoStart=null;rLassoDrag=null;rHeadDrag=null;rHeadActive=null;reelMannDrag=null;reelSelectedMann=null;reelMannHoverAxis=null}catch(_){}
+    try{rShapeDraft=null;rLassoSel=null;rLassoPath=null;rLassoRect=null;rLassoStart=null;rLassoDrag=null;rHeadDrag=null;rHeadActive=null;rHoverPt=null;reelMannDrag=null;reelSelectedMann=null;reelMannHoverAxis=null}catch(_){}
   };
   const _pushHistR=()=>{RV.hist=RV.hist.slice(0,RV.histIdx+1);RV.hist.push(_snapR());RV.histIdx=RV.hist.length-1;if(RV.hist.length>50){RV.hist=RV.hist.slice(-50);RV.histIdx=RV.hist.length-1}};
   _pushHistR(); /* 初期状態を履歴の起点として保存 */
@@ -11892,11 +11922,11 @@ function openReel(){
     else if(RV.tool==='lasso'){reelLassoDown(e)}
     else if(RV.tool==='mann'){reelMannDown(e)}
   };
-  anno.onpointermove=e=>{if(RV.stroke){const evs=e.getCoalescedEvents?e.getCoalescedEvents():null;if(evs&&evs.length){for(const ce of evs){const p=ptA(ce);const pr=samplePressure(ce);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}}else{const p=ptA(e);const pr=samplePressure(e);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}drawAnno()}else if(RV.erasing)eraseR(e);else if(rHeadDrag)reelHeadMove(e);else if(RV.tool==='shape'&&rShapeDraft)reelShapeMove(e);else if(RV.tool==='lasso')reelLassoMove(e);else if(reelMannDrag||RV.tool==='mann')reelMannMove(e);
+  anno.onpointermove=e=>{if(RV.stroke){const evs=e.getCoalescedEvents?e.getCoalescedEvents():null;if(evs&&evs.length){for(const ce of evs){const p=ptA(ce);const pr=samplePressure(ce);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}}else{const p=ptA(e);const pr=samplePressure(e);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}drawAnno()}else if(RV.erasing)eraseR(e);else if(rHeadDrag)reelHeadMove(e);else if(RV.tool==='shape'&&rShapeDraft)reelShapeMove(e);else if(RV.tool==='lasso')reelLassoMove(e);else if(reelMannDrag||RV.tool==='mann')reelMannMove(e);else if(RV.tool==='head'){const [_hx,_hy]=ptA(e);rHoverPt=[_hx,_hy];drawAnno()} /* head ホバー座標を更新して drawAnno に反映（アノテ窓と統一） */
     /* draw / erase 時のブラシサイズカーソル（アノテ窓と同じ挙動） */
     if((RV.tool==='draw'||RV.tool==='erase')&&!rvSz)reelMoveHoverRing(e);
   }; /* 合体イベントで速書きの中間点も取得。ペン時は筆圧を付与 */
-  anno.addEventListener('pointerleave',()=>{try{szRing.style.display='none'}catch(_){}});
+  anno.addEventListener('pointerleave',()=>{try{szRing.style.display='none'}catch(_){}if(rHoverPt){rHoverPt=null;drawAnno()}}); /* head hover 表示もクリア */
   function reelMoveHoverRing(e){
     const r=stage.getBoundingClientRect();
     const sz=Math.max(2,(RV.tool==='erase'?RV.eraseW:RV.brushW)*RZ.s);
@@ -11976,7 +12006,8 @@ function openReel(){
     c.commentDraft=cta.value;c._mentions=(cta._mentions||[]).slice(); /* ピッカーで選んだメンションid（同名個人の解決用）を保持 */
     const cnt=reelRecord(c,dispF());if(!cnt)return;
     RV.stroke=null;cta.value='';
-    drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
+    /* 記入時は末尾スクロールしない（frame 順ソート下では末尾＝最終フレームと限らないため）。アノテ窓 record と統一。 */
+    drawAnno();drawFTL();reelNotes();reelRender();updUnsent();
   };
   /* ─── 常時同期モデル：REEL の pending と v.review.notes 内の「REEL embed ノート」を対応付ける ───
      真実のソースは v.review.notes。pending はセッション中の表示用ミラー。

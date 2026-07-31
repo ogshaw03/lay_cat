@@ -13,6 +13,15 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.054) REEL 側 UX をアノテ窓に統一（M2/M3/M4/M5/M6/M7/G1 一括修正・アノテ窓 UX は不変）
+  - **M2**：全体タイムライン `drawFTL` のコメント（drawing なし）マーカーを **赤い菱形** に変更（従来は fillRect の赤矩形）。中心 `gx=(off+n.frame)*fw`（フレーム左端）、上下 ±3.5 / 左右 ±4 px。アノテ窓 `drawTimeline` と意匠を揃え、描画マーカー（オレンジ矩形）と一目で区別できるように。
+  - **M3**：`reelDraftBlock` の `F<n>` フレームチップに `.link` クラスと `onclick`（`video.pause()+seekRTr`）を追加。他 3 兄弟（noteBlock/draftBlock/reelEmbedBlock）と対称に。
+  - **M4**：head ツールに **ホバー時の中心ハンドル（破線円）** を追加。`rHoverPt` 変数を新設し、`anno.onpointermove` で更新 → `drawAnno` に描画分岐 → `pointerleave` でクリア。アノテ窓 `drawMoveHandle` と同じ意匠。既存 head ガイドを掴めるかどうかの視覚フィードバックを提供。
+  - **M5**：`rebuildRSizeSel` の `sizeS.disabled` 条件を `!RV.tool||RV.tool==='head'` に拡張。head ツール中はブラシ／消しゴムサイズ select を無効化（アノテ窓 `rebuildSizeSel` と統一）。
+  - **M6**：`reelRecordCur` 内の `reelNotes(true)` → `reelNotes()`（末尾スクロール抑制）。frame 順ソートに変わった今、末尾＝最終フレームと限らないため。※ `reelRecordCur` は現状 UI から呼び出されない dead-code のため実 UX 変化はゼロ、あくまで将来復活時のための統一。
+  - **M7**：`reelDraftBlock` / `reelEmbedBlock` のクリック除外セットを `noteBlock` と同じ広い集合（`button/a/textarea/input/select/.frame-chip/.note-shot` の closest）に統一。将来メンションチップや編集 UI が生えたときの誤シーク防止。
+  - **G1**：REEL のカラーパレット並びを **アノテ窓と同じ順** に変更：`[#ff4d4d, #ff9f2e, #ffe34d, #4dff88, #4da6ff, #ffffff, #111111]`。先頭赤に初期 `.sel`。黒の色コードを `#000000` → `#111111` に揃える（既存の pending 描画は色を保持しているので後発描画のパレット選択にのみ影響）。
+
 - (dev v2026.07.29.053) REEL：3D マネキン（mann）ツールのジンバル UI 描画を追加（アノテ窓と統一）
   - `drawAnno` に `RV.tool==='mann'` ブロックを追加。選択枠（点線 rect）／4 隅ハンドル／3 リング（緑=ヨー・赤=ピッチ・青=ロール）＋eye（黄）／中央ハンドル／選択時ラベルを描画。
   - ヒットテスト（`reelMannHitTest`）は既にリング polyline 前提で動いていたが、対応する描画が無かったので「選択したはずのマネキンが見えない・ジンバルが操作できているのに見えない」状態だった。
