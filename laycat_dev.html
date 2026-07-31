@@ -2949,7 +2949,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.064';
+const APP_VERSION='2026.07.29.065';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8046,18 +8046,17 @@ function openReview(nodeId,versionId,opts){
   function fbApplyMode(){if(fbFullscreen){ov.classList.remove('fb-modal');const bd=$('#fbBackdrop');if(bd)bd.remove()}else{ov.classList.add('fb-modal');fbBackdropEnsure()}if(fsBtn){fsBtn.textContent=fbFullscreen?'❐':'⛶';fsBtn.title=fbFullscreen?'モーダル表示に戻す':'全画面表示'}}
 
   /* --- トップバー ---
-     REEL の clipInfo と完全に同じ集約＋タイトル形式に揃える：
-       [ ショット名 / 工程名 — 版名 ]  [ 担当:… ▾ ]  [ レビュー:… ▾ ]  [ ステータス pulldown ]
-     従来アノテ窓のみが持っていた「現在ステータス badge (stEl)」と「by/at log-meta」は
-     ステータスは pulldown と重複、by/at は REEL に無い＝シンプルさ優先で削除。
-     .fb-clipinfo は flex:1 で伸びるので、続く操作ボタン群（比較・REEL 送信・EXR 系・全画面・閉じる）は自然に右寄せ。 */
+     REEL と同じタイトル形式（ショット名 / 工程名 — 版名）だが、レイアウトは 3 分割：
+       [ タイトル（左詰め・広く取れる） ]  [ バッジ群（中央寄せ）: 担当 / レビュー / ステータス ]  [ 操作ボタン群（右寄せ）]
+     動画タイトルが長くなりがちなので、REEL のように clipInfo に押し込めず外に出して左端で最大限伸ばす。
+     .fb-clipinfo が flex:1 で中央寄せなので、バッジ群は自然と中央に配置される。 */
   const top=el('div','fb-top');
-  const clipInfo=el('div','fb-clipinfo');top.appendChild(clipInfo);
   const shotForAsg=(node.type==='review'?(getNode(node.parentId)||node):node);
   const _titleShotName=(shotForAsg&&shotForAsg!==node)?shotForAsg.name:'';
   const tt=el('div','fb-title',(_titleShotName?_titleShotName+' / ':'')+node.name+(v.name?' — '+v.name:''));
   tt.title=tt.textContent;
-  clipInfo.appendChild(tt);
+  top.appendChild(tt);
+  const clipInfo=el('div','fb-clipinfo');top.appendChild(clipInfo);
   /* 作業担当者／チェック担当者バッジ：クリックでその場のメンバーピッカーを開いて変更できる。
      ・保存先は node[field]（工程＝review タスク自身）。タスクページの taskAssignTopPicker と同じ挙動。
      ・表示は node の値を優先し、未設定ならショット親の値を fallback で継承する。
