@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.050) 担当・レビュー badge が押せると分かるよう ▾ アイコンと hover ハイライト追加
+  - badge を `display:inline-flex` にして、名前ラベル＋`▾` アイコン（小さめ・opacity .7）を並べる。パッと見でプルダウンだと分かるように。
+  - hover で背景アルファ .16→.28、`▾` の opacity を 1 に上げる（.1s transition）。押せる感を強化。
+  - アノテ窓・REEL 両方に同じ処理。
+
 - (dev v2026.07.29.049) アノテ窓／REEL ヘッダの担当・レビューbadge をクリックで変更できるように
   - **新規ヘルパー `openAsgPickerPopover`**：memberSearchPicker と同じ挙動の検索付き候補リストを、任意の anchor 要素の下に position:fixed で開く popover 版。`opts.doc` に REEL の document を渡すと REEL 側の window ローカルに popover を作成できる（別 window でも動作）。外側クリック／Escape で閉じる。
   - **アノテ窓**：担当／レビュー chip を `rebuildAsgChips()` で再描画可能に。cursor:pointer と title「（クリックで変更）」付き。onclick で popover を開き、選択後に persist → chip in-place 更新 → `render()`/`resolveThumbs()` を呼び出しタスクページ側も追従。

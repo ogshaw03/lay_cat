@@ -2943,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.049';
+const APP_VERSION='2026.07.29.050';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8043,9 +8043,12 @@ function openReview(nodeId,versionId,opts){
         const val=node[field]||(shotForAsg&&shotForAsg[field])||'';
         const nm=dispName(val);
         const b=el('span','badge');
-        b.style.cssText='background:'+hexA(col,.16)+';color:'+col+';font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;cursor:pointer;user-select:none';
-        b.textContent=label+':'+(nm?nm:'—');
+        b.style.cssText='background:'+hexA(col,.16)+';color:'+col+';font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:5px;transition:background .1s';
+        b.appendChild(el('span',null,label+':'+(nm?nm:'—')));
+        const cv=el('span',null,'▾');cv.style.cssText='font-size:9px;opacity:.7;line-height:1';b.appendChild(cv);
         b.title=label+(val?('：'+nm+(nm!==val?(' <'+val+'>'):'')):'（未設定）')+'（クリックで変更）';
+        b.onmouseenter=()=>{b.style.background=hexA(col,.28);cv.style.opacity='1'};
+        b.onmouseleave=()=>{b.style.background=hexA(col,.16);cv.style.opacity='.7'};
         b.onclick=e=>{e.stopPropagation();openAsgPickerPopover(b,node,field,label,{onDone:()=>{rebuildAsgChips();try{render();resolveThumbs()}catch(_){}}});};
         holder.appendChild(b);
       };
@@ -10898,9 +10901,12 @@ function openReel(){
       const val=n[field]||(shotForAsg&&shotForAsg[field])||'';
       const nm2=dispName(val);
       const b=ce(d,'span','badge');
-      b.style.cssText='background:'+hexA(col,.16)+';color:'+col+';font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;white-space:nowrap;cursor:pointer;user-select:none';
-      b.textContent=label+':'+(nm2?nm2:'—');
+      b.style.cssText='background:'+hexA(col,.16)+';color:'+col+';font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:5px;transition:background .1s';
+      b.appendChild(ce(d,'span',null,label+':'+(nm2?nm2:'—')));
+      const cv=ce(d,'span',null,'▾');cv.style.cssText='font-size:9px;opacity:.7;line-height:1';b.appendChild(cv);
       b.title=label+(val?('：'+nm2+(nm2!==val?(' <'+val+'>'):'')):'（未設定）')+'（クリックで変更）';
+      b.onmouseenter=()=>{b.style.background=hexA(col,.28);cv.style.opacity='1'};
+      b.onmouseleave=()=>{b.style.background=hexA(col,.16);cv.style.opacity='.7'};
       b.onclick=e=>{e.stopPropagation();openAsgPickerPopover(b,n,field,label,{doc:d,onDone:()=>{try{updReelHeaderInfo()}catch(_){}try{render();resolveThumbs()}catch(_){}}});};
       return b;
     };
