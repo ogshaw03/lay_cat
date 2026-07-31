@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.056) V2 修正で新規に生じた 2 件のリグレッションを修正（Undo/Redo 対称化＋reel_emb_ 除外）
+  - **V2-N1 Redo で「消した状態」に戻せない非対称バグを修正**：`_restoreR` に「snap にない drawing 付き note を各クリップから除去」する処理を追加。従来は「find で書き戻し／無ければ push で復活」しか無かったので、削除→undo→redo の redo で復活した note が残り続けていた。snap 側で `(nodeId+vId+id)` のキーセットを作り、それに無い drawing 付き note（reel_emb_ 除く）は filter で除去。
+  - **V2-N2 `_snapR` に reel_emb_ 系除外を追加**：`eraseR` / `reelLassoDelete` と同じく `reel_emb_<nodeId>_<frame>` を履歴対象から外す。載せていると undo で reel_emb_ が push で復活 → 他クリップに切替時 `reelHydratePending` が pending を再構築 → 他クリップの pending 状態まで巻き戻る副作用があった。同期モデル（v036）は pending の Undo で自動的に整合するので、reel_emb_ を履歴に載せる必要は無い。
+  - 副作用として V2-N3 のメモリ肥大も緩和（reel_emb_ 分の note が snap から外れるため）。
+  - 共通ヘルパー `_isReelEmb(n)` を導入し snap/restore の両方で同じ判定を使う。
+
 - (dev v2026.07.29.055) 動作検証で見つかった 3 件のバグ／未達を修正
   - **V1 REEL クリップ切替中の担当 popover が前クリップを書き換える無自覚データ破壊を修正**：`updReelHeaderInfo` 冒頭で `d.querySelector('.asg-pop')` を明示的に `remove()`。従来は `clipInfo.innerHTML=''` で anchor chip は消えるが popover は `doc.body` 直下に残り、mkChip クロージャの旧 `n` を掴んだまま別クリップの担当を書き換えてしまう深刻なバグだった。
   - **V2 送信済み drawing-only ノートを完全削除→Ctrl+Z で復活しないバグを修正**：`_snapR` を「drawing だけ保存」から「note 全体を deep clone で保存」に変更。`_restoreR` は find 成功時 `Object.assign` で上書き、find 失敗時（note が消されたケース）は `push` で復活。author/time/frame/dur/text/noShot/mentions/kind もまとめて復元される。

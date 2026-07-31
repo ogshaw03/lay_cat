@@ -2943,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.055';
+const APP_VERSION='2026.07.29.056';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11626,10 +11626,14 @@ function openReel(){
   }
   /* Undo/Redo：描画・消しゴム両方を復元可能にする snapshot 履歴。
      RV.pending だけでなく、全クリップの v.review.notes 内の committed drawing 付き note を
-     「note 全体まるごと」スナップ／リストアする（アノテ窓 _snap/_restore と同じ方針＋note 消失復活対応）。
-     drawing だけ持って復元しようとすると eraseR/reelLassoDelete で note ごと消えたケース
-     （drawing-only な送信済み note の完全消去）で復元できない → V2 修正で note 全体保存に。 */
+     「note 全体まるごと」スナップし、restore 時に snap と一致するよう差し引き適用する。
+     - V2 修正で note 全体保存に（drawing だけだと note ごと消えたケースを復元できないため）
+     - V2-N2 修正：reel_emb_ 系は pending の同期モデルで再構築されるので履歴には載せない
+       （載せると他クリップの pending 状態まで undo で巻き戻す副作用が出る）
+     - V2-N1 修正：restore 時に「snap に含まれない drawing 付き note を除去」する処理を追加
+       （追加しないと Redo で「消した状態」に戻せない non-symmetric バグになる） */
   RV.hist=[];RV.histIdx=-1;RV.eraseChanged=false;
+  const _isReelEmb=n=>!!(n&&n.id&&n.id.indexOf('reel_emb_')===0);
   const _snapR=()=>{
     const notes=[];
     for(const c of (reelUI.clips||[])){
@@ -11637,11 +11641,10 @@ function openReel(){
       const nd=getNode(c.nodeId);if(!nd||!nd.versions)continue;
       const vv=nd.versions.find(x=>x.id===c.vId);if(!vv||!vv.review||!Array.isArray(vv.review.notes))continue;
       for(const n of vv.review.notes){
-        if(n.drawing&&n.drawing.length){
-          /* note 全体を deep clone。author/time/frame/dur/text/noShot/mentions/kind 等の
-             メタもまとめて保存しておくと、note ごと消えた後の完全復活ができる。 */
-          notes.push({nodeId:c.nodeId,vId:c.vId,note:JSON.parse(JSON.stringify(n))});
-        }
+        if(!n.drawing||!n.drawing.length)continue;
+        if(_isReelEmb(n))continue; /* V2-N2：reel_emb_ 系は履歴対象外（同期経由で再構築） */
+        /* note 全体を deep clone（author/time/frame/dur/text/noShot/mentions/kind 等のメタも保存） */
+        notes.push({nodeId:c.nodeId,vId:c.vId,note:JSON.parse(JSON.stringify(n))});
       }
     }
     return {pending:JSON.parse(JSON.stringify(RV.pending)),notes};
@@ -11649,10 +11652,22 @@ function openReel(){
   const _restoreR=s=>{
     RV.pending.splice(0,RV.pending.length,...JSON.parse(JSON.stringify(s.pending)));
     RV.stroke=null;
-    /* committed drawing を全クリップ横断で復元。
-       find で見つかった既存 note には Object.assign で上書き（他のフィールドも snapshot 側で覆う）、
-       find で見つからなければ「note ごと消された」ケースなので push で復活させる（V2 修正）。
-       undo 後の scheduleReelPersist は undoB/redoB.onclick の reelAfterEdit 経由で走る。 */
+    /* V2-N1：snap 側の (nodeId+vId+id) キーセットを作り、
+       「snap にない drawing 付き note（かつ reel_emb_ 以外）」を各クリップから除去する。
+       これが無いと、削除→undo→redo したときに undo で復活した note が redo でも残ってしまう。 */
+    const snapKeys=new Set();
+    for(const b of (s.notes||[])){snapKeys.add(b.nodeId+'/'+b.vId+'/'+b.note.id)}
+    for(const c of (reelUI.clips||[])){
+      if(!c||!c.nodeId||!c.vId)continue;
+      const nd=getNode(c.nodeId);if(!nd||!nd.versions)continue;
+      const vv=nd.versions.find(x=>x.id===c.vId);if(!vv||!vv.review||!Array.isArray(vv.review.notes))continue;
+      vv.review.notes=vv.review.notes.filter(n=>{
+        if(!n.drawing||!n.drawing.length)return true; /* drawing 無し（text-only 等）は snap 対象外なので保持 */
+        if(_isReelEmb(n))return true; /* reel_emb_ は同期モデルで再構築、履歴で触らない */
+        return snapKeys.has(c.nodeId+'/'+c.vId+'/'+n.id);
+      });
+    }
+    /* snap にある note を書き戻し（find hit）／復活 push（find miss=note ごと消されたケース） */
     for(const b of (s.notes||[])){
       const nd=getNode(b.nodeId);if(!nd||!nd.versions)continue;
       const vv=nd.versions.find(x=>x.id===b.vId);if(!vv||!vv.review||!Array.isArray(vv.review.notes))continue;
