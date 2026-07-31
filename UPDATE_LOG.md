@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.053) REEL：3D マネキン（mann）ツールのジンバル UI 描画を追加（アノテ窓と統一）
+  - `drawAnno` に `RV.tool==='mann'` ブロックを追加。選択枠（点線 rect）／4 隅ハンドル／3 リング（緑=ヨー・赤=ピッチ・青=ロール）＋eye（黄）／中央ハンドル／選択時ラベルを描画。
+  - ヒットテスト（`reelMannHitTest`）は既にリング polyline 前提で動いていたが、対応する描画が無かったので「選択したはずのマネキンが見えない・ジンバルが操作できているのに見えない」状態だった。
+  - `reelMannRingCanvasPts` / `reelMannDims` は既存を流用。前後判定（`front=0` の背面セグメントはスキップ）もアノテ窓と同じ。
+  - ドラッグ中の軸ハイライトも既存の `reelMannDrag.axis` / `reelMannHoverAxis` を参照。
+
 - (dev v2026.07.29.052) REEL：送信済み drawing に対する消しゴム／投げ縄削除が Undo で復元されないバグを修正
   - `_snapR` を `RV.pending` だけでなく「全クリップの `v.review.notes[*].drawing`（drawing を持つ note）」も含めて丸ごとスナップに拡張（アノテ窓 `_snap` と同じ方針）。
   - `_restoreR` で snapshot に載っていた note の drawing をまるごと上書き復元。`edited=true` を打つ。undo/redo 後の persist は既存の `undoB/redoB.onclick` → `reelAfterEdit` 経由で走る。
