@@ -13,6 +13,10 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.051) アノテ窓：SELECT フォーカス中のショートカット暴発を修正（REEL 側と統一）
+  - `onKey`（L9960）と `fbKeyDownSpin`/`fbKeyUpSpin`（L8506-8507）の tag 判定に `SELECT` を追加。fpsSel などのプルダウンにフォーカスがあるときに V/,/./X/Space/Arrow/Delete/Backspace が発火してしまうバグを修正。
+  - REEL 側は既に `SELECT` 抑制済みだったので、これでアノテ窓と REEL のショートカット抑制条件が一致。
+
 - (dev v2026.07.29.050) 担当・レビュー badge が押せると分かるよう ▾ アイコンと hover ハイライト追加
   - badge を `display:inline-flex` にして、名前ラベル＋`▾` アイコン（小さめ・opacity .7）を並べる。パッと見でプルダウンだと分かるように。
   - hover で背景アルファ .16→.28、`▾` の opacity を 1 に上げる（.1s transition）。押せる感を強化。

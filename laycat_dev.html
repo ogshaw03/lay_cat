@@ -2943,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.050';
+const APP_VERSION='2026.07.29.051';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8576,8 +8576,8 @@ function openReview(nodeId,versionId,opts){
   /* クリスタ風：Space+ドラッグ=パン、Shift+Space+ドラッグ=回転、Ctrl+Space+ドラッグ=ズーム */
   let spaceDown=false,spaceDrag=false;
   const fbCur=e=>e&&e.shiftKey?'alias':(e&&(e.ctrlKey||e.metaKey)?'zoom-in':'grab');
-  function fbKeyDownSpin(e){const t=e.target&&e.target.tagName;if(t==='TEXTAREA'||t==='INPUT')return;if(e.code==='Space'){if(!spaceDown)spaceDrag=false;spaceDown=true;wrap.style.cursor=fbCur(e);e.preventDefault()}}
-  function fbKeyUpSpin(e){const t=e.target&&e.target.tagName;if(t==='TEXTAREA'||t==='INPUT')return;if(e.code==='Space'){spaceDown=false;if(!spaceDrag&&isPlayable&&alive&&!stroke&&!erasing&&!headDrag){try{playBtn.onclick()}catch(_){}}wrap.style.cursor=Zm.hand?'grab':''}} /* Spaceタップ=再生／Space+ドラッグ=パン等（再生しない）。描画・消しゴム・顔ガイド操作中は再生しない */
+  function fbKeyDownSpin(e){const t=e.target&&e.target.tagName;if(t==='TEXTAREA'||t==='INPUT'||t==='SELECT')return;if(e.code==='Space'){if(!spaceDown)spaceDrag=false;spaceDown=true;wrap.style.cursor=fbCur(e);e.preventDefault()}}
+  function fbKeyUpSpin(e){const t=e.target&&e.target.tagName;if(t==='TEXTAREA'||t==='INPUT'||t==='SELECT')return;if(e.code==='Space'){spaceDown=false;if(!spaceDrag&&isPlayable&&alive&&!stroke&&!erasing&&!headDrag){try{playBtn.onclick()}catch(_){}}wrap.style.cursor=Zm.hand?'grab':''}} /* Spaceタップ=再生／Space+ドラッグ=パン等（再生しない）。描画・消しゴム・顔ガイド操作中は再生しない */
   document.addEventListener('keydown',fbKeyDownSpin);document.addEventListener('keyup',fbKeyUpSpin);
   wrap.addEventListener('contextmenu',e=>e.preventDefault()); /* 右ドラッグズーム中にメニューを出さない */
   /* スクリーン座標→回転前(zoomEl)座標系のwrパローカルへ（ズーム中心用） */
@@ -10030,7 +10030,7 @@ function openReview(nodeId,versionId,opts){
 
   /* --- キーボード --- */
   function onKey(e){
-    if(e.target.tagName==='TEXTAREA'||e.target.tagName==='INPUT')return;
+    if(e.target.tagName==='TEXTAREA'||e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return; /* SELECT フォーカス中も抑制（fpsSel などに合わせて V/,/./X/Space/Arrow/Delete が暴発するのを防ぐ・REEL 側と統一） */
     const k=(e.key||'').toLowerCase();
     if((e.ctrlKey||e.metaKey)&&k==='z'&&!e.shiftKey){e.preventDefault();doUndo();return}   /* 元に戻す */
     if((e.ctrlKey||e.metaKey)&&(k==='y'||(k==='z'&&e.shiftKey))){e.preventDefault();doRedo();return} /* やり直し */
