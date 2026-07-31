@@ -727,9 +727,9 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .cmp-vchip:hover{border-color:var(--edge);color:var(--text)}
 .cmp-vchip.self{opacity:.6;cursor:default;border-style:dashed}
 /* fb-top は 3 カラム grid：タイトル（左）／ clipInfo（真ん中）／ actions（右）。
-   両サイドの 1fr で同幅を確保することで clipInfo が fb-top 全体の中央に配置される（flex では
-   タイトルと actions の幅差で中央がズレていた問題を解消）。 */
-.fb-top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+   両サイドの minmax(0,1fr) で同幅を確保することで clipInfo が fb-top 全体の中央に配置される。
+   minmax(0, ...) で 1fr セルが内容以下にも縮めるようにして、長いタイトルが中央バッジ列を押し出さないようにする。 */
+.fb-top{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0}
 .fb-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-self:end;grid-column:3}
 /* EXR 用のコンパクトスライダ（トップバー内で場所を取らないよう） */
 .fb-mini-slider{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 8px;line-height:1}
@@ -745,8 +745,9 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .fb-depth-wrap{display:inline-flex;align-items:center;gap:6px}
 /* アノテ窓の動画タイトルは長いショット名・工程名・版名が並ぶので、装飾系ではなく OS
    ネイティブフォント (--font-ui) で最優先で読みやすさを確保する */
-/* タイトルは動画名が長くなりがちなので、画面幅の 60% までは切らずに表示。それより長ければ省略記号で切る。 */
-.fb-title{font-family:var(--font-ui);font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(60vw,600px)}
+/* タイトルは grid の左セル (minmax(0,1fr)) 内で許される最大幅まで伸ばす。
+   中央のバッジ群と干渉する寸前まで表示、超えたら省略記号（min-width:0 で 1fr セル内で縮める）。 */
+.fb-title{font-family:var(--font-ui);font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:100%}
 /* アノテ窓ヘッダの「情報グループ」コンテナ。タイトル・現在ステータスbadge・担当/レビューchip・by/at・ステータスプルダウン
    を 1 つに集約して REEL の clipInfo（updReelHeaderInfo）と同じ設計思想に揃える。
    flex:1 で伸びるので後続の操作ボタン群（比較・REEL送信・EXR系・全画面・閉じる）が自然に右寄せになる。
@@ -2953,7 +2954,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.068';
+const APP_VERSION='2026.07.29.069';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10533,9 +10534,10 @@ function openReel(){
   d.open();d.write('<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>LayCAT REEL</title></head><body></body></html>');d.close();
   const st=d.createElement('style');
   st.textContent='*{margin:0;padding:0;box-sizing:border-box}body{background:#0d0d0f;color:#e8e8ec;font-family:system-ui,"Noto Sans JP",sans-serif;font-size:13px;display:flex;flex-direction:column;height:100vh;overflow:hidden}'
-   /* 3 カラム grid（左=タイトル・中央=バッジ群・右=操作）。両サイドの 1fr で対称化するので中央が真の中央に。 */
-   +'.hd{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:5px 14px;background:#141416;border-bottom:1px solid #2a2a2f}'
-   +'.hd .cliptitle{grid-column:1;justify-self:start;min-width:0;overflow:hidden;display:flex;align-items:center}'
+   /* 3 カラム grid（左=タイトル・中央=バッジ群・右=操作）。両サイドの minmax(0,1fr) で対称化＋
+      内容以下にも縮めるようにして、長いタイトルが中央バッジ列を押し出さないようにする。 */
+   +'.hd{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:10px;padding:5px 14px;background:#141416;border-bottom:1px solid #2a2a2f}'
+   +'.hd .cliptitle{grid-column:1;justify-self:stretch;min-width:0;overflow:hidden;display:flex;align-items:center;gap:8px}'
    +'.hd .clipinfo{grid-column:2;justify-self:center;display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}'
    +'.hd .hd-actions{grid-column:3;justify-self:end;display:flex;align-items:center;gap:10px;flex-wrap:wrap}'
    +'.hd .sub{color:#5a5a6a;font-size:11px}.hd .sp{flex:1}'
@@ -10939,16 +10941,17 @@ function openReel(){
     const shot=n.parentId?getNode(n.parentId):null;
     const rootProj=rootOf(n);
     /* カット番号（ショット名）+ 工程名は左詰めの clipTitle に配置（アノテ窓と同じレイアウト）。
-       長いクリップ名でも切れずに表示できるよう max-width を広めに、それより長い場合は省略記号。 */
-    const nm=ce(d,'span','clipname');nm.style.cssText='font-size:15px;color:#e8e8ec;font-weight:700;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:min(50vw,500px)';
+       clipTitle は grid の左セル (minmax(0,1fr)) 内で伸縮するので、中央バッジ列と干渉しない範囲まで
+       タイトルは切らずに表示、超えたら省略記号＋ hover で完全表示。 */
+    const nm=ce(d,'span','clipname');nm.style.cssText='font-size:15px;color:#e8e8ec;font-weight:700;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;min-width:0';
     nm.textContent=(shot?shot.name:'')+(shot?' / ':'')+n.name;
     nm.title=nm.textContent;
     clipTitle.appendChild(nm);
-    /* タイトル右横に小さく版名（動画名相当）。長い場合は省略記号＋ hover で完全表示。 */
+    /* タイトル右横に小さく版名（動画名相当）。優先度は nm より低いので nm から縮む。 */
     const vv=vOf(c);
     if(vv&&vv.name){
       const sub=ce(d,'span','clipsub');
-      sub.style.cssText='font-size:12px;color:#8a8a99;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:min(20vw,220px);font-weight:500';
+      sub.style.cssText='font-size:12px;color:#8a8a99;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;min-width:0;font-weight:500';
       sub.textContent=vv.name;
       sub.title=vv.name;
       clipTitle.appendChild(sub);

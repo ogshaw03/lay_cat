@@ -13,6 +13,14 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.069) ヘッダのタイトル最大幅を撤廃し、grid セル幅（＝中央バッジ列と干渉しない限界）まで表示
+  - `.fb-top` / `.hd` の grid-template-columns を `1fr auto 1fr` → `minmax(0,1fr) auto minmax(0,1fr)` に。minmax(0, ...) にすることで 1fr セルが内容以下にも縮められるようになり、長いタイトルが中央バッジ列を押し出さない。
+  - `.fb-title` の `max-width:min(60vw,600px)` を撤廃、`min-width:0;max-width:100%` に。grid セルの実幅まで伸ばす。
+  - REEL `.clipname` の `max-width:min(50vw,500px)` 撤廃、`flex:0 1 auto;min-width:0` で clipTitle 内で伸縮。
+  - REEL `.clipsub`（版名）の `max-width:min(20vw,220px)` 撤廃、`flex:0 1 auto;min-width:0` で clipTitle 残余で伸縮。
+  - REEL の `.cliptitle` に `gap:8px` を追加、`sub` 側の `margin-left:8px` を撤廃して flex gap で余白統一。
+  - 結果：タイトルが短ければ普通に、長ければ中央バッジ列の左端まで伸ばして表示、それ以上長ければ省略記号＋ hover で完全表示。
+
 - (dev v2026.07.29.068) REEL タイトル右横に小さく版名（動画名相当）を表示
   - `updReelHeaderInfo` 内で `vOf(c).name` を取得し、`.clipsub` として clipTitle に追加（clipname の直後）。
   - font-size:12px / color:#8a8a99 の控えめな見た目、max-width:min(20vw,220px) で長い版名は省略記号＋hover で完全表示。
