@@ -13,6 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.049) アノテ窓／REEL ヘッダの担当・レビューbadge をクリックで変更できるように
+  - **新規ヘルパー `openAsgPickerPopover`**：memberSearchPicker と同じ挙動の検索付き候補リストを、任意の anchor 要素の下に position:fixed で開く popover 版。`opts.doc` に REEL の document を渡すと REEL 側の window ローカルに popover を作成できる（別 window でも動作）。外側クリック／Escape で閉じる。
+  - **アノテ窓**：担当／レビュー chip を `rebuildAsgChips()` で再描画可能に。cursor:pointer と title「（クリックで変更）」付き。onclick で popover を開き、選択後に persist → chip in-place 更新 → `render()`/`resolveThumbs()` を呼び出しタスクページ側も追従。
+  - **REEL**：担当／レビュー chip 同様にクリック可能。popover は REEL の d.body に配置。選択後に `updReelHeaderInfo()` を再呼び出し（clipInfo 全体を再描画）＋親ページの render も走らせる。
+  - **表示ロジック反転**：従来「ショット親優先→node fallback」だったのを「node 優先→ショット親 fallback」に変更。node[field] を書き換えたら即 chip に反映されるようにするため。ショット親に設定がある場合の見え方は変わる（node が明示的に持てば node の値、なければ従来通りショット親の値を継承表示）。
+  - **未設定 chip も常時表示**：従来は reviewer が空だと chip を出していなかったが、クリックで設定する導線を出すため常に「レビュー:—」を表示。担当も同様。
+
 - (dev v2026.07.29.048) FB コメント：ブロック全体クリックでシーク＋タイムライン菱形マーカー位置ズレ修正
   - **ブロック全体クリック**：`noteBlock` / `draftBlock` / `reelDraftBlock` / `reelEmbedBlock` の `.log-note` 全体に click リスナ追加。cursor:pointer で押せる感じに。ボタン／入力欄／フレームチップ／スクショなどインタラクティブ子要素はクリック除外（既存動作を保護）。REEL 側は `video.pause()+seekRTr(n.frame)`、アノテ窓は `seekFrame(n.frame)`。
   - **タイムライン菱形マーカーのズレ修正**：`drawTimeline` でコメント菱形の中心 X を `n.frame*fw + fw/2`（フレーム中央）から `n.frame*fw`（フレーム左端）に変更。目盛り／プレイヘッド／オレンジバーと同じ位置に揃うようになった。

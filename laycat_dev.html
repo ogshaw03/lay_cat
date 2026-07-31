@@ -2943,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.048';
+const APP_VERSION='2026.07.29.049';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7212,6 +7212,70 @@ function taskAssignTopPicker(node,field,label){
   p.row.classList.add('tt-asg',field==='assignee'?'tt-asg-a':'tt-asg-r');
   return p.row;
 }
+/* アノテ窓／REEL ヘッダの担当/レビュー chip 用ポップオーバー・ピッカー。
+   anchor(=chip 要素) の下に検索付き候補リストを開き、選択で node[field] を書き換える。
+   REEL は別 window なので opts.doc に REEL の document を渡すと、その window ローカルに popover を作る。
+   opts.onDone は persist 完了後に呼ぶ（chip の再描画・親ページの再 render に使う）。 */
+function openAsgPickerPopover(anchor,node,field,label,opts){
+  opts=opts||{};
+  const doc=opts.doc||document;
+  const win=doc.defaultView||window;
+  const root=rootOf(node);
+  const members=projectMembers(root).filter(m=>m.active!==false);
+  const oldPop=doc.querySelector('.asg-pop');if(oldPop)oldPop.remove();
+  const pop=doc.createElement('div');pop.className='asg-pop';
+  pop.style.cssText='position:fixed;z-index:99999;background:#1a1a1f;border:1px solid #3a3a42;border-radius:8px;padding:8px;min-width:260px;max-width:340px;box-shadow:0 10px 28px rgba(0,0,0,.55);font-family:var(--font-body,sans-serif)';
+  const lbl=doc.createElement('div');lbl.textContent=label;
+  lbl.style.cssText='font-size:10px;color:#9a9aa4;letter-spacing:.04em;margin:0 0 4px';pop.appendChild(lbl);
+  const input=doc.createElement('input');input.type='text';input.placeholder='名前・メール・ロールで検索（空欄で未割当）';input.autocomplete='off';
+  input.style.cssText='width:100%;padding:7px 9px;background:#0f0f14;border:1px solid #3a3a42;border-radius:6px;color:#e8e8ec;font-size:12px;box-sizing:border-box;outline:none';
+  pop.appendChild(input);
+  const dd=doc.createElement('div');
+  dd.style.cssText='margin-top:6px;max-height:240px;overflow-y:auto;background:#0f0f14;border:1px solid #2a2a30;border-radius:6px';
+  pop.appendChild(dd);
+  const value=node[field]||'';
+  let closed=false;
+  const close=()=>{if(closed)return;closed=true;try{pop.remove()}catch(_){}try{doc.removeEventListener('mousedown',outside,true)}catch(_){}try{doc.removeEventListener('keydown',esc,true)}catch(_){}};
+  const commit=async v=>{
+    if(v)node[field]=v;else delete node[field];
+    try{await persist()}catch(_){}
+    try{if(opts.onDone)opts.onDone(v)}catch(_){}
+    close();
+  };
+  const renderList=q=>{
+    dd.innerHTML='';
+    const ql=(q||'').trim().toLowerCase();
+    const noneRow=doc.createElement('div');noneRow.textContent='— 未割当';
+    noneRow.style.cssText='padding:7px 10px;font-size:12px;color:'+(!value?'#e8e8ec':'#9a9aa4')+';cursor:pointer'+(!value?';background:#2a2a30':'');
+    noneRow.onmousedown=e=>{e.preventDefault();commit('')};dd.appendChild(noneRow);
+    const matches=members.filter(m=>!ql||((m.name||'')+' '+(m.id||'')+' '+((m.roles||[]).join(' '))).toLowerCase().includes(ql));
+    if(!matches.length){const em=doc.createElement('div');em.textContent='該当するメンバーがいません';em.style.cssText='padding:8px 10px;color:#9a9aa4;font-size:12px';dd.appendChild(em)}
+    for(const m of matches){
+      const on=String(value).toLowerCase()===String(m.id).toLowerCase();
+      const o=doc.createElement('div');
+      o.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;font-size:12px'+(on?';background:#2a2a30':'');
+      if(m.color){const dot=doc.createElement('span');dot.style.cssText='width:8px;height:8px;border-radius:50%;background:'+m.color+';flex-shrink:0';o.appendChild(dot)}
+      const nm=doc.createElement('span');nm.textContent=m.name||m.id;nm.style.cssText='font-weight:600;color:#e8e8ec;white-space:nowrap';o.appendChild(nm);
+      const sub=doc.createElement('span');sub.textContent=(m.roles||[]).join(', ')||m.id;sub.style.cssText='font-size:10px;color:#9a9aa4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-left:auto';o.appendChild(sub);
+      o.onmousedown=e=>{e.preventDefault();commit(m.id)};
+      dd.appendChild(o);
+    }
+  };
+  doc.body.appendChild(pop);
+  /* 位置決め：anchor の下、はみ出しは反転／端寄せで補正 */
+  const rect=anchor.getBoundingClientRect();
+  const pw=pop.offsetWidth,ph=pop.offsetHeight;
+  const vw=win.innerWidth,vh=win.innerHeight;
+  let left=rect.left;let top=rect.bottom+4;
+  if(left+pw>vw-8)left=Math.max(8,vw-pw-8);
+  if(top+ph>vh-8)top=Math.max(8,rect.top-ph-4);
+  pop.style.left=left+'px';pop.style.top=top+'px';
+  input.focus();input.oninput=()=>renderList(input.value);renderList('');
+  const outside=e=>{if(!pop.contains(e.target))close()};
+  const esc=e=>{if(e.key==='Escape'){e.preventDefault();close()}};
+  /* 同フレームで開いた anchor の mousedown を外側扱いしないよう、次フレームで購読開始 */
+  setTimeout(()=>{if(closed)return;doc.addEventListener('mousedown',outside,true);doc.addEventListener('keydown',esc,true)},0);
+}
 /* 単一の工程が担当フィルタに一致するか */
 function reviewMatchesFilter(rv){
   const fa=state.filterAssignee,fr=state.filterReviewer;
@@ -7963,26 +8027,32 @@ function openReview(nodeId,versionId,opts){
   const tt=el('div','fb-title',node.name+' — '+v.name);top.appendChild(tt);
   const stEl=el('span');function updSt(){const st=stInfo(node);stEl.className='badge';stEl.textContent=st.label;stEl.style.background=hexA(st.color,.18);stEl.style.color=st.color}updSt();
   top.appendChild(stEl);
-  /* 作業担当者バッジ：ショット（node の親 or 自身がショット）の assignee / reviewer を表示。
-     assignee はメンバー ID（メールアドレス）で持っているため、名簿から m.name に変換して表示する
-     （変換前は生のメール文字列がそのまま出ていた）。 */
+  /* 作業担当者／チェック担当者バッジ：クリックでその場のメンバーピッカーを開いて変更できる。
+     ・保存先は node[field]（工程＝review タスク自身）。タスクページの taskAssignTopPicker と同じ挙動。
+     ・表示は node の値を優先し、未設定ならショット親の値を fallback で継承する。
+     ・未設定でも「担当:— / レビュー:—」の chip を表示して、そこから設定できるようにする。 */
   {
-    /* 対象は node が review タイプならその親ショット、それ以外なら node 自身 */
     const shotForAsg=(node.type==='review'?(getNode(node.parentId)||node):node);
-    const asg=shotForAsg&&shotForAsg.assignee||node.assignee||'';
-    const rev=shotForAsg&&shotForAsg.reviewer||node.reviewer||'';
     const rootProj=rootOf(node);
     const dispName=id=>{if(!id)return '';const m=rootProj?memberById(rootProj,id):null;return m?(m.name||m.id||id):id};
-    const mkChip=(label,val,col)=>{
-      const nm=dispName(val);
-      const b=el('span','badge');
-      b.style.cssText='background:'+hexA(col,.16)+';color:'+col+';font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600';
-      b.textContent=label+':'+(nm?nm:'—');
-      b.title=label+(val?('：'+nm+(nm!==val?(' <'+val+'>'):'')):'（未設定）');
-      return b;
-    };
-    top.appendChild(mkChip('担当',asg,'#7AB6FF'));
-    if(rev)top.appendChild(mkChip('レビュー',rev,'#A56BF0'));
+    const asgHolder=el('span');top.appendChild(asgHolder);
+    const revHolder=el('span');top.appendChild(revHolder);
+    function rebuildAsgChips(){
+      const mk=(holder,field,label,col)=>{
+        holder.innerHTML='';
+        const val=node[field]||(shotForAsg&&shotForAsg[field])||'';
+        const nm=dispName(val);
+        const b=el('span','badge');
+        b.style.cssText='background:'+hexA(col,.16)+';color:'+col+';font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;cursor:pointer;user-select:none';
+        b.textContent=label+':'+(nm?nm:'—');
+        b.title=label+(val?('：'+nm+(nm!==val?(' <'+val+'>'):'')):'（未設定）')+'（クリックで変更）';
+        b.onclick=e=>{e.stopPropagation();openAsgPickerPopover(b,node,field,label,{onDone:()=>{rebuildAsgChips();try{render();resolveThumbs()}catch(_){}}});};
+        holder.appendChild(b);
+      };
+      mk(asgHolder,'assignee','担当','#7AB6FF');
+      mk(revHolder,'reviewer','レビュー','#A56BF0');
+    }
+    rebuildAsgChips();
   }
   top.appendChild(el('span','log-meta','by '+(v.uploadedBy||'-')+'・'+fmt(v.uploadedAt)));
   top.appendChild(el('div','spacer'));
@@ -10820,21 +10890,22 @@ function openReel(){
     nm.textContent=(shot?shot.name:'')+(shot?' / ':'')+n.name;
     nm.title=nm.textContent;
     clipInfo.appendChild(nm);
-    /* 担当／レビュー担当バッジ（名簿から表示名を解決） */
+    /* 担当／レビュー担当バッジ（クリックで REEL 内メンバーピッカー popover を開いて変更可能）。
+       表示は n（工程）を優先、未設定ならショット親を fallback。保存先は n[field]。未設定でも chip を出す。 */
     const shotForAsg=(n.type==='review'?(getNode(n.parentId)||n):n);
-    const asg=(shotForAsg&&shotForAsg.assignee)||n.assignee||'';
-    const rev=(shotForAsg&&shotForAsg.reviewer)||n.reviewer||'';
     const dispName=id=>{if(!id)return '';const m=rootProj?memberById(rootProj,id):null;return m?(m.name||m.id||id):id};
-    const mkChip=(label,val,col)=>{
+    const mkChip=(field,label,col)=>{
+      const val=n[field]||(shotForAsg&&shotForAsg[field])||'';
       const nm2=dispName(val);
       const b=ce(d,'span','badge');
-      b.style.cssText='background:'+hexA(col,.16)+';color:'+col+';font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;white-space:nowrap';
+      b.style.cssText='background:'+hexA(col,.16)+';color:'+col+';font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;white-space:nowrap;cursor:pointer;user-select:none';
       b.textContent=label+':'+(nm2?nm2:'—');
-      b.title=label+(val?('：'+nm2+(nm2!==val?(' <'+val+'>'):'')):'（未設定）');
+      b.title=label+(val?('：'+nm2+(nm2!==val?(' <'+val+'>'):'')):'（未設定）')+'（クリックで変更）';
+      b.onclick=e=>{e.stopPropagation();openAsgPickerPopover(b,n,field,label,{doc:d,onDone:()=>{try{updReelHeaderInfo()}catch(_){}try{render();resolveThumbs()}catch(_){}}});};
       return b;
     };
-    clipInfo.appendChild(mkChip('担当',asg,'#7AB6FF'));
-    if(rev)clipInfo.appendChild(mkChip('レビュー',rev,'#A56BF0'));
+    clipInfo.appendChild(mkChip('assignee','担当','#7AB6FF'));
+    clipInfo.appendChild(mkChip('reviewer','レビュー','#A56BF0'));
     /* レビューバッジの右にステータスプルダウンを追加（アノテ窓と揃える） */
     try{updReelStatus()}catch(_){}
   }
