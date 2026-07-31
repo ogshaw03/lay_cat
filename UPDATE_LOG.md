@@ -13,6 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.064) アノテ窓ヘッダを REEL と完全同一形に（stEl / log-meta 削除、タイトルにショット名を追加）
+  - **タイトル形式を REEL 風に**：`node.name + ' — ' + v.name`（工程名 — 版名）→ `ショット名 / 工程名 — 版名`。REEL の `updReelHeaderInfo` と同じフォーマット。ショット親は `node.type==='review'` なら `getNode(node.parentId)` から取得。
+  - **現在ステータス badge (`stEl`) 削除**：右隣のステータスプルダウンと表示内容が重複していたので削除。付随する `updSt()` 関数と `stSel.onchange` 内の `updSt()` 呼び出しも削除。
+  - **`log-meta`（by/uploadedAt）削除**：REEL に無く、シンプル化を優先。アップロード者・日時が必要な場面はレビューページ側で確認可能。
+  - `shotForAsg` はタイトル計算と担当 chip の両方で使うため、担当 chip ブロック内から外に出して共有。
+  - `tt.title` に textContent を設定してツールチップで完全タイトルが読めるように（省略されても hover で確認可能）。
+
 - (dev v2026.07.29.063) アノテ窓ヘッダの clipInfo を中央配置＋タイトル最大幅を拡張
   - `.fb-clipinfo` に `justify-content:center` を追加。情報グループが fb-top の中央に配置される（REEL の clipInfo と同じ挙動）。狭くて全幅を埋める場合は自動的に左寄せ相当。
   - `.fb-title` の `max-width` を `280px` → `min(60vw,600px)` に拡張。動画名が長くなりがちなので、画面幅の 60% までは切らずに表示、それより長い場合のみ省略記号で切る。
