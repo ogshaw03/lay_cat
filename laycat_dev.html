@@ -2943,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.054';
+const APP_VERSION='2026.07.29.055';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10536,7 +10536,8 @@ function openReel(){
    +'input[type=color]{width:28px;height:26px;background:none;border:1px solid #2a2a2f;border-radius:6px;padding:1px;cursor:pointer}'
    +'.ftlwrap{background:#141416;border-top:1px solid #2a2a2f;padding:6px 14px 2px;flex-shrink:0}'
    +'.ftl{display:block;width:100%;height:40px;cursor:ew-resize;touch-action:none;border-radius:6px}'
-   +'.clr{width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,.3);cursor:pointer;padding:0}'
+   +'.clr{width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,.3);cursor:pointer;padding:0;transition:transform .1s,border-color .1s}'
+   +'.clr.sel{border-color:#fff;transform:scale(1.15)}' /* V3 修正：選択中カラーの視覚判別（アノテ窓 .clr-chip.sel と同じ意匠） */
    +'.ntxt{flex:1;min-width:110px;background:#1c1c1f;border:1px solid #2a2a2f;border-radius:6px;color:#e8e8ec;padding:5px 8px;font-size:12px;font-family:inherit}'
    /* ショットリスト（左） */
    +'.rside{width:320px;border-right:1px solid;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1;box-shadow:1px 0 10px rgba(96,165,255,.14);background:#141416;display:flex;flex-direction:column;min-height:0;flex-shrink:0}'
@@ -10884,6 +10885,11 @@ function openReel(){
   /* ヘッダ (REEL / LayCAT の隣) に「ショット名 / 工程名」と担当・レビュー担当バッジを表示。
      アノテ窓と同じ mkChip 相当（担当=#7AB6FF、レビュー=#A56BF0）で視覚言語を揃える。 */
   function updReelHeaderInfo(){
+    /* 開いたままの担当/レビュー popover は前クリップの chip を anchor にしているため、
+       clipInfo.innerHTML='' で anchor が消えたあとも popover は body 直下に残ってしまう。
+       クロージャの旧 n を掴んだままなので、選択すると「見えているクリップとは別のクリップの担当」が
+       書き換わる無自覚データ破壊が起きる。ここで明示的に閉じる（V1 修正）。 */
+    try{const op=d.querySelector('.asg-pop');if(op)op.remove()}catch(_){}
     clipInfo.innerHTML='';
     const c=reelUI.clips[reelUI.cur];const n=c&&c.nodeId?getNode(c.nodeId):null;
     if(!n)return;
@@ -11619,9 +11625,10 @@ function openReel(){
     if(any){drawAnno();drawFTL();RV.eraseChanged=true;try{reelAfterEdit(c,affected)}catch(_){}if(dirty)scheduleReelPersist()}
   }
   /* Undo/Redo：描画・消しゴム両方を復元可能にする snapshot 履歴。
-     RV.pending だけでなく、全クリップの v.review.notes 内の committed drawing も丸ごとスナップ
-     ／リストアする（アノテ窓 _snap/_restore と同じ方針）。これがないと eraseR や
-     reelLassoDelete で送信済み drawing を触った後の undo が復元されない。 */
+     RV.pending だけでなく、全クリップの v.review.notes 内の committed drawing 付き note を
+     「note 全体まるごと」スナップ／リストアする（アノテ窓 _snap/_restore と同じ方針＋note 消失復活対応）。
+     drawing だけ持って復元しようとすると eraseR/reelLassoDelete で note ごと消えたケース
+     （drawing-only な送信済み note の完全消去）で復元できない → V2 修正で note 全体保存に。 */
   RV.hist=[];RV.histIdx=-1;RV.eraseChanged=false;
   const _snapR=()=>{
     const notes=[];
@@ -11631,7 +11638,9 @@ function openReel(){
       const vv=nd.versions.find(x=>x.id===c.vId);if(!vv||!vv.review||!Array.isArray(vv.review.notes))continue;
       for(const n of vv.review.notes){
         if(n.drawing&&n.drawing.length){
-          notes.push({nodeId:c.nodeId,vId:c.vId,id:n.id,drawing:JSON.parse(JSON.stringify(n.drawing))});
+          /* note 全体を deep clone。author/time/frame/dur/text/noShot/mentions/kind 等の
+             メタもまとめて保存しておくと、note ごと消えた後の完全復活ができる。 */
+          notes.push({nodeId:c.nodeId,vId:c.vId,note:JSON.parse(JSON.stringify(n))});
         }
       }
     }
@@ -11640,15 +11649,17 @@ function openReel(){
   const _restoreR=s=>{
     RV.pending.splice(0,RV.pending.length,...JSON.parse(JSON.stringify(s.pending)));
     RV.stroke=null;
-    /* committed drawing を全クリップ横断で復元。snapshot に載っていた note の drawing を
-       まるごと上書きする（部分差分ではなく完全一致にすることで消しゴム／投げ縄削除の
-       復元も確実に成立）。undo 後の scheduleReelPersist は undoB/redoB.onclick の
-       reelAfterEdit 経由で走る。 */
+    /* committed drawing を全クリップ横断で復元。
+       find で見つかった既存 note には Object.assign で上書き（他のフィールドも snapshot 側で覆う）、
+       find で見つからなければ「note ごと消された」ケースなので push で復活させる（V2 修正）。
+       undo 後の scheduleReelPersist は undoB/redoB.onclick の reelAfterEdit 経由で走る。 */
     for(const b of (s.notes||[])){
       const nd=getNode(b.nodeId);if(!nd||!nd.versions)continue;
       const vv=nd.versions.find(x=>x.id===b.vId);if(!vv||!vv.review||!Array.isArray(vv.review.notes))continue;
-      const n=vv.review.notes.find(x=>x.id===b.id);
-      if(n){n.drawing=JSON.parse(JSON.stringify(b.drawing));n.edited=true}
+      const snap=JSON.parse(JSON.stringify(b.note));
+      const n=vv.review.notes.find(x=>x.id===snap.id);
+      if(n){Object.assign(n,snap);n.edited=true}
+      else{vv.review.notes.push(snap)}
     }
     /* undo/redo 時に各ツールのドラッグ状態を残すと選択枠やドラフトがゾンビ化するのでリセット */
     try{rShapeDraft=null;rLassoSel=null;rLassoPath=null;rLassoRect=null;rLassoStart=null;rLassoDrag=null;rHeadDrag=null;rHeadActive=null;rHoverPt=null;reelMannDrag=null;reelSelectedMann=null;reelMannHoverAxis=null}catch(_){}

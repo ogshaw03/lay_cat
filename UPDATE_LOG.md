@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.055) 動作検証で見つかった 3 件のバグ／未達を修正
+  - **V1 REEL クリップ切替中の担当 popover が前クリップを書き換える無自覚データ破壊を修正**：`updReelHeaderInfo` 冒頭で `d.querySelector('.asg-pop')` を明示的に `remove()`。従来は `clipInfo.innerHTML=''` で anchor chip は消えるが popover は `doc.body` 直下に残り、mkChip クロージャの旧 `n` を掴んだまま別クリップの担当を書き換えてしまう深刻なバグだった。
+  - **V2 送信済み drawing-only ノートを完全削除→Ctrl+Z で復活しないバグを修正**：`_snapR` を「drawing だけ保存」から「note 全体を deep clone で保存」に変更。`_restoreR` は find 成功時 `Object.assign` で上書き、find 失敗時（note が消されたケース）は `push` で復活。author/time/frame/dur/text/noShot/mentions/kind もまとめて復元される。
+  - **V3 REEL のカラーパレット選択中スタイル未定義を修正**：REEL 内 style に `.clr.sel{border-color:#fff;transform:scale(1.15)}` と `.clr` へ `transition` を追加。アノテ窓 `.clr-chip.sel` と同じ意匠で「どの色が選択中か」が視覚判別できるように。.054 の G1 パレット並び統一の目的達成に不可欠だった。
+
 - (dev v2026.07.29.054) REEL 側 UX をアノテ窓に統一（M2/M3/M4/M5/M6/M7/G1 一括修正・アノテ窓 UX は不変）
   - **M2**：全体タイムライン `drawFTL` のコメント（drawing なし）マーカーを **赤い菱形** に変更（従来は fillRect の赤矩形）。中心 `gx=(off+n.frame)*fw`（フレーム左端）、上下 ±3.5 / 左右 ±4 px。アノテ窓 `drawTimeline` と意匠を揃え、描画マーカー（オレンジ矩形）と一目で区別できるように。
   - **M3**：`reelDraftBlock` の `F<n>` フレームチップに `.link` クラスと `onclick`（`video.pause()+seekRTr`）を追加。他 3 兄弟（noteBlock/draftBlock/reelEmbedBlock）と対称に。
