@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.066) アノテ窓ヘッダ：バッジ群を fb-top 全体の真の中央に配置（3 カラム grid 化）
+  - **fb-top を `display:grid;grid-template-columns:1fr auto 1fr`** に変更。両サイドの `1fr` が同幅を確保するので、真ん中 `auto` に置かれる clipInfo は fb-top 全体の中央に配置される。
+  - **操作ボタン群を `.fb-actions` コンテナに集約**：従来は cmpBtn / rb / EXR laySel / expS.wrap / gamS.wrap / egResetBtn / seqCacheBtn / depthWrap / fsBtn を個別に `top.appendChild` していたが、全部 `actions.appendChild` に変えて 1 つの grid セルに収める。
+  - **問題背景**：v065 の flex + `justify-content:center` は clipInfo コンテナ内での中央で、fb-top 全体の中央ではなかった。タイトルの長さと操作ボタン数の差で clipInfo が左右にズレていたのを、grid の対称カラムで解消。
+
 - (dev v2026.07.29.065) アノテ窓ヘッダ：タイトルは左詰め、バッジ群は中央寄せの 3 分割レイアウトに
   - タイトル (`.fb-title`) を `.fb-clipinfo` の外＝`fb-top` 直下に移動して左詰めに。動画タイトルが長くなりがちなので、REEL のように中央に押し込めず左端で最大限伸ばせるように。
   - `.fb-clipinfo` は 担当・レビュー chip・ステータスプルダウンだけになり、`justify-content:center` で中央に配置される。

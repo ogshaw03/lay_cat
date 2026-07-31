@@ -726,7 +726,11 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .cmp-vchip{font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:5px;background:var(--bg);color:var(--text2);cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-family:inherit}
 .cmp-vchip:hover{border-color:var(--edge);color:var(--text)}
 .cmp-vchip.self{opacity:.6;cursor:default;border-style:dashed}
-.fb-top{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;flex-wrap:wrap}
+/* fb-top は 3 カラム grid：タイトル（左）／ clipInfo（真ん中）／ actions（右）。
+   両サイドの 1fr で同幅を確保することで clipInfo が fb-top 全体の中央に配置される（flex では
+   タイトルと actions の幅差で中央がズレていた問題を解消）。 */
+.fb-top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+.fb-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-self:end;grid-column:3}
 /* EXR 用のコンパクトスライダ（トップバー内で場所を取らないよう） */
 .fb-mini-slider{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 8px;line-height:1}
 .fb-mini-slider .fb-mini-lb{font-weight:600;min-width:24px}
@@ -747,7 +751,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
    を 1 つに集約して REEL の clipInfo（updReelHeaderInfo）と同じ設計思想に揃える。
    flex:1 で伸びるので後続の操作ボタン群（比較・REEL送信・EXR系・全画面・閉じる）が自然に右寄せになる。
    justify-content:center で情報グループを中央に配置（REEL の clipInfo と同じ挙動、狭くて全幅を埋める場合は自動的に左寄せ相当になる）。 */
-.fb-clipinfo{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;flex:1 1 auto;justify-content:center}
+.fb-clipinfo{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;justify-content:center;grid-column:2}
 .fb-fs{flex-shrink:0}
 .fb-top{padding-right:48px} /* 右上の閉じるボタン用に余白を確保 */
 .fb-close{position:absolute;top:8px;right:10px;z-index:6;font-size:14px;color:var(--text2);width:30px;height:30px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);background:var(--bg2);cursor:pointer}
@@ -2949,7 +2953,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.065';
+const APP_VERSION='2026.07.29.066';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8057,6 +8061,10 @@ function openReview(nodeId,versionId,opts){
   tt.title=tt.textContent;
   top.appendChild(tt);
   const clipInfo=el('div','fb-clipinfo');top.appendChild(clipInfo);
+  /* 操作ボタン群コンテナ：以下の cmpBtn / rb / EXR系 / fsBtn は全部この actions に append。
+     fb-top を grid(1fr auto 1fr) にすることで、タイトル（左）／ clipInfo（真ん中）／ actions（右）が
+     fb-top 全体の中で対称に配置される。両サイドの 1fr が同幅を確保するので clipInfo は本当の中央に来る。 */
+  const actions=el('div','fb-actions');top.appendChild(actions);
   /* 作業担当者／チェック担当者バッジ：クリックでその場のメンバーピッカーを開いて変更できる。
      ・保存先は node[field]（工程＝review タスク自身）。タスクページの taskAssignTopPicker と同じ挙動。
      ・表示は node の値を優先し、未設定ならショット親の値を fallback で継承する。
@@ -8098,8 +8106,8 @@ function openReview(nodeId,versionId,opts){
     stSel.onchange=async()=>{if(stSel.value==='empty')delete node.status;else node.status=stSel.value;await persist();stSelStyle();try{render();resolveThumbs()}catch(_){}};
     clipInfo.appendChild(stSel);
   }
-  if(isVideo){cmpBtn=el('button','btn btn-ghost btn-sm','⇄ 比較');cmpBtn.title='別の版・カットと横並びで比較（アノテーション可）';cmpBtn.onclick=()=>{if(cmpOn)exitCompare();else openComparePicker(node,v,(bN,bV)=>enterCompare(bN,bV))};top.appendChild(cmpBtn)}
-  if(isVideo){const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);top.appendChild(rb)}
+  if(isVideo){cmpBtn=el('button','btn btn-ghost btn-sm','⇄ 比較');cmpBtn.title='別の版・カットと横並びで比較（アノテーション可）';cmpBtn.onclick=()=>{if(cmpOn)exitCompare();else openComparePicker(node,v,(bN,bV)=>enterCompare(bN,bV))};actions.appendChild(cmpBtn)}
+  if(isVideo){const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);actions.appendChild(rb)}
   /* EXR：トップバーにレイヤー切替＋露出/ガンマ、Depth 選択時は黒白点/反転を追加。
      全部同じ列に compact 表示。 */
   if(!isVideo&&(v.exr||isExrRef(v.file))){
@@ -8108,7 +8116,7 @@ function openReview(nodeId,versionId,opts){
     /* レイヤー select */
     const laySel=el('select','status-sel');laySel.title='EXR レイヤーを切替';laySel.style.cssText='max-width:200px';
     const opt0=el('option',null,'📼 読み込み中...');opt0.value='';laySel.appendChild(opt0);laySel.disabled=true;
-    top.appendChild(laySel);
+    actions.appendChild(laySel);
     /* 露出／ガンマ／黒白点 スライダ（compact）— 数値部分は number input で直接編集も可能。
        range と number は双方向同期。number 側は Enter or blur（change イベント）で確定して
        range に反映＋ range の 'input' イベントを発火し、外側の再描画ハンドラを起こす。 */
@@ -8132,18 +8140,18 @@ function openReview(nodeId,versionId,opts){
     const gamS=mkSlider('ガンマ',0.4,4.0,0.05,settings.gamma||2.2,x=>x.toFixed(2));
     /* 露出/ガンマ リセットボタン */
     const egResetBtn=el('button','btn btn-ghost btn-sm','↺');egResetBtn.title='露出とガンマを初期値（0 / 2.2）に戻す';egResetBtn.style.padding='4px 8px';
-    top.appendChild(expS.wrap);top.appendChild(gamS.wrap);top.appendChild(egResetBtn);
+    actions.appendChild(expS.wrap);actions.appendChild(gamS.wrap);actions.appendChild(egResetBtn);
     /* EXR 連番のみ：全フレーム事前キャッシュボタン。旧「サムネ更新」ボタンはアノテウィンドウから撤去（不要）。 */
     let seqCacheBtn=null;
     if(isSeq){
       seqCacheBtn=el('button','btn btn-ghost btn-sm','🎞 全キャッシュ');
       seqCacheBtn.title='現在のレイヤー・露出・ガンマ設定で全フレームを事前にキャッシュ（再生・スクラブが軽くなる。メモリを多く使う）';
-      top.appendChild(seqCacheBtn);
+      actions.appendChild(seqCacheBtn);
     }
     /* Depth 専用スライダ（Depth モード時のみ表示） */
     const depthWrap=el('span','fb-depth-wrap');depthWrap.style.display='none';
     let bpS=null,wpS=null,invBtn=null;
-    top.appendChild(depthWrap);
+    actions.appendChild(depthWrap);
     /* 非同期に EXR を読み込んで dropdown を構築（2度目以降はキャッシュから即取得） */
     (async()=>{
       let hdr=null,full=null;
@@ -8334,7 +8342,7 @@ function openReview(nodeId,versionId,opts){
   /* このバージョン削除ボタンは、アノテーション削除と誤操作しやすいため
      アノテ窓のトップバーから撤去（版削除はタスクページ側の版タイル右上から可能）。 */
   /* 表示モード切替 */
-  fsBtn=el('button','btn btn-ghost btn-sm fb-fs','⛶');fsBtn.onclick=()=>{fbFullscreen=!fbFullscreen;fbApplyMode()};top.appendChild(fsBtn);
+  fsBtn=el('button','btn btn-ghost btn-sm fb-fs','⛶');fsBtn.onclick=()=>{fbFullscreen=!fbFullscreen;fbApplyMode()};actions.appendChild(fsBtn);
   ov.appendChild(top);
   /* 閉じる：常に右上コーナー固定（PCのウィンドウと同じ位置。トップバーが折り返しても動かない） */
   const x=el('button','fb-close','✕');x.title='閉じる';x.onclick=close;ov.appendChild(x);
