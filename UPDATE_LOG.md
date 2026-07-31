@@ -13,6 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.067) REEL ヘッダもアノテ窓と同じ 3 カラム grid に統一（ロゴ削除・タイトル左詰め）
+  - **「REEL / LayCAT」ロゴ削除**：`hd` 内の `.logo` を撤去。REEL は独立ウィンドウなのでアプリ名を再表示する必要が薄く、情報密度を優先。
+  - **タイトル (`clipname`) を左詰めに**：新規の `.cliptitle` コンテナを左カラムに置き、`updReelHeaderInfo` の中で clipname を clipTitle に書き込むよう変更。max-width を `320px` → `min(50vw,500px)` に拡張して長いクリップ名も見やすく。
+  - **バッジ群 (`.clipinfo`) は真の中央に**：`.hd` を `display:grid;grid-template-columns:1fr auto 1fr` に変更。両サイドの 1fr が同幅を確保するので、真ん中の clipInfo は hd 全体の中央に配置される。
+  - **操作ボタン群を `.hd-actions` に集約**：totalLab / loopBtn / clearBtn を新規コンテナに束ねて右カラムに配置。
+  - アノテ窓 (v066) と完全に同じレイアウト思想。
+
 - (dev v2026.07.29.066) アノテ窓ヘッダ：バッジ群を fb-top 全体の真の中央に配置（3 カラム grid 化）
   - **fb-top を `display:grid;grid-template-columns:1fr auto 1fr`** に変更。両サイドの `1fr` が同幅を確保するので、真ん中 `auto` に置かれる clipInfo は fb-top 全体の中央に配置される。
   - **操作ボタン群を `.fb-actions` コンテナに集約**：従来は cmpBtn / rb / EXR laySel / expS.wrap / gamS.wrap / egResetBtn / seqCacheBtn / depthWrap / fsBtn を個別に `top.appendChild` していたが、全部 `actions.appendChild` に変えて 1 つの grid セルに収める。
