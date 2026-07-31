@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.060) サブミット一覧／モーダルの各カードに 🔗 リンクコピーボタン追加
+  - フルページのサブミットタブ（`renderProjSubmits`）とモーダル一覧（`subShowList`）の両方の各 `.subl-item` に「🔗」ボタンを追加。クリックでそのサブミット単体への URL をクリップボードにコピー。
+  - 共通ヘルパー `copySubmitLink(sb)` と `makeSubmitLinkBtn(sb)` を新設。URL は既存の routing（`#/n/<projectId>/submit/s/<submitId>`）と一致するため貼り付ければ相手側で該当サブミットが直接開く。
+  - ボタン内で `stopPropagation` を呼びカード全体クリック（openSubmitDrawer / subShowView）への伝播を抑止。
+  - navigator.clipboard 未サポート環境では `window.prompt` にフォールバック（既存 `copyShareLink` と同じ流儀）。
+
 - (dev v2026.07.29.059) REEL：reelSendCur の pending 更新を in-place にして参照剥がれによるデータ損失を修正
   - **症状**：REEL で「送信」した直後、同じクリップに描いた新しい線が保存されない（画面には見えるが、リロード後・別クリップ切替で消える）。さらに v058 の履歴リセットと組み合わさると、送信直後の Undo で「送信前の pending が全部復活」する挙動になっていた（コメントの意図と真逆）。
   - **原因**：`reelSendCur` L12059 の `c.pending=(c.pending||[]).filter(...)` が新配列を返すため、`c.pending` の参照が差し替わる。しかし `RV.pending` は `loadCur` で `c.pending` の参照を掴んだままなので、以降 stale な古い配列を指すことになっていた。pointerup で RV.pending.push しても c.pending に反映されず、reelSyncEmbedAll が embed 化できず永続化されない → データ損失。
