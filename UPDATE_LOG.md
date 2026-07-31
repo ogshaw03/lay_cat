@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.052) REEL：送信済み drawing に対する消しゴム／投げ縄削除が Undo で復元されないバグを修正
+  - `_snapR` を `RV.pending` だけでなく「全クリップの `v.review.notes[*].drawing`（drawing を持つ note）」も含めて丸ごとスナップに拡張（アノテ窓 `_snap` と同じ方針）。
+  - `_restoreR` で snapshot に載っていた note の drawing をまるごと上書き復元。`edited=true` を打つ。undo/redo 後の persist は既存の `undoB/redoB.onclick` → `reelAfterEdit` 経由で走る。
+  - これにより `eraseR`（送信済み drawing の部分消し）と `reelLassoDelete`（投げ縄で送信済み drawing 削除）を触ったあとの Ctrl+Z が正しく元に戻せるように。
+
 - (dev v2026.07.29.051) アノテ窓：SELECT フォーカス中のショートカット暴発を修正（REEL 側と統一）
   - `onKey`（L9960）と `fbKeyDownSpin`/`fbKeyUpSpin`（L8506-8507）の tag 判定に `SELECT` を追加。fpsSel などのプルダウンにフォーカスがあるときに V/,/./X/Space/Arrow/Delete/Backspace が発火してしまうバグを修正。
   - REEL 側は既に `SELECT` 抑制済みだったので、これでアノテ窓と REEL のショートカット抑制条件が一致。

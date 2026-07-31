@@ -2943,7 +2943,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.051';
+const APP_VERSION='2026.07.29.052';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11522,12 +11522,38 @@ function openReel(){
     }
     if(any){drawAnno();drawFTL();RV.eraseChanged=true;try{reelAfterEdit(c,affected)}catch(_){}if(dirty)scheduleReelPersist()}
   }
-  /* Undo/Redo：描画・消しゴム両方を復元可能にする snapshot 履歴 */
+  /* Undo/Redo：描画・消しゴム両方を復元可能にする snapshot 履歴。
+     RV.pending だけでなく、全クリップの v.review.notes 内の committed drawing も丸ごとスナップ
+     ／リストアする（アノテ窓 _snap/_restore と同じ方針）。これがないと eraseR や
+     reelLassoDelete で送信済み drawing を触った後の undo が復元されない。 */
   RV.hist=[];RV.histIdx=-1;RV.eraseChanged=false;
-  const _snapR=()=>({pending:JSON.parse(JSON.stringify(RV.pending))});
+  const _snapR=()=>{
+    const notes=[];
+    for(const c of (reelUI.clips||[])){
+      if(!c||!c.nodeId||!c.vId)continue;
+      const nd=getNode(c.nodeId);if(!nd||!nd.versions)continue;
+      const vv=nd.versions.find(x=>x.id===c.vId);if(!vv||!vv.review||!Array.isArray(vv.review.notes))continue;
+      for(const n of vv.review.notes){
+        if(n.drawing&&n.drawing.length){
+          notes.push({nodeId:c.nodeId,vId:c.vId,id:n.id,drawing:JSON.parse(JSON.stringify(n.drawing))});
+        }
+      }
+    }
+    return {pending:JSON.parse(JSON.stringify(RV.pending)),notes};
+  };
   const _restoreR=s=>{
     RV.pending.splice(0,RV.pending.length,...JSON.parse(JSON.stringify(s.pending)));
     RV.stroke=null;
+    /* committed drawing を全クリップ横断で復元。snapshot に載っていた note の drawing を
+       まるごと上書きする（部分差分ではなく完全一致にすることで消しゴム／投げ縄削除の
+       復元も確実に成立）。undo 後の scheduleReelPersist は undoB/redoB.onclick の
+       reelAfterEdit 経由で走る。 */
+    for(const b of (s.notes||[])){
+      const nd=getNode(b.nodeId);if(!nd||!nd.versions)continue;
+      const vv=nd.versions.find(x=>x.id===b.vId);if(!vv||!vv.review||!Array.isArray(vv.review.notes))continue;
+      const n=vv.review.notes.find(x=>x.id===b.id);
+      if(n){n.drawing=JSON.parse(JSON.stringify(b.drawing));n.edited=true}
+    }
     /* undo/redo 時に各ツールのドラッグ状態を残すと選択枠やドラフトがゾンビ化するのでリセット */
     try{rShapeDraft=null;rLassoSel=null;rLassoPath=null;rLassoRect=null;rLassoStart=null;rLassoDrag=null;rHeadDrag=null;rHeadActive=null;reelMannDrag=null;reelSelectedMann=null;reelMannHoverAxis=null}catch(_){}
   };
