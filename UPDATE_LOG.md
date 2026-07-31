@@ -13,6 +13,11 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.068) REEL タイトル右横に小さく版名（動画名相当）を表示
+  - `updReelHeaderInfo` 内で `vOf(c).name` を取得し、`.clipsub` として clipTitle に追加（clipname の直後）。
+  - font-size:12px / color:#8a8a99 の控えめな見た目、max-width:min(20vw,220px) で長い版名は省略記号＋hover で完全表示。
+  - 「ショット名 / 工程名」（大・白）＋「版名」（小・グレー）の並び。REEL でクリップを切り替えたときに「どの版を見ているか」が一目で分かる。
+
 - (dev v2026.07.29.067) REEL ヘッダもアノテ窓と同じ 3 カラム grid に統一（ロゴ削除・タイトル左詰め）
   - **「REEL / LayCAT」ロゴ削除**：`hd` 内の `.logo` を撤去。REEL は独立ウィンドウなのでアプリ名を再表示する必要が薄く、情報密度を優先。
   - **タイトル (`clipname`) を左詰めに**：新規の `.cliptitle` コンテナを左カラムに置き、`updReelHeaderInfo` の中で clipname を clipTitle に書き込むよう変更。max-width を `320px` → `min(50vw,500px)` に拡張して長いクリップ名も見やすく。

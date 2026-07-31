@@ -2953,7 +2953,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.067';
+const APP_VERSION='2026.07.29.068';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10944,6 +10944,15 @@ function openReel(){
     nm.textContent=(shot?shot.name:'')+(shot?' / ':'')+n.name;
     nm.title=nm.textContent;
     clipTitle.appendChild(nm);
+    /* タイトル右横に小さく版名（動画名相当）。長い場合は省略記号＋ hover で完全表示。 */
+    const vv=vOf(c);
+    if(vv&&vv.name){
+      const sub=ce(d,'span','clipsub');
+      sub.style.cssText='font-size:12px;color:#8a8a99;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:min(20vw,220px);font-weight:500';
+      sub.textContent=vv.name;
+      sub.title=vv.name;
+      clipTitle.appendChild(sub);
+    }
     /* 担当／レビュー担当バッジ（クリックで REEL 内メンバーピッカー popover を開いて変更可能）。
        表示は n（工程）を優先、未設定ならショット親を fallback。保存先は n[field]。未設定でも chip を出す。 */
     const shotForAsg=(n.type==='review'?(getNode(n.parentId)||n):n);
