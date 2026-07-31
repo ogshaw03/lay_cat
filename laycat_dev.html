@@ -2954,7 +2954,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.069';
+const APP_VERSION='2026.07.29.070';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3539,12 +3539,30 @@ function openSubmitCreate(){const root=subBuildModal();if(root)subShowCreate();}
 /* タイムラインのまとめエントリなどからサブミット詳細を直接開く */
 function openSubmitView(sb){const root=subBuildModal(sb.projectId);if(root)subShowView(sb);}
 function subRevokeThumbs(){for(const b of (subS.blocks||[])){if(b&&b.thumbUrl){try{URL.revokeObjectURL(b.thumbUrl)}catch(_){}b.thumbUrl=null}}} /* N3: 作成モーダルを閉じる際にプレビューのObjectURLを解放しリークを防ぐ */
+/* S1/S2 修正：サブミット作成モーダルは close/背景クリック/再オープンのいずれでも
+   書きかけの内容（下書きブロック・提出メッセージ）を無警告で消していた。
+   下書きがある場合だけ confirm を挟む共通ヘルパー。 */
+function subHasUnsavedDraft(){
+  if(subS && Array.isArray(subS.blocks) && subS.blocks.length)return true;
+  if(subS && subS.blockComment && String(subS.blockComment).trim())return true;
+  return false;
+}
+function subConfirmDiscard(){
+  if(!subHasUnsavedDraft())return true;
+  return confirm('作成中のサブミット下書きがあります。破棄しますか？');
+}
 function subBuildModal(forceProjId){
   let root;
   if(forceProjId){root=getNode(forceProjId);}
   else{const cur=state.currentId?getNode(state.currentId):null;root=cur?rootOf(cur):null;}
   if(!root){toast('プロジェクトを開いてから起動してください');return null}
-  const old=$('#submitOverlay');if(old)old.remove();
+  const old=$('#submitOverlay');
+  if(old){
+    /* S2 修正：既に開いているモーダルを無条件で捨てると下書きが消える。
+       下書きがある場合だけ確認、なければ従来通り建て替え。 */
+    if(!subConfirmDiscard())return null;
+    old.remove();
+  }
   subS.projectId=root.id;subS.blocks=[];subS.blockComment='';
   const ov=el('div','sub-overlay');ov.id='submitOverlay';
   const modal=el('div','sub-modal');
@@ -3553,12 +3571,14 @@ function subBuildModal(forceProjId){
   top.appendChild(el('span','sub',root.name));
   top.appendChild(el('div','sp'));
   const tr=el('div');tr.style.cssText='display:flex;gap:8px';top.appendChild(tr);
-  const close=el('button','btn btn-ghost btn-sm','✕ 閉じる');close.onclick=()=>{subRevokeThumbs();ov.remove()};top.appendChild(close);
+  /* S1 修正：閉じる/背景クリックいずれも subConfirmDiscard を通してから閉じる。 */
+  const doClose=()=>{if(subConfirmDiscard()){subRevokeThumbs();ov.remove()}};
+  const close=el('button','btn btn-ghost btn-sm','✕ 閉じる');close.onclick=doClose;top.appendChild(close);
   const body=el('div','sub-body');const wrap=el('div','sub-wrap');body.appendChild(wrap);
   const footHost=el('div');
   modal.appendChild(top);modal.appendChild(body);modal.appendChild(footHost);
   ov.appendChild(modal);
-  closeOnBackdrop(ov,()=>{subRevokeThumbs();ov.remove()});
+  closeOnBackdrop(ov,doClose);
   document.body.appendChild(ov);
   Object.assign(subS,{ov,modal,tr,wrap,footHost});
   return root;
@@ -3630,9 +3650,36 @@ function subBlockEl(block){
   bl.appendChild(bh);
   const bbody=el('div','bbody');
   const drop=el('div','sub-drop');
-  const setPreview=()=>{drop.innerHTML='';if(block.thumbUrl){drop.classList.add('has');const v=el('video');v.src=block.thumbUrl;v.muted=true;v.playsInline=true;drop.appendChild(v);drop.appendChild(el('div','rep','クリック / DDで差し替え'))}else{drop.classList.remove('has');drop.appendChild(el('div',null,'ここに動画をドロップ'));drop.appendChild(el('div',null,'またはクリックで選択'))}};
+  const setPreview=()=>{
+    drop.innerHTML='';
+    if(block._uploadedVersionId){
+      /* S3 修正：既にアップロード成功したブロックは「済み」表示。再クリックで差し替え可（再アップロード） */
+      drop.classList.add('has');
+      const lab=el('div',null,'✅ アップロード済み');lab.style.cssText='font-weight:600;font-size:13px;color:var(--green,#8ae08a)';
+      drop.appendChild(lab);
+      const sub=el('div',null,'クリックで差し替え（新しい版として再アップロードされます）');
+      sub.style.cssText='font-size:11px;color:var(--text3);margin-top:4px';
+      drop.appendChild(sub);
+    }else if(block.thumbUrl){
+      drop.classList.add('has');
+      const v=el('video');v.src=block.thumbUrl;v.muted=true;v.playsInline=true;drop.appendChild(v);
+      drop.appendChild(el('div','rep','クリック / DDで差し替え'));
+    }else{
+      drop.classList.remove('has');
+      drop.appendChild(el('div',null,'ここに動画をドロップ'));
+      drop.appendChild(el('div',null,'またはクリックで選択'));
+    }
+  };
   setPreview();
-  const pickFile=f=>{if(!f||!isVideoFile(f))return;if(block.thumbUrl){try{URL.revokeObjectURL(block.thumbUrl)}catch(_){}}block.file=f;block.thumbUrl=URL.createObjectURL(f);setPreview()};
+  const pickFile=f=>{
+    if(!f||!isVideoFile(f))return;
+    /* S3 修正：既にアップロード済みで差し替える場合は確認（誤操作で無意味な重複版が生えるのを防止） */
+    if(block._uploadedVersionId&&!confirm('既にアップロード済みです。差し替えると新しい版として再アップロードされます。続けますか？'))return;
+    if(block.thumbUrl){try{URL.revokeObjectURL(block.thumbUrl)}catch(_){}}
+    block.file=f;block.thumbUrl=URL.createObjectURL(f);
+    block._uploadedVersionId=null; /* 差し替え＝新規アップロード扱いに戻す */
+    setPreview();
+  };
   drop.onclick=()=>{const fi=document.createElement('input');fi.type='file';fi.accept='video/*,.mov,.mp4,.m4v,.webm';fi.onchange=()=>pickFile(fi.files[0]);fi.click()};
   drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag')};
   drop.ondragleave=()=>drop.classList.remove('drag');
@@ -3731,7 +3778,9 @@ function openSubPicker(){
   subS.ov.appendChild(modal);
 }
 async function createSubmitBlock(){
-  const blocks=subS.blocks.filter(b=>b.file);
+  /* S3 修正：b.file（新規アップロード対象）or b._uploadedVersionId（前回既に成功したブロック）
+     があるものを対象に。両方無いブロックは動画未指定なのでスキップ。 */
+  const blocks=subS.blocks.filter(b=>b.file||b._uploadedVersionId);
   if(!blocks.length){toast('少なくとも1つのブロックに動画を追加してください');return}
   const pid=subS.projectId;
   const proot=getNode(pid);
@@ -3753,12 +3802,28 @@ async function createSubmitBlock(){
   /* まず全ブロックをアップロードし、成功したものだけ集める（submitId 等のタグ付けは全件成功を確認してから行う） */
   const okd=[];let failed=0;
   for(const b of blocks){
+    /* S3 修正：前回既にアップロード済みのブロックは再アップロードせず、既存 version を再利用（重複防止）。
+       版が消えているケース（他所で削除された等）は再アップロード扱いにフォールバック。 */
+    if(b._uploadedVersionId){
+      const existing=b.node.versions&&b.node.versions.find(x=>x.id===b._uploadedVersionId);
+      if(existing){okd.push({b,v:existing});continue}
+      /* 対応 version が見つからない → 再アップロードへ */
+      b._uploadedVersionId=null;
+    }
+    if(!b.file){failed++;continue}
     const before=b.node.versions.length;
     /* C: サブミットの動画も通常アップロードと同じ media/ に保存（従来は submitblock/ に分散していた）。
        comment は uploadVersion に渡さない（後段でサブミット全体コメントと統合して 1 メッセージにまとめる） */
     await uploadVersion(b.node,b.file,stub,{projectId:pid});
     const v=b.node.versions[b.node.versions.length-1];
-    if(v&&b.node.versions.length>before)okd.push({b,v});else failed++;
+    if(v&&b.node.versions.length>before){
+      okd.push({b,v});
+      /* S3 修正：成功したブロックは _uploadedVersionId を記録し file を解放。
+         次回リトライ時に再アップロードされない。 */
+      b._uploadedVersionId=v.id;
+      try{if(b.thumbUrl){URL.revokeObjectURL(b.thumbUrl);b.thumbUrl=null}}catch(_){}
+      b.file=null;
+    }else failed++;
   }
   /* B: 1つでも保存に失敗したら、壊れたサブミットは作らず中断（成功した動画は通常アップロードとして残す）。 */
   if(failed){
@@ -4444,10 +4509,13 @@ function folderWarnBanner(root){
   return b;
 }
 /* 現在アクティブなタブの識別子（ルート上はそのタブ、サブページ表示中は 'browse'） */
+/* N1 修正：以前は review タスク・セクションなど「プロジェクトルート以外」を全部 'browse' で
+   ひとまとめにしていたので、タスクタブAでドロワーを開いた状態でタブBに切替えるとドロワーが
+   タブAの中身のまま残る問題があった。currentId をキーに混ぜて、タブごとに独立記憶に。 */
 function activeTabKey(){
   const cur=state.currentId?getNode(state.currentId):null;if(!cur)return null;
   const root=rootOf(cur);const onRoot=state.currentId===root.id&&!state.search.trim();
-  return onRoot?(state.projTab||'timeline'):'browse';
+  return onRoot?(state.projTab||'timeline'):('browse:'+state.currentId);
 }
 function removeDrawerDOM(){const dr=$('#reviewDrawer');const ab=$('.app-body');if(ab)ab.classList.remove('drawer-open');if(dr)dr.remove();}
 function renderBody(){
@@ -6140,6 +6208,13 @@ function noteBlock(v,n,opts){
     attachMention(ta,opts.root);ta.focus();
   };
   del.onclick=async()=>{
+    /* A1 修正：送信済みコメントは tombstone に記録されるので削除後の Undo で戻せない。
+       誤タップ 1 回でアノテ・描画・テキストが完全消失するのを防ぐため確認ダイアログを挟む。 */
+    const hasContent=(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length);
+    const msg=hasContent
+      ? 'このコメントを削除しますか？\n描画・テキストも一緒に消え、Undoでも復元できません。'
+      : 'このコメントを削除しますか？';
+    if(!confirm(msg))return;
     /* 参照比較 (x!==n) だと autoRefresh の 3-way マージで v.review.notes に新しい参照が
        入ったあとに n が stale になって削除できないため、キー比較に統一（マージ側と同じ nk）。 */
     const nk=x=>x.id||((x.time||'')+'|'+(x.text||'')+'|'+(x.frame!=null?x.frame:''));
@@ -9250,7 +9325,7 @@ function openReview(nodeId,versionId,opts){
      Apply では窓を閉じないので、繰り返し apply を受け付ける必要がある。
      新しい editor を開く際は古いハンドラ・窓を掃除する。 */
   let _mannActiveEditor=null, _mannActiveHandler=null;
-  function openMannEditor(prevArg, placeAt){
+  function openMannEditor(prevArg, placeAt, opts){
     /* 直前の editor を掃除 */
     if(_mannActiveHandler){window.removeEventListener('message',_mannActiveHandler);_mannActiveHandler=null}
     if(_mannActiveEditor){try{_mannActiveEditor.close()}catch(_){}_mannActiveEditor=null}
@@ -9260,6 +9335,9 @@ function openReview(nodeId,versionId,opts){
        同じエディタからもう一度 apply を押した際に「新規追加」ではなく「今作ったやつを更新」
        になるようにする（連続 apply でキャラが増殖する不具合の対策）。 */
     let prev = prevArg;
+    /* A2 修正：opts.noteRef が渡された場合 = 送信済みマネキンの再編集。
+       apply 時は pending ではなく v.review.notes 側の note を dirty マーク＋persist する。 */
+    const committedNoteRef = (opts && opts.noteRef) || null;
     try{if(prev&&prev.pose)localStorage.setItem(poseKey,JSON.stringify(prev.pose))}catch(_){}
     const onMsg=(ev)=>{
       const d=ev.data;
@@ -9294,7 +9372,14 @@ function openReview(nodeId,versionId,opts){
         redoStack=[];
         selectedMann=target;
         setTool('mann');
-        drawAll();drawTimeline();_pushHist();
+        if(committedNoteRef){
+          /* A2 修正：送信済みマネキンの再編集 → note を dirty マーク＋persist（履歴は使わない） */
+          committedNoteRef.edited=true;committedDirty=true;
+          try{persist()}catch(_){}
+          drawAll();drawTimeline();
+        }else{
+          drawAll();drawTimeline();_pushHist();
+        }
       }).catch(()=>toast('マネキン画像の読み込みに失敗しました'));
       try{localStorage.removeItem(poseKey)}catch(_){}
     };
@@ -9498,12 +9583,36 @@ function openReview(nodeId,versionId,opts){
     _pushHist();
     drawAll();
   }
-  /* ダブルクリック：ヒットしたマネキンをポーズ再編集 */
+  /* A2 修正：ダブルクリック時のみ送信済み drawing 内のマネキンもヒット対象に。
+     消しゴム/投げ縄/ドラッグは従来通り pending のみ（v058 保護方針は維持）、
+     ポーズ再編集だけ例外的に committed を許可する。 */
+  function mannHitTestAny(nx,ny){
+    const hitP=mannHitTest(nx,ny);
+    if(hitP)return hitP;
+    /* v.review.notes 内のマネキンを本体ヒット（中央領域）のみで探す */
+    const W=canvas.width,H=canvas.height,aspect=H/W;const f=dispFrame();
+    const notes=(v.review&&v.review.notes)||[];
+    for(const n of notes){
+      if(!n.drawing||!n.drawing.length)continue;
+      if(isVideo&&n.frame!=null&&!(f>=n.frame&&f<n.frame+(parseInt(n.dur)||1)))continue;
+      for(const p of n.drawing){
+        if(p.kind!=='mannequin')continue;
+        if((p.layer||1)!==activeLayer)continue;
+        const img=_mannLoad(p.img);
+        const ar=(img&&img.naturalWidth)?(img.naturalHeight/img.naturalWidth):1;
+        const cx=p.cx,cy=p.cy,hw=(p.w||0.32)/2,hh=(p.w||0.32)*ar/2/aspect;
+        const dx=nx-cx,dy=ny-cy;
+        if(Math.abs(dx)<=hw&&Math.abs(dy)<=hh)return{p,i:-1,mode:'free',noteRef:n};
+      }
+    }
+    return null;
+  }
+  /* ダブルクリック：ヒットしたマネキン（pending or 送信済み）をポーズ再編集 */
   canvas.addEventListener('dblclick',e=>{
     if(tool!=='mann')return;
     const [x,y]=pt(e);
-    const hit=mannHitTest(x,y);
-    if(hit){e.preventDefault();openMannEditor(hit.p)}
+    const hit=mannHitTestAny(x,y);
+    if(hit){e.preventDefault();openMannEditor(hit.p,null,{noteRef:hit.noteRef||null})}
   });
 
   /* ============ 図形（四角 / 楕円 / 矢印） ============
@@ -11530,12 +11639,15 @@ function openReel(){
     reelOpenMannEditor(prev,null);
   };
   /* 別窓 3D エディタ（アノテ窓 openMannEditor と同一）— 親 window に window.open するので message も親 window で受ける */
-  function reelOpenMannEditor(prevArg,placeAt){
+  function reelOpenMannEditor(prevArg,placeAt,opts){
     if(_reelMannActiveHandler){window.removeEventListener('message',_reelMannActiveHandler);_reelMannActiveHandler=null}
     if(_reelMannActiveEditor){try{_reelMannActiveEditor.close()}catch(_){}_reelMannActiveEditor=null}
     const f=dispF();
     const poseKey='laycat_mannequin_pose_'+Date.now();
     let prev=prevArg;
+    /* A2 修正：opts.noteRef が渡された場合 = 送信済みマネキンの再編集。
+       apply 時は RV.pending / _pushHistR を触らず、note を dirty マーク＋persist する。 */
+    const committedNoteRef=(opts&&opts.noteRef)||null;
     try{if(prev&&prev.pose)localStorage.setItem(poseKey,JSON.stringify(prev.pose))}catch(_){}
     const onMsg=ev=>{
       const dd=ev.data;if(!dd||dd.source!=='laycat_mannequin')return;
@@ -11553,7 +11665,14 @@ function openReel(){
           prev=target;
         }
         reelSelectedMann=target;setRTool('mann');
-        drawAnno();drawFTL();updUnsent();_pushHistR();
+        if(committedNoteRef){
+          /* A2 修正：送信済みマネキンの再編集 → note を dirty マーク＋persist（履歴は使わない） */
+          committedNoteRef.edited=true;
+          try{scheduleReelPersist()}catch(_){}
+          drawAnno();drawFTL();updUnsent();
+        }else{
+          drawAnno();drawFTL();updUnsent();_pushHistR();
+        }
       }).catch(()=>{try{toast('マネキン画像の読み込みに失敗しました')}catch(_){}});
       try{localStorage.removeItem(poseKey)}catch(_){}
     };
@@ -11653,7 +11772,31 @@ function openReel(){
     _pushHistR();drawAnno();updUnsent();
   }
   /* ダブルクリック=既存マネキンのポーズ再編集 */
-  anno.addEventListener('dblclick',e=>{if(RV.tool!=='mann')return;const [x,y]=ptA(e);const hit=reelMannHitTest(x,y);if(hit){e.preventDefault();reelOpenMannEditor(hit.p)}});
+  /* A2 修正：REEL でもダブルクリック時のみ送信済み drawing 内のマネキンもヒット対象に。 */
+  function reelMannHitTestAny(nx,ny){
+    const hitP=reelMannHitTest(nx,ny);
+    if(hitP)return hitP;
+    const W=anno.width,H=anno.height,aspect=H/W;const f=dispF();
+    const dt=rvData();if(!dt||!dt.v||!dt.v.review||!Array.isArray(dt.v.review.notes))return null;
+    /* reel_emb_ 系（同期モデルで pending から再生成される）は除外＝送信済みノート由来のマネキンのみ対象 */
+    const _isReelEmb=n=>!!(n&&n.id&&n.id.indexOf('reel_emb_')===0);
+    for(const n of dt.v.review.notes){
+      if(_isReelEmb(n))continue;
+      if(!n.drawing||!n.drawing.length)continue;
+      if(n.frame!=null&&!(f>=n.frame&&f<n.frame+(parseInt(n.dur)||1)))continue;
+      for(const p of n.drawing){
+        if(p.kind!=='mannequin')continue;
+        if((p.layer||1)!==RV.activeLayer)continue;
+        const img=_mannLoad(p.img);
+        const ar=(img&&img.naturalWidth)?(img.naturalHeight/img.naturalWidth):1;
+        const cx=p.cx,cy=p.cy,hw=(p.w||0.32)/2,hh=(p.w||0.32)*ar/2/aspect;
+        const dx=nx-cx,dy=ny-cy;
+        if(Math.abs(dx)<=hw&&Math.abs(dy)<=hh)return{p,i:-1,mode:'free',noteRef:n};
+      }
+    }
+    return null;
+  }
+  anno.addEventListener('dblclick',e=>{if(RV.tool!=='mann')return;const [x,y]=ptA(e);const hit=reelMannHitTestAny(x,y);if(hit){e.preventDefault();reelOpenMannEditor(hit.p,null,{noteRef:hit.noteRef||null})}});
   const ptA=e=>{const r=anno.getBoundingClientRect();let nx=(e.clientX-r.left)/r.width;const ny=(e.clientY-r.top)/r.height;if(RZ.flip<0)nx=1-nx;return[nx,ny]};
   function eraseR(e){
     const[x,y]=ptA(e);const r=RV.eraseW/2/anno.width;const asp=anno.height/anno.width;
@@ -11966,7 +12109,24 @@ function openReel(){
     if(f>=RV.total-1&&reelUI.cur<reelUI.clips.length-1){RV.scrub=false;RV.scrubT=-1;reelUI.cur++;RV.pendSeek=0;reelUI.loadCur(false)} /* クリップ末尾より先は次クリップ先頭へ */
     else seekRTr(f+1)};
   /* fps変更はこのリールのセッション内だけ（元動画データ v.fps は書き換えない） */
-  fpsS.onchange=()=>{RV.FPS=parseInt(fpsS.value)||24;const c=reelUI.clips[reelUI.cur];if(c)c.fps=RV.FPS;RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));RV.last=-1;drawFTL()};
+  fpsS.onchange=()=>{
+    /* R3 修正：fps 変更で pending の frame 番号を新 fps に再スケール。
+       reel_emb_ 側は reelSyncEmbedAll が pending 経由で自動再構築するので、直接触らない。 */
+    const c=reelUI.clips[reelUI.cur];
+    const oldFps=(c&&c.fps)||RV.FPS||24;
+    const newFps=parseInt(fpsS.value)||24;
+    if(c&&oldFps!==newFps&&oldFps>0){
+      const scale=newFps/oldFps;
+      for(const p of (c.pending||[])){if(p.f!=null)p.f=Math.max(0,Math.round(p.f*scale))}
+      /* RV.stroke（描画中）も一応スケール */
+      if(RV.stroke&&RV.stroke.f!=null)RV.stroke.f=Math.max(0,Math.round(RV.stroke.f*scale));
+    }
+    RV.FPS=newFps;if(c)c.fps=RV.FPS;
+    RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));RV.last=-1;
+    /* pending 再スケール後に embed を再構築（古い frame の embed を消し、新 frame で作り直す） */
+    if(c&&oldFps!==newFps){try{reelAfterEdit(c)}catch(_){}}
+    drawFTL();
+  };
   durS.onchange=()=>{drawAnno();drawFTL()};
   eyeB.onclick=()=>{RV.eye=!RV.eye;eyeB.classList.toggle('on',RV.eye);drawAnno()};
   undoB.onclick=()=>{if(RV.histIdx<=0)return;RV.histIdx--;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent();try{reelAfterEdit(reelUI.clips[reelUI.cur])}catch(_){}};
@@ -12019,21 +12179,35 @@ function openReel(){
   function _reelEmbId(c,frame){return _reelEmbPrefix(c)+frame}
   function reelSyncEmbedFrame(c,frame){
     if(!c)return;const vv=vOf(c);if(!vv)return;
-    const pdur=parseInt(durS.value)||1;
+    const curPdur=parseInt(durS.value)||1;
     const key=_reelEmbId(c,frame);
     /* 既存の同 id ノートを除去（tombstone は打たない：これは同期による再構築であってユーザー削除ではない） */
     vv.review.notes=vv.review.notes.filter(n=>n.id!==key);
     const items=(c.pending||[]).filter(p=>p.f===frame);
     if(!items.length)return;
+    /* R2 修正：各 item に描画時点で焼き付けた p.dur があればそれを、なければ現在の durS 値を採用。
+       フレーム内で複数 dur が混在する場合は最大値を embed note の dur に（表示時間の広い方を優先）。
+       これで「後から表示Xフレームを切替えても過去描画の dur は書き換わらない」を実現。 */
+    const dur=Math.max(1,...items.map(p=>parseInt(p.dur)||curPdur));
     vv.review.notes.push({
       id:key,
       author:currentUser(),
       time:nowIso(),
       frame:frame,
-      dur:pdur,
+      dur:dur,
       drawing:items.map(cloneDrawItem),
       noShot:true
     });
+  }
+  /* R1 用ヘルパー：あるクリップの reel_emb_ 系ノートを対応する動画（v.review.notes）から一括で消す。
+     「クリップを外す＝画面上の下書きだけでなく動画側に残った埋め込み描画も消す」意味論に合わせる。 */
+  function reelPurgeEmbFor(c){
+    if(!c||!c.nodeId||!c.vId)return false;
+    const vv=vOf(c);if(!vv||!vv.review||!Array.isArray(vv.review.notes))return false;
+    const pfx=_reelEmbPrefix(c);
+    const before=vv.review.notes.length;
+    vv.review.notes=vv.review.notes.filter(n=>!(n.id&&n.id.startsWith(pfx)));
+    return vv.review.notes.length!==before;
   }
   function reelSyncEmbedAll(c){
     if(!c)return;
@@ -12052,7 +12226,9 @@ function openReel(){
     for(const n of vv.review.notes){
       if(!n.id||!n.id.startsWith(pfx))continue;
       if(!n.drawing)continue;
-      for(const s of n.drawing){const cl=cloneDrawItem(s);cl.f=n.frame;arr.push(cl)}
+      /* R2 修正：復元時に n.dur を各 item に書き戻す（保存時の dur を保持）。 */
+      const itemDur=parseInt(n.dur)||1;
+      for(const s of n.drawing){const cl=cloneDrawItem(s);cl.f=n.frame;if(cl.dur==null)cl.dur=itemDur;arr.push(cl)}
     }
     c.pending=arr;
   }
@@ -12068,6 +12244,11 @@ function openReel(){
      同期の直後に drawAnno を再度呼ぶことで即座に v.review.notes 経由で表示復元される。 */
   function reelAfterEdit(c,frames){
     if(!c)return;
+    /* R2 修正：pending の各 item に描画時点の durS 値を焼き付ける（未定義のもののみ）。
+       これで以降 durS を変えても既に焼き付いた item の dur は上書きされず、
+       reelSyncEmbedFrame は「その描画が保存された時の dur」で embed を作る。 */
+    const curPdur=parseInt(durS.value)||1;
+    for(const p of (c.pending||[])){if(p.dur==null)p.dur=curPdur}
     if(!frames){reelSyncEmbedAll(c)}
     else{const set=frames instanceof Set?frames:new Set(frames);for(const fr of set)reelSyncEmbedFrame(c,fr)}
     scheduleReelPersist();
@@ -12279,12 +12460,27 @@ function openReel(){
   prev.onclick=()=>{if(!cs().length)return;reelUI.cur=Math.max(0,reelUI.cur-1);loadCur(true)};
   next.onclick=()=>{if(!cs().length)return;reelUI.cur=Math.min(cs().length-1,reelUI.cur+1);loadCur(true)};
   loopBtn.onclick=()=>{reelUI.loop=!reelUI.loop;loopBtn.classList.toggle('on',reelUI.loop)};
-  clearBtn.onclick=()=>{if(hasUnsent()&&!reelWin.confirm('未保存の内容があります。すべてのクリップを外すと失われます。続けますか？')){return}if(!reelWin.confirm('すべてのクリップを外しますか？'))return;reelUI.clips=[];reelUI.cur=0;clearPool();resetView();reelRender();updReelTitle();updUnsent()};
+  clearBtn.onclick=()=>{
+    if(hasUnsent()&&!reelWin.confirm('未保存の内容があります。すべてのクリップを外すと、動画側に残っている REEL 描画も削除されます。続けますか？'))return;
+    if(!reelWin.confirm('すべてのクリップを外しますか？（各動画に埋め込まれた REEL 描画も同時に削除されます）'))return;
+    /* R1 修正：clips=[] だけだと動画側の reel_emb_ が幽霊化していた。掃除してから外す。 */
+    let anyPurged=false;
+    for(const c of (reelUI.clips||[])){if(reelPurgeEmbFor(c))anyPurged=true}
+    reelUI.clips=[];reelUI.cur=0;clearPool();resetView();reelRender();updReelTitle();updUnsent();
+    if(anyPurged)scheduleReelPersist();
+  };
   /* ==== File メニュー（新規 / 開く / 保存 / 名前を付けて保存）— AE/Maya風 ==== */
   function updReelTitle(){const r=reelUI.reelId?DB.reels.find(x=>x.id===reelUI.reelId):null;reelTitle.textContent=(r?r.name:'未保存のリール')+(reelUI.clips.length?'':'（空）')}
   function closeMenu(){fileMi.classList.remove('open');fileDD.classList.remove('show');shotMi.classList.remove('open');shotDD.classList.remove('show')} /* ドロップダウンのみ閉じる */
   function closeOpenOv(){const ov=d.getElementById('reelOpenOv');if(ov)ov.remove()}
-  function doNew(){if(hasUnsent()&&!reelWin.confirm('未保存の内容があります。新規リールを作ると失われます。続けますか？'))return;reelUI.clips=[];reelUI.cur=0;reelUI.reelId=null;clearPool();resetView();reelRender();updReelTitle();updUnsent()}
+  function doNew(){
+    if(hasUnsent()&&!reelWin.confirm('未保存の内容があります。新規リールを作ると動画側の REEL 描画も削除されます。続けますか？'))return;
+    /* R1 修正：新規リール作成でも clips=[] するので同じく reel_emb_ を掃除する必要がある。 */
+    let anyPurged=false;
+    for(const c of (reelUI.clips||[])){if(reelPurgeEmbFor(c))anyPurged=true}
+    reelUI.clips=[];reelUI.cur=0;reelUI.reelId=null;clearPool();resetView();reelRender();updReelTitle();updUnsent();
+    if(anyPurged)scheduleReelPersist();
+  }
   /* リール保存（File メニュー / Ctrl+S から）。ヘッダのボタンは廃止済み */
   async function doSave(forceNew){
     const clips=reelUI.clips.filter(c=>c.nodeId).map(c=>({nodeId:c.nodeId,vId:c.vId}));
@@ -12559,7 +12755,17 @@ function reelRender(){
     const mk=(lab,fn,tt)=>{const x=ce(d,'button',null,lab);x.title=tt;x.onclick=e=>{e.stopPropagation();fn()};ops.appendChild(x)};
     mk('◀',()=>{if(i>0){[cs[i-1],cs[i]]=[cs[i],cs[i-1]];if(reelUI.cur===i)reelUI.cur--;else if(reelUI.cur===i-1)reelUI.cur++;reelRender()}},'左へ');
     mk('▶',()=>{if(i<cs.length-1){[cs[i+1],cs[i]]=[cs[i],cs[i+1]];if(reelUI.cur===i)reelUI.cur++;else if(reelUI.cur===i+1)reelUI.cur--;reelRender()}},'右へ');
-    mk('✕',()=>{cs.splice(i,1);if(reelUI.cur>=cs.length)reelUI.cur=Math.max(0,cs.length-1);reelUI.loadCur(false);reelRender()},'外す');
+    mk('✕',()=>{
+      /* R1 修正：このクリップの pending が動画側に埋め込まれている場合、外す前に警告して掃除する。
+         「未保存でも即外す」の従来挙動は動画にゴミが残るのでダメ。 */
+      const target=cs[i];
+      const hasPending=target&&target.pending&&target.pending.length>0;
+      if(hasPending&&!reelWin.confirm('このクリップの未保存描画は動画側からも削除されます。続けますか？'))return;
+      if(target)reelPurgeEmbFor(target);
+      cs.splice(i,1);if(reelUI.cur>=cs.length)reelUI.cur=Math.max(0,cs.length-1);
+      reelUI.loadCur(false);reelRender();
+      if(target)scheduleReelPersist();
+    },'外す');
     b.appendChild(ops);
     b.onclick=()=>{reelUI.cur=i;reelUI.loadCur(true)};
     track.appendChild(b);
@@ -12807,7 +13013,27 @@ window.addEventListener('drop',async e=>{
   for(const f of files)await openUploadModal(node,f);
 });
 $('#searchInput').oninput=e=>{state.search=e.target.value;renderBody();resolveThumbs()};
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('#fbOverlay')||$('#submitOverlay'))return;if($('#reviewDrawer')){closeReviewDrawer();return}closeModal()}});
+/* N2 修正：グローバル Escape は「最内側のモーダル/パネル」を優先して閉じる。
+   優先順位：フォアグラウンドの #modal（メンバー選択などのアプリ内ダイアログ）→
+   通知パネル/フィルタドロップダウン → レビュードロワー → その他。
+   fbOverlay/submitOverlay 自体は各自の内部 Escape ハンドラに任せる（アノテ窓を閉じる /
+   選択解除など）ので、ここでは何もしない → その中で開いた #modal だけこのハンドラで閉じる。 */
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  /* 1. 前面 #modal（visible）が最優先。fbOverlay/submitOverlay 配下でも閉じる */
+  const m=$('#modal');
+  if(m&&!m.classList.contains('hidden')){closeModal();return}
+  /* 2. アノテ窓/サブミット窓が開いている場合は各自のハンドラに任せる（このハンドラは何もしない） */
+  if($('#fbOverlay')||$('#submitOverlay'))return;
+  /* 3. 通知パネル・工程フィルタドロップダウンが開いていれば閉じる */
+  const np=$('#notifPanel');if(np&&!np.classList.contains('hidden')){np.classList.add('hidden');return}
+  const fp=document.querySelector('.filter-panel.open')||document.querySelector('.filter-panel:not(.hidden)');
+  if(fp){fp.classList.remove('open');fp.classList.add('hidden');return}
+  /* 4. レビュードロワー */
+  if($('#reviewDrawer')){closeReviewDrawer();return}
+  /* 5. その他（背景の modal 相当） */
+  closeModal();
+});
 async function startAppFlow(){
   /* 保存先はブラウザ内保存(IndexedDB)に固定。フォルダ管理はプロジェクト単位で行う。 */
   storage.useIdb();

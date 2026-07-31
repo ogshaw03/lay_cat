@@ -13,6 +13,18 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.070) 全解析で検出した 🔴 高優先 11 件を一括修正（A1/A2/R1/R2/R3/S1/S2/S3/N1/N2）
+  - **A1 送信済みコメント✕に確認ダイアログ**：`noteBlock` の del.onclick 冒頭で confirm。「削除すると復元できません」と警告して誤タップによるデータ損失を防ぐ。
+  - **A2 送信済みマネキン再編集**：ダブルクリック時のみ送信済み drawing 内のマネキンをヒット対象にする `mannHitTestAny`/`reelMannHitTestAny` を追加。openMannEditor/reelOpenMannEditor に `opts.noteRef` を渡し、apply 時は履歴ではなく直接 note を dirty マーク＋persist。v058 の送信済み保護方針は消しゴム/投げ縄では維持、マネキンだけ例外的にポーズ再編集を許可。
+  - **R1 クリップ外し／全クリアで動画側 reel_emb_ も掃除**：`reelPurgeEmbFor(c)` ヘルパー追加。`clearBtn` / `doNew` / 個別 ✕ で clips から外す前に対応 v.review.notes 内の reel_emb_ を filter で消し、scheduleReelPersist を呼ぶ。警告文も「動画側の描画も削除されます」に更新。
+  - **R2 表示Xフレーム変更で過去描画の dur が上書きされる問題**：pending item ごとに p.dur を保存（reelAfterEdit 冒頭で「未定義なら現 durS 値を焼き付け」）。reelSyncEmbedFrame は items の dur の最大値を embed note に採用。reelHydratePending も復元時 cl.dur=n.dur を書き戻し。以降 durS を切り替えても過去描画の dur は変わらない。
+  - **R3 fps 変更で描画位置がズレる問題**：`fpsS.onchange` に旧 fps→新 fps の再スケールを追加。pending の p.f を newFps/oldFps 倍に更新、reelAfterEdit(c) で reel_emb_ も同時再構築（古い frame の embed 削除＋新 frame で作り直し）。動画上の実時間位置が保持される。
+  - **S1 サブミット作成モーダル閉じで無警告消失**：`subHasUnsavedDraft()` / `subConfirmDiscard()` ヘルパー追加。close ボタン／背景クリックのいずれも subConfirmDiscard を通してから閉じる。
+  - **S2 サブミットボタン再クリックで下書き消失**：`subBuildModal` 冒頭で「既存 overlay があり下書きがあれば confirm」に変更。破棄承認まで新モーダルは建てない。
+  - **S3 アップロード失敗リトライで動画二重登録**：`createSubmitBlock` で成功したブロックの `_uploadedVersionId` を記録＋file/thumbUrl 解放。次回リトライは既存 version を再利用してスキップ。`subBlockEl` の setPreview で「✅ アップロード済み」表示、pickFile で差し替え時に確認。
+  - **N1 タブ切替でドロワーが前タブのまま**：`activeTabKey` を `'browse'` 固定から `'browse:'+state.currentId` に変更。各 review タスクごとに独立した tabDrawers 記憶。
+  - **N2 アノテ窓/サブミット窓内で Escape が完全無効**：グローバル Escape ハンドラを「最内側モーダル/パネル優先」に変更。順序：#modal（visible）→ overlay の場合は各自ハンドラ → 通知パネル → フィルタパネル → レビュードロワー → その他。オーバーレイ内でメンバー選択などの #modal を開いても Escape で閉じる。
+
 - (dev v2026.07.29.069) ヘッダのタイトル最大幅を撤廃し、grid セル幅（＝中央バッジ列と干渉しない限界）まで表示
   - `.fb-top` / `.hd` の grid-template-columns を `1fr auto 1fr` → `minmax(0,1fr) auto minmax(0,1fr)` に。minmax(0, ...) にすることで 1fr セルが内容以下にも縮められるようになり、長いタイトルが中央バッジ列を押し出さない。
   - `.fb-title` の `max-width:min(60vw,600px)` を撤廃、`min-width:0;max-width:100%` に。grid セルの実幅まで伸ばす。
