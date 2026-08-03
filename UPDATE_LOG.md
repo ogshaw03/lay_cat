@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.072) ステータス巻き戻り事故の恒久対策 3 件（v071 応急修正の根本原因を潰す）
+  - **1. refreshFromFolders に shot._rev ガードを追加**：readProjectData を呼ぶ前に local baseline の shot._rev を退避、readProjectData 後に remote 側の bucket と比較。remote 側の shot._rev が local より小さい shot が 1 件でもあれば「remote が古い」と判定して preferRemote を発動させない（`clean=false` に落とす）。これで「バックグラウンド同期が disk 側の古い json を掴んで全カット巻き戻り」の根本経路が塞がる。
+  - **2. saveProjectSplit に shot 部分失敗の伝播追加**：shot 保存が 1 件でも失敗したら saveProjectSplit 全体を `false` で返す。呼び出し元（`_persistNow`）は `if(ok!==false)` で `_saveCache.proj` 更新をガードしているので、baseline は前回の値のまま → 次回 persist で shot 保存を再試行。従来は shot 保存失敗を無視して project.json だけ書いていたため、「baseline は新 status 全部入りだが disk 側 shot は古い」乖離が発生していた。トーストで再試行を通知。
+  - **3. beforeunload に `_persistBusy` ガード追加**：`persist()` 呼び出しごとに `_persistBusy++` / 完了時 `_persistBusy--` で追跡。`beforeunload` で `_persistBusy>0` なら unload 警告。ステータス変更直後にリロード／タブ閉じでバックグラウンドの shot 保存が消えるケースを防ぐ。
+  - **v071 との関係**：v071 の応急修正（`_mergeNodeInto` の preferB 分岐で state 系除外）は多層防御としてそのまま残す。恒久対策で「remote が本当に新しい時だけ preferRemote」になるので、v071 の副作用（他ユーザーの status 変更が自動同期で反映されない）は実質発生しなくなる（remote が新しければ preferRemote 発動 → 元経路に入るが state 系はまだ除外中）。v071 の副作用を完全に解消したい場合は次コミットで `_stateKeys` の除外を条件付き（例：remote._rev > local._rev のときのみ上書き）に緩められる。
+
 - (dev v2026.07.29.071) 🚨 緊急応急修正：全カットのステータスが同時刻に一斉に古い値へ巻き戻る事故を止血
   - **事象**：ユーザー報告「気付いたら全カットのステータスが古い状態に戻っており、全 shot json が同時刻で一斉に上書きされていた」（ローカルプロジェクトで発生）。
   - **原因**：`_mergeNodeInto` の `preferB=true` 分岐（バックグラウンド `autoRefresh` の preferRemote 経路）が **disk 側 shot json の `status/assignee/reviewer` を無条件で local に上書き**していた。disk 側が古い状態を持っている状況（クラウド同期の巻き戻し／別タブ書き戻し／`saveProjectSplit` の部分失敗で disk と baseline が乖離、など）で発火すると、local の新しい状態が古い値に一斉巻き戻り、直後の persist で全 shot json に古い値が書き戻される。

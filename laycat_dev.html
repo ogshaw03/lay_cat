@@ -2692,12 +2692,19 @@ async function saveProjectSplit(pid,data){
   const shotCache=(_saveCache.shot[pid]=_saveCache.shot[pid]||{});
   const seenShots=new Set();
   let anyShotMerged=false;
+  /* 【恒久対策 v072】shot 保存の部分失敗を追跡。1 件でも失敗があれば saveProjectSplit 全体を
+     false 相当で返し、呼び出し元（_persistNow）が _saveCache.proj を更新しないようにする。
+     従来は shot 保存失敗を無視して project.json だけ書いていたため、baseline が「新 status 全部入り」
+     になる一方 disk 側の shot は古いままの乖離が発生し、次の autoRefresh で
+     preferRemote 経由の全カット巻き戻り事故を引き起こしていた。 */
+  let shotFailed=0;
   for(const [sid,file] of shotFiles){
     seenShots.add(sid);
     const j=JSON.stringify(file); /* _rev を含まない中身部分の指紋 */
     if(shotCache[sid]!==j){
       const r=await _saveShotWithLock(pid,sid,file);
       if(r&&r.ok){shotCache[sid]=JSON.stringify(r.body);if(r.merged)anyShotMerged=true}
+      else{shotFailed++;try{console.warn('saveProjectSplit: shot save failed',{pid,sid})}catch(_){}}
     }
   }
   /* メモリから消えたショットは個別ファイルも削除 */
@@ -2749,14 +2756,27 @@ async function saveProjectSplit(pid,data){
   meta._rev=((_loadedRev[pid]&&_loadedRev[pid].project)|0)+1;
   const ok=await storage.saveProject(pid,meta);
   if(ok!==false)_revBucket(pid).project=meta._rev;
+  /* 【恒久対策 v072】shot 保存の部分失敗があれば全体を false 相当で返す。
+     呼び出し元は if(ok!==false) で _saveCache.proj 更新をガードしているので、
+     baseline は前回の値のまま → 次回 persist で shot 保存を再試行 →
+     preferRemote 経路での baseline と disk の乖離が発生しない。 */
+  if(shotFailed>0){
+    try{toast('一部のショット保存が失敗しました。次回保存で再試行します。')}catch(_){}
+    return false;
+  }
   return ok;
 }
 /* persist は直列化する：並行して呼ばれても同一ファイルへの createWritable が競合しない
    （File System Access API の NoModificationAllowedError / データ消失を防ぐ）。
    各呼び出しはチェーンに積まれ、順番に実行される（未変更分は _saveCache でスキップされるため安価）。 */
 let _persistChain=Promise.resolve();
+/* 【恒久対策 v072】未完了 persist ジョブ数を追跡し、beforeunload で警告するため。
+   従来は _dirtyTaskNotes だけ見ていたが、ステータス変更直後にリロード／タブ閉じで
+   バックグラウンドの shot 保存が消えるケースがあった。 */
+let _persistBusy=0;
 function persist(){
-  _persistChain=_persistChain.then(()=>_persistNow()).catch(e=>{try{console.warn('persist failed',e)}catch(_){}});
+  _persistBusy++;
+  _persistChain=_persistChain.then(()=>_persistNow()).catch(e=>{try{console.warn('persist failed',e)}catch(_){}}).finally(()=>{_persistBusy=Math.max(0,_persistBusy-1)});
   return _persistChain;
 }
 /* 保存：グローバル(local=通知のみ)＋registry＋各プロジェクト（データ・リール、変更分のみ） */
@@ -2954,7 +2974,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.071';
+const APP_VERSION='2026.07.29.072';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3408,13 +3428,33 @@ async function refreshFromFolders(){
   let changed=false;
   for(const e of REG){
     if(typeof projEncLocked==='function'&&projEncLocked(e.id))continue;
+    /* 【恒久対策 v072】local baseline の shot._rev を退避してから readProjectData を呼ぶ
+       （readProjectData 内の _hydrateShots が recordRev:true で bucket を上書きするため、
+       事前に退避しないと後で比較できない）。 */
+    const localShotRev={};
+    try{const b=(_revBucket(e.id)&&_revBucket(e.id).shots)||{};for(const sid of Object.keys(b))localShotRev[sid]=b[sid]|0}catch(_){}
     let remote=null;try{remote=await storage.readProjectData(e.id)}catch(_){}
     if(!remote||!Array.isArray(remote.nodes))continue;
     const before=JSON.stringify(projectData(e.id));
     /* 未保存変更が無ければ preferRemote：他ユーザーが変更した status / assignee / reviewer 等
        を確実に反映。未保存変更が残っていれば従来通り union のみで保守的に取り込む。 */
     const baseline=_saveCache.proj[e.id];
-    const clean=(baseline!=null && baseline===before);
+    let clean=(baseline!=null && baseline===before);
+    /* 【恒久対策 v072】remote 側の shot._rev が local baseline より小さい shot が 1 件でもあれば
+       「remote が古い」と判定して preferRemote 発動を止める。
+       v071 の応急修正（state 系除外）を補完し、根本原因の「remote が古いのに preferRemote 発動」自体を防ぐ。 */
+    if(clean){
+      const remoteShotRev=(_revBucket(e.id)&&_revBucket(e.id).shots)||{};
+      for(const sid of Object.keys(localShotRev)){
+        const remoteRev=remoteShotRev[sid]|0;
+        const localRev=localShotRev[sid]|0;
+        if(remoteRev>0&&localRev>0&&remoteRev<localRev){
+          clean=false;
+          try{console.warn('refreshFromFolders: skip preferRemote — remote shot._rev is older',{sid,localRev,remoteRev})}catch(_){}
+          break;
+        }
+      }
+    }
     try{_unionRemoteIntoDB(e.id,remote,{preferRemote:clean})}catch(_){}
     if(clean){
       /* clean 時は remote に存在しないノード（相手の削除）を local からも除去して同期。
@@ -12988,9 +13028,11 @@ document.addEventListener('click',e=>{
 });
 
 /* エクスプローラーからの D&D アップロード（レビューページ表示中のみ） */
-/* NOTE 未保存の変更があるままタブを閉じようとしたら警告 */
+/* NOTE 未保存の変更 or 保存処理未完了のままタブを閉じようとしたら警告 */
 window.addEventListener('beforeunload',e=>{
-  if(_dirtyTaskNotes&&_dirtyTaskNotes.size>0){e.preventDefault();e.returnValue='';return ''}
+  /* 【恒久対策 v072】_persistBusy>0 = バックグラウンドで shot/project 保存が進行中。
+     ここで離脱するとステータス変更等が消える可能性があるので unload 警告。 */
+  if((_dirtyTaskNotes&&_dirtyTaskNotes.size>0)||_persistBusy>0){e.preventDefault();e.returnValue='';return ''}
 });
 let dragDepth=0;
 /* レビューページ表示中のみ D&D アップロードを受け付ける。
