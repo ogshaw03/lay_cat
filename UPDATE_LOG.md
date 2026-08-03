@@ -13,6 +13,13 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.071) 🚨 緊急応急修正：全カットのステータスが同時刻に一斉に古い値へ巻き戻る事故を止血
+  - **事象**：ユーザー報告「気付いたら全カットのステータスが古い状態に戻っており、全 shot json が同時刻で一斉に上書きされていた」（ローカルプロジェクトで発生）。
+  - **原因**：`_mergeNodeInto` の `preferB=true` 分岐（バックグラウンド `autoRefresh` の preferRemote 経路）が **disk 側 shot json の `status/assignee/reviewer` を無条件で local に上書き**していた。disk 側が古い状態を持っている状況（クラウド同期の巻き戻し／別タブ書き戻し／`saveProjectSplit` の部分失敗で disk と baseline が乖離、など）で発火すると、local の新しい状態が古い値に一斉巻き戻り、直後の persist で全 shot json に古い値が書き戻される。
+  - **修正**：`_mergeNodeInto` に `_stateKeys = new Set(['status','assignee','reviewer'])` を導入。`preferB=true` でも state 系キーは「local が空の時だけ remote 採用」に落とす。他のキー（thumbnail/description/folderName/thumbCrop/type/name）は従来通り preferB で上書き。
+  - **副作用**：他ユーザーが status を変更しても、こちら側の自動同期（autoRefresh）で反映されなくなる。手動リロードで反映される。データ損失より整合性を優先する応急措置。
+  - **恒久対策（別コミットで対応予定）**：`refreshFromFolders` の clean 判定に `shot._rev` ガードを追加。`saveProjectSplit` の shot 保存部分失敗を上位に伝播して `_saveCache.proj` の baseline 誤更新を防ぐ。
+
 - (dev v2026.07.29.070) 全解析で検出した 🔴 高優先 11 件を一括修正（A1/A2/R1/R2/R3/S1/S2/S3/N1/N2）
   - **A1 送信済みコメント✕に確認ダイアログ**：`noteBlock` の del.onclick 冒頭で confirm。「削除すると復元できません」と警告して誤タップによるデータ損失を防ぐ。
   - **A2 送信済みマネキン再編集**：ダブルクリック時のみ送信済み drawing 内のマネキンをヒット対象にする `mannHitTestAny`/`reelMannHitTestAny` を追加。openMannEditor/reelOpenMannEditor に `opts.noteRef` を渡し、apply 時は履歴ではなく直接 note を dirty マーク＋persist。v058 の送信済み保護方針は消しゴム/投げ縄では維持、マネキンだけ例外的にポーズ再編集を許可。

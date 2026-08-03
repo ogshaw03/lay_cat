@@ -2954,7 +2954,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.070';
+const APP_VERSION='2026.07.29.071';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7657,11 +7657,22 @@ function _mergeNodeInto(a,b,opts){
   if(Array.isArray(b._tomb)&&b._tomb.length){a._tomb=Array.isArray(a._tomb)?a._tomb:[];const _tk=t=>((t&&t.id)||'')+'|'+((t&&t.at)||'');const _sn=new Set(a._tomb.map(_tk));for(const t of b._tomb){const k=_tk(t);if(!_sn.has(k)){a._tomb.push(t);_sn.add(k)}}} /* #5: 削除記録(tombstone)をマージで統合し他クライアントへ伝播 */
   /* scalar フィールド：保存時 3-way マージ（既定）は「local 優先・空欄のみ remote で補完」だが、
      preferRemote モード（読取専用リフレッシュ時）は「remote に値があれば local を上書き」する。
-     autoRefresh は「未保存変更が無い時のみ」preferRemote=true で呼ばれるので、ローカル編集の消失は起きない。 */
+     autoRefresh は「未保存変更が無い時のみ」preferRemote=true で呼ばれるので、ローカル編集の消失は起きない。
+     【緊急応急修正 v071】state 系（status/assignee/reviewer）は preferB でも上書きしない。
+     旧挙動：バックグラウンド autoRefresh が disk 側の古い json を読み、preferRemote=true で
+     全ノードの status を古い値に無条件上書き → 全カットが同時刻に一斉巻き戻り＋ persist で
+     全 json 一斉書き出しの事故が発生。
+     応急処置：state 系は preferB でも「local が空の時だけ remote 採用」に落とす。
+     副作用：他ユーザーの status 変更は autoRefresh で自動反映されなくなり、手動リロードでのみ反映。
+     データ損失（巻き戻り）を防ぐことを優先する。
+     恒久対策：refreshFromFolders の clean 判定に shot._rev ガードを追加、
+     saveProjectSplit の shot 保存部分失敗を上位に伝播する 2 段構え。 */
+  const _stateKeys=new Set(['status','assignee','reviewer']);
   for(const k of ['thumbnail','status','assignee','reviewer','description','folderName','thumbCrop','type','name']){
-    if(preferB){
+    if(preferB&&!_stateKeys.has(k)){
       if(b[k]!=null&&b[k]!=='')a[k]=b[k];
     }else{
+      /* state 系キー、または preferB=false のときは「local が空の時だけ remote 採用」*/
       if((a[k]==null||a[k]==='')&&b[k]!=null&&b[k]!=='')a[k]=b[k];
     }
   }
