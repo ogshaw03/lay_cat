@@ -2215,9 +2215,16 @@ const storage={
     }
     if(!parsed)return null;
     const skelOnly=!!(opts&&opts.skeletonOnly);
-    if(parsed.enc){const key=projKey(id);if(!key)return null;try{const iv=_unhex(parsed.iv);const buf=await self.crypto.subtle.decrypt({name:'AES-GCM',iv},key,_unb64(parsed.ct));const decrypted=JSON.parse(new TextDecoder().decode(buf));if(!skelOnly){await this._hydrateShots(id,decrypted,{recordRev:false});await this._hydrateSubmits(id,decrypted,{recordRev:false});}return decrypted}catch(e){return null}}
+    /* 【v073 修正】opts.recordShotRev=true のとき _hydrateShots に recordRev:true を渡し、
+       _revBucket(pid).shots を remote の shot._rev で上書きする。
+       これで refreshFromFolders 側の「local 退避→比較」ガード（v072-1）が本当に動作する。
+       従来は常に recordRev:false だったため bucket が更新されず v072-1 は完全な no-op だった。
+       他の readProjectData 呼び出し口（_persistNow 等）は opts.recordShotRev を指定しないので
+       従来通り false のまま bucket を触らない（副作用なし）。 */
+    const recShotRev=!!(opts&&opts.recordShotRev);
+    if(parsed.enc){const key=projKey(id);if(!key)return null;try{const iv=_unhex(parsed.iv);const buf=await self.crypto.subtle.decrypt({name:'AES-GCM',iv},key,_unb64(parsed.ct));const decrypted=JSON.parse(new TextDecoder().decode(buf));if(!skelOnly){await this._hydrateShots(id,decrypted,{recordRev:recShotRev});await this._hydrateSubmits(id,decrypted,{recordRev:false});}return decrypted}catch(e){return null}}
     if(!skelOnly){
-      await this._hydrateShots(id,parsed,{recordRev:false});
+      await this._hydrateShots(id,parsed,{recordRev:recShotRev});
       await this._hydrateSubmits(id,parsed,{recordRev:false});
     }
     return parsed;
@@ -2754,17 +2761,26 @@ async function saveProjectSplit(pid,data){
   meta.submitIds=submitIds;
   /* Phase 3：project.json 骨格にも _rev を付与（次回ロード時にバケットへ記録される） */
   meta._rev=((_loadedRev[pid]&&_loadedRev[pid].project)|0)+1;
+  /* 【v073 追加】shot 保存に部分失敗がある場合は project.json も書かない。
+     従来は project.json だけ disk に書いていたため、skeleton は新 status 全部入り
+     ／ shot は古いまま、という乖離が発生していた（この乖離が巻き戻り事故の温床）。
+     shot 保存が全部成功したときだけ project.json も書き、baseline も更新する。 */
+  if(shotFailed>0){
+    _saveProjectSplit_notifyFail(pid);
+    return false; /* project.json も skip、baseline も未更新 → 次回 persist で全部再試行 */
+  }
   const ok=await storage.saveProject(pid,meta);
   if(ok!==false)_revBucket(pid).project=meta._rev;
-  /* 【恒久対策 v072】shot 保存の部分失敗があれば全体を false 相当で返す。
-     呼び出し元は if(ok!==false) で _saveCache.proj 更新をガードしているので、
-     baseline は前回の値のまま → 次回 persist で shot 保存を再試行 →
-     preferRemote 経路での baseline と disk の乖離が発生しない。 */
-  if(shotFailed>0){
-    try{toast('一部のショット保存が失敗しました。次回保存で再試行します。')}catch(_){}
-    return false;
-  }
   return ok;
+}
+/* 【v073 追加】shot 保存失敗トーストを 30 秒スロットル（毎回 persist で失敗が続くと
+   トーストが煩雑になるため。連続失敗時は 1 回だけ通知）。 */
+let _lastShotFailToastAt=0;
+function _saveProjectSplit_notifyFail(pid){
+  const now=Date.now();
+  if(now-_lastShotFailToastAt<30000)return;
+  _lastShotFailToastAt=now;
+  try{toast('一部のショット保存が失敗しました。次回保存で再試行します。')}catch(_){}
 }
 /* persist は直列化する：並行して呼ばれても同一ファイルへの createWritable が競合しない
    （File System Access API の NoModificationAllowedError / データ消失を防ぐ）。
@@ -2974,7 +2990,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.072';
+const APP_VERSION='2026.07.29.073';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3428,12 +3444,13 @@ async function refreshFromFolders(){
   let changed=false;
   for(const e of REG){
     if(typeof projEncLocked==='function'&&projEncLocked(e.id))continue;
-    /* 【恒久対策 v072】local baseline の shot._rev を退避してから readProjectData を呼ぶ
-       （readProjectData 内の _hydrateShots が recordRev:true で bucket を上書きするため、
-       事前に退避しないと後で比較できない）。 */
+    /* 【恒久対策 v072-1 + v073 実効化】local baseline の shot._rev を退避してから readProjectData を呼ぶ。
+       readProjectData には opts.recordShotRev:true を渡す（v073）。これで _hydrateShots が
+       recordRev:true 経路で remote の shot._rev を _revBucket(pid).shots に書き込むので、
+       比較用の値が実際に更新される（v072 単体では recordRev:false のままだったため no-op だった）。 */
     const localShotRev={};
     try{const b=(_revBucket(e.id)&&_revBucket(e.id).shots)||{};for(const sid of Object.keys(b))localShotRev[sid]=b[sid]|0}catch(_){}
-    let remote=null;try{remote=await storage.readProjectData(e.id)}catch(_){}
+    let remote=null;try{remote=await storage.readProjectData(e.id,{recordShotRev:true})}catch(_){}
     if(!remote||!Array.isArray(remote.nodes))continue;
     const before=JSON.stringify(projectData(e.id));
     /* 未保存変更が無ければ preferRemote：他ユーザーが変更した status / assignee / reviewer 等

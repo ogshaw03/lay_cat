@@ -13,6 +13,14 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.073) v072 検証で発覚した「v072-1 が no-op」を修正＋失敗時の乖離を根本解消
+  - **問題**：v072 検証 scout（SAVE-V B1）が v072-1（shot._rev ガード）は完全な no-op だと指摘。原因：`readProjectData` の内部 `_hydrateShots` が常に `{recordRev:false}` で呼ばれていたため、`_revBucket(pid).shots` が更新されず、比較用の bucket が「local 退避値」と「readProjectData 後の値」で全く同じ値のまま → 分岐は絶対に発動しない。
+  - **修正 1**：`readProjectData(id, opts)` に `opts.recordShotRev` を追加。true のとき `_hydrateShots(..., {recordRev:true})` を呼び、remote の shot._rev を bucket に反映する。他の呼び出し口（`_persistNow` 等）は opts.recordShotRev を指定しないので従来通り false のまま（副作用なし）。
+  - **修正 2**：`refreshFromFolders` で `readProjectData(e.id, {recordShotRev:true})` に変更。これで v072-1 の shot._rev ガードが本当に動作する。
+  - **修正 3（追加対策）**：`saveProjectSplit` で shot 保存に部分失敗があるとき、**project.json も書かないように変更**。従来は shot 失敗しても skeleton は disk に書いていたので「skeleton 新／shot 古」の乖離が発生し、この乖離が巻き戻り事故の温床だった。shot 全部成功時だけ project.json も書き、baseline も更新する形に。
+  - **修正 4**：shot 保存失敗トーストを 30 秒スロットル（`_lastShotFailToastAt`）。連続失敗時にトーストが毎回出て煩雑になるのを防ぐ。
+  - v071/v072 と v073 の重ね合わせで、多層防御がようやく実効となる。
+
 - (dev v2026.07.29.072) ステータス巻き戻り事故の恒久対策 3 件（v071 応急修正の根本原因を潰す）
   - **1. refreshFromFolders に shot._rev ガードを追加**：readProjectData を呼ぶ前に local baseline の shot._rev を退避、readProjectData 後に remote 側の bucket と比較。remote 側の shot._rev が local より小さい shot が 1 件でもあれば「remote が古い」と判定して preferRemote を発動させない（`clean=false` に落とす）。これで「バックグラウンド同期が disk 側の古い json を掴んで全カット巻き戻り」の根本経路が塞がる。
   - **2. saveProjectSplit に shot 部分失敗の伝播追加**：shot 保存が 1 件でも失敗したら saveProjectSplit 全体を `false` で返す。呼び出し元（`_persistNow`）は `if(ok!==false)` で `_saveCache.proj` 更新をガードしているので、baseline は前回の値のまま → 次回 persist で shot 保存を再試行。従来は shot 保存失敗を無視して project.json だけ書いていたため、「baseline は新 status 全部入りだが disk 側 shot は古い」乖離が発生していた。トーストで再試行を通知。
