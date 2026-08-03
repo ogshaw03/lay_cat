@@ -2990,7 +2990,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.073';
+const APP_VERSION='2026.07.29.074';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3444,10 +3444,10 @@ async function refreshFromFolders(){
   let changed=false;
   for(const e of REG){
     if(typeof projEncLocked==='function'&&projEncLocked(e.id))continue;
-    /* 【恒久対策 v072-1 + v073 実効化】local baseline の shot._rev を退避してから readProjectData を呼ぶ。
-       readProjectData には opts.recordShotRev:true を渡す（v073）。これで _hydrateShots が
-       recordRev:true 経路で remote の shot._rev を _revBucket(pid).shots に書き込むので、
-       比較用の値が実際に更新される（v072 単体では recordRev:false のままだったため no-op だった）。 */
+    /* 【恒久対策 v072-1 + v073 実効化 + v074 復元】local baseline の shot._rev を退避してから
+       readProjectData を呼ぶ。readProjectData には opts.recordShotRev:true を渡す（v073）。
+       これで _hydrateShots が recordRev:true 経路で remote の shot._rev を _revBucket(pid).shots に
+       書き込むので、比較用の値が実際に更新される。 */
     const localShotRev={};
     try{const b=(_revBucket(e.id)&&_revBucket(e.id).shots)||{};for(const sid of Object.keys(b))localShotRev[sid]=b[sid]|0}catch(_){}
     let remote=null;try{remote=await storage.readProjectData(e.id,{recordShotRev:true})}catch(_){}
@@ -3468,11 +3468,25 @@ async function refreshFromFolders(){
         if(remoteRev>0&&localRev>0&&remoteRev<localRev){
           clean=false;
           try{console.warn('refreshFromFolders: skip preferRemote — remote shot._rev is older',{sid,localRev,remoteRev})}catch(_){}
+          /* 【v074 追加】rollback 検知時に bucket を local 退避値で書き戻す。
+             readProjectData で bucket が remote の古い値に上書きされているため、
+             このまま次の _saveShotWithLock を呼ぶと knownRev が古くなり書き込み _rev が
+             非単調に減る（rev 番号の整合が損なわれる）。復元して次回の楽観ロックが正しく動くように。 */
+          try{
+            const sb=_revBucket(e.id).shots;
+            for(const rsid of Object.keys(localShotRev))sb[rsid]=localShotRev[rsid]|0;
+          }catch(_){}
           break;
         }
       }
     }
-    try{_unionRemoteIntoDB(e.id,remote,{preferRemote:clean})}catch(_){}
+    /* 【v074 追加】remoteAuthoritative フラグを opts に含める。
+       clean=true = shot._rev ガードを通過＝「remote は本当に新しい／同値」と検証済みなので、
+       この時だけ _mergeNodeInto 側で v071 の _stateKeys 除外を無効化して state 系も remote 採用する。
+       clean=false は rollback 検知＝preferRemote 自体発動しないので影響なし。
+       これで v071 の副作用（他ユーザーの status 変更が自動反映されない）が正常時のみ解消される
+       ＝「rollback 時は守る、正常時は同期する」の両立。 */
+    try{_unionRemoteIntoDB(e.id,remote,{preferRemote:clean,remoteAuthoritative:clean})}catch(_){}
     if(clean){
       /* clean 時は remote に存在しないノード（相手の削除）を local からも除去して同期。
          ただし「baseline に無かったノード（＝直近で自分が追加、まだ remote に伝播しきってない可能性）」は削除しない
@@ -7715,21 +7729,22 @@ function _mergeNodeInto(a,b,opts){
   /* scalar フィールド：保存時 3-way マージ（既定）は「local 優先・空欄のみ remote で補完」だが、
      preferRemote モード（読取専用リフレッシュ時）は「remote に値があれば local を上書き」する。
      autoRefresh は「未保存変更が無い時のみ」preferRemote=true で呼ばれるので、ローカル編集の消失は起きない。
-     【緊急応急修正 v071】state 系（status/assignee/reviewer）は preferB でも上書きしない。
-     旧挙動：バックグラウンド autoRefresh が disk 側の古い json を読み、preferRemote=true で
-     全ノードの status を古い値に無条件上書き → 全カットが同時刻に一斉巻き戻り＋ persist で
-     全 json 一斉書き出しの事故が発生。
-     応急処置：state 系は preferB でも「local が空の時だけ remote 採用」に落とす。
-     副作用：他ユーザーの status 変更は autoRefresh で自動反映されなくなり、手動リロードでのみ反映。
-     データ損失（巻き戻り）を防ぐことを優先する。
-     恒久対策：refreshFromFolders の clean 判定に shot._rev ガードを追加、
-     saveProjectSplit の shot 保存部分失敗を上位に伝播する 2 段構え。 */
+     【v071→v074 の変遷】
+     v071（緊急応急）：state 系（status/assignee/reviewer）を preferB でも上書きしない。
+       事故：バックグラウンド autoRefresh が古い json を読み、preferRemote で全 status を上書き → 巻き戻り。
+       応急：state 系除外＝正常時も他ユーザー status が反映されない副作用あり。
+     v072/v073（恒久）：refreshFromFolders に shot._rev ガードを実装し「remote が本当に新しい／同値の時だけ」clean=true を維持。
+     v074（副作用解消）：remoteAuthoritative フラグを opts に追加。clean=true（＝remote が本当に新しい）と分かる時のみ、
+       state 系除外を無効化して remote 採用に戻す。clean=false（rollback 検知）時は fill-only で守る。
+       → 「正常時は他ユーザー status 変更を即時反映、rollback 時のみ守る」の両立。 */
+  const _authoritative=!!(opts&&opts.remoteAuthoritative);
   const _stateKeys=new Set(['status','assignee','reviewer']);
   for(const k of ['thumbnail','status','assignee','reviewer','description','folderName','thumbCrop','type','name']){
-    if(preferB&&!_stateKeys.has(k)){
+    /* preferB=true && (authoritative || 非 state 系) → 従来の preferB（remote 採用）
+       それ以外（preferB=false、または preferB=true && authoritative=false && state 系）→ fill-only */
+    if(preferB&&(_authoritative||!_stateKeys.has(k))){
       if(b[k]!=null&&b[k]!=='')a[k]=b[k];
     }else{
-      /* state 系キー、または preferB=false のときは「local が空の時だけ remote 採用」*/
       if((a[k]==null||a[k]==='')&&b[k]!=null&&b[k]!=='')a[k]=b[k];
     }
   }

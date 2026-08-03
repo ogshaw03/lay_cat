@@ -13,6 +13,12 @@
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+- (dev v2026.07.29.074) v073 検証で検出した 2 件を修正（bucket 復元＋v071 の副作用解消）
+  - **修正 1（bucket 復元）**：`refreshFromFolders` で shot._rev ガードが `clean=false` を検出した際、`_revBucket(pid).shots` を退避しておいた local 値で書き戻す。従来は readProjectData で bucket が remote の古い値に上書きされたままだったため、直後の `_saveShotWithLock` の楽観ロックが古い knownRev を使い、書き込み `_rev` が非単調に減る可能性があった（GUARD-V 懸念1）。
+  - **修正 2（v071 副作用解消）**：`_unionRemoteIntoDB` → `_mergeNodeInto` に `remoteAuthoritative` フラグを追加。`refreshFromFolders` で `remoteAuthoritative:clean` を渡し、`clean=true`（shot._rev ガード通過＝remote は本当に新しい／同値と検証済み）の時だけ v071 の `_stateKeys` 除外を無効化して state 系も remote 採用する。`clean=false`（rollback 検知）時は preferRemote 自体発動しないので影響なし。
+  - **効果**：v071 の副作用「他ユーザーの status/assignee/reviewer 変更が autoRefresh で自動反映されない」が **正常時のみ解消**（手動リロード不要に戻る）。rollback シナリオでは引き続き state 系を保護。「rollback 時は守る、正常時は即時同期」の両立が達成。
+  - `_authoritative` フラグは `_mergeNodeInto` 内でローカル判定。opts に含めない呼び出し口（`mergeRecoverDatas` 等）は authoritative=false 扱いで従来動作維持。
+
 - (dev v2026.07.29.073) v072 検証で発覚した「v072-1 が no-op」を修正＋失敗時の乖離を根本解消
   - **問題**：v072 検証 scout（SAVE-V B1）が v072-1（shot._rev ガード）は完全な no-op だと指摘。原因：`readProjectData` の内部 `_hydrateShots` が常に `{recordRev:false}` で呼ばれていたため、`_revBucket(pid).shots` が更新されず、比較用の bucket が「local 退避値」と「readProjectData 後の値」で全く同じ値のまま → 分岐は絶対に発動しない。
   - **修正 1**：`readProjectData(id, opts)` に `opts.recordShotRev` を追加。true のとき `_hydrateShots(..., {recordRev:true})` を呼び、remote の shot._rev を bucket に反映する。他の呼び出し口（`_persistNow` 等）は opts.recordShotRev を指定しないので従来通り false のまま（副作用なし）。
