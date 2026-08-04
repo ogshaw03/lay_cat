@@ -14,6 +14,10 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.07.29.085) コメントタイル ハイライト：鼓動を 1 回きり＋速く、背景フェードを 0.1s 遅延
+  - `atCurPulse` を `1.6s ease-in-out infinite` から `1s ease-in-out 1 both` に。速度アップ＋最初の 1 回のみ。
+  - `atCurWipe` に `.1s` の遅延を追加。鼓動の立ち上がりに合わせて背景がフェードインしてくる印象に。
+
 - (dev v2026.07.29.084) コメントタイル ハイライト：ワイプの境界をぼかし＋枠線を鼓動アニメに
   - `::before` のワイプを `clip-path` から `mask-image`（`linear-gradient(135deg,#000 0-25%,transparent 75-100%)` を `mask-size:200% 200%` で `mask-position` を 100% 100% → 0% 0% に 0.3s で移動）に変更。25%〜75% の透過ソフトエッジで境界がなだらかに広がる。
   - 枠線は `border-image` グラデを維持しつつ、`.log-note.at-cur` 自体に `animation:atCurPulse 1.6s ease-in-out infinite` を追加。box-shadow の spread（0→3px）+ glow で「トクン、トクン、…」の 2 拍リズム（18% と 60% がピーク）を再現。
