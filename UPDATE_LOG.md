@@ -14,10 +14,10 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-- (dev v2026.07.29.078) 右スライド内 task-topbar を 2 段表示に（上=ボタン群／下=タイトル）
-  - 右スライド（ドロワー）幅は 680px 上限のため、`.task-topbar` のタイトル（`.tt-proc`）と各種ボタン（ステータス／作業／チェック／＋動画／設定／削除）が横一列で被るケースがあった。
-  - `renderReviewBody(...,{inDrawer:true})` の topbar に `in-drawer` クラスを付与。CSS で `.tt-proc{flex-basis:100%;order:2}` によりタイトルを 2 段目に押し出し、`.spacer{display:none}` で spacer を無効化しボタン群を上段に詰める。
-  - メインエリア（inDrawer=false）は従来の 1 行レイアウトのまま（波及なし）。
+- (dev v2026.07.29.079) 右スライド内の FB ログヘッダを 2 段表示に（上=各種ボタン／下=動画タイトル）
+  - v078 で誤って `task-topbar` を修正していたが、実際に被っていたのは FB ログ枠内（`.log-head`）だった。v078 の task-topbar 変更を revert し、`.log-head` に対して修正しなおす。
+  - ドロワー配下（`.drawer .log-head`）のみ `flex-wrap:wrap` を有効化し、`.log-title` を `flex:0 0 100%;order:2` で 2 段目に押し出す。上段にはメタ（by/日時）とダウンロード／比較／REEL／削除等のボタン群が並ぶ。
+  - メインエリア（ドロワー外）は従来通り 1 行のまま（波及なし）。
 
 - (dev v2026.07.29.077) 進捗タブ：ショット別内訳の行クリックで右側スライド、サムネクリックでタブ追加
   - `pmShotBreakdown` のデフォルト表（`pm-stbl`）で、行クリック→`openReviewDrawer(lv.node.id, shot.id)`（動画無しは代表工程→ショット自身にフォールバック）、サムネクリック→`go(tabId)`（タブに追加＋遷移）。

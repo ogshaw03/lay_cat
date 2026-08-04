@@ -150,9 +150,9 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
    したいので、`::after` で右方向 (note-col の右端まで = gap 16 + note-col 340 + scroll 右パディング 20 = 376px)
    に線だけ延長する。box-sizing:border-box の overflow ペナルティを避けられる。 */
 .task-topbar{position:sticky;top:0;z-index:15;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 -20px 16px;padding:12px 20px;background:var(--bg);border-bottom:1px solid var(--border)}
-/* 右スライド内の task-topbar：幅が狭くタイトルとボタンが横一列で被るため、上段=ボタン群／下段=タイトルの 2 段表示にする */
-.task-topbar.in-drawer .tt-proc{flex-basis:100%;order:2;margin-top:2px}
-.task-topbar.in-drawer .spacer{display:none}
+/* 右スライド内の FB ログヘッダ：幅が狭く動画タイトルとボタン群が横一列で被るため、上段=ボタン群／下段=タイトルの 2 段表示にする */
+.drawer .log-head{flex-wrap:wrap;row-gap:2px}
+.drawer .log-head .log-title{flex:0 0 100%;order:2;margin-top:4px}
 .task-topbar::after{content:'';position:absolute;left:100%;right:-376px;bottom:-1px;height:1px;background:var(--border);pointer-events:none}
 @media (max-width:960px){.task-topbar::after{display:none}} /* 1 カラム表示のときは note-col 分の延長は不要 */
 .task-topbar .tt-head{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
@@ -3006,7 +3006,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.078';
+const APP_VERSION='2026.07.29.079';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5542,9 +5542,8 @@ function renderReviewBody(s,cur,opts){
   s.appendChild(layout);
   /* 以降、s の代わりに mainCol へ追加する（既存コードの s.appendChild を最小改変で流用） */
   s=mainCol;
-  /* タスクページ左上の固定バー：ショット番号／工程／ステータス＋ステータス切替・設定・削除（スクロール追従）。
-     右スライド（inDrawer）は幅が狭くタイトルとボタンが被るため 2 段表示（上=ボタン群／下=タイトル）にする。 */
-  const topbar=el('div','task-topbar'+(opts.inDrawer?' in-drawer':''));
+  /* タスクページ左上の固定バー：ショット番号／工程／ステータス＋ステータス切替・設定・削除（スクロール追従） */
+  const topbar=el('div','task-topbar');
   const h1=el('h2','tt-proc');h1.appendChild(document.createTextNode(cur.name)); /* 工程（タスク名） */
   const tst=stInfo(cur);const tbg=el('span','badge',tst.label);tbg.style.background=hexA(tst.color,.18);tbg.style.color=tst.color;h1.appendChild(tbg);
   {const rl=roleOf(cur);const m=ROLE_META[rl]||ROLE_META.task;h1.appendChild(elIco('span','type-chip role-'+rl,m.ico,m.label));}
