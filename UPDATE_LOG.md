@@ -14,6 +14,10 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.001) REEL ポップアップの about:blank アドレスバーを非表示化
+  - `window.open('','layna_reel','width=1140,height=780')` に `popup=yes,location=no,toolbar=no,menubar=no,status=no` を追加。ブラウザ chrome を省いて純粋なアプリウィンドウ表示に。
+  - 挙動：`popup=yes` があると多くのブラウザ（Chromium/Firefox/Edge）で URL バーが省かれる。既に開いている REEL には次回開き直しから反映。
+
 - (dev v2026.07.29.092) ヘッダのテーマ切替ボタン（月アイコン）を撤去
   - `#themeBtn` を header から削除。initTheme のロジックは残置（`btn` 取得が null になるだけで無害、保存済みテーマは引き続き適用される）。
 

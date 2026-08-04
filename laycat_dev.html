@@ -3010,7 +3010,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.092';
+const APP_VERSION='2026.08.05.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10754,7 +10754,9 @@ function fmtSec(s){s=Math.max(0,s||0);const m=Math.floor(s/60);return m+':'+Stri
 
 function openReel(){
   if(reelAlive()){reelWin.focus();return}
-  reelWin=window.open('','layna_reel','width=1140,height=780');
+  /* location=no / toolbar=no / menubar=no でアドレスバー等を非表示（ブラウザによっては
+     いずれか未指定でも popup 判定されると chrome が省かれる。念のため全指定） */
+  reelWin=window.open('','layna_reel','popup=yes,width=1140,height=780,location=no,toolbar=no,menubar=no,status=no');
   if(!reelWin){toast('ポップアップがブロックされました。許可してください');return}
   /* 閉じて開き直したときは常に「空の新規リール」から（前回の作業内容は引き継がない） */
   reelUI.clips=[];reelUI.cur=0;reelUI.reelId=null;
