@@ -3019,7 +3019,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.034';
+const APP_VERSION='2026.08.05.035';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10321,7 +10321,9 @@ function openReview(nodeId,versionId,opts){
   }
   /* 「現在フレームより前の直近コメント」を 1 件だけハイライトし続ける（DOM class トグルのみ、再描画しない）。
      旧仕様（`cf >= f && cf < f+dur` で通過中だけ点灯）は再生時に一瞬光ってすぐ消えて悪目立ちしていた。
-     プレイヘッドが次のコメントに到達するまでは同じコメントが光り続ける、DAW/字幕エディタ風の挙動に。 */
+     プレイヘッドが次のコメントに到達するまでは同じコメントが光り続ける、DAW/字幕エディタ風の挙動に。
+     ハイライトが別のコメントに移った瞬間だけコメント欄をスクロールして追従（既に見えていれば動かない）。 */
+  let _lastAtCurEl=null;
   function paintCurrentHighlight(){
     if(!isVideo)return;
     const cf=dispFrame();
@@ -10329,6 +10331,8 @@ function openReview(nodeId,versionId,opts){
     let best=null,bestF=-1;
     for(const el of notes){const f=+el.dataset.frame;if(!isNaN(f)&&f<=cf&&f>bestF){bestF=f;best=el}}
     for(const el of notes){el.classList.toggle('at-cur',el===best)}
+    if(best&&best!==_lastAtCurEl){try{best.scrollIntoView({block:'nearest',behavior:'smooth'})}catch(_){}}
+    _lastAtCurEl=best;
   }
   renderNotes();updSubmit();
   /* 記入：コメント／アノテーションを下書き(drafts)に積む。まだレビューページには反映しない。
@@ -11670,13 +11674,17 @@ function openReel(){
     try{paintReelCurrentHighlight()}catch(_){}
   }
   /* 「現在フレームより前の直近 REEL コメント」を 1 件だけハイライトし続ける（アノテ窓と同挙動）。
-     プレイヘッドが次のコメントに到達するまでは同じコメントが光り続ける、DAW/字幕エディタ風。 */
+     プレイヘッドが次のコメントに到達するまでは同じコメントが光り続ける、DAW/字幕エディタ風。
+     ハイライトが移った瞬間だけコメント欄をスクロールで追従（見えていれば動かない）。 */
+  let _lastReelAtCurEl=null;
   function paintReelCurrentHighlight(){
     const cf=dispF();
     const notes=clist.querySelectorAll('.log-note[data-frame]');
     let best=null,bestF=-1;
     for(const el of notes){const f=+el.dataset.frame;if(!isNaN(f)&&f<=cf&&f>bestF){bestF=f;best=el}}
     for(const el of notes){el.classList.toggle('at-cur',el===best)}
+    if(best&&best!==_lastReelAtCurEl){try{best.scrollIntoView({block:'nearest',behavior:'smooth'})}catch(_){}}
+    _lastReelAtCurEl=best;
   }
   function seekRTr(f){
     f=Math.max(0,Math.min(f,RV.total-1));RV.seekF=f;const t=f/RV.FPS+0.0001;
