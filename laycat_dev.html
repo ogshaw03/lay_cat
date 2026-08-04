@@ -3019,7 +3019,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.030';
+const APP_VERSION='2026.08.05.031';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12762,20 +12762,30 @@ function openReel(){
     const ents=[...vpool.entries()].filter(([u])=>!keep.has(u)).sort((a,b)=>a[1].used-b[1].used);
     while(vpool.size>POOL_MAX&&ents.length){const[u,o]=ents.shift();try{o.el.pause();o.el.removeAttribute('src');o.el.load();o.el.remove()}catch(_){}vpool.delete(u)}
   }
-  /* 次クリップを（表示せず裏で）キャッシュに用意しておく。
-     さらに「muted で play → 'playing' 発火で pause」まで進めて decoder pipeline を温める（priming）。
-     Chrome の VideoDecoder は初回 play で初期化されるため、priming 済みなら
-     以降のファストスワップ時の `target.play()` が 1 vsync 以内で実描画に到達しやすい。
-     1 回限り（`v._primed` でガード）／ミュートのままなので聞こえない。 */
+  /* 次クリップを（表示せず裏で）キャッシュに用意しつつ、decoder pipeline を温める（priming）。
+     - 通常は cur+1
+     - ループ ON かつ末尾なら cs()[0]（＝ループで戻る先）を対象に含める（2 周目以降のカクつき対策）
+     - 「muted で play → 'playing' 発火で pause + currentTime=0」で priming
+     - 既に priming 済 & currentTime が先頭付近ならスキップ、末尾まで再生し切っていれば再 priming
+     Chrome の VideoDecoder は初回 play で初期化コストを払うのと、末尾で終わった video を
+     seek で 0 に戻す遅延（キーフレーム再デコード）が数十 ms 発生する。事前に 0 に巻き戻して
+     待機させておくことで、ファストスワップ時の `target.play()` が 1 vsync 内で実描画に到達しやすい。 */
   function preloadNext(){
-    const nx=cs()[reelUI.cur+1];if(!nx||!nx.url)return;
+    let nx=cs()[reelUI.cur+1];
+    if(!nx&&reelUI.loop&&cs().length>1)nx=cs()[0]; /* ループ末尾 → 頭のクリップも温める */
+    if(!nx||!nx.url)return;
     const v=getVid(nx.url);
-    if(v._primed)return;
+    const atStart=(v.currentTime||0)<0.05;
+    if(v._primed&&atStart)return; /* 既に priming 済 & 頭で待機中 → 再 priming 不要 */
     v._primed=true;
     try{v.muted=true}catch(_){}
     const onPlaying=()=>{try{v.pause()}catch(_){}try{v.currentTime=0}catch(_){}};
     v.addEventListener('playing',onPlaying,{once:true});
-    const kick=()=>{try{const p=v.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}};
+    const kick=()=>{
+      /* 末尾に到達した状態から priming する場合は先に 0 に戻す（playing 発火を早める） */
+      try{if((v.currentTime||0)>0.05)v.currentTime=0}catch(_){}
+      try{const p=v.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}
+    };
     if(v.readyState>=2)kick();
     else v.addEventListener('canplay',kick,{once:true});
   }

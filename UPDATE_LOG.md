@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.031) REEL 連続再生：ループ 2 周目のカクつき対策（先頭クリップも re-priming）
+  - `preloadNext` の対象を「cur+1」から「cur+1 or (loop 末尾なら先頭)」に拡張。ループ再生時、末尾クリップの preloadNext が発火する時点で先頭クリップも同時に再 priming される → 2 周目のカクつきが解消。
+  - priming の判定を「1 回限り」から「`_primed && currentTime<0.05` で skip、末尾まで再生し切っていれば再 priming」に変更。前回再生で末尾に到達している場合は kick 前に `currentTime=0` に戻して playing 発火を早める。
+  - キーフレーム再デコードで発生する seek 遅延（数十 ms）を事前に消化しておくことで、ファストスワップ時の `target.play()` が 1 vsync 内で描画到達しやすくなる。
+
 - (dev v2026.08.05.030) REEL 連続再生：preloadNext を decoder priming 型に強化（対策 B）
   - `getVid` で用意した次クリップ video に対して「muted で play → 'playing' 発火で pause」まで進めて decoder pipeline を温める。`v._primed` フラグで 1 回限りガード、muted のまま実行するため音は出ない。
   - Chrome の VideoDecoder は初回 play 時に初期化コスト（数十 ms）を払う。priming 済みなら以降のファストスワップ時に `target.play()` が 1 vsync 以内で実描画に到達しやすくなる → 動画差替え後の frame 0 静止時間が短縮される。
