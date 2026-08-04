@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.020) ショットタブ：sel-bar を sticky に、タブ帯クリックで選択解除、ヘッダ行からもラバーバンド開始可
+  - `.shot-sel-bar` を `position:sticky;top:0;z-index:20` にしてスクロールしても常に画面上部に固定。落ち影も強化して浮遊感を付与。
+  - `buildProjectTabsHead` の nav に mousedown リスナーを追加し、タブ帯クリックで `state.shotSel=null;renderBody();resolveThumbs()`。各タブボタンの onclick 側でも `state.shotSel=null` を追加してタブ切替時に必ず解除。
+  - ラバーバンド開始の除外リストから `.pm-h` / `.pm-eph2` を外し、「ショット — 各ショットの…」の見出し行やエピソード区切り上からも矩形選択を開始できるように。
+
 - (dev v2026.08.05.019) ショットタブ：選択解除ボタンで全タイル真っ黒になるのを修正
   - `.shot-sel-bar` の「選択解除」ボタンの onclick が `renderBody()` のみで `resolveThumbs()` を呼んでいなかったため、再描画された `img[data-ref]` のソースが解決されず `.pm-tile .th` の `background:#000` が透けていた。`resolveThumbs()` を追加。
 

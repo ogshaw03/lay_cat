@@ -311,7 +311,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .pm-tile.sel{outline:2px solid #5cc7ef;outline-offset:-2px;box-shadow:0 0 14px rgba(92,199,239,.7)}
 .shot-row.sel{outline:2px solid #5cc7ef;outline-offset:-2px;box-shadow:0 0 10px rgba(92,199,239,.6)}
 .rubber-band{position:absolute;background:rgba(92,199,239,.14);border:1px dashed #5cc7ef;pointer-events:none;z-index:50}
-.shot-sel-bar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--bg3);border:1px solid #5cc7ef;border-radius:8px;margin:6px 0 12px;box-shadow:0 0 10px rgba(92,199,239,.35)}
+.shot-sel-bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--bg3);border:1px solid #5cc7ef;border-radius:8px;margin:6px 0 12px;box-shadow:0 6px 16px rgba(0,0,0,.5),0 0 10px rgba(92,199,239,.35)}
 .shot-sel-bar .cnt{font-family:var(--font-head);font-weight:700;font-size:13px;color:var(--text)}
 .pm-tile .th{position:relative;aspect-ratio:16/9;background:#000 center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:var(--text3);overflow:hidden}
 .pm-tile .th img:not(.omit-cat){width:100%;height:100%;object-fit:cover}
@@ -3016,7 +3016,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.019';
+const APP_VERSION='2026.08.05.020';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4340,11 +4340,13 @@ function buildProjectTabsHead(root){
   if(!['timeline','progress','shots','submit','check','browse'].includes(state.projTab))state.projTab='timeline';
   const onRoot=state.currentId===root.id&&!state.search.trim();
   const nav=el('div','head-tabs');
+  /* タブ帯そのものクリックでもショット選択を解除（余白クリック用の受け皿） */
+  nav.addEventListener('mousedown',()=>{if(state.shotSel){state.shotSel=null;renderBody();resolveThumbs()}});
   [['timeline','タイムライン'],['progress','進捗'],['shots','ショット'],['submit','サブミット'],['check','チェック待ち']].forEach(([id,lab],i)=>{
     if(i)nav.appendChild(el('span','vdiv')); /* タブ間の縦区切り線 */
     const active=onRoot&&state.projTab===id;
     const b=el('button','ptab'+(active?' on':''),lab);
-    b.onclick=()=>{if(id==='check')state.checkReset=true;state.currentId=root.id;state.projTab=id;state.pmPick=null;state.search='';$('#searchInput').value='';for(const n of pathOf(root.id))state.expanded.add(n.id);render();syncHash();
+    b.onclick=()=>{if(id==='check')state.checkReset=true;state.currentId=root.id;state.projTab=id;state.pmPick=null;state.shotSel=null;state.search='';$('#searchInput').value='';for(const n of pathOf(root.id))state.expanded.add(n.id);render();syncHash();
       /* タブ切替時にフォルダから最新を取り込み（fire-and-forget）。完了時の補正 render は入れない
          — 連続タブ切替で古いタブへ戻す誤動作を避けるため。autoRefresh 内部の render は現在の
          state.projTab を素直に反映する。 */
@@ -4957,7 +4959,8 @@ function renderProjShots(main,cur){
     if(state.projTab!=='shots')return;
     if(e.button!==0)return;
     /* 空白のみ反応：タイル・ボタン等の上からは開始しない */
-    if(e.target.closest('.pm-tile,.shot-row,button,a,input,select,textarea,label,.pm-eph2,.pm-h,.shot-sel-bar,.assign-filter'))return;
+    /* タイル・ボタン等の上からは開始しない。ヘッダ行（.pm-h / .pm-eph2）は余白として扱ってラバーバンド開始を許可 */
+    if(e.target.closest('.pm-tile,.shot-row,button,a,input,select,textarea,label,.shot-sel-bar,.assign-filter'))return;
     const sr=scrollHost.getBoundingClientRect();
     const sx=e.clientX-sr.left+scrollHost.scrollLeft, sy=e.clientY-sr.top+scrollHost.scrollTop;
     const rb=el('div','rubber-band');rb.style.left=sx+'px';rb.style.top=sy+'px';rb.style.width='0';rb.style.height='0';
