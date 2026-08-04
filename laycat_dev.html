@@ -521,7 +521,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .log-notes{padding:10px 16px 14px;display:flex;flex-direction:column;gap:8px}
 .log-note{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 12px;border-left:3px solid transparent;padding-left:9px;transition:background .18s,border-color .18s}
 /* ハイライト（現在フレームに該当する note）：左上→右下の水色→紫グラデを半透明で背景に、枠線もグラデーション */
-.log-note.at-cur{background-image:linear-gradient(135deg,rgba(92,199,239,.18) 0%,rgba(122,92,255,.18) 100%);border-color:transparent;border-image:linear-gradient(135deg,#5cc7ef 0%,#7a5cff 100%) 1}
+.log-note.at-cur{background-image:linear-gradient(135deg,rgba(38,110,180,.32) 0%,rgba(80,50,160,.32) 100%);border-color:transparent;border-image:linear-gradient(135deg,#5cc7ef 0%,#7a5cff 100%) 1}
 .log-note .m{font-size:11px;color:var(--text3);margin-bottom:4px}
 .log-note .t{font-size:13px;color:var(--text);white-space:pre-wrap;word-break:break-word;line-height:1.65}
 .log-note-input{display:flex;gap:8px;padding:0 16px 16px}
@@ -3007,7 +3007,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.081';
+const APP_VERSION='2026.07.29.082';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10869,7 +10869,7 @@ function openReel(){
    +'.mention-opt{display:flex;align-items:baseline;gap:8px;padding:7px 11px;cursor:pointer;font-size:13px}.mention-opt.on{background:#1c1c1f}'
    +'.mention-opt .mo-nm{font-weight:600;color:#e8e8ec;white-space:nowrap}.mention-opt.is-role .mo-nm{color:#d6a95f}.mention-opt .mo-sub{font-size:11px;color:#5a5a6a;white-space:nowrap}'
    +'.log-note{background:#1c1c1f;border:1px solid #2a2a2f;border-radius:8px;padding:9px 12px;border-left:3px solid transparent;padding-left:9px;transition:background .18s,border-color .18s}'
-   +'.log-note.at-cur{background-image:linear-gradient(135deg,rgba(92,199,239,.18) 0%,rgba(122,92,255,.18) 100%);border-color:transparent;border-image:linear-gradient(135deg,#5cc7ef 0%,#7a5cff 100%) 1}'
+   +'.log-note.at-cur{background-image:linear-gradient(135deg,rgba(38,110,180,.32) 0%,rgba(80,50,160,.32) 100%);border-color:transparent;border-image:linear-gradient(135deg,#5cc7ef 0%,#7a5cff 100%) 1}'
    +'.log-note.draft-note{border-color:#e0a63a;border-style:dashed;background:rgba(224,166,58,.06)}'
    +'.draft-chip{font-size:10px;font-weight:700;color:#1a1200;background:#e0a63a;border-radius:8px;padding:1px 7px;margin-right:6px}'
    +'.log-note .m{font-size:11px;color:#5a5a6a;margin-bottom:4px;display:flex;align-items:center;flex-wrap:wrap;gap:2px}'
