@@ -3019,7 +3019,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.024';
+const APP_VERSION='2026.08.05.025';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12796,7 +12796,19 @@ function openReel(){
       if(auto&&target!==video&&target.readyState>=2&&RV.pendSeek==null){
         try{if(target.currentTime>0.02)target.currentTime=0}catch(_){}
         try{const p=target.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}
-        hideBridge();activate(target);
+        hideBridge();
+        /* rvfc（requestVideoFrameCallback）で NEW クリップの 1 フレーム目が compositor に
+           届いた瞬間に opacity を切替。activate が「未描画の video を見せる → 数十 ms 静止」する
+           窓を排除。旧クリップは activate まで opacity=1 のまま自然再生を続ける。 */
+        if(typeof target.requestVideoFrameCallback==='function'){
+          let flipped=false;
+          const flip=()=>{if(flipped)return;flipped=true;if(video!==target){activate(target);try{RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));fitAnno();RV.last=-1}catch(_){}}};
+          try{target.requestVideoFrameCallback(flip)}catch(_){flip()}
+          /* 保険：rvfc が発火しない環境／状況（タブ非表示等）に備えて 100ms でフォールバック */
+          reelWin.setTimeout(flip,100);
+        }else{
+          activate(target);
+        }
         fastSwapped=true;
       }
     }
@@ -12814,9 +12826,12 @@ function openReel(){
     const dt=rvData();RV.FPS=(c&&c.fps)||(dt&&dt.v.fps)||24;fpsS.value=String(RV.FPS);
     buildLayerPanel();reelNotes();updUnsent();updReelHeaderInfo();/* updReelStatus は updReelHeaderInfo が末尾で呼ぶ */
     if(!c){hideBridge();activate(idleVid);reelRender();return}
-    /* ファストスワップ済みの場合は総フレーム数と anno の再フィットだけ更新して終了（activate/play は済） */
+    /* ファストスワップ済みの場合は総フレーム数だけ target 基準で先行更新（activate 自体は
+       rvfc callback 内で行われるため video は一時的にまだ旧クリップを指している）。
+       fitAnno は flip() 内でもう一度呼ばれるので、ここで video 基準に呼ぶと余計なリサイズが
+       走ってしまうので省略する。 */
     if(fastSwapped){
-      RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));fitAnno();RV.last=-1;
+      RV.total=Math.max(1,Math.round(((target&&target.duration)||0)*RV.FPS));RV.last=-1;
       preloadNext();reelRender();return;
     }
     if(target===video){

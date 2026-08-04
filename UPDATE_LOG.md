@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.025) REEL 連続再生：rvfc で NEW クリップの 1F 目到達を待って activate（対策 1/4）
+  - ファストスワップで `target.play()` 直後に `target.requestVideoFrameCallback(flip)` を仕込む。1F 目が compositor に届いた瞬間に `activate(target)` を実行 → 「play 済みだが未描画の video を opacity=1 にして数十 ms 静止」する窓を排除。
+  - 旧クリップは activate まで opacity=1 のまま自然再生を継続。rvfc の到達（16-33ms）と旧クリップの残り時間（プリエンプト閾値 ~46ms）が拮抗して、静止感が消える。
+  - 保険：rvfc 未対応／未発火に備えて `setTimeout(flip,100)`。
+  - fastSwapped 後の RV.total は `target.duration` 基準に変更（activate 前は video が旧クリップを指すため）。fitAnno は flip 内でもう一度呼ばれるので手前ではスキップ。
+
 - (dev v2026.08.05.024) REEL 連続再生：ended の遅延を待たずに末尾プリエンプトで切替
   - `tick()` rAF ループ内で `video.duration - video.currentTime < 1 フレーム分` を検出したら、`ended` イベントの発火を待たずに `loadCur(true)` を先行発動。
   - `ended` はブラウザ内部の都合で最終フレーム描画から数十 ms 遅れて発火するため、それを待っていた従来は「旧クリップ最終フレームが数十 ms 静止画で見える」現象が残っていた。プリエンプトでほぼ 0 に。
