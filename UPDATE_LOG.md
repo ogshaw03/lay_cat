@@ -14,6 +14,9 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.07.29.089) コメントタイル ハイライト：鼓動の振幅を半分に
+  - `atCurPulse` の 35% ピーク値を半減：spread 3px→2px、purple α .35→.18、glow blur 14px→10px、cyan α .55→.34。
+
 - (dev v2026.07.29.088) コメントタイル ハイライト：鼓動を 0.2s に
   - `atCurPulse` の duration を .5s → .2s に。
 
