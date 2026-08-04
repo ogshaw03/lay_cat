@@ -264,6 +264,10 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .pm-stab{background:var(--bg3);border:1px solid var(--border);color:var(--text3);border-radius:7px;padding:7px 15px;font-size:13px;font-weight:600;cursor:pointer}
 .pm-stab:hover{color:var(--text)}
 .pm-stab.on{background:rgba(96,165,255,.16);border-color:var(--edge);color:var(--text)}
+/* チェック待ち：作業担当者フィルタバー（reviewer タブの下にコンパクトに置く） */
+.chk-asg-bar{display:flex;align-items:center;gap:8px;margin:2px 0 14px;padding:0 2px;font-size:11px;color:var(--text3)}
+.chk-asg-bar label{margin:0}
+.chk-asg-bar select{background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;max-width:200px}
 /* チェック待ち：チェック担当者タブ（本体のタブUI＝アンダーライン/モノクロに統一） */
 .chk-tabs{display:flex;flex-wrap:wrap;gap:2px;align-items:flex-end;margin:2px 0 18px;border-bottom:1px solid var(--border)}
 .chk-tab{display:inline-flex;align-items:center;gap:7px;background:none;border:none;border-bottom:2px solid transparent;color:var(--text3);font-family:var(--font-head);font-size:14px;font-weight:700;letter-spacing:.4px;padding:8px 14px;cursor:pointer;margin-bottom:-1px}
@@ -3019,7 +3023,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.036';
+const APP_VERSION='2026.08.05.037';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4833,12 +4837,19 @@ function renderProjCheck(main,root){
   const paintAddAllBtn=()=>{
     addAllHolder.innerHTML='';
     const cur=state.checkReviewer;
-    const bucketPend=pendingNow.filter(n=>{
+    let bucketPend=pendingNow.filter(n=>{
       if(cur===CHK_NONE)return !n.reviewer;
       return n.reviewer&&String(n.reviewer).toLowerCase()===String(cur||'').toLowerCase();
     });
+    /* 作業担当者絞り込み（設定時のみ）：REEL/タブ追加も絞り込み後を対象にする */
+    if(state.checkAssignee){
+      const a=state.checkAssignee;
+      bucketPend=bucketPend.filter(n=>a===CHK_NONE?!n.assignee:(n.assignee&&String(n.assignee).toLowerCase()===String(a).toLowerCase()));
+    }
     if(!bucketPend.length)return;
-    const label=(cur===CHK_NONE)?'未割り当て':(memberById(root,cur)?.name||cur);
+    const revLabel=(cur===CHK_NONE)?'未割り当て':(memberById(root,cur)?.name||cur);
+    const asgLabel=state.checkAssignee?(state.checkAssignee===CHK_NONE?'（作業担当なし）':('（作業: '+(memberById(root,state.checkAssignee)?.name||state.checkAssignee)+'）')):'';
+    const label=revLabel+asgLabel;
     const addAll=el('button','btn btn-ghost btn-sm','⧉ まとめてタブに追加 ('+bucketPend.length+')');
     addAll.title='現在表示中の担当者「'+label+'」のチェック待ちカットだけをタスクタブに追加します';
     addAll.onclick=()=>{
@@ -4889,13 +4900,47 @@ function renderProjCheck(main,root){
     if(m&&m.color){const dot=el('span','chk-dot');dot.style.background=m.color;b.appendChild(dot)}
     b.appendChild(el('span','chk-nm',isNone?'未割り当て':(m?(m.name||m.id):key)));
     b.appendChild(el('span','chk-cnt',String(cnt)));
-    b.onclick=()=>{if(String(state.checkReviewer).toLowerCase()!==String(key).toLowerCase()){state.checkReviewer=key;renderBody();resolveThumbs()}};
+    b.onclick=()=>{if(String(state.checkReviewer).toLowerCase()!==String(key).toLowerCase()){state.checkReviewer=key;state.checkAssignee=null;renderBody();resolveThumbs()}};
     tabs.appendChild(b);
   }
   main.appendChild(tabs);
   /* 選択バケットのチェック待ちカット（ショット名→工程名でソート） */
   const selNone=state.checkReviewer===CHK_NONE;
-  const hits=all.filter(n=>selNone?!n.reviewer:(n.reviewer&&String(n.reviewer).toLowerCase()===String(state.checkReviewer).toLowerCase()));
+  const revHits=all.filter(n=>selNone?!n.reviewer:(n.reviewer&&String(n.reviewer).toLowerCase()===String(state.checkReviewer).toLowerCase()));
+  /* 作業担当者フィルタ：チェック担当者選択後のカット群から作業担当者ごとの絞り込み用選択肢を作る。
+     「作業担当者ごとに REEL を作りたい」ユースケース用（例：レビュアー A のカット群を、作業者 B の分だけ REEL に送る）。 */
+  const asgKeys=[];const asgSeen=new Set();
+  for(const m of projectMembers(root)){const k=String(m.id).toLowerCase();if(!asgSeen.has(k)&&revHits.some(n=>n.assignee&&String(n.assignee).toLowerCase()===k)){asgSeen.add(k);asgKeys.push(m.id)}}
+  for(const n of revHits){if(!n.assignee)continue;const k=String(n.assignee).toLowerCase();if(!asgSeen.has(k)){asgSeen.add(k);asgKeys.push(n.assignee)}}
+  const hasNoAsg=revHits.some(n=>!n.assignee);
+  if(hasNoAsg)asgKeys.push(CHK_NONE);
+  /* 現在の checkAssignee がこの reviewer バケットに存在しない場合はリセット */
+  if(state.checkAssignee&&state.checkAssignee!==CHK_NONE){const k=String(state.checkAssignee).toLowerCase();if(!asgKeys.some(x=>String(x).toLowerCase()===k))state.checkAssignee=null}
+  else if(state.checkAssignee===CHK_NONE&&!hasNoAsg)state.checkAssignee=null;
+  /* 選択肢が 1 つ以下なら絞り込み UI を出さない（意味ないので） */
+  if(asgKeys.length>=1){
+    const bar=el('div','chk-asg-bar');
+    bar.appendChild(el('label',null,'作業担当者：'));
+    const sel=el('select','chk-asg-sel');
+    const o0=el('option',null,'すべて');o0.value='';sel.appendChild(o0);
+    for(const k of asgKeys){
+      const isNone=k===CHK_NONE;const m=isNone?null:memberById(root,k);
+      const o=el('option',null,isNone?'未割り当て':(m?(m.name||m.id):k));
+      o.value=k;sel.appendChild(o);
+    }
+    sel.value=state.checkAssignee||'';
+    sel.onchange=()=>{state.checkAssignee=sel.value||null;renderBody();resolveThumbs()};
+    bar.appendChild(sel);
+    main.appendChild(bar);
+    /* 絞り込み UI が付いたので addAll ボタン群も作業担当者を反映して再描画 */
+    paintAddAllBtn();
+  }
+  /* 実際の表示対象：作業担当者フィルタも適用 */
+  let hits=revHits;
+  if(state.checkAssignee){
+    const a=state.checkAssignee;
+    hits=hits.filter(n=>a===CHK_NONE?!n.assignee:(n.assignee&&String(n.assignee).toLowerCase()===String(a).toLowerCase()));
+  }
   hits.sort((a,b)=>{const sa=shotOf(a)||'',sb=shotOf(b)||'';return sa<sb?-1:sa>sb?1:(a.name<b.name?-1:a.name>b.name?1:0)});
   const meSel=selNone?null:memberById(root,state.checkReviewer);
   const pendCnt=hits.filter(isPend).length;const doneCnt=hits.length-pendCnt;
