@@ -14,6 +14,13 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.017) ショットタブ：範囲選択（ラバーバンド）＋複数選択＋選択ショットを REEL に一括追加
+  - `state.shotSel`（Set of shot IDs）を新設。ショットタブの空白部分から mousedown → ドラッグで矩形描画、離すと矩形と重なるタイル／行を選択に加える（`.rubber-band` オーバーレイ）。Ctrl/Meta/Shift 併用で既存選択を保持したまま追加。
+  - タイル／行クリックの挙動：選択が非空 or Ctrl/Meta クリックなら選択トグル、それ以外は従来通り右スライドを開く。
+  - 選択中は `.pm-tile.sel` / `.shot-row.sel` で cyan アウトライン＋グロー。
+  - 上部に選択ツールバー（選択件数＋「▶ 選択した動画を REEL に追加」＋「選択解除」）を表示。
+  - `reelAddSelectedShots()` を新設：選択された各ショットの最新動画を `reelAddClip` で REEL に順次追加、完了時に toast 表示＋選択解除。
+
 - (dev v2026.08.05.016) アノテ窓／REEL：ループ・ズーム・トラックの絵文字を無彩色化、3D は立方体 SVG に
   - `loopBtn` / `ziBtn` / `zoBtn` / `handBtn`（アノテ窓）と `loopBtn` / `ziBtn` / `zoBtn` / `handB`（REEL）に `filter:grayscale(1)` を適用。カラー絵文字（🔁🔍✋）をテーマ色に馴染む無彩色に。
   - 3D ボタン（`mannBtn` / `mannB`）は絵文字 🎭 を廃止し、`currentColor` ストロークの立方体 SVG（正面・側面・上面の 3 面表示）＋テキスト "3D" に置換。

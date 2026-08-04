@@ -307,6 +307,12 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .pm-eph2{font-family:var(--font-head);font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--text);border-left:3px solid #60a5ff;padding-left:9px;margin:26px 2px 8px}
 .pm-tile{border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer;background:var(--bg2)}
 .pm-tile:hover{border-color:var(--edge);box-shadow:0 0 10px var(--edgeglow)}
+/* ショットタブ：範囲選択／複数選択中のタイル・行 */
+.pm-tile.sel{outline:2px solid var(--edge);outline-offset:-1px;box-shadow:0 0 12px var(--edgeglow)}
+.shot-row.sel{outline:2px solid var(--edge);outline-offset:-1px;box-shadow:0 0 8px var(--edgeglow)}
+.rubber-band{position:absolute;background:rgba(92,199,239,.14);border:1px dashed var(--edge);pointer-events:none;z-index:50}
+.shot-sel-bar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--bg3);border:1px solid var(--edge);border-radius:8px;margin:6px 0 12px;box-shadow:0 0 10px var(--edgeglow)}
+.shot-sel-bar .cnt{font-family:var(--font-head);font-weight:700;font-size:13px;color:var(--text)}
 .pm-tile .th{position:relative;aspect-ratio:16/9;background:#000 center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:var(--text3);overflow:hidden}
 .pm-tile .th img:not(.omit-cat){width:100%;height:100%;object-fit:cover}
 .pm-tile .th video.tvid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;opacity:0;transition:opacity .15s}
@@ -3010,7 +3016,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.016';
+const APP_VERSION='2026.08.05.017';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4929,6 +4935,58 @@ function renderProjShots(main,cur){
   seg.appendChild(mkBtn('grid','▦ グリッド'));seg.appendChild(mkBtn('list','≡ 縦並び'));
   head.appendChild(seg);
   main.appendChild(head);
+  /* 選択中のショットを REEL に追加するツールバー（選択が有るときのみ表示） */
+  if(state.shotSel&&state.shotSel.size>0){
+    const bar=el('div','shot-sel-bar');
+    bar.appendChild(el('span','cnt','選択中 '+state.shotSel.size+' 件'));
+    const sp=el('div');sp.style.flex='1';bar.appendChild(sp);
+    const reelBtn=el('button','btn btn-primary btn-sm','▶ 選択した動画を REEL に追加');
+    reelBtn.onclick=()=>reelAddSelectedShots();
+    bar.appendChild(reelBtn);
+    const clr=el('button','btn btn-ghost btn-sm','選択解除');
+    clr.onclick=()=>{state.shotSel=null;renderBody()};
+    bar.appendChild(clr);
+    main.appendChild(bar);
+  }
+  /* 範囲選択（ラバーバンド）：main の空白部分から mousedown で矩形を描き、
+     矩形と重なる `.pm-tile[data-sid]` / `.shot-row[data-sid]` を選択に加える */
+  main.style.position='relative';
+  main.onmousedown=(e)=>{
+    if(e.button!==0)return;
+    /* 空白のみ反応：タイル・ボタン等の上からは開始しない */
+    if(e.target.closest('.pm-tile,.shot-row,button,a,input,select,textarea,label,.pm-eph2,.pm-h,.shot-sel-bar,.assign-filter'))return;
+    const mr=main.getBoundingClientRect();
+    const sx=e.clientX-mr.left+main.scrollLeft, sy=e.clientY-mr.top+main.scrollTop;
+    const rb=el('div','rubber-band');rb.style.left=sx+'px';rb.style.top=sy+'px';rb.style.width='0';rb.style.height='0';
+    main.appendChild(rb);
+    /* 既存選択を保持したまま追加選択（Shift/Ctrl 相当）、単純ドラッグは新規選択に置き換え */
+    const additive=e.ctrlKey||e.metaKey||e.shiftKey;
+    const initSel=additive&&state.shotSel?new Set(state.shotSel):new Set();
+    let moved=false;
+    const onmv=(ev)=>{
+      const cx=ev.clientX-mr.left+main.scrollLeft, cy=ev.clientY-mr.top+main.scrollTop;
+      const l=Math.min(sx,cx), t=Math.min(sy,cy), w=Math.abs(cx-sx), h=Math.abs(cy-sy);
+      rb.style.left=l+'px';rb.style.top=t+'px';rb.style.width=w+'px';rb.style.height=h+'px';
+      if(w>3||h>3)moved=true;
+    };
+    const onup=()=>{
+      window.removeEventListener('mousemove',onmv);window.removeEventListener('mouseup',onup);
+      const rr=rb.getBoundingClientRect();
+      const next=new Set(initSel);
+      if(moved){
+        for(const el2 of main.querySelectorAll('.pm-tile[data-sid],.shot-row[data-sid]')){
+          const tr=el2.getBoundingClientRect();
+          const hit=!(tr.right<rr.left||tr.left>rr.right||tr.bottom<rr.top||tr.top>rr.bottom);
+          if(hit)next.add(el2.dataset.sid);
+        }
+      }
+      rb.remove();
+      if(next.size)state.shotSel=next;else if(!additive)state.shotSel=null;
+      renderBody();resolveThumbs();
+    };
+    window.addEventListener('mousemove',onmv);window.addEventListener('mouseup',onup);
+    e.preventDefault();
+  };
   if(!allShots.length){main.appendChild(el('div','pm-empty','ショットがありません。'));return}
   const fb=assignFilterBar(cur);if(fb)main.appendChild(fb); /* 担当フィルタ */
   const shots=allShots.filter(shotFilterPass);
@@ -4952,7 +5010,9 @@ function renderProjShots(main,cur){
     const rep=repOf(sh,lv);
     /* オミット判定：代表工程（無ければショット）のステータスが omit なら、タイルをグレーアウト＋オミット猫を表示 */
     const isOmit=(rep&&nodeStatus(rep)==='omit')||(nodeStatus(sh)==='omit');
-    const tile=el('div','pm-tile'+(isOmit?' omit':''));
+    const isSel=state.shotSel&&state.shotSel.has(sh.id);
+    const tile=el('div','pm-tile'+(isOmit?' omit':'')+(isSel?' sel':''));
+    tile.dataset.sid=sh.id;
     const th=el('div','th');
     if(lv){
       if(lv.v.thumb){const img=el('img');img.dataset.ref=lv.v.thumb;th.appendChild(img)} /* ポスター（ホバー前・停止時） */
@@ -4978,8 +5038,20 @@ function renderProjShots(main,cur){
     bd.appendChild(mt);
     const ab=rep?taskAssignBadges(rep):null;if(ab)bd.appendChild(ab); /* 作業/チェック担当バッジ（動画なしでも表示） */
     tile.appendChild(bd);
-    /* タイルクリック：動画があればその工程、無くても代表工程のタスクページを開く（状態・担当を編集できる） */
-    tile.onclick=()=>{if(lv)openReviewDrawer(lv.node.id,sh.id);else if(rep)openReviewDrawer(rep.id,sh.id);else go(sh.id)};
+    /* タイルクリック：
+       - 選択モード中（state.shotSel が非空）は選択トグル（追加／解除）
+       - Ctrl/Meta クリックは常に選択トグル（選択開始）
+       - それ以外は通常動作＝右スライドで開く */
+    tile.onclick=(ev)=>{
+      const inSel=(state.shotSel&&state.shotSel.size>0);
+      if(inSel||ev.ctrlKey||ev.metaKey){
+        if(!state.shotSel)state.shotSel=new Set();
+        if(state.shotSel.has(sh.id))state.shotSel.delete(sh.id);else state.shotSel.add(sh.id);
+        if(state.shotSel.size===0)state.shotSel=null;
+        renderBody();resolveThumbs();return;
+      }
+      if(lv)openReviewDrawer(lv.node.id,sh.id);else if(rep)openReviewDrawer(rep.id,sh.id);else go(sh.id);
+    };
     return tile;
   };
   /* 縦並び行：1行のコンパクト表示（大量のショットでも一覧しやすい）。ステータスはその場でプルダウン変更できる */
@@ -4987,8 +5059,19 @@ function renderProjShots(main,cur){
     const lv=latestVideoVersionUnder(sh.id);
     const rep=repOf(sh,lv);
     const isOmit=(rep&&nodeStatus(rep)==='omit')||(nodeStatus(sh)==='omit');
-    const it=el('div','shot-row'+(isOmit?' omit-row':''));
-    it.onclick=()=>{if(lv)openReviewDrawer(lv.node.id,sh.id);else if(rep)openReviewDrawer(rep.id,sh.id);else go(sh.id)};
+    const isSel=state.shotSel&&state.shotSel.has(sh.id);
+    const it=el('div','shot-row'+(isOmit?' omit-row':'')+(isSel?' sel':''));
+    it.dataset.sid=sh.id;
+    it.onclick=(ev)=>{
+      const inSel=(state.shotSel&&state.shotSel.size>0);
+      if(inSel||ev.ctrlKey||ev.metaKey){
+        if(!state.shotSel)state.shotSel=new Set();
+        if(state.shotSel.has(sh.id))state.shotSel.delete(sh.id);else state.shotSel.add(sh.id);
+        if(state.shotSel.size===0)state.shotSel=null;
+        renderBody();resolveThumbs();return;
+      }
+      if(lv)openReviewDrawer(lv.node.id,sh.id);else if(rep)openReviewDrawer(rep.id,sh.id);else go(sh.id);
+    };
     const th=el('img','shot-row-th');if(lv&&lv.v.thumb)th.dataset.ref=lv.v.thumb;
     if(lv){th.title='クリックでアノテーションを開く';th.onclick=ev=>{ev.stopPropagation();openReview(lv.node.id,lv.v.id,{modal:true})}}
     it.appendChild(th);
@@ -13172,6 +13255,21 @@ async function sendToReel(node,v){
   openReel();if(!reelAlive())return;
   await reelAddClip(node,v);
   toast('REEL に送りました: '+node.name+' '+v.name);
+}
+/* ショットタブで範囲/複数選択したショット群を、それぞれの最新動画で REEL に一括追加 */
+async function reelAddSelectedShots(){
+  if(!state.shotSel||!state.shotSel.size){toast('選択されたショットがありません');return}
+  const ids=Array.from(state.shotSel);
+  openReel();if(!reelAlive())return;
+  let added=0,skipped=0;
+  for(const sid of ids){
+    const sh=getNode(sid);if(!sh){skipped++;continue}
+    const lv=latestVideoVersionUnder(sh.id);
+    if(!lv||lv.v.type!=='video'){skipped++;continue}
+    await reelAddClip(lv.node,lv.v);added++;
+  }
+  toast('REEL に '+added+' 件追加'+(skipped?'（'+skipped+' 件はスキップ）':''));
+  state.shotSel=null;renderBody();resolveThumbs();
 }
 /* 保存済みリールを開く（動画タイルの 🎞 リール名 ボタンから） */
 async function openReelFromSaved(reelId){
