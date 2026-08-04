@@ -3019,7 +3019,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.025';
+const APP_VERSION='2026.08.05.026';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12762,8 +12762,22 @@ function openReel(){
     const ents=[...vpool.entries()].filter(([u])=>!keep.has(u)).sort((a,b)=>a[1].used-b[1].used);
     while(vpool.size>POOL_MAX&&ents.length){const[u,o]=ents.shift();try{o.el.pause();o.el.removeAttribute('src');o.el.load();o.el.remove()}catch(_){}vpool.delete(u)}
   }
-  /* 次クリップを（表示せず裏で）キャッシュに用意しておく */
-  function preloadNext(){const nx=cs()[reelUI.cur+1];if(nx&&nx.url)getVid(nx.url)}
+  /* 次クリップを（表示せず裏で）キャッシュに用意しておく。
+     さらに「muted で play → playing 発火で pause」まで進めて decoder pipeline を温める
+     （priming）。以降のファストスワップで target.play() を叩いたときに 1 vsync 以内で
+     実描画に到達しやすくなる。1 回限り（v._primed でガード）。 */
+  function preloadNext(){
+    const nx=cs()[reelUI.cur+1];if(!nx||!nx.url)return;
+    const v=getVid(nx.url);
+    if(v._primed)return;
+    v._primed=true;
+    try{v.muted=true}catch(_){}
+    const onPlaying=()=>{try{v.pause()}catch(_){}try{v.currentTime=0}catch(_){}};
+    v.addEventListener('playing',onPlaying,{once:true});
+    const kick=()=>{try{const p=v.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}};
+    if(v.readyState>=2)kick();
+    else v.addEventListener('canplay',kick,{once:true});
+  }
   /* 指定要素を表示中（アクティブ）にする。旧要素は隠してミュート。 */
   function activate(v){
     if(video===v)return;
@@ -13002,6 +13016,10 @@ function openReel(){
     vd.addEventListener('pause',e=>{if(e.target!==video)return;play.textContent='▶ 再生';if(RV._rangeRaf){cancelAnimationFrame(RV._rangeRaf);RV._rangeRaf=0}});
     vd.addEventListener('ended',e=>{
       if(e.target!==video)return;
+      /* プリエンプト済み（tick で先にクリップ切替済み・rvfc の flip 待ち）の場合は、
+         この ended を処理すると cur が二重に進んでクリップを飛ばしてしまうので黙って skip。
+         フラグはワンショットで消費（次周のためにクリア）。 */
+      if(e.target._preempted){e.target._preempted=false;return}
       /* 再生範囲が設定されているクリップの末尾で切替えると range OUT を跨いでしまうので、
          range 内なら次クリップに進む前に IN／OUT の判定を優先する */
       if(_hasRangeR()){
@@ -13055,6 +13073,10 @@ function openReel(){
       const ft=1/(RV.FPS||24);
       if(rem>=0&&rem<ft*1.1){
         reelUI._preemptFor=reelUI.cur;
+        /* 旧クリップに「プリエンプト済み」の印を付ける。rvfc の flip が完了する前に
+           旧クリップが自然に ended まで到達して ended ハンドラを叩き、cur を二重に
+           進めてしまう事故（クリップを飛ばして先へ／loop 時に頭へ戻る）を防止。 */
+        try{if(video)video._preempted=true}catch(_){}
         if(reelUI.cur<cs().length-1){reelUI.cur++;loadCur(true)}
         else if(reelUI.loop&&cs().length>0){reelUI.cur=0;loadCur(true)}
       }

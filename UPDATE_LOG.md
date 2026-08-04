@@ -14,6 +14,10 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.026) REEL 連続再生：preloadNext の decoder priming＋ended 二重発火修正（対策 2/4）
+  - **preloadNext の priming**：`getVid` で作った次クリップ video に対して「muted で play → 'playing' 発火で pause」まで進めて decoder pipeline を温める（`v._primed` で 1 回限りガード）。以降のファストスワップで `target.play()` が 1 vsync 以内で実描画に到達しやすくなる（Chrome の decoder 初期化コスト回避）。
+  - **ended 二重発火バグ修正**：v.025 で rvfc の flip が未到達の間に旧クリップが自然終了すると、`ended` ハンドラが `cur` を二重に進めてクリップを飛ばす（例：3 クリップ並べたときに 3 番目がスキップされ loop で 1 番目が再生される）事故が発生。tick のプリエンプト時に旧 video に `_preempted=true` フラグを立て、ended ハンドラでフラグ有りなら黙って skip（ワンショット消費）。
+
 - (dev v2026.08.05.025) REEL 連続再生：rvfc で NEW クリップの 1F 目到達を待って activate（対策 1/4）
   - ファストスワップで `target.play()` 直後に `target.requestVideoFrameCallback(flip)` を仕込む。1F 目が compositor に届いた瞬間に `activate(target)` を実行 → 「play 済みだが未描画の video を opacity=1 にして数十 ms 静止」する窓を排除。
   - 旧クリップは activate まで opacity=1 のまま自然再生を継続。rvfc の到達（16-33ms）と旧クリップの残り時間（プリエンプト閾値 ~46ms）が拮抗して、静止感が消える。
