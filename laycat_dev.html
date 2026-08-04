@@ -3010,7 +3010,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.013';
+const APP_VERSION='2026.08.05.014';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12738,6 +12738,8 @@ function openReel(){
     let anyPurged=false;
     for(const c of (reelUI.clips||[])){if(reelPurgeEmbFor(c))anyPurged=true}
     reelUI.clips=[];reelUI.cur=0;reelUI.reelId=null;clearPool();resetView();reelRender();updReelTitle();updUnsent();
+    /* コメント欄・アノテ描画・タイムライン装飾も初期化（旧リールのコメントが残る問題への対処） */
+    try{drawAnno();drawFTL();reelNotes()}catch(_){}
     if(anyPurged)scheduleReelPersist();
   }
   /* リール保存（File メニュー / Ctrl+S から）。ヘッダのボタンは廃止済み */
