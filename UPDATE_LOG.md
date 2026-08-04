@@ -14,6 +14,9 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.019) ショットタブ：選択解除ボタンで全タイル真っ黒になるのを修正
+  - `.shot-sel-bar` の「選択解除」ボタンの onclick が `renderBody()` のみで `resolveThumbs()` を呼んでいなかったため、再描画された `img[data-ref]` のソースが解決されず `.pm-tile .th` の `background:#000` が透けていた。`resolveThumbs()` を追加。
+
 - (dev v2026.08.05.018) ショットタブ 範囲選択の改善：#scroll 全域で開始可・ドラッグ中も水色ハイライト
   - mousedown ハンドラを `main` から `#scroll` に移動。main の左右パディング（scroll 側 20px）や左端の空白からも開始できるように。`state.projTab==='shots'` で他タブへの副作用を防止。
   - ドラッグ中の `onmv` で交差判定を都度計算し、対象タイル／行に `.sel` を即時付与（`initSel` 分は常時保持）。マウスを離す前から選ばれる範囲が水色でわかる。
