@@ -3010,7 +3010,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.011';
+const APP_VERSION='2026.08.05.012';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10762,7 +10762,7 @@ function _buildReelFloat(){
   tbar.style.cssText='display:flex;align-items:center;height:26px;background:#1c1c1f;border-bottom:1px solid #2a2a2f;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1;padding:0 10px;cursor:default;flex-shrink:0;user-select:none';
   const tttl=document.createElement('div');tttl.textContent='REEL — LayCAT';tttl.style.cssText='flex:1;font-size:11px;color:#9a9aaa;letter-spacing:.4px;font-family:system-ui,"Noto Sans JP",sans-serif';
   const cbtn=document.createElement('button');cbtn.textContent='✕';cbtn.title='閉じる';cbtn.style.cssText='background:none;border:none;color:#9a9aaa;font-size:15px;cursor:pointer;padding:0 16px;height:100%;line-height:1;font-family:inherit;flex-shrink:0;transition:color .15s,text-shadow .15s';
-  cbtn.onmouseenter=()=>{cbtn.style.color='#5cc7ef';cbtn.style.textShadow='0 0 8px rgba(92,199,239,.85),0 0 14px rgba(92,199,239,.55)'};
+  cbtn.onmouseenter=()=>{cbtn.style.color='#fff';cbtn.style.textShadow='0 0 8px rgba(255,255,255,.9),0 0 14px rgba(255,255,255,.55)'};
   cbtn.onmouseleave=()=>{cbtn.style.color='#9a9aaa';cbtn.style.textShadow='none'};
   tbar.appendChild(tttl);tbar.appendChild(cbtn);shell.appendChild(tbar);
   const ifr=document.createElement('iframe');ifr.style.cssText='flex:1;border:none;background:#0d0d0f;width:100%;min-height:0;display:block';
