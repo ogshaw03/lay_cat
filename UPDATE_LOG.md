@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.07.29.075) 進捗タブ：工程／ステータスのタブ切替を廃止し 2 カラム並置に
+  - `renderProjProgress` から `state.pmTab` 切替 UI（`pm-tabs`）を撤去。左カラム＝工程、右カラム＝ステータスを 1 ページに常時表示する `pm-cols` グリッドを新設（`grid-template-columns:1fr 1fr`、工程なしプロジェクトは `.single` で 1 カラムのみ）。
+  - 複数エピソード（`donutMode==='all'`）時は、各カラム内でエピソードごとの円グラフカードを縦並び（`pm-col-body` の `flex-direction:column`）。
+  - `state.pmPick` のキー形式を `pid::rowId` から `stage::[pid::]rowId` / `status::[pid::]rowId` に変更し、prefix で種別を判別。片方のカラムで選択すると当該種別のショット別内訳が下段に出る（もう一方のカラムのハイライトは無関係）。未選択時は従来どおりステータスデータでデフォルト表を表示。
+  - `state.pmTab` は本 UI では未参照になったため実質デッドフラグ化（副作用回避のため state から削除はしない）。
+
 ---
 
 ## 反映済み beta v0.0.8（2026-08-04）
