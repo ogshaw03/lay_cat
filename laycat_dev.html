@@ -3010,7 +3010,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.010';
+const APP_VERSION='2026.08.05.011';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10787,9 +10787,13 @@ function _buildReelFloat(){
   /* ダブルクリックで全画面 ⇄ 復元。mousedown ベースで手動判定（dblclick イベントは
      drag セットアップ + preventDefault の影響で発火が不安定なため） */
   let savedGeom=null,lastTbarDown=0;
+  const setBorderMaximized=(max)=>{
+    if(max){shell.style.border='none';shell.style.borderImage='none'}
+    else{shell.style.border='1px solid transparent';shell.style.borderImage='linear-gradient(135deg,#5cc7ef 0%,#7a5cff 100%) 1'}
+  };
   const toggleMax=()=>{
-    if(savedGeom){shell.style.left=savedGeom.l+'px';shell.style.top=savedGeom.t+'px';shell.style.width=savedGeom.w+'px';shell.style.height=savedGeom.h+'px';savedGeom=null}
-    else{savedGeom={l:shell.offsetLeft,t:shell.offsetTop,w:shell.offsetWidth,h:shell.offsetHeight};shell.style.left='0px';shell.style.top='0px';shell.style.width=window.innerWidth+'px';shell.style.height=window.innerHeight+'px'}
+    if(savedGeom){shell.style.left=savedGeom.l+'px';shell.style.top=savedGeom.t+'px';shell.style.width=savedGeom.w+'px';shell.style.height=savedGeom.h+'px';savedGeom=null;setBorderMaximized(false)}
+    else{savedGeom={l:shell.offsetLeft,t:shell.offsetTop,w:shell.offsetWidth,h:shell.offsetHeight};shell.style.left='0px';shell.style.top='0px';shell.style.width=window.innerWidth+'px';shell.style.height=window.innerHeight+'px';setBorderMaximized(true)}
     try{ifr.contentWindow.dispatchEvent(new Event('resize'))}catch(_){}
   };
   tbar.addEventListener('mousedown',e=>{
@@ -10797,6 +10801,17 @@ function _buildReelFloat(){
     const now=Date.now();
     if(now-lastTbarDown<380){toggleMax();lastTbarDown=0;drag=null;endDrag();e.preventDefault();return}
     lastTbarDown=now;
+    /* 全画面時のドラッグ：元のサイズに戻し、カーソル位置に窓を追従させて移動を開始する */
+    if(savedGeom){
+      const sw=savedGeom.w,sh=savedGeom.h;
+      const nl=Math.round(e.clientX-sw*(e.clientX/Math.max(1,window.innerWidth)));
+      const nt=Math.round(Math.max(0,e.clientY-Math.min(20,sh*(e.clientY/Math.max(1,window.innerHeight)))));
+      shell.style.width=sw+'px';shell.style.height=sh+'px';
+      shell.style.left=nl+'px';shell.style.top=nt+'px';
+      setBorderMaximized(false);
+      savedGeom=null;
+      try{ifr.contentWindow.dispatchEvent(new Event('resize'))}catch(_){}
+    }
     drag={dx:e.clientX-shell.offsetLeft,dy:e.clientY-shell.offsetTop};
     startDragMove('default');e.preventDefault();
   });
