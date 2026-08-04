@@ -3006,7 +3006,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.079';
+const APP_VERSION='2026.07.29.080';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6548,19 +6548,14 @@ function makeCropEditor(opts){
   wrap.appendChild(box);
   const slider=el('input','crop-slider');slider.type='range';slider.min='100';slider.max='400';
   wrap.appendChild(slider);
-  /* 実際のタイルサイズのプレビュー */
-  const prev=el('div','crop-preview');prev.appendChild(el('div','cp-label','実際のタイルでの見え方'));
-  const ptile=el('div','cp-tile');const pimg=el('img');ptile.appendChild(pimg);prev.appendChild(ptile);
-  wrap.appendChild(prev);
   const crop=Object.assign({s:1,fx:0,fy:0},opts.crop||{});
   slider.value=String(Math.round(crop.s*100));
   let iw=0,ih=0;
   const clamp=()=>{crop.s=Math.max(1,Math.min(6,crop.s));crop.fx=Math.max(-0.5,Math.min(0.5,crop.fx));crop.fy=Math.max(-0.5,Math.min(0.5,crop.fy))};
   const place=(imgEl,boxEl)=>{const bw=boxEl.clientWidth,bh=boxEl.clientHeight;if(!iw||!ih||!bw||!bh)return;const base=Math.max(bw/iw,bh/ih),sc=base*crop.s,dw=iw*sc,dh=ih*sc;imgEl.style.width=dw+'px';imgEl.style.height=dh+'px';imgEl.style.left=((bw-dw)/2+crop.fx*(dw-bw))+'px';imgEl.style.top=((bh-dh)/2+crop.fy*(dh-bh))+'px'};
-  function layout(){if(!iw||!ih)return;place(img,box);place(pimg,ptile)}
+  function layout(){if(!iw||!ih)return;place(img,box)}
   img.onload=()=>{iw=img.naturalWidth;ih=img.naturalHeight;clamp();layout()};
-  pimg.onload=layout;
-  if(opts.url){img.src=opts.url;pimg.src=opts.url}
+  if(opts.url){img.src=opts.url}
   let drag=null;
   box.onpointerdown=e=>{drag={x:e.clientX,y:e.clientY,fx:crop.fx,fy:crop.fy};try{box.setPointerCapture(e.pointerId)}catch(_){}};
   box.onpointermove=e=>{if(!drag||!iw)return;const bw=box.clientWidth,bh=box.clientHeight,base=Math.max(bw/iw,bh/ih),sc=base*crop.s,ovx=iw*sc-bw,ovy=ih*sc-bh;if(ovx>0)crop.fx=drag.fx+(e.clientX-drag.x)/ovx;if(ovy>0)crop.fy=drag.fy+(e.clientY-drag.y)/ovy;clamp();layout()};

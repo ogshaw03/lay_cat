@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.07.29.080) プロジェクト設定：プロジェクトサムネイル下の「実際のタイルでの見え方」プレビューを削除
+  - `makeCropEditor` から `.crop-preview`（`cp-tile` + プレビュー用 img）と関連する pimg / ptile 参照を撤去。トリミング窓と拡大スライダーのみに簡素化。
+  - 影響範囲：プロジェクト設定モーダル（`openRename`）と新規プロジェクト作成モーダル（`openProjectModal`）の両方（同一ウィジェット共有）。
+  - CSS `.crop-preview / .cp-label / .cp-tile` は未使用になるが他への波及がないため残置。
+
 - (dev v2026.07.29.079) 右スライド内の FB ログヘッダを 2 段表示に（上=各種ボタン／下=動画タイトル）
   - v078 で誤って `task-topbar` を修正していたが、実際に被っていたのは FB ログ枠内（`.log-head`）だった。v078 の task-topbar 変更を revert し、`.log-head` に対して修正しなおす。
   - ドロワー配下（`.drawer .log-head`）のみ `flex-wrap:wrap` を有効化し、`.log-title` を `flex:0 0 100%;order:2` で 2 段目に押し出す。上段にはメタ（by/日時）とダウンロード／比較／REEL／削除等のボタン群が並ぶ。
