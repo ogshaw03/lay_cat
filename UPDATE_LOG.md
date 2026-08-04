@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.07.29.078) 右スライド内 task-topbar を 2 段表示に（上=ボタン群／下=タイトル）
+  - 右スライド（ドロワー）幅は 680px 上限のため、`.task-topbar` のタイトル（`.tt-proc`）と各種ボタン（ステータス／作業／チェック／＋動画／設定／削除）が横一列で被るケースがあった。
+  - `renderReviewBody(...,{inDrawer:true})` の topbar に `in-drawer` クラスを付与。CSS で `.tt-proc{flex-basis:100%;order:2}` によりタイトルを 2 段目に押し出し、`.spacer{display:none}` で spacer を無効化しボタン群を上段に詰める。
+  - メインエリア（inDrawer=false）は従来の 1 行レイアウトのまま（波及なし）。
+
 - (dev v2026.07.29.077) 進捗タブ：ショット別内訳の行クリックで右側スライド、サムネクリックでタブ追加
   - `pmShotBreakdown` のデフォルト表（`pm-stbl`）で、行クリック→`openReviewDrawer(lv.node.id, shot.id)`（動画無しは代表工程→ショット自身にフォールバック）、サムネクリック→`go(tabId)`（タブに追加＋遷移）。
   - ホバーハイライト：行は既存 `tr:hover td{background:var(--bg3)}` に加え `td{cursor:pointer}`。サムネは `box-shadow`＋`transform:scale(1.06)` で強調。
