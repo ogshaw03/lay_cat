@@ -521,10 +521,11 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .log-notes{padding:10px 16px 14px;display:flex;flex-direction:column;gap:8px}
 .log-note{position:relative;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 12px;border-left:3px solid transparent;padding-left:9px;transition:border-color .18s}
 .log-note > *{position:relative;z-index:1}
-/* ハイライト（現在フレームに該当する note）：左上→右下の水色→紫グラデを半透明で背景に、枠線もグラデーション */
-.log-note.at-cur{border-color:transparent;border-image:linear-gradient(135deg,#5cc7ef 0%,#7a5cff 100%) 1}
-.log-note.at-cur::before{content:'';position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:7px;background-image:linear-gradient(135deg,rgba(20,55,100,.55) 0%,rgba(40,20,85,.55) 100%);animation:atCurWipe .3s cubic-bezier(.33,.66,.4,1) both}
-@keyframes atCurWipe{from{clip-path:polygon(0 0,0 0,0 0)}to{clip-path:polygon(0 0,200% 0,0 200%)}}
+/* ハイライト（現在フレームに該当する note）：左上→右下の水色→紫グラデをぼかしワイプで背景に、枠線は鼓動アニメで発光 */
+.log-note.at-cur{border-color:transparent;border-image:linear-gradient(135deg,#5cc7ef 0%,#7a5cff 100%) 1;animation:atCurPulse 1.6s ease-in-out infinite}
+.log-note.at-cur::before{content:'';position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:7px;background-image:linear-gradient(135deg,rgba(20,55,100,.55) 0%,rgba(40,20,85,.55) 100%);-webkit-mask-image:linear-gradient(135deg,#000 0%,#000 25%,transparent 75%,transparent 100%);mask-image:linear-gradient(135deg,#000 0%,#000 25%,transparent 75%,transparent 100%);-webkit-mask-size:200% 200%;mask-size:200% 200%;-webkit-mask-position:100% 100%;mask-position:100% 100%;animation:atCurWipe .3s cubic-bezier(.33,.66,.4,1) both}
+@keyframes atCurWipe{from{-webkit-mask-position:100% 100%;mask-position:100% 100%}to{-webkit-mask-position:0% 0%;mask-position:0% 0%}}
+@keyframes atCurPulse{0%,45%,100%{box-shadow:0 0 0 0 rgba(122,92,255,0),0 0 5px rgba(92,199,239,.12)}18%,60%{box-shadow:0 0 0 3px rgba(122,92,255,.35),0 0 14px rgba(92,199,239,.55)}30%{box-shadow:0 0 0 0 rgba(122,92,255,0),0 0 6px rgba(92,199,239,.15)}}
 .log-note .m{font-size:11px;color:var(--text3);margin-bottom:4px}
 .log-note .t{font-size:13px;color:var(--text);white-space:pre-wrap;word-break:break-word;line-height:1.65}
 .log-note-input{display:flex;gap:8px;padding:0 16px 16px}
@@ -3010,7 +3011,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.083';
+const APP_VERSION='2026.07.29.084';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10873,9 +10874,10 @@ function openReel(){
    +'.mention-opt .mo-nm{font-weight:600;color:#e8e8ec;white-space:nowrap}.mention-opt.is-role .mo-nm{color:#d6a95f}.mention-opt .mo-sub{font-size:11px;color:#5a5a6a;white-space:nowrap}'
    +'.log-note{position:relative;background:#1c1c1f;border:1px solid #2a2a2f;border-radius:8px;padding:9px 12px;border-left:3px solid transparent;padding-left:9px;transition:border-color .18s}'
    +'.log-note > *{position:relative;z-index:1}'
-   +'.log-note.at-cur{border-color:transparent;border-image:linear-gradient(135deg,#5cc7ef 0%,#7a5cff 100%) 1}'
-   +'.log-note.at-cur::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:7px;background-image:linear-gradient(135deg,rgba(20,55,100,.55) 0%,rgba(40,20,85,.55) 100%);animation:atCurWipe .3s cubic-bezier(.33,.66,.4,1) both}'
-   +'@keyframes atCurWipe{from{clip-path:polygon(0 0,0 0,0 0)}to{clip-path:polygon(0 0,200% 0,0 200%)}}'
+   +'.log-note.at-cur{border-color:transparent;border-image:linear-gradient(135deg,#5cc7ef 0%,#7a5cff 100%) 1;animation:atCurPulse 1.6s ease-in-out infinite}'
+   +'.log-note.at-cur::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:7px;background-image:linear-gradient(135deg,rgba(20,55,100,.55) 0%,rgba(40,20,85,.55) 100%);-webkit-mask-image:linear-gradient(135deg,#000 0%,#000 25%,transparent 75%,transparent 100%);mask-image:linear-gradient(135deg,#000 0%,#000 25%,transparent 75%,transparent 100%);-webkit-mask-size:200% 200%;mask-size:200% 200%;-webkit-mask-position:100% 100%;mask-position:100% 100%;animation:atCurWipe .3s cubic-bezier(.33,.66,.4,1) both}'
+   +'@keyframes atCurWipe{from{-webkit-mask-position:100% 100%;mask-position:100% 100%}to{-webkit-mask-position:0% 0%;mask-position:0% 0%}}'
+   +'@keyframes atCurPulse{0%,45%,100%{box-shadow:0 0 0 0 rgba(122,92,255,0),0 0 5px rgba(92,199,239,.12)}18%,60%{box-shadow:0 0 0 3px rgba(122,92,255,.35),0 0 14px rgba(92,199,239,.55)}30%{box-shadow:0 0 0 0 rgba(122,92,255,0),0 0 6px rgba(92,199,239,.15)}}'
    +'.log-note.draft-note{border-color:#e0a63a;border-style:dashed;background:rgba(224,166,58,.06)}'
    +'.draft-chip{font-size:10px;font-weight:700;color:#1a1200;background:#e0a63a;border-radius:8px;padding:1px 7px;margin-right:6px}'
    +'.log-note .m{font-size:11px;color:#5a5a6a;margin-bottom:4px;display:flex;align-items:center;flex-wrap:wrap;gap:2px}'

@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.07.29.084) コメントタイル ハイライト：ワイプの境界をぼかし＋枠線を鼓動アニメに
+  - `::before` のワイプを `clip-path` から `mask-image`（`linear-gradient(135deg,#000 0-25%,transparent 75-100%)` を `mask-size:200% 200%` で `mask-position` を 100% 100% → 0% 0% に 0.3s で移動）に変更。25%〜75% の透過ソフトエッジで境界がなだらかに広がる。
+  - 枠線は `border-image` グラデを維持しつつ、`.log-note.at-cur` 自体に `animation:atCurPulse 1.6s ease-in-out infinite` を追加。box-shadow の spread（0→3px）+ glow で「トクン、トクン、…」の 2 拍リズム（18% と 60% がピーク）を再現。
+  - メイン CSS + アノテウィンドウ inline CSS 両方に適用。
+
 - (dev v2026.07.29.083) コメントタイル ハイライトの背景を更に暗く＋左上→右下ワイプアニメ
   - 背景グラデを `rgba(38,110,180,.32)→rgba(80,50,160,.32)` から `rgba(20,55,100,.55)→rgba(40,20,85,.55)` に。より濃い（暗い）ネイビー→パープル。
   - `::before` オーバーレイで背景を描画し `clip-path:polygon(0 0,0 0,0 0) → polygon(0 0,200% 0,0 200%)` の 0.3s ワイプアニメ（左上頂点固定で右下方向へ三角形が拡大）。テキストは `.log-note > *{position:relative;z-index:1}` で前面確保。
