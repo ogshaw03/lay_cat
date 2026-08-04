@@ -307,11 +307,14 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .pm-eph2{font-family:var(--font-head);font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--text);border-left:3px solid #60a5ff;padding-left:9px;margin:26px 2px 8px}
 .pm-tile{border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer;background:var(--bg2)}
 .pm-tile:hover{border-color:var(--edge);box-shadow:0 0 10px var(--edgeglow)}
-/* ショットタブ：範囲選択／複数選択中のタイル・行。水色で強めに縁取り＋グロー */
-.pm-tile.sel{outline:2px solid #5cc7ef;outline-offset:-2px;box-shadow:0 0 14px rgba(92,199,239,.7)}
-.shot-row.sel{outline:2px solid #5cc7ef;outline-offset:-2px;box-shadow:0 0 10px rgba(92,199,239,.6)}
-.rubber-band{position:absolute;background:rgba(92,199,239,.14);border:1px dashed #5cc7ef;pointer-events:none;z-index:50}
-.shot-sel-bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--bg3);border:1px solid #5cc7ef;border-radius:8px;margin:6px 0 12px;box-shadow:0 6px 16px rgba(0,0,0,.5),0 0 10px rgba(92,199,239,.35)}
+/* ショットタブ：範囲選択／複数選択中のタイル・行。青寄りの水色で縁取り＋グロー */
+.pm-tile.sel{outline:2px solid #4a9eff;outline-offset:-2px;box-shadow:0 0 14px rgba(74,158,255,.8)}
+.shot-row.sel{outline:2px solid #4a9eff;outline-offset:-2px;box-shadow:0 0 10px rgba(74,158,255,.7)}
+.rubber-band{position:absolute;background:rgba(74,158,255,.18);border:1px dashed #4a9eff;pointer-events:none;z-index:50}
+/* sel-bar は sticky アンカーの中に格納：アンカー height:0 で本流にスペースを取らせず、
+   バー本体は relative で下に張り出す形にすることで、初回表示時のタイル位置ずれを回避する */
+.shot-sel-anchor{position:sticky;top:0;z-index:20;height:0;pointer-events:none}
+.shot-sel-bar{position:relative;pointer-events:auto;display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--bg3);border:1px solid #4a9eff;border-radius:8px;margin:6px 0 0;box-shadow:0 6px 16px rgba(0,0,0,.5),0 0 10px rgba(74,158,255,.4)}
 .shot-sel-bar .cnt{font-family:var(--font-head);font-weight:700;font-size:13px;color:var(--text)}
 .pm-tile .th{position:relative;aspect-ratio:16/9;background:#000 center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:var(--text3);overflow:hidden}
 .pm-tile .th img:not(.omit-cat){width:100%;height:100%;object-fit:cover}
@@ -3016,7 +3019,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.020';
+const APP_VERSION='2026.08.05.021';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4937,8 +4940,10 @@ function renderProjShots(main,cur){
   seg.appendChild(mkBtn('grid','▦ グリッド'));seg.appendChild(mkBtn('list','≡ 縦並び'));
   head.appendChild(seg);
   main.appendChild(head);
-  /* 選択中のショットを REEL に追加するツールバー（選択が有るときのみ表示） */
+  /* 選択中のショットを REEL に追加するツールバー（選択が有るときのみ表示）
+     sticky アンカーで包むことで、初回表示時にタイルが下にずれるのを防止（アンカー height:0） */
   if(state.shotSel&&state.shotSel.size>0){
+    const anchor=el('div','shot-sel-anchor');
     const bar=el('div','shot-sel-bar');
     bar.appendChild(el('span','cnt','選択中 '+state.shotSel.size+' 件'));
     const sp=el('div');sp.style.flex='1';bar.appendChild(sp);
@@ -4948,7 +4953,8 @@ function renderProjShots(main,cur){
     const clr=el('button','btn btn-ghost btn-sm','選択解除');
     clr.onclick=()=>{state.shotSel=null;renderBody();resolveThumbs()};
     bar.appendChild(clr);
-    main.appendChild(bar);
+    anchor.appendChild(bar);
+    main.appendChild(anchor);
   }
   /* 範囲選択（ラバーバンド）：`#scroll` 全域を捕捉対象にし（main の左右パディング分も含む）、
      空白部分から mousedown で矩形を描き、矩形と重なる `.pm-tile[data-sid]` / `.shot-row[data-sid]` を選択に加える。

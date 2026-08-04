@@ -14,6 +14,10 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.021) ショットタブ：sel-bar 表示時のタイル位置ずれを解消＋選択色をより青寄りに
+  - sel-bar を `.shot-sel-anchor{position:sticky;top:0;height:0}` で包み、本流には高さを取らせないよう変更。バーは `position:relative` で下に張り出す形で表示 → 初回表示でタイルが下にシフトしない。
+  - 選択ハイライト色を `#5cc7ef`（水色寄り）→ `#4a9eff`（青寄り）に。非選択タイルとのコントラストを上げつつテーマの青系統に統一。
+
 - (dev v2026.08.05.020) ショットタブ：sel-bar を sticky に、タブ帯クリックで選択解除、ヘッダ行からもラバーバンド開始可
   - `.shot-sel-bar` を `position:sticky;top:0;z-index:20` にしてスクロールしても常に画面上部に固定。落ち影も強化して浮遊感を付与。
   - `buildProjectTabsHead` の nav に mousedown リスナーを追加し、タブ帯クリックで `state.shotSel=null;renderBody();resolveThumbs()`。各タブボタンの onclick 側でも `state.shotSel=null` を追加してタブ切替時に必ず解除。
