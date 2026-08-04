@@ -3010,7 +3010,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.006';
+const APP_VERSION='2026.08.05.007';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10760,21 +10760,22 @@ function _buildReelFloat(){
   const tbar=document.createElement('div');
   tbar.style.cssText='display:flex;align-items:center;height:26px;background:#1c1c1f;border-bottom:1px solid #2a2a2f;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1;padding:0 10px;cursor:default;flex-shrink:0;user-select:none';
   const tttl=document.createElement('div');tttl.textContent='REEL — LayCAT';tttl.style.cssText='flex:1;font-size:11px;color:#9a9aaa;letter-spacing:.4px;font-family:system-ui,"Noto Sans JP",sans-serif';
-  const cbtn=document.createElement('button');cbtn.textContent='✕';cbtn.title='閉じる';cbtn.style.cssText='background:none;border:none;color:#9a9aaa;font-size:14px;cursor:pointer;padding:0 8px;line-height:1;font-family:inherit';
+  const cbtn=document.createElement('button');cbtn.textContent='✕';cbtn.title='閉じる';cbtn.style.cssText='background:none;border:none;color:#9a9aaa;font-size:15px;cursor:pointer;padding:0 16px;height:100%;line-height:1;font-family:inherit;flex-shrink:0';
+  cbtn.onmouseenter=()=>{cbtn.style.background='rgba(220,80,80,.75)';cbtn.style.color='#fff'};
+  cbtn.onmouseleave=()=>{cbtn.style.background='none';cbtn.style.color='#9a9aaa'};
   tbar.appendChild(tttl);tbar.appendChild(cbtn);shell.appendChild(tbar);
   const ifr=document.createElement('iframe');ifr.style.cssText='flex:1;border:none;background:#0d0d0f;width:100%;min-height:0;display:block';
   shell.appendChild(ifr);
-  /* リサイズハンドル（つかめる幅を広めに＝12px）。四隅は 22×22。ハンドルは iframe より上に。
-     上辺・左上角・右上角はタイトルバーとの取り合いを避けるため top:0 から少し出す。 */
+  /* リサイズハンドル（初期の細めサイズに戻す：辺 5px・角 16×16）。八方向対応。ハンドルは iframe より上。 */
   const mkH=(css)=>{const h=document.createElement('div');h.style.cssText='position:absolute;'+css+';z-index:3';shell.appendChild(h);return h};
-  const rhSE=mkH('right:0;bottom:0;width:22px;height:22px;cursor:nwse-resize');
-  const rhE =mkH('right:0;top:22px;bottom:22px;width:12px;cursor:ew-resize');
-  const rhS =mkH('left:22px;right:22px;bottom:0;height:12px;cursor:ns-resize');
-  const rhSW=mkH('left:0;bottom:0;width:22px;height:22px;cursor:nesw-resize');
-  const rhW =mkH('left:0;top:22px;bottom:22px;width:12px;cursor:ew-resize');
-  const rhNE=mkH('right:0;top:0;width:22px;height:22px;cursor:nesw-resize');
-  const rhNW=mkH('left:0;top:0;width:22px;height:22px;cursor:nwse-resize');
-  const rhN =mkH('left:22px;right:22px;top:0;height:6px;cursor:ns-resize');
+  const rhSE=mkH('right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize');
+  const rhE =mkH('right:0;top:16px;bottom:16px;width:5px;cursor:ew-resize');
+  const rhS =mkH('left:16px;right:16px;bottom:0;height:5px;cursor:ns-resize');
+  const rhSW=mkH('left:0;bottom:0;width:16px;height:16px;cursor:nesw-resize');
+  const rhW =mkH('left:0;top:16px;bottom:16px;width:5px;cursor:ew-resize');
+  const rhNE=mkH('right:0;top:0;width:16px;height:16px;cursor:nesw-resize');
+  const rhNW=mkH('left:0;top:0;width:16px;height:16px;cursor:nwse-resize');
+  const rhN =mkH('left:16px;right:16px;top:0;height:5px;cursor:ns-resize');
   /* ドラッグ／リサイズ中に iframe がマウスイベントを奪わないよう覆う透明オーバーレイ（開始時のみ表示） */
   const ovl=document.createElement('div');ovl.style.cssText='position:absolute;inset:0;z-index:4;display:none;cursor:inherit';shell.appendChild(ovl);
   document.body.appendChild(shell);
