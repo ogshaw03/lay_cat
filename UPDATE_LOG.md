@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.016) アノテ窓／REEL：ループ・ズーム・トラックの絵文字を無彩色化、3D は立方体 SVG に
+  - `loopBtn` / `ziBtn` / `zoBtn` / `handBtn`（アノテ窓）と `loopBtn` / `ziBtn` / `zoBtn` / `handB`（REEL）に `filter:grayscale(1)` を適用。カラー絵文字（🔁🔍✋）をテーマ色に馴染む無彩色に。
+  - 3D ボタン（`mannBtn` / `mannB`）は絵文字 🎭 を廃止し、`currentColor` ストロークの立方体 SVG（正面・側面・上面の 3 面表示）＋テキスト "3D" に置換。
+  - `画面操作` ヘルプパネル自体は元々テキスト＋`<kbd>` のみで有彩色要素なしのため変更なし（他のボタン群と自動的に統一される）。
+
 - (dev v2026.08.05.015) アノテ窓／REEL：👁 ボタンのアイコンを大きく（ボタンサイズは据え置き）
   - `eyeBtn`（アノテ窓・line 8701）と `eyeB`（REEL・line 11221）に `fontSize:17px; lineHeight:1` を追加。`line-height:1` にすることでボタン高が padding*2 + fontSize に収まり、既定 (padding+fontSize*1.5) と同程度になる → ボタンサイズは実質据え置き。
 
