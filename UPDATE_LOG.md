@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.009) REEL フローティング窓：外枠を水色→紫のグラデ＋外周グロー強化
+  - shell の `border` を `1px solid #3a3a42` から `2px solid transparent + border-image:linear-gradient(135deg,#5cc7ef→#7a5cff) 1` に。`--edge-grad` と統一。
+  - box-shadow に cyan/purple のグローを追加してメイン画面との境界を明確化。
+  - `border-image` は `border-radius` と併用できないため角丸は解除（フラット矩形）。
+
 - (dev v2026.08.05.008) REEL フローティング窓：✕ホバーを赤地から水色グローに
   - `cbtn` のホバー効果を `background:red` から `color:#5cc7ef` + `text-shadow` グロー（cyan 8px+14px）に変更。可愛らしい発光表現に。
 
