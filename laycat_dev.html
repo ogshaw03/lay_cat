@@ -3019,7 +3019,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.027';
+const APP_VERSION='2026.08.05.028';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12762,32 +12762,15 @@ function openReel(){
     const ents=[...vpool.entries()].filter(([u])=>!keep.has(u)).sort((a,b)=>a[1].used-b[1].used);
     while(vpool.size>POOL_MAX&&ents.length){const[u,o]=ents.shift();try{o.el.pause();o.el.removeAttribute('src');o.el.load();o.el.remove()}catch(_){}vpool.delete(u)}
   }
-  /* 次クリップを（表示せず裏で）キャッシュに用意しておく。
-     さらに「muted で play → playing 発火で pause」まで進めて decoder pipeline を温める
-     （priming）。以降のファストスワップで target.play() を叩いたときに 1 vsync 以内で
-     実描画に到達しやすくなる。1 回限り（v._primed でガード）。 */
-  function preloadNext(){
-    const nx=cs()[reelUI.cur+1];if(!nx||!nx.url)return;
-    const v=getVid(nx.url);
-    if(v._primed)return;
-    v._primed=true;
-    try{v.muted=true}catch(_){}
-    const onPlaying=()=>{try{v.pause()}catch(_){}try{v.currentTime=0}catch(_){}};
-    v.addEventListener('playing',onPlaying,{once:true});
-    const kick=()=>{try{const p=v.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}};
-    if(v.readyState>=2)kick();
-    else v.addEventListener('canplay',kick,{once:true});
-  }
-  /* 指定要素を表示中（アクティブ）にする。旧要素は隠してミュート。
-     新アクティブ側の `_preempted` フラグ（旧世代でセットされて残っていることがある）を
-     クリアして、再アクティブ時の ended が黙殺され続けて再生が止まるのを防ぐ。 */
+  /* 次クリップを（表示せず裏で）キャッシュに用意しておく */
+  function preloadNext(){const nx=cs()[reelUI.cur+1];if(nx&&nx.url)getVid(nx.url)}
+  /* 指定要素を表示中（アクティブ）にする。旧要素は隠してミュート。 */
   function activate(v){
     if(video===v)return;
     const old=video;
     try{old.pause()}catch(_){}
     old.style.opacity='0';try{old.muted=true}catch(_){}
     video=v;reelUI.video=video;
-    try{video._preempted=false}catch(_){}
     try{video.muted=false}catch(_){}video.style.opacity='1';
   }
   /* プール全破棄（クリア／新規／別リールを開く時） */
@@ -12813,19 +12796,7 @@ function openReel(){
       if(auto&&target!==video&&target.readyState>=2&&RV.pendSeek==null){
         try{if(target.currentTime>0.02)target.currentTime=0}catch(_){}
         try{const p=target.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}
-        hideBridge();
-        /* rvfc（requestVideoFrameCallback）で NEW クリップの 1 フレーム目が compositor に
-           届いた瞬間に opacity を切替。activate が「未描画の video を見せる → 数十 ms 静止」する
-           窓を排除。旧クリップは activate まで opacity=1 のまま自然再生を続ける。 */
-        if(typeof target.requestVideoFrameCallback==='function'){
-          let flipped=false;
-          const flip=()=>{if(flipped)return;flipped=true;if(video!==target){activate(target);try{RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));fitAnno();RV.last=-1}catch(_){}}};
-          try{target.requestVideoFrameCallback(flip)}catch(_){flip()}
-          /* 保険：rvfc が発火しない環境／状況（タブ非表示等）に備えて 100ms でフォールバック */
-          reelWin.setTimeout(flip,100);
-        }else{
-          activate(target);
-        }
+        hideBridge();activate(target);
         fastSwapped=true;
       }
     }
@@ -12843,12 +12814,9 @@ function openReel(){
     const dt=rvData();RV.FPS=(c&&c.fps)||(dt&&dt.v.fps)||24;fpsS.value=String(RV.FPS);
     buildLayerPanel();reelNotes();updUnsent();updReelHeaderInfo();/* updReelStatus は updReelHeaderInfo が末尾で呼ぶ */
     if(!c){hideBridge();activate(idleVid);reelRender();return}
-    /* ファストスワップ済みの場合は総フレーム数だけ target 基準で先行更新（activate 自体は
-       rvfc callback 内で行われるため video は一時的にまだ旧クリップを指している）。
-       fitAnno は flip() 内でもう一度呼ばれるので、ここで video 基準に呼ぶと余計なリサイズが
-       走ってしまうので省略する。 */
+    /* ファストスワップ済みの場合は総フレーム数と anno の再フィットだけ更新して終了（activate/play は済） */
     if(fastSwapped){
-      RV.total=Math.max(1,Math.round(((target&&target.duration)||0)*RV.FPS));RV.last=-1;
+      RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));fitAnno();RV.last=-1;
       preloadNext();reelRender();return;
     }
     if(target===video){
@@ -13019,10 +12987,6 @@ function openReel(){
     vd.addEventListener('pause',e=>{if(e.target!==video)return;play.textContent='▶ 再生';if(RV._rangeRaf){cancelAnimationFrame(RV._rangeRaf);RV._rangeRaf=0}});
     vd.addEventListener('ended',e=>{
       if(e.target!==video)return;
-      /* プリエンプト済み（tick で先にクリップ切替済み・rvfc の flip 待ち）の場合は、
-         この ended を処理すると cur が二重に進んでクリップを飛ばしてしまうので黙って skip。
-         フラグはワンショットで消費（次周のためにクリア）。 */
-      if(e.target._preempted){e.target._preempted=false;return}
       /* 再生範囲が設定されているクリップの末尾で切替えると range OUT を跨いでしまうので、
          range 内なら次クリップに進む前に IN／OUT の判定を優先する */
       if(_hasRangeR()){
@@ -13075,23 +13039,9 @@ function openReel(){
       const rem=video.duration-video.currentTime;
       const ft=1/(RV.FPS||24);
       if(rem>=0&&rem<ft*1.1){
-        /* 実際に別クリップへ切替可能なときだけプリエンプト発動：
-           - canForward: 次クリップが残っている（cur < length-1）
-           - canLoopWrap: 末尾＆loop＆2 クリップ以上（先頭に戻る意味がある）
-           単一クリップ loop 等の「同じ video を seek し直すだけ」のケースで発動すると、
-           `_preempted` フラグ立てが残り次の ended が黙殺されて再生が止まるので、
-           そのようなケースは preempt に乗せず既存の ended ハンドラに任せる。 */
-        const canForward=reelUI.cur<cs().length-1;
-        const canLoopWrap=reelUI.loop&&cs().length>1&&reelUI.cur===cs().length-1;
-        if(canForward||canLoopWrap){
-          reelUI._preemptFor=reelUI.cur;
-          /* 旧クリップに「プリエンプト済み」の印を付ける。rvfc の flip が完了する前に
-             旧クリップが自然に ended まで到達して ended ハンドラを叩き、cur を二重に
-             進めてしまう事故（クリップを飛ばして先へ／loop 時に頭へ戻る）を防止。 */
-          try{if(video)video._preempted=true}catch(_){}
-          reelUI.cur=canForward?(reelUI.cur+1):0;
-          loadCur(true);
-        }
+        reelUI._preemptFor=reelUI.cur;
+        if(reelUI.cur<cs().length-1){reelUI.cur++;loadCur(true)}
+        else if(reelUI.loop&&cs().length>0){reelUI.cur=0;loadCur(true)}
       }
     }
     reelUI.raf=reelWin.requestAnimationFrame(tick);
