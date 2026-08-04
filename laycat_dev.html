@@ -3019,7 +3019,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.022';
+const APP_VERSION='2026.08.05.023';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12782,6 +12782,24 @@ function openReel(){
   function loadCur(auto){
     const c=cs()[reelUI.cur];
     reelUI.ended=false; /* 新しいクリップを読み込むので終端フラグ解除 */
+    /* --- ファストスワップ ---
+       「前クリップが末尾で一瞬止まって見える」問題への対処。
+       'ended' から activate まで、間に走る state 更新（pending 復元 / レイヤーパネル再構築 /
+       reelNotes / updReelHeaderInfo 等）で数十 ms かかっていた。その間ずっと旧クリップの
+       最終フレームが静止画で見える＝止まっているように感じる。
+       auto & キャッシュ済み & pendSeek 無しのときは、重い state 更新の前にまず video を差し替え、
+       同時に target.play() を先行発行（frame 0 保証のため currentTime=0 を明示）することで、
+       旧クリップの静止時間を最小化。 */
+    let target=null,fastSwapped=false;
+    if(c){
+      target=getVid(c.url);
+      if(auto&&target!==video&&target.readyState>=2&&RV.pendSeek==null){
+        try{if(target.currentTime>0.02)target.currentTime=0}catch(_){}
+        try{const p=target.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}
+        hideBridge();activate(target);
+        fastSwapped=true;
+      }
+    }
     /* クリップ切替：未送信アノテはクリップごとに保持（跨いでも消えない）。
        さらに v.review.notes の REEL embed ノートから pending を再構築（他ユーザー／他セッションの変更を取り込む）。 */
     if(c){try{reelHydratePending(c)}catch(_){}}
@@ -12796,7 +12814,11 @@ function openReel(){
     const dt=rvData();RV.FPS=(c&&c.fps)||(dt&&dt.v.fps)||24;fpsS.value=String(RV.FPS);
     buildLayerPanel();reelNotes();updUnsent();updReelHeaderInfo();/* updReelStatus は updReelHeaderInfo が末尾で呼ぶ */
     if(!c){hideBridge();activate(idleVid);reelRender();return}
-    const target=getVid(c.url); /* キャッシュ済みなら即・デコード済みで先頭待機 */
+    /* ファストスワップ済みの場合は総フレーム数と anno の再フィットだけ更新して終了（activate/play は済） */
+    if(fastSwapped){
+      RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));fitAnno();RV.last=-1;
+      preloadNext();reelRender();return;
+    }
     if(target===video){
       /* 既に表示中：目的フレーム指定があればそこへ、なければ必要なときだけ先頭へ戻す */
       hideBridge();
@@ -12810,21 +12832,12 @@ function openReel(){
       if(!isReady&&video.videoWidth>0&&video.readyState>=2){
         try{bridge.width=video.videoWidth;bridge.height=video.videoHeight;bridge.getContext('2d').drawImage(video,0,0);bridge.style.display='block';reelWin.clearTimeout(reelUI.bridgeTO);reelUI.bridgeTO=reelWin.setTimeout(hideBridge,900)}catch(_){hideBridge()}
       }else hideBridge();
-      /* キャッシュ済みのクリップに切り替えるときは、activate（opacity 差替え）よりも先に play() を呼ぶ。
-         video.play() は Promise を返す非同期処理で、実際にフレームが進み始めるまで数十 ms かかる。
-         opacity 切替後に play() すると、その待ち時間ぶん「新クリップの 0 フレーム目が静止画で見える」＝一瞬止まる。
-         swap 前に target を再生開始しておけば、opacity=1 になった瞬間には既に動いている。 */
-      if(auto&&isReady&&RV.pendSeek==null){
-        try{const p=target.play();if(p&&p.catch)p.catch(()=>{})}catch(_){}
-      }
       activate(target);
       RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));fitAnno();RV.last=-1;
       const ps=RV.pendSeek;
       if(ps!=null&&video.readyState>=1){RV.pendSeek=null;seekRTr(ps)} /* 目的フレームへ即シーク（メタデータ既知＝キャッシュ済み時） */
       else if(ps==null&&!isReady&&video.currentTime>0.02){try{video.currentTime=0}catch(_){}} /* 未キャッシュ切替のみ念のため先頭へ（キャッシュ済みは warmRest で既に 0） */
-      /* ps!=null かつ readyState<1（新規）の場合は loadedmetadata リスナが適用。
-         キャッシュ済みは既に上で先行 play 済みなので二重発行しない。 */
-      if(auto&&(!isReady||ps!=null))video.play().catch(()=>{});else if(!auto)video.pause();
+      if(auto)video.play().catch(()=>{});else video.pause();
     }
     preloadNext(); /* 次クリップを裏でキャッシュ */
     reelRender();

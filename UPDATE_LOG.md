@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.023) REEL 連続再生：旧クリップ末尾の静止時間も短縮＋新クリップの frame 0 保証
+  - `loadCur` にファストスワップ経路を追加：auto & キャッシュ済み & pendSeek 無しのときは、`reelHydratePending` / `buildLayerPanel` / `reelNotes` / `updReelHeaderInfo` 等の state 更新の前に `activate`＋`play` を先行実行。ended 発火 → 差替えまでの間、旧クリップ最終フレームが静止画で見える時間を最小化。
+  - 先行 play の直前に `target.currentTime=0` を明示（warmRest は 0 に戻すが seeked イベント経由なので保険）。frame 0 から確実に始まる。
+  - ファストスワップ済みは後段の `activate`/`play` を skip。RV.total / fitAnno のみ更新して終了。
+
 - (dev v2026.08.05.022) REEL 連続再生：カット切替時のプチ止まりを修正
   - `loadCur` のキャッシュ済みクリップ切替経路で、`activate()`（opacity 差替え）よりも先に `target.play()` を呼ぶ順序に変更。`video.play()` は Promise を返す非同期処理で、実際にフレームが進み始めるまで数十 ms かかるため、opacity 切替後に play すると「新クリップの 0 フレーム目が静止画で数十 ms 見える」＝一瞬止まる現象になっていた。
   - 未キャッシュ経路（`readyState<2`）と `RV.pendSeek!=null`（フレーム指定シーク）は従来通り activate 後に play。二重発行防止の分岐を追加。
