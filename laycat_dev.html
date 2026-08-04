@@ -3019,7 +3019,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.032';
+const APP_VERSION='2026.08.05.033';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12850,8 +12850,9 @@ function openReel(){
       reelWin.setTimeout(heavyUI,0);
       preloadNext();reelRender();return;
     }
-    /* fastSwap 不成立経路：従来通り同期で UI も更新 */
-    heavyUI();
+    /* fastSwap 不成立経路：まず動画切替を最速で終わらせ、heavyUI は defer。
+       fastSwap が readyState<2 等で発動しなかった場合も、旧クリップ最終フレームが
+       DOM 構築で数十 ms 見えるのを防ぐ。 */
     if(target===video){
       /* 既に表示中：目的フレーム指定があればそこへ、なければ必要なときだけ先頭へ戻す */
       hideBridge();
@@ -12881,6 +12882,8 @@ function openReel(){
       RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));fitAnno();RV.last=-1;
       if(auto)video.play().catch(()=>{});else video.pause();
     }
+    /* 非ファストスワップ経路でも heavyUI を defer（旧クリップ最終フレームが DOM 構築の間見える問題を防ぐ） */
+    reelWin.setTimeout(heavyUI,0);
     preloadNext(); /* 次クリップを裏でキャッシュ */
     reelRender();
   }

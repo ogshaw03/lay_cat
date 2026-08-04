@@ -14,6 +14,10 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.033) REEL：非ファストスワップ経路でも heavyUI を defer し前クリップ最終フレーム静止を除去
+  - fastSwap の条件（`target.readyState>=2` かつ `RV.pendSeek==null` かつ `auto`）を満たさない経路に落ちると heavyUI（`buildLayerPanel`/`reelNotes`/`updUnsent`/`updReelHeaderInfo`）が同期実行され、旧クリップ最終フレームが数十 ms 見えたまま止まる原因になっていた。
+  - 非ファストスワップ経路（`target===video` / 非同一 target で priming 未完了）でも activate 後に `reelWin.setTimeout(heavyUI, 0)` で defer するよう変更。動画切替クリティカルパスから DOM 構築を排除。
+
 - (dev v2026.08.05.032) REEL：スクラブで別クリップに戻して再生したときのカクつき対策
   - `loadCur` 非ファストスワップ経路（`target !== video`）で、activate の**前に** target を `pause()` ＋ pendSeek 事前反映するよう変更。
   - 原因：`preloadNext` の priming で target が muted 再生中のとき、activate が opacity=1＋unmute するので一瞬 target が意図せず 0F から再生される（音がプツっと鳴る／フレームがフラッシュする）。さらに pendSeek を activate 後に seek すると「priming 位置 → pendSeek」の余計な描画が挟まる。
