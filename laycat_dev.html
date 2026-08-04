@@ -3019,7 +3019,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.031';
+const APP_VERSION='2026.08.05.032';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12865,11 +12865,20 @@ function openReel(){
       if(!isReady&&video.videoWidth>0&&video.readyState>=2){
         try{bridge.width=video.videoWidth;bridge.height=video.videoHeight;bridge.getContext('2d').drawImage(video,0,0);bridge.style.display='block';reelWin.clearTimeout(reelUI.bridgeTO);reelUI.bridgeTO=reelWin.setTimeout(hideBridge,900)}catch(_){hideBridge()}
       }else hideBridge();
+      /* activate 前に target を pause＋pendSeek 事前反映：
+         - priming 中の video に activate すると opacity=1＋unmute で意図せず一瞬再生される
+         - pendSeek を activate 後に seek すると「priming 位置 → pendSeek」の余計なフラッシュが見える
+         → 先に停めて先に seek しておくことで、opacity 差替え瞬間に既に目的フレームで停止済み。 */
+      try{target.pause()}catch(_){}
+      const ps=RV.pendSeek;
+      if(ps!=null&&target.readyState>=1){
+        try{target.currentTime=ps/(RV.FPS||24)+0.0001}catch(_){}
+        RV.pendSeek=null;
+      }else if(ps==null&&!isReady&&target.currentTime>0.02){
+        try{target.currentTime=0}catch(_){}
+      }
       activate(target);
       RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));fitAnno();RV.last=-1;
-      const ps=RV.pendSeek;
-      if(ps!=null&&video.readyState>=1){RV.pendSeek=null;seekRTr(ps)} /* 目的フレームへ即シーク（メタデータ既知＝キャッシュ済み時） */
-      else if(ps==null&&!isReady&&video.currentTime>0.02){try{video.currentTime=0}catch(_){}} /* 未キャッシュ切替のみ念のため先頭へ（キャッシュ済みは warmRest で既に 0） */
       if(auto)video.play().catch(()=>{});else video.pause();
     }
     preloadNext(); /* 次クリップを裏でキャッシュ */

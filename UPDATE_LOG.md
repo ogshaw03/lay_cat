@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.032) REEL：スクラブで別クリップに戻して再生したときのカクつき対策
+  - `loadCur` 非ファストスワップ経路（`target !== video`）で、activate の**前に** target を `pause()` ＋ pendSeek 事前反映するよう変更。
+  - 原因：`preloadNext` の priming で target が muted 再生中のとき、activate が opacity=1＋unmute するので一瞬 target が意図せず 0F から再生される（音がプツっと鳴る／フレームがフラッシュする）。さらに pendSeek を activate 後に seek すると「priming 位置 → pendSeek」の余計な描画が挟まる。
+  - 対策：opacity 差替え前に target を止め、pendSeek がある場合は同期で `target.currentTime` に反映しておく。activate の瞬間に既に目的フレームで静止している状態にしてから可視化。
+  - `seekRTr` は使わず直接 `currentTime` 代入（初期位置の establish には十分、RV.busy/seekF は活用不要）。
+
 - (dev v2026.08.05.031) REEL 連続再生：ループ 2 周目のカクつき対策（先頭クリップも re-priming）
   - `preloadNext` の対象を「cur+1」から「cur+1 or (loop 末尾なら先頭)」に拡張。ループ再生時、末尾クリップの preloadNext が発火する時点で先頭クリップも同時に再 priming される → 2 周目のカクつきが解消。
   - priming の判定を「1 回限り」から「`_primed && currentTime<0.05` で skip、末尾まで再生し切っていれば再 priming」に変更。前回再生で末尾に到達している場合は kick 前に `currentTime=0` に戻して playing 発火を早める。
