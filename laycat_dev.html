@@ -3010,7 +3010,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.005';
+const APP_VERSION='2026.08.05.006';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10758,7 +10758,7 @@ function _buildReelFloat(){
   const L=Math.max(20,Math.floor((window.innerWidth-W)/2)),T=Math.max(20,Math.floor((window.innerHeight-H)/2));
   shell.style.cssText='position:fixed;left:'+L+'px;top:'+T+'px;width:'+W+'px;height:'+H+'px;background:#0d0d0f;border:1px solid #3a3a42;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.6);z-index:9999;display:flex;flex-direction:column;min-width:640px;min-height:420px;overflow:hidden';
   const tbar=document.createElement('div');
-  tbar.style.cssText='display:flex;align-items:center;height:26px;background:#1c1c1f;border-bottom:1px solid #2a2a2f;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1;padding:0 10px;cursor:move;flex-shrink:0;user-select:none';
+  tbar.style.cssText='display:flex;align-items:center;height:26px;background:#1c1c1f;border-bottom:1px solid #2a2a2f;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1;padding:0 10px;cursor:default;flex-shrink:0;user-select:none';
   const tttl=document.createElement('div');tttl.textContent='REEL — LayCAT';tttl.style.cssText='flex:1;font-size:11px;color:#9a9aaa;letter-spacing:.4px;font-family:system-ui,"Noto Sans JP",sans-serif';
   const cbtn=document.createElement('button');cbtn.textContent='✕';cbtn.title='閉じる';cbtn.style.cssText='background:none;border:none;color:#9a9aaa;font-size:14px;cursor:pointer;padding:0 8px;line-height:1;font-family:inherit';
   tbar.appendChild(tttl);tbar.appendChild(cbtn);shell.appendChild(tbar);
@@ -10780,17 +10780,24 @@ function _buildReelFloat(){
   document.body.appendChild(shell);
   /* ドラッグ移動＋辺リサイズ */
   let drag=null,rz=null;
-  const startDragMove=cur=>{ovl.style.display='block';ovl.style.cursor=cur||'move';shell.style.zIndex='9999'};
+  const startDragMove=cur=>{ovl.style.display='block';ovl.style.cursor=cur||'default';shell.style.zIndex='9999'};
   const endDrag=()=>{ovl.style.display='none';drag=null;rz=null};
-  tbar.addEventListener('mousedown',e=>{if(e.target===cbtn)return;drag={dx:e.clientX-shell.offsetLeft,dy:e.clientY-shell.offsetTop};startDragMove('move');e.preventDefault()});
-  /* ダブルクリックで全画面 ⇄ 復元 */
-  let savedGeom=null;
+  /* ダブルクリックで全画面 ⇄ 復元。mousedown ベースで手動判定（dblclick イベントは
+     drag セットアップ + preventDefault の影響で発火が不安定なため） */
+  let savedGeom=null,lastTbarDown=0;
   const toggleMax=()=>{
     if(savedGeom){shell.style.left=savedGeom.l+'px';shell.style.top=savedGeom.t+'px';shell.style.width=savedGeom.w+'px';shell.style.height=savedGeom.h+'px';savedGeom=null}
     else{savedGeom={l:shell.offsetLeft,t:shell.offsetTop,w:shell.offsetWidth,h:shell.offsetHeight};shell.style.left='0px';shell.style.top='0px';shell.style.width=window.innerWidth+'px';shell.style.height=window.innerHeight+'px'}
     try{ifr.contentWindow.dispatchEvent(new Event('resize'))}catch(_){}
   };
-  tbar.addEventListener('dblclick',e=>{if(e.target===cbtn)return;toggleMax()});
+  tbar.addEventListener('mousedown',e=>{
+    if(e.target===cbtn)return;
+    const now=Date.now();
+    if(now-lastTbarDown<380){toggleMax();lastTbarDown=0;drag=null;endDrag();e.preventDefault();return}
+    lastTbarDown=now;
+    drag={dx:e.clientX-shell.offsetLeft,dy:e.clientY-shell.offsetTop};
+    startDragMove('default');e.preventDefault();
+  });
   const startRz=(dir,cur,e)=>{rz={x:e.clientX,y:e.clientY,w:shell.offsetWidth,h:shell.offsetHeight,l:shell.offsetLeft,t:shell.offsetTop,dir};startDragMove(cur);e.preventDefault()};
   rhSE.addEventListener('mousedown',e=>startRz('se','nwse-resize',e));
   rhE .addEventListener('mousedown',e=>startRz('e', 'ew-resize',  e));
