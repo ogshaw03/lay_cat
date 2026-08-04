@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.029) REEL 連続再生：重い UI 更新をファストスワップ後の次 tick に defer（対策 A / 動画優先）
+  - `loadCur` の `buildLayerPanel` / `reelNotes` / `updUnsent` / `updReelHeaderInfo` を `heavyUI()` に括りだし、fastSwap（動画差替＋play 済）成立時のみ `reelWin.setTimeout(heavyUI, 0)` で次 tick に defer。
+  - 動画切替クリティカルパスは「activate + play + RV.total/fitAnno」のみになり、DOM 構築系の数十 ms が挟まらない → 旧クリップ最終フレームの静止時間が実質消える。
+  - 描画・アノテに必須の軽い state（RV.pending / RV.hist / cta.value / RV.FPS 等）は従来通り同期実行して視覚的整合性を保つ。
+  - 割り切り：レイヤーパネル・コメント欄・ヘッダバッジ・ステータスは 1〜2 rAF（16-33 ms）遅れて反映されるが、ユーザーの明示合意あり。
+
 - (dev v2026.08.05.028) REEL 連続再生：v.025〜v.027（rvfc 対策とその後始末）を revert
   - v.025 の rvfc による activate 遅延経路が opacity=0 の video で発火しないケース／各種フラグの後始末不備で、逆に「1 つめクリップがずっと固まる」「複数クリップで飛ばされる」等の挙動不安定を招いていた。v.024（末尾プリエンプト単独）時点まで巻き戻し。
   - あわせて v.026 の preloadNext priming（decoder 温め）と ended 二重発火修正、v.027 の単一クリップ／再アクティブ freeze 対策も revert。全て v.025 の rvfc 経路と絡んでいたため。

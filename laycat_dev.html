@@ -3019,7 +3019,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.028';
+const APP_VERSION='2026.08.05.029';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12800,8 +12800,7 @@ function openReel(){
         fastSwapped=true;
       }
     }
-    /* クリップ切替：未送信アノテはクリップごとに保持（跨いでも消えない）。
-       さらに v.review.notes の REEL embed ノートから pending を再構築（他ユーザー／他セッションの変更を取り込む）。 */
+    /* --- 描画・アノテに必須の軽い state のみ同期で更新（動画切替をブロックしない範囲） --- */
     if(c){try{reelHydratePending(c)}catch(_){}}
     RV.pending=(c&&(c.pending||(c.pending=[])))||[];
     RV.stroke=null;RV.last=-1;RV.layerCount=1;
@@ -12812,13 +12811,22 @@ function openReel(){
     cta.value=(c&&c.commentDraft)||''; /* コメント下書きはカットごとに保持 */
     resetRZoom(); /* クリップ切替時はズーム/トラックをリセット */
     const dt=rvData();RV.FPS=(c&&c.fps)||(dt&&dt.v.fps)||24;fpsS.value=String(RV.FPS);
-    buildLayerPanel();reelNotes();updUnsent();updReelHeaderInfo();/* updReelStatus は updReelHeaderInfo が末尾で呼ぶ */
-    if(!c){hideBridge();activate(idleVid);reelRender();return}
-    /* ファストスワップ済みの場合は総フレーム数と anno の再フィットだけ更新して終了（activate/play は済） */
+    /* --- 重い DOM 更新は関数化して、fastSwap 時は setTimeout(0) で defer --- */
+    const heavyUI=()=>{
+      try{buildLayerPanel()}catch(_){}
+      try{reelNotes()}catch(_){}
+      try{updUnsent()}catch(_){}
+      try{updReelHeaderInfo()}catch(_){} /* updReelStatus は updReelHeaderInfo が末尾で呼ぶ */
+    };
+    if(!c){hideBridge();activate(idleVid);heavyUI();reelRender();return}
+    /* ファストスワップ済み：動画は差替え済 → 重い UI 更新は次の tick へ defer（映像切替が UI 構築で遅延しない） */
     if(fastSwapped){
       RV.total=Math.max(1,Math.round((video.duration||0)*RV.FPS));fitAnno();RV.last=-1;
+      reelWin.setTimeout(heavyUI,0);
       preloadNext();reelRender();return;
     }
+    /* fastSwap 不成立経路：従来通り同期で UI も更新 */
+    heavyUI();
     if(target===video){
       /* 既に表示中：目的フレーム指定があればそこへ、なければ必要なときだけ先頭へ戻す */
       hideBridge();
