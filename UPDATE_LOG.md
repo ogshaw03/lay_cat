@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.07.29.076) 進捗タブ：ショット別内訳のショット列にサムネを表示
+  - `pmShotBreakdown` の未選択時デフォルト表（`pm-stbl`）の「ショット」列に、ショットタブの縦並び（`.shot-row-th` 52×29）と同サイズのサムネを追加。
+  - サムネは `ps.latest.v.thumb` を `img.dataset.ref` に載せて `resolveThumbs` で解決（他画面と同じ経路）。動画未アップロードのショットは同サイズのプレースホルダで枠揃え。
+  - CSS は `pm-stbl` スコープに `.sn-cell/.sn-th/.sn-ph` を新設（`.shot-row-th` は共有せず独立、他画面への波及なし）。
+
 - (dev v2026.07.29.075) 進捗タブ：工程／ステータスのタブ切替を廃止し 2 カラム並置に
   - `renderProjProgress` から `state.pmTab` 切替 UI（`pm-tabs`）を撤去。左カラム＝工程、右カラム＝ステータスを 1 ページに常時表示する `pm-cols` グリッドを新設（`grid-template-columns:1fr 1fr`、工程なしプロジェクトは `.single` で 1 カラムのみ）。
   - 複数エピソード（`donutMode==='all'`）時は、各カラム内でエピソードごとの円グラフカードを縦並び（`pm-col-body` の `flex-direction:column`）。
