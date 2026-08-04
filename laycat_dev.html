@@ -3010,7 +3010,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.014';
+const APP_VERSION='2026.08.05.015';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8699,6 +8699,8 @@ function openReview(nodeId,versionId,opts){
   durSel.title='アノテーションを表示し続けるフレーム数';
   const ghostBtn=el('button','btn btn-ghost btn-sm tool','ゴースト');ghostBtn.title='前後フレームのアノテーションを半透明表示';
   const eyeBtn=el('button','btn btn-ghost btn-sm tool active','👁');eyeBtn.title='アノテーションの表示/非表示';
+  /* 👁 アイコンだけ大きく（ボタンサイズは line-height:1 で据え置き） */
+  eyeBtn.style.fontSize='17px';eyeBtn.style.lineHeight='1';
   const traceBtn=el('button','btn btn-ghost btn-sm','トレペ 0%');traceBtn.title='白レイヤー（トラッキングペーパー）の濃さを25%ずつ切替';
   const ziBtn=el('button','btn btn-ghost btn-sm','🔍+');ziBtn.title='ズームイン（ホイールでも可）';
   const zoBtn=el('button','btn btn-ghost btn-sm','🔍−');zoBtn.title='ズームアウト';
@@ -11219,6 +11221,8 @@ function openReel(){
   const durS=d.createElement('select');[[1,'表示 1F'],[2,'表示 2F'],[3,'表示 3F'],[5,'表示 5F'],[10,'表示 10F'],[9999,'持続']].forEach(([v2,l])=>opt(durS,l,v2));
   const ghostB=mkB('ゴースト','前後フレームのアノテーションを半透明表示');
   const eyeB=mkB('👁','アノテーション表示/非表示');eyeB.classList.add('on');
+  /* 👁 アイコンだけ大きく（アノテ窓と揃える） */
+  eyeB.style.fontSize='17px';eyeB.style.lineHeight='1';
   const traceB=mkB('トレペ 0%','白レイヤー（トラッキングペーパー）の濃さを25%ずつ切替');
   const undoB=mkB('↩','元に戻す（Ctrl+Z）'),redoB=mkB('↪','やり直し（Ctrl+Y）'),clrB=mkB('クリア');
   const layB=mkB('▤ レイヤー','レイヤーバーの表示/非表示（ドリル）'); /* 既定は非表示 */

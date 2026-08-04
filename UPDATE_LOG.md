@@ -14,6 +14,9 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.015) アノテ窓／REEL：👁 ボタンのアイコンを大きく（ボタンサイズは据え置き）
+  - `eyeBtn`（アノテ窓・line 8701）と `eyeB`（REEL・line 11221）に `fontSize:17px; lineHeight:1` を追加。`line-height:1` にすることでボタン高が padding*2 + fontSize に収まり、既定 (padding+fontSize*1.5) と同程度になる → ボタンサイズは実質据え置き。
+
 - (dev v2026.08.05.014) REEL：新規（Ctrl+N）でコメント欄／アノテ描画／タイムライン装飾もリセット
   - `doNew` に `drawAnno / drawFTL / reelNotes` の呼び出しを追加。旧リールのコメントや描画が残る問題を解消。
   - `reelNotes` はクリップ未選択時「クリップ未選択」を出す既存分岐でリセット動作が完結する。
