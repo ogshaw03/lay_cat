@@ -3011,7 +3011,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.07.29.090';
+const APP_VERSION='2026.07.29.091';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11383,9 +11383,10 @@ function openReel(){
     /* シンクスケッチ風：フレーム順ソート（frame 昇順、frame 無しは末尾） */
     const _sortByFrame=(a,b)=>(((a.frame==null?1e9:a.frame))-((b.frame==null?1e9:b.frame)))||String(a.time||'').localeCompare(String(b.time||''));
     const shown=dt.v.review.notes.filter(n=>!noteEmbedOnly(n)).slice().sort(_sortByFrame);
-    const embeds=dt.v.review.notes.filter(n=>noteEmbedOnly(n)&&!isReelSync(n)).slice().sort(_sortByFrame);
+    /* 動画埋め込み専用ノート（黄枠の「動画埋め込み」チップ）はコメント欄に出さない（ユーザー要望）。
+       描画自体は anno レイヤーに残るので運用上は影響なし。 */
     const cdrSorted=cdr.slice().sort(_sortByFrame);
-    if(!shown.length&&!cdr.length&&!embeds.length)clist.appendChild(ce(d,'div','log-empty-note','コメントはまだありません。'));
+    if(!shown.length&&!cdr.length)clist.appendChild(ce(d,'div','log-empty-note','コメントはまだありません。'));
     const refresh=async()=>{await persist();reelNotes();drawAnno();drawFTL()};
     const shot={fileRef:dt.v.file,fps:dt.v.fps||24,isVideo:true};
     for(const n of shown){
@@ -11407,7 +11408,7 @@ function openReel(){
       }
       clist.appendChild(bl);
     }
-    for(const n of embeds)clist.appendChild(reelEmbedBlock(dt.v,n));
+    /* embed ノートはコメント欄に表示しない（reelEmbedBlock は残置＝将来的な再表示・削除 UI 用に温存） */
     for(const n of cdrSorted)clist.appendChild(reelDraftBlock(cc,n));
     if(scrollEnd)clist.scrollTop=clist.scrollHeight;
     try{paintReelCurrentHighlight()}catch(_){}

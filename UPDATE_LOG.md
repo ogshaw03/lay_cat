@@ -14,6 +14,10 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.07.29.091) REEL コメント欄の「動画埋め込み」黄枠ブロックを非表示化
+  - `reelNotes` 内で `embeds`（`noteEmbedOnly` かつ `reel_emb_` 以外の noShot ノート）をコメント欄に出さないよう変更。空判定も embeds を除外。
+  - `reelEmbedBlock` 関数自体は将来的な再表示・削除 UI 用に残置（波及ゼロ）。描画レイヤーへの反映は従来通り。
+
 - (dev v2026.07.29.090) コメントタイル ハイライト：鼓動の振幅を更に 0.7 倍に
   - `atCurPulse` 35% ピークを 0.7 倍：spread 2→1.4px、purple α .18→.13、glow blur 10→7px、cyan α .34→.24。
 
