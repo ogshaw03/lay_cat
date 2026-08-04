@@ -14,6 +14,9 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.010) REEL フローティング窓：枠線を細く＋外周グローを撤去
+  - shell の border を 2px → 1px、box-shadow から cyan/purple グロー 2 段を撤去（暗い落ち影のみ残す）。控えめな主張に。
+
 - (dev v2026.08.05.009) REEL フローティング窓：外枠を水色→紫のグラデ＋外周グロー強化
   - shell の `border` を `1px solid #3a3a42` から `2px solid transparent + border-image:linear-gradient(135deg,#5cc7ef→#7a5cff) 1` に。`--edge-grad` と統一。
   - box-shadow に cyan/purple のグローを追加してメイン画面との境界を明確化。
