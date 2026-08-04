@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.07.29.077) 進捗タブ：ショット別内訳の行クリックで右側スライド、サムネクリックでタブ追加
+  - `pmShotBreakdown` のデフォルト表（`pm-stbl`）で、行クリック→`openReviewDrawer(lv.node.id, shot.id)`（動画無しは代表工程→ショット自身にフォールバック）、サムネクリック→`go(tabId)`（タブに追加＋遷移）。
+  - ホバーハイライト：行は既存 `tr:hover td{background:var(--bg3)}` に加え `td{cursor:pointer}`。サムネは `box-shadow`＋`transform:scale(1.06)` で強調。
+  - サムネクリックは `ev.stopPropagation()` で行クリックを抑止（drawer とタブが両方開く二重発火を防止）。
+
 - (dev v2026.07.29.076) 進捗タブ：ショット別内訳のショット列にサムネを表示
   - `pmShotBreakdown` の未選択時デフォルト表（`pm-stbl`）の「ショット」列に、ショットタブの縦並び（`.shot-row-th` 52×29）と同サイズのサムネを追加。
   - サムネは `ps.latest.v.thumb` を `img.dataset.ref` に載せて `resolveThumbs` で解決（他画面と同じ経路）。動画未アップロードのショットは同サイズのプレースホルダで枠揃え。
