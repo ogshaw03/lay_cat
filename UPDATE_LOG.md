@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.024) REEL 連続再生：ended の遅延を待たずに末尾プリエンプトで切替
+  - `tick()` rAF ループ内で `video.duration - video.currentTime < 1 フレーム分` を検出したら、`ended` イベントの発火を待たずに `loadCur(true)` を先行発動。
+  - `ended` はブラウザ内部の都合で最終フレーム描画から数十 ms 遅れて発火するため、それを待っていた従来は「旧クリップ最終フレームが数十 ms 静止画で見える」現象が残っていた。プリエンプトでほぼ 0 に。
+  - `reelUI._preemptFor` に発動済みクリップ index を記録し、同一クリップで多重発動しないようにガード。範囲再生時／scrub 中は ended ハンドラの既存処理に任せる。
+  - ループ再生の末尾（最後→先頭）にも対応。
+
 - (dev v2026.08.05.023) REEL 連続再生：旧クリップ末尾の静止時間も短縮＋新クリップの frame 0 保証
   - `loadCur` にファストスワップ経路を追加：auto & キャッシュ済み & pendSeek 無しのときは、`reelHydratePending` / `buildLayerPanel` / `reelNotes` / `updReelHeaderInfo` 等の state 更新の前に `activate`＋`play` を先行実行。ended 発火 → 差替えまでの間、旧クリップ最終フレームが静止画で見える時間を最小化。
   - 先行 play の直前に `target.currentTime=0` を明示（warmRest は 0 に戻すが seeked イベント経由なので保険）。frame 0 から確実に始まる。

@@ -3019,7 +3019,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.023';
+const APP_VERSION='2026.08.05.024';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -13028,6 +13028,20 @@ function openReel(){
       if(gf>=RV.rangeOut){
         if(reelUI.loop){gSeek(RV.rangeIn);setTimeout(()=>{try{video.play().catch(()=>{})}catch(_){}},50)}
         else{video.pause();gSeek(RV.rangeOut)}
+      }
+    }
+    /* --- クリップ末尾プリエンプト ---
+       'ended' イベントはブラウザの都合で最終フレーム描画から数十 ms 遅れて発火するため、
+       ended 待ちで切替すると旧クリップの最終フレームが静止画で見えている時間ができてしまう。
+       残り時間が 1 フレーム分を切ったところで自前で次クリップへ切替を発動して、
+       ended の遅延を待たずに差替える。範囲再生時と scrub 中は ended ハンドラに任せる。 */
+    if(!video.paused&&!RV.scrub&&!_hasRangeR()&&video.duration>0&&reelUI._preemptFor!==reelUI.cur){
+      const rem=video.duration-video.currentTime;
+      const ft=1/(RV.FPS||24);
+      if(rem>=0&&rem<ft*1.1){
+        reelUI._preemptFor=reelUI.cur;
+        if(reelUI.cur<cs().length-1){reelUI.cur++;loadCur(true)}
+        else if(reelUI.loop&&cs().length>0){reelUI.cur=0;loadCur(true)}
       }
     }
     reelUI.raf=reelWin.requestAnimationFrame(tick);
