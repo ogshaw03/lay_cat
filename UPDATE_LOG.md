@@ -14,6 +14,10 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.036) REEL スクロールバーの見た目をアノテ窓（メイン）と同一に
+  - REEL は iframe 内で独自 CSS を持つため、メイン CSS の `::-webkit-scrollbar` 定義が届かず Chrome のブラウザ既定になっていた。
+  - REEL iframe 注入 CSS に `::-webkit-scrollbar{width:10px;height:10px}` と `::-webkit-scrollbar-thumb{background:#232327;border-radius:6px;border:2px solid #0d0d0f}`（メインの --bg4/--bg 相当）を追加。
+
 - (dev v2026.08.05.035) コメント欄：ハイライト移動時に自動スクロールで追従
   - `paintCurrentHighlight` / `paintReelCurrentHighlight` で、ハイライト対象が別の note に切り替わった瞬間だけ `best.scrollIntoView({block:'nearest',behavior:'smooth'})`。
   - `block:'nearest'` により見えている場合は動かない → 手動スクロール中は邪魔しない、画面外に出ているときだけ滑らかに寄せる。

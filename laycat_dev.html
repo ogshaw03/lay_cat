@@ -3019,7 +3019,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.035';
+const APP_VERSION='2026.08.05.036';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11019,6 +11019,9 @@ function openReel(){
   const d=reelWin.document;
   const st=d.createElement('style');
   st.textContent='*{margin:0;padding:0;box-sizing:border-box}body{background:#0d0d0f;color:#e8e8ec;font-family:system-ui,"Noto Sans JP",sans-serif;font-size:13px;display:flex;flex-direction:column;height:100vh;overflow:hidden}'
+   /* スクロールバー：メイン（アノテ窓）と同じ見た目に合わせる（bg4=#232327 / bg=#0d0d0f） */
+   +'::-webkit-scrollbar{width:10px;height:10px}'
+   +'::-webkit-scrollbar-thumb{background:#232327;border-radius:6px;border:2px solid #0d0d0f}'
    /* 3 カラム grid（左=タイトル・中央=バッジ群・右=操作）。両サイドの minmax(0,1fr) で対称化＋
       内容以下にも縮めるようにして、長いタイトルが中央バッジ列を押し出さないようにする。 */
    +'.hd{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:10px;padding:5px 14px;background:#141416;border-bottom:1px solid #2a2a2f}'
