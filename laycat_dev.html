@@ -3010,7 +3010,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.012';
+const APP_VERSION='2026.08.05.013';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11067,11 +11067,9 @@ function openReel(){
   const clipTitle=ce(d,'div','cliptitle');hd.appendChild(clipTitle);
   /* 中央：担当／レビュー chip・ステータス pulldown を updReelHeaderInfo が書き込む */
   const clipInfo=ce(d,'div','clipinfo');hd.appendChild(clipInfo);
-  /* 右：総尺・ループ・全クリア */
+  /* 右：総尺（ループはアノテ窓と同じく下の再生コントロール列に配置、全クリアは撤去） */
   const rightActions=ce(d,'div','hd-actions');hd.appendChild(rightActions);
   const totalLab=ce(d,'span','sub','計 0:00');rightActions.appendChild(totalLab);
-  const loopBtn=ce(d,'button','btn'+(reelUI.loop?' on':''),'ループ');rightActions.appendChild(loopBtn);
-  const clearBtn=ce(d,'button','btn','全クリア');rightActions.appendChild(clearBtn);
   d.body.appendChild(hd);
   /* 4カラム: ショットリスト | メイン | レイヤー | コメント */
   const rowEl=ce(d,'div');rowEl.style.cssText='flex:1;display:flex;min-height:0';
@@ -11113,8 +11111,10 @@ function openReel(){
   /* コントロール */
   const ctr=ce(d,'div','ctr');
   const prev=ce(d,'button','btn','⏮');const play=ce(d,'button','btn','▶ 再生');const next=ce(d,'button','btn','⏭');
+  /* ループボタンはアノテ窓と同じく prev/play/next の隣に配置 */
+  const loopBtn=ce(d,'button','btn'+(reelUI.loop?' on':''),'🔁');loopBtn.title='ループ再生';
   const time=ce(d,'span','time','0:00 / 0:00');
-  ctr.appendChild(prev);ctr.appendChild(play);ctr.appendChild(next);ctr.appendChild(time);
+  ctr.appendChild(prev);ctr.appendChild(play);ctr.appendChild(next);ctr.appendChild(loopBtn);ctr.appendChild(time);
   maincol.appendChild(ctr);
 
   /* ==== レビュー統一：アノテーション＋フレーム単位スクラブ ==== */
@@ -12614,7 +12614,7 @@ function openReel(){
   const ph=ce(d,'div','ph');track.appendChild(ph);
   tlwrap.appendChild(ruler);tlwrap.appendChild(track);
   maincol.appendChild(tlwrap);
-  Object.assign(reelUI,{d,video,empty,track,ruler,ph,play,time,totalLab,loopBtn,clearBtn,cur:0});
+  Object.assign(reelUI,{d,video,empty,track,ruler,ph,play,time,totalLab,loopBtn,cur:0});
   /* 再生ロジック */
   const cs=()=>reelUI.clips;
   const sumPrev=i=>cs().slice(0,i).reduce((a,c)=>a+(c.dur||0),0);
@@ -12728,15 +12728,6 @@ function openReel(){
   prev.onclick=()=>{if(!cs().length)return;reelUI.cur=Math.max(0,reelUI.cur-1);loadCur(true)};
   next.onclick=()=>{if(!cs().length)return;reelUI.cur=Math.min(cs().length-1,reelUI.cur+1);loadCur(true)};
   loopBtn.onclick=()=>{reelUI.loop=!reelUI.loop;loopBtn.classList.toggle('on',reelUI.loop)};
-  clearBtn.onclick=()=>{
-    if(hasUnsent()&&!reelWin.confirm('未保存の内容があります。すべてのクリップを外すと、動画側に残っている REEL 描画も削除されます。続けますか？'))return;
-    if(!reelWin.confirm('すべてのクリップを外しますか？（各動画に埋め込まれた REEL 描画も同時に削除されます）'))return;
-    /* R1 修正：clips=[] だけだと動画側の reel_emb_ が幽霊化していた。掃除してから外す。 */
-    let anyPurged=false;
-    for(const c of (reelUI.clips||[])){if(reelPurgeEmbFor(c))anyPurged=true}
-    reelUI.clips=[];reelUI.cur=0;clearPool();resetView();reelRender();updReelTitle();updUnsent();
-    if(anyPurged)scheduleReelPersist();
-  };
   /* ==== File メニュー（新規 / 開く / 保存 / 名前を付けて保存）— AE/Maya風 ==== */
   function updReelTitle(){const r=reelUI.reelId?DB.reels.find(x=>x.id===reelUI.reelId):null;reelTitle.textContent=(r?r.name:'未保存のリール')+(reelUI.clips.length?'':'（空）')}
   function closeMenu(){fileMi.classList.remove('open');fileDD.classList.remove('show');shotMi.classList.remove('open');shotDD.classList.remove('show')} /* ドロップダウンのみ閉じる */
