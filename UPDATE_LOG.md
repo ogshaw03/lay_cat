@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.030) REEL 連続再生：preloadNext を decoder priming 型に強化（対策 B）
+  - `getVid` で用意した次クリップ video に対して「muted で play → 'playing' 発火で pause」まで進めて decoder pipeline を温める。`v._primed` フラグで 1 回限りガード、muted のまま実行するため音は出ない。
+  - Chrome の VideoDecoder は初回 play 時に初期化コスト（数十 ms）を払う。priming 済みなら以降のファストスワップ時に `target.play()` が 1 vsync 以内で実描画に到達しやすくなる → 動画差替え後の frame 0 静止時間が短縮される。
+  - `readyState>=2` なら即 kick、未達なら `canplay` イベント待ち。
+
 - (dev v2026.08.05.029) REEL 連続再生：重い UI 更新をファストスワップ後の次 tick に defer（対策 A / 動画優先）
   - `loadCur` の `buildLayerPanel` / `reelNotes` / `updUnsent` / `updReelHeaderInfo` を `heavyUI()` に括りだし、fastSwap（動画差替＋play 済）成立時のみ `reelWin.setTimeout(heavyUI, 0)` で次 tick に defer。
   - 動画切替クリティカルパスは「activate + play + RV.total/fitAnno」のみになり、DOM 構築系の数十 ms が挟まらない → 旧クリップ最終フレームの静止時間が実質消える。
