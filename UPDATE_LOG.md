@@ -14,9 +14,9 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-- (dev v2026.08.05.036) REEL スクロールバーの見た目をアノテ窓（メイン）と同一に
-  - REEL は iframe 内で独自 CSS を持つため、メイン CSS の `::-webkit-scrollbar` 定義が届かず Chrome のブラウザ既定になっていた。
-  - REEL iframe 注入 CSS に `::-webkit-scrollbar{width:10px;height:10px}` と `::-webkit-scrollbar-thumb{background:#232327;border-radius:6px;border:2px solid #0d0d0f}`（メインの --bg4/--bg 相当）を追加。
+---
+
+## 反映済み beta v0.0.9（2026-08-05）
 
 - (dev v2026.08.05.035) コメント欄：ハイライト移動時に自動スクロールで追従
   - `paintCurrentHighlight` / `paintReelCurrentHighlight` で、ハイライト対象が別の note に切り替わった瞬間だけ `best.scrollIntoView({block:'nearest',behavior:'smooth'})`。
@@ -166,13 +166,6 @@
 - (dev v2026.08.05.001) REEL ポップアップの about:blank アドレスバーを非表示化
   - `window.open('','layna_reel','width=1140,height=780')` に `popup=yes,location=no,toolbar=no,menubar=no,status=no` を追加。ブラウザ chrome を省いて純粋なアプリウィンドウ表示に。
   - 挙動：`popup=yes` があると多くのブラウザ（Chromium/Firefox/Edge）で URL バーが省かれる。既に開いている REEL には次回開き直しから反映。
-
-- (dev v2026.07.29.092) ヘッダのテーマ切替ボタン（月アイコン）を撤去
-  - `#themeBtn` を header から削除。initTheme のロジックは残置（`btn` 取得が null になるだけで無害、保存済みテーマは引き続き適用される）。
-
-- (dev v2026.07.29.091) REEL コメント欄の「動画埋め込み」黄枠ブロックを非表示化
-  - `reelNotes` 内で `embeds`（`noteEmbedOnly` かつ `reel_emb_` 以外の noShot ノート）をコメント欄に出さないよう変更。空判定も embeds を除外。
-  - `reelEmbedBlock` 関数自体は将来的な再表示・削除 UI 用に残置（波及ゼロ）。描画レイヤーへの反映は従来通り。
 
 - (dev v2026.07.29.090) コメントタイル ハイライト：鼓動の振幅を更に 0.7 倍に
   - `atCurPulse` 35% ピークを 0.7 倍：spread 2→1.4px、purple α .18→.13、glow blur 10→7px、cyan α .34→.24。
@@ -1159,6 +1152,16 @@ GLB モデル差し替え／Maya 準拠カメラ／複数選択マニピュレ�
 ---
 
 ## 反映済み・パッチノート記載なし（Beta 反映済み・PATCH_NOTES.md 未記載）
+
+- **【2026-08-05 Beta v0.0.9 反映時に PATCH_NOTES.md 記載を見送り】** 以下は laycat_dev.html → laycat.html にコピー済みだが PATCH_NOTES.md には記載せず beta v0.0.9 に含めない：
+  - (dev v2026.08.05.036) REEL スクロールバーの見た目をアノテ窓（メイン）と同一に
+    - REEL は iframe 内で独自 CSS を持つため、メイン CSS の `::-webkit-scrollbar` 定義が届かず Chrome のブラウザ既定になっていた。
+    - REEL iframe 注入 CSS に `::-webkit-scrollbar{width:10px;height:10px}` と `::-webkit-scrollbar-thumb{background:#232327;border-radius:6px;border:2px solid #0d0d0f}`（メインの --bg4/--bg 相当）を追加。
+  - (dev v2026.07.29.092) ヘッダのテーマ切替ボタン（月アイコン）を撤去
+    - `#themeBtn` を header から削除。initTheme のロジックは残置（`btn` 取得が null になるだけで無害、保存済みテーマは引き続き適用される）。
+  - (dev v2026.07.29.091) REEL コメント欄の「動画埋め込み」黄枠ブロックを非表示化
+    - `reelNotes` 内で `embeds`（`noteEmbedOnly` かつ `reel_emb_` 以外の noShot ノート）をコメント欄に出さないよう変更。空判定も embeds を除外。
+    - `reelEmbedBlock` 関数自体は将来的な再表示・削除 UI 用に残置（波及ゼロ）。描画レイヤーへの反映は従来通り。
 
 - **【2026-07-28 Beta v0.0.6 再反映（バージョン据え置き）】** 以下は laycat_dev.html → laycat.html にコピー済みだが PATCH_NOTES.md には記載せず beta v0.0.6 のまま：
   - **3D エディタのプリセット UI 撤去**（dev v2026.07.28.001）：サイドバーの `<h3>プリセット</h3>` セクションと `.presetGrid` の HTML/CSS を削除。「初期ポーズ」ボタン（ヘッダ）は残置。`PRESETS` オブジェクト・`applyPreset` 関数は「初期ポーズ」用に温存。
