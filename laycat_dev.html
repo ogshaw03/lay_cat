@@ -3010,7 +3010,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.003';
+const APP_VERSION='2026.08.05.004';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10786,6 +10786,9 @@ function _buildReelFloat(){
   rhSW.addEventListener('mousedown',e=>startRz('sw','nesw-resize',e));
   rhW .addEventListener('mousedown',e=>startRz('w', 'ew-resize',  e));
   const onMove=e=>{
+    /* マウスボタンが押されていない mousemove は必ず終了させる（画面外で mouseup を取り逃した
+       ケースの保険。これが無いと「一度外に出た後、クリックしていないのに resize が続く」現象が起きる） */
+    if((drag||rz)&&(e.buttons===0)){endDrag();return}
     if(drag){shell.style.left=Math.max(0,Math.min(window.innerWidth-40,e.clientX-drag.dx))+'px';shell.style.top=Math.max(0,Math.min(window.innerHeight-40,e.clientY-drag.dy))+'px';return}
     if(rz){
       let w=rz.w,h=rz.h,l=rz.l;
@@ -10796,7 +10799,11 @@ function _buildReelFloat(){
       try{ifr.contentWindow.dispatchEvent(new Event('resize'))}catch(_){}
     }
   };
-  window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',endDrag);
+  window.addEventListener('mousemove',onMove);
+  window.addEventListener('mouseup',endDrag);
+  /* window から出た瞬間にも取り漏らし対策として発火 */
+  window.addEventListener('blur',endDrag);
+  document.addEventListener('mouseleave',endDrag);
   const onUp=endDrag;
   reelShellEl=shell;
   return {shell,ifr,cbtn,onMove,onUp};
