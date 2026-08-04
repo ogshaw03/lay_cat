@@ -14,6 +14,13 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.002) REEL を別ウィンドウからメイン内フローティング iframe に変更（試験）
+  - `window.open` ではなくメインドキュメント内の `#reelFloat` div＋iframe として起動。ブラウザ chrome（about:blank URL バー）が原理的に付かなくなる。
+  - タイトルバーをドラッグで移動、右下・右辺・下辺の 3 箇所で自由リサイズ（min 640×420、`clampReelSize` の 940×560 で resizeTo 経由の下限保持は継続）。
+  - `reelWin` は iframe.contentWindow を包む shim オブジェクトに置換。`.document/.focus/.close/.closed/.confirm/.alert/.prompt/.addEventListener/.requestAnimationFrame/.setTimeout/.clearTimeout/.outerWidth/.outerHeight/.resizeTo` を提供し、既存 REEL コードは書き換え最小で動作（28 箇所の `reelWin.` 参照はすべて shim 経由で通る）。
+  - `beforeunload/unload` は iframe 除去時に発火しないケースがあるため `shim.close()` から明示的に `dispatchEvent` して既存クリーンアップを走らせる。
+  - まだ試験実装。UX に違和感があれば revert 可能（旧 window.open 分岐は撤去済み・戻す場合は 1 コミット reverse で戻る）。
+
 - (dev v2026.08.05.001) REEL ポップアップの about:blank アドレスバーを非表示化
   - `window.open('','layna_reel','width=1140,height=780')` に `popup=yes,location=no,toolbar=no,menubar=no,status=no` を追加。ブラウザ chrome を省いて純粋なアプリウィンドウ表示に。
   - 挙動：`popup=yes` があると多くのブラウザ（Chromium/Firefox/Edge）で URL バーが省かれる。既に開いている REEL には次回開き直しから反映。

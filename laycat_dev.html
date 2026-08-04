@@ -3010,7 +3010,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.001';
+const APP_VERSION='2026.08.05.002';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10747,23 +10747,98 @@ function pgBuild(){
    REEL — シーケンスプレイヤー（別ウィンドウ）
    メインから動画を送り、タイムラインに並べて順番に再生する。
    ============================================================ */
-let reelWin=null;const reelUI={clips:[],cur:0,loop:true,raf:0,pxs:30}; /* loop 既定 ON */
+let reelWin=null,reelShellEl=null;const reelUI={clips:[],cur:0,loop:true,raf:0,pxs:30}; /* loop 既定 ON */
 function reelAlive(){return reelWin&&!reelWin.closed&&reelUI.video}
+/* REEL フローティング窓：メインドキュメント内に iframe を配置してブラウザ chrome を回避。
+   タイトルバーをドラッグで移動、右下 / 右辺 / 下辺で自由リサイズ。既存 REEL コードは
+   `reelWin` shim（下記）を介して iframe.contentWindow を使うので大きな書き換え無し。 */
+function _buildReelFloat(){
+  const shell=document.createElement('div');shell.id='reelFloat';
+  const W=1140,H=780;
+  const L=Math.max(20,Math.floor((window.innerWidth-W)/2)),T=Math.max(20,Math.floor((window.innerHeight-H)/2));
+  shell.style.cssText='position:fixed;left:'+L+'px;top:'+T+'px;width:'+W+'px;height:'+H+'px;background:#0d0d0f;border:1px solid #3a3a42;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.6);z-index:9999;display:flex;flex-direction:column;min-width:640px;min-height:420px;overflow:hidden';
+  const tbar=document.createElement('div');
+  tbar.style.cssText='display:flex;align-items:center;height:26px;background:#1c1c1f;border-bottom:1px solid #2a2a2f;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1;padding:0 10px;cursor:move;flex-shrink:0;user-select:none';
+  const tttl=document.createElement('div');tttl.textContent='REEL — LayCAT';tttl.style.cssText='flex:1;font-size:11px;color:#9a9aaa;letter-spacing:.4px;font-family:system-ui,"Noto Sans JP",sans-serif';
+  const cbtn=document.createElement('button');cbtn.textContent='✕';cbtn.title='閉じる';cbtn.style.cssText='background:none;border:none;color:#9a9aaa;font-size:14px;cursor:pointer;padding:0 8px;line-height:1;font-family:inherit';
+  tbar.appendChild(tttl);tbar.appendChild(cbtn);shell.appendChild(tbar);
+  const ifr=document.createElement('iframe');ifr.style.cssText='flex:1;border:none;background:#0d0d0f;width:100%;min-height:0;display:block';
+  shell.appendChild(ifr);
+  const mkH=(css)=>{const h=document.createElement('div');h.style.cssText='position:absolute;'+css+';z-index:2';shell.appendChild(h);return h};
+  const rhSE=mkH('right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize');
+  const rhE =mkH('right:0;top:26px;bottom:16px;width:5px;cursor:ew-resize');
+  const rhS =mkH('left:0;right:16px;bottom:0;height:5px;cursor:ns-resize');
+  document.body.appendChild(shell);
+  /* ドラッグ移動＋辺リサイズ */
+  let drag=null,rz=null;
+  tbar.addEventListener('mousedown',e=>{if(e.target===cbtn)return;drag={dx:e.clientX-shell.offsetLeft,dy:e.clientY-shell.offsetTop};shell.style.zIndex='9999';e.preventDefault()});
+  const startRz=(dir,e)=>{rz={x:e.clientX,y:e.clientY,w:shell.offsetWidth,h:shell.offsetHeight,dir};shell.style.zIndex='9999';e.preventDefault()};
+  rhSE.addEventListener('mousedown',e=>startRz('se',e));
+  rhE .addEventListener('mousedown',e=>startRz('e', e));
+  rhS .addEventListener('mousedown',e=>startRz('s', e));
+  const onMove=e=>{
+    if(drag){shell.style.left=Math.max(0,Math.min(window.innerWidth-40,e.clientX-drag.dx))+'px';shell.style.top=Math.max(0,Math.min(window.innerHeight-40,e.clientY-drag.dy))+'px';return}
+    if(rz){let w=rz.w,h=rz.h;if(rz.dir.indexOf('e')>=0)w=Math.max(640,rz.w+(e.clientX-rz.x));if(rz.dir.indexOf('s')>=0)h=Math.max(420,rz.h+(e.clientY-rz.y));shell.style.width=w+'px';shell.style.height=h+'px';try{ifr.contentWindow.dispatchEvent(new Event('resize'))}catch(_){}}
+  };
+  const onUp=()=>{drag=null;rz=null};
+  window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp);
+  reelShellEl=shell;
+  return {shell,ifr,cbtn,onMove,onUp};
+}
+/* reelWin shim：iframe.contentWindow に必要なメソッドを移譲しつつ、
+   .closed / .outerWidth/Height / .resizeTo / .focus / .close をフローティング窓向けにオーバーライド。
+   confirm/alert/prompt は親ウィンドウで開く（iframe だと urlが表示されないダイアログを出せない場合がある）。 */
+function _mkReelShim(shell,ifr,cbtn,onMove,onUp){
+  const ifw=ifr.contentWindow;
+  const ifd=ifr.contentDocument||ifw.document;
+  ifd.open();ifd.write('<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>LayCAT REEL</title></head><body></body></html>');ifd.close();
+  const shim={
+    _shell:shell,_ifw:ifw,
+    document:ifd,head:ifd.head,body:ifd.body,
+    closed:false,
+    focus(){shell.style.zIndex='9999';try{ifw.focus()}catch(_){}},
+    close(){
+      if(this.closed)return;this.closed=true;
+      try{window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp)}catch(_){}
+      try{ifw.dispatchEvent(new Event('beforeunload'))}catch(_){}
+      try{ifw.dispatchEvent(new Event('unload'))}catch(_){}
+      try{shell.remove()}catch(_){}
+      reelShellEl=null;reelUI.video=null;reelWin=null;
+    },
+    confirm:m=>window.confirm(m),
+    alert:m=>window.alert(m),
+    prompt:(m,d)=>window.prompt(m,d),
+    addEventListener:(...a)=>ifw.addEventListener(...a),
+    removeEventListener:(...a)=>ifw.removeEventListener(...a),
+    dispatchEvent:e=>ifw.dispatchEvent(e),
+    requestAnimationFrame:fn=>ifw.requestAnimationFrame(fn),
+    cancelAnimationFrame:id=>ifw.cancelAnimationFrame(id),
+    setTimeout:(fn,ms)=>ifw.setTimeout(fn,ms),
+    clearTimeout:id=>ifw.clearTimeout(id),
+    setInterval:(fn,ms)=>ifw.setInterval(fn,ms),
+    clearInterval:id=>ifw.clearInterval(id),
+    get outerWidth(){return shell.offsetWidth},
+    get outerHeight(){return shell.offsetHeight},
+    get innerWidth(){return ifw.innerWidth},
+    get innerHeight(){return ifw.innerHeight},
+    resizeTo(w,h){shell.style.width=w+'px';shell.style.height=h+'px';try{ifw.dispatchEvent(new Event('resize'))}catch(_){}}
+  };
+  cbtn.onclick=()=>shim.close();
+  return shim;
+}
 function ce(d,t,c,x){const e=d.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
 function fmtSec(s){s=Math.max(0,s||0);const m=Math.floor(s/60);return m+':'+String(Math.floor(s%60)).padStart(2,'0')}
 
 function openReel(){
   if(reelAlive()){reelWin.focus();return}
-  /* location=no / toolbar=no / menubar=no でアドレスバー等を非表示（ブラウザによっては
-     いずれか未指定でも popup 判定されると chrome が省かれる。念のため全指定） */
-  reelWin=window.open('','layna_reel','popup=yes,width=1140,height=780,location=no,toolbar=no,menubar=no,status=no');
-  if(!reelWin){toast('ポップアップがブロックされました。許可してください');return}
   /* 閉じて開き直したときは常に「空の新規リール」から（前回の作業内容は引き継がない） */
   reelUI.clips=[];reelUI.cur=0;reelUI.reelId=null;
   /* REEL は1プロジェクト内に限定：開いた時点のプロジェクトに束縛する（データはプロジェクトごとに完全分離） */
   reelUI.projectId=(curRoot()&&curRoot().id)||null;
+  /* 別ウィンドウではなくメインドキュメント内のフローティング iframe として起動（about:blank アドレスバー回避） */
+  const parts=_buildReelFloat();
+  reelWin=_mkReelShim(parts.shell,parts.ifr,parts.cbtn,parts.onMove,parts.onUp);
   const d=reelWin.document;
-  d.open();d.write('<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>LayCAT REEL</title></head><body></body></html>');d.close();
   const st=d.createElement('style');
   st.textContent='*{margin:0;padding:0;box-sizing:border-box}body{background:#0d0d0f;color:#e8e8ec;font-family:system-ui,"Noto Sans JP",sans-serif;font-size:13px;display:flex;flex-direction:column;height:100vh;overflow:hidden}'
    /* 3 カラム grid（左=タイトル・中央=バッジ群・右=操作）。両サイドの minmax(0,1fr) で対称化＋
