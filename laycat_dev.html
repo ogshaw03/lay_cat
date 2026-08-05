@@ -3023,7 +3023,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.038';
+const APP_VERSION='2026.08.05.039';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11699,6 +11699,19 @@ function openReel(){
     const shot={fileRef:dt.v.file,fps:dt.v.fps||24,isVideo:true};
     for(const n of shown){
       const bl=noteBlock(dt.v,n,{refresh,onSeek:f=>{video.pause();seekRTr(f)},shot});
+      /* noteBlock はメイン document の canvas.note-shot を作るが、iframe に adopt すると
+         backing buffer への描画が反映されないケースがある（Chrome の adoption 挙動）。
+         iframe-doc の canvas に差し替えて再度サムネ生成させる。 */
+      if(n.drawing&&n.drawing.length&&!n.noShot){
+        const oldCv=bl.querySelector('canvas.note-shot');
+        if(oldCv){
+          const ifCv=d.createElement('canvas');ifCv.className='note-shot';
+          ifCv.width=16;ifCv.height=9;ifCv.title=oldCv.title||'';
+          if(oldCv.onclick)ifCv.onclick=oldCv.onclick;
+          oldCv.parentNode.replaceChild(ifCv,oldCv);
+          try{annotShotInto(ifCv,shot,n)}catch(_){}
+        }
+      }
       /* 削除ボタンは親 window の button なので REEL ポップアップ内では click / confirm が届かない。
          reelWin の document で作り直し、confirm 抜きでその場で削除する（未保存扱いなので確認不要）。 */
       const oldDel=bl.querySelector('.na[title="削除"]');

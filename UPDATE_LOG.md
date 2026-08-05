@@ -14,6 +14,10 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.039) REEL：送信ノートのサムネ canvas を iframe-doc で作り直して描画反映
+  - v.038 で `noShot=true` を外したが `noteBlock` の canvas はメイン document で作られ iframe に adopt される。Chrome の adoption 挙動で backing buffer への描画（`annotShotInto` の非同期 drawImage）が反映されずサムネが空のままだった。
+  - `reelNotes` で noteBlock 呼出後に、`.note-shot` を iframe-doc の canvas に差し替えて `annotShotInto(ifCv, shot, n)` を再発行。iframe 内で正しくサムネが描画される。
+
 - (dev v2026.08.05.038) REEL：描画済フレームで送信ボタンを押したら「サムネ付きコメント」として送信されるように
   - `reelSendCur` の「描画のみ送信＝`noShot=true` でコメント欄に出さない」旧仕様を撤去。ユーザーがスライダを描画済フレームに合わせて送信ボタンを押した意図は「サムネ付きで送りたい」と解釈する方が自然。
   - 送信ノートは通常のコメントとして扱われ、`noteBlock` の `annotShotInto` で動画フレーム＋描画を焼き込んだサムネがコメント欄に生成される。
