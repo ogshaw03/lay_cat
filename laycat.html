@@ -264,6 +264,10 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .pm-stab{background:var(--bg3);border:1px solid var(--border);color:var(--text3);border-radius:7px;padding:7px 15px;font-size:13px;font-weight:600;cursor:pointer}
 .pm-stab:hover{color:var(--text)}
 .pm-stab.on{background:rgba(96,165,255,.16);border-color:var(--edge);color:var(--text)}
+/* チェック待ち：作業担当者フィルタバー（reviewer タブの下にコンパクトに置く） */
+.chk-asg-bar{display:flex;align-items:center;gap:8px;margin:2px 0 14px;padding:0 2px;font-size:11px;color:var(--text3)}
+.chk-asg-bar label{margin:0}
+.chk-asg-bar select{background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;max-width:200px}
 /* チェック待ち：チェック担当者タブ（本体のタブUI＝アンダーライン/モノクロに統一） */
 .chk-tabs{display:flex;flex-wrap:wrap;gap:2px;align-items:flex-end;margin:2px 0 18px;border-bottom:1px solid var(--border)}
 .chk-tab{display:inline-flex;align-items:center;gap:7px;background:none;border:none;border-bottom:2px solid transparent;color:var(--text3);font-family:var(--font-head);font-size:14px;font-weight:700;letter-spacing:.4px;padding:8px 14px;cursor:pointer;margin-bottom:-1px}
@@ -4833,12 +4837,19 @@ function renderProjCheck(main,root){
   const paintAddAllBtn=()=>{
     addAllHolder.innerHTML='';
     const cur=state.checkReviewer;
-    const bucketPend=pendingNow.filter(n=>{
+    let bucketPend=pendingNow.filter(n=>{
       if(cur===CHK_NONE)return !n.reviewer;
       return n.reviewer&&String(n.reviewer).toLowerCase()===String(cur||'').toLowerCase();
     });
+    /* 作業担当者絞り込み（設定時のみ）：REEL/タブ追加も絞り込み後を対象にする */
+    if(state.checkAssignee){
+      const a=state.checkAssignee;
+      bucketPend=bucketPend.filter(n=>a===CHK_NONE?!n.assignee:(n.assignee&&String(n.assignee).toLowerCase()===String(a).toLowerCase()));
+    }
     if(!bucketPend.length)return;
-    const label=(cur===CHK_NONE)?'未割り当て':(memberById(root,cur)?.name||cur);
+    const revLabel=(cur===CHK_NONE)?'未割り当て':(memberById(root,cur)?.name||cur);
+    const asgLabel=state.checkAssignee?(state.checkAssignee===CHK_NONE?'（作業担当なし）':('（作業: '+(memberById(root,state.checkAssignee)?.name||state.checkAssignee)+'）')):'';
+    const label=revLabel+asgLabel;
     const addAll=el('button','btn btn-ghost btn-sm','⧉ まとめてタブに追加 ('+bucketPend.length+')');
     addAll.title='現在表示中の担当者「'+label+'」のチェック待ちカットだけをタスクタブに追加します';
     addAll.onclick=()=>{
@@ -4889,13 +4900,47 @@ function renderProjCheck(main,root){
     if(m&&m.color){const dot=el('span','chk-dot');dot.style.background=m.color;b.appendChild(dot)}
     b.appendChild(el('span','chk-nm',isNone?'未割り当て':(m?(m.name||m.id):key)));
     b.appendChild(el('span','chk-cnt',String(cnt)));
-    b.onclick=()=>{if(String(state.checkReviewer).toLowerCase()!==String(key).toLowerCase()){state.checkReviewer=key;renderBody();resolveThumbs()}};
+    b.onclick=()=>{if(String(state.checkReviewer).toLowerCase()!==String(key).toLowerCase()){state.checkReviewer=key;state.checkAssignee=null;renderBody();resolveThumbs()}};
     tabs.appendChild(b);
   }
   main.appendChild(tabs);
   /* 選択バケットのチェック待ちカット（ショット名→工程名でソート） */
   const selNone=state.checkReviewer===CHK_NONE;
-  const hits=all.filter(n=>selNone?!n.reviewer:(n.reviewer&&String(n.reviewer).toLowerCase()===String(state.checkReviewer).toLowerCase()));
+  const revHits=all.filter(n=>selNone?!n.reviewer:(n.reviewer&&String(n.reviewer).toLowerCase()===String(state.checkReviewer).toLowerCase()));
+  /* 作業担当者フィルタ：チェック担当者選択後のカット群から作業担当者ごとの絞り込み用選択肢を作る。
+     「作業担当者ごとに REEL を作りたい」ユースケース用（例：レビュアー A のカット群を、作業者 B の分だけ REEL に送る）。 */
+  const asgKeys=[];const asgSeen=new Set();
+  for(const m of projectMembers(root)){const k=String(m.id).toLowerCase();if(!asgSeen.has(k)&&revHits.some(n=>n.assignee&&String(n.assignee).toLowerCase()===k)){asgSeen.add(k);asgKeys.push(m.id)}}
+  for(const n of revHits){if(!n.assignee)continue;const k=String(n.assignee).toLowerCase();if(!asgSeen.has(k)){asgSeen.add(k);asgKeys.push(n.assignee)}}
+  const hasNoAsg=revHits.some(n=>!n.assignee);
+  if(hasNoAsg)asgKeys.push(CHK_NONE);
+  /* 現在の checkAssignee がこの reviewer バケットに存在しない場合はリセット */
+  if(state.checkAssignee&&state.checkAssignee!==CHK_NONE){const k=String(state.checkAssignee).toLowerCase();if(!asgKeys.some(x=>String(x).toLowerCase()===k))state.checkAssignee=null}
+  else if(state.checkAssignee===CHK_NONE&&!hasNoAsg)state.checkAssignee=null;
+  /* 選択肢が 1 つ以下なら絞り込み UI を出さない（意味ないので） */
+  if(asgKeys.length>=1){
+    const bar=el('div','chk-asg-bar');
+    bar.appendChild(el('label',null,'作業担当者：'));
+    const sel=el('select','chk-asg-sel');
+    const o0=el('option',null,'すべて');o0.value='';sel.appendChild(o0);
+    for(const k of asgKeys){
+      const isNone=k===CHK_NONE;const m=isNone?null:memberById(root,k);
+      const o=el('option',null,isNone?'未割り当て':(m?(m.name||m.id):k));
+      o.value=k;sel.appendChild(o);
+    }
+    sel.value=state.checkAssignee||'';
+    sel.onchange=()=>{state.checkAssignee=sel.value||null;renderBody();resolveThumbs()};
+    bar.appendChild(sel);
+    main.appendChild(bar);
+    /* 絞り込み UI が付いたので addAll ボタン群も作業担当者を反映して再描画 */
+    paintAddAllBtn();
+  }
+  /* 実際の表示対象：作業担当者フィルタも適用 */
+  let hits=revHits;
+  if(state.checkAssignee){
+    const a=state.checkAssignee;
+    hits=hits.filter(n=>a===CHK_NONE?!n.assignee:(n.assignee&&String(n.assignee).toLowerCase()===String(a).toLowerCase()));
+  }
   hits.sort((a,b)=>{const sa=shotOf(a)||'',sb=shotOf(b)||'';return sa<sb?-1:sa>sb?1:(a.name<b.name?-1:a.name>b.name?1:0)});
   const meSel=selNone?null:memberById(root,state.checkReviewer);
   const pendCnt=hits.filter(isPend).length;const doneCnt=hits.length-pendCnt;
@@ -11654,6 +11699,19 @@ function openReel(){
     const shot={fileRef:dt.v.file,fps:dt.v.fps||24,isVideo:true};
     for(const n of shown){
       const bl=noteBlock(dt.v,n,{refresh,onSeek:f=>{video.pause();seekRTr(f)},shot});
+      /* noteBlock はメイン document の canvas.note-shot を作るが、iframe に adopt すると
+         backing buffer への描画が反映されないケースがある（Chrome の adoption 挙動）。
+         iframe-doc の canvas に差し替えて再度サムネ生成させる。 */
+      if(n.drawing&&n.drawing.length&&!n.noShot){
+        const oldCv=bl.querySelector('canvas.note-shot');
+        if(oldCv){
+          const ifCv=d.createElement('canvas');ifCv.className='note-shot';
+          ifCv.width=16;ifCv.height=9;ifCv.title=oldCv.title||'';
+          if(oldCv.onclick)ifCv.onclick=oldCv.onclick;
+          oldCv.parentNode.replaceChild(ifCv,oldCv);
+          try{annotShotInto(ifCv,shot,n)}catch(_){}
+        }
+      }
       /* 削除ボタンは親 window の button なので REEL ポップアップ内では click / confirm が届かない。
          reelWin の document で作り直し、confirm 抜きでその場で削除する（未保存扱いなので確認不要）。 */
       const oldDel=bl.querySelector('.na[title="削除"]');
@@ -12647,7 +12705,10 @@ function openReel(){
     if(!frames){reelSyncEmbedAll(c)}
     else{const set=frames instanceof Set?frames:new Set(frames);for(const fr of set)reelSyncEmbedFrame(c,fr)}
     scheduleReelPersist();
-    try{drawAnno();drawFTL();reelNotes()}catch(_){}
+    /* コメント欄再構築（reelNotes）は撤去：`reel_emb_` ノートは常にコメント欄に出さない設計なので、
+       描画編集ごとに `clist.innerHTML=''` → 全 note append し直しが走ってチカチカする原因になっていた。
+       nt_ ノートを新規生成する `reelSendCur` は自身で reelNotes(true) を呼ぶので影響なし。 */
+    try{drawAnno();drawFTL()}catch(_){}
   }
   /* 旧 reelEmbedPending：beforeunload 救済用にシンプル化（全同期＋即 persist）。以前の noShot=true 汎用生成は不要に。 */
   function reelEmbedPending(c){
@@ -12665,9 +12726,31 @@ function openReel(){
     c.commentDraft=cta.value;c._mentions=(cta._mentions||[]).slice();
     const cf=dispF();const pdur=parseInt(durS.value)||1;
     const txt=(c.commentDraft||'').trim();
-    const inWin=p=>p.f!=null&&cf>=p.f&&cf<p.f+pdur;
+    /* inWin：描画時に焼き付けた `p.dur` を優先して判定する。以前は `pdur=durS.value` のみで
+       判定していたため、描画後に durS を狭めると 1F ズレで cur=[] になり drawing 抜けの
+       newN（サムネなし）ができる不整合があった。reelSyncEmbedFrame は p.dur を尊重するので
+       送信側もそれに合わせる。 */
+    const inWin=p=>p.f!=null&&cf>=p.f&&cf<p.f+(parseInt(p.dur)||pdur);
     const cur=(c.pending||[]).filter(inWin);
-    if(!txt&&!cur.length)return; /* 送るものが無い */
+    if(!txt&&!cur.length){
+      /* silent early return 廃止：ユーザーに何が起きたか伝える。3 パターンに分岐：
+         (a) 現在フレーム上に「既に送信済みの描画付きノート」がある → 「既に送信済」と説明
+         (b) pending に描画はあるが frame ズレ → 最寄りフレームを案内
+         (c) 完全に空 → その旨 */
+      const vv=vOf(c);
+      const isReelEmb=n=>n&&n.id&&n.id.indexOf('reel_emb_')===0;
+      const sentHere=vv&&Array.isArray(vv.review&&vv.review.notes)?vv.review.notes.some(n=>!isReelEmb(n)&&n.drawing&&n.drawing.length&&n.frame!=null&&cf>=n.frame&&cf<n.frame+(parseInt(n.dur)||1)):false;
+      const pfList=(c.pending||[]).map(p=>p.f).filter(f=>f!=null);
+      if(sentHere){
+        toastIn(d,'この描画は既に送信済みです（F'+cf+'）。同じ描画を再送するには一度ゴミ箱アイコンで削除してください');
+      }else if(pfList.length){
+        const nearest=pfList.reduce((best,f)=>Math.abs(f-cf)<Math.abs(best-cf)?f:best,pfList[0]);
+        toastIn(d,'送るものがありません（現在 F'+cf+' / 未送信描画は F'+nearest+' 付近）。当該フレームに合わせるか「表示X」を広げてください');
+      }else{
+        toastIn(d,'送るものがありません（未送信の描画・コメントがありません）');
+      }
+      return;
+    }
     const vv=vOf(c);if(!vv)return;
     const nd=c.nodeId?getNode(c.nodeId):null;const root=nd?rootOf(nd):curRoot();
     const drawings=cur.map(cloneDrawItem);
@@ -12675,7 +12758,10 @@ function openReel(){
     const newN={id:'nt_'+Math.random().toString(36).slice(2,10),author:who,time:now,frame:cf,dur:pdur};
     if(drawings.length)newN.drawing=drawings;
     if(txt){newN.text=txt;const mns=extractMentions(txt,root,c._mentions||[]);if(mns&&mns.length)newN.mentions=mns}
-    if(drawings.length&&!txt)newN.noShot=true; /* 描画のみ確定送信＝コメント欄には出さない */
+    /* 旧仕様は「描画のみで送信＝noShot=true でコメント欄に出さない」だったが、ユーザーが
+       スライダーを描画済フレームに合わせて送信ボタンを押した意図＝「サムネ付きで送信したい」
+       と解釈する方が自然。noShot は付けず、通常のコメントとして扱いサムネ生成させる。
+       （自動同期の reel_emb_ ノートは別経路で常に noShot=true のまま埋め込み専用） */
     vv.review.notes.push(newN);
     /* 現在フレーム分の pending を除去 → reelAfterEdit で該当フレームの embed ノートも同期削除。
        **重要**：c.pending は RV.pending と同一参照（loadCur で RV.pending = c.pending にバインド済み）。

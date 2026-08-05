@@ -14,36 +14,6 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-- (dev v2026.08.05.042) REEL：描画のたびにコメント欄がチカチカするのを修正
-  - `reelAfterEdit` の末尾で毎回 `reelNotes()` を呼んでコメント欄 DOM（`clist.innerHTML=''` → 全 note append し直し）を再構築していたため、描画（pointerup / erase / lasso / mannequin 操作）ごとにチカチカしていた。
-  - `reel_emb_` ノートは常にコメント欄に出さない設計（v.091 で明示非表示）なので、描画編集ではコメント欄の内容は変わらない → `reelNotes()` 呼出は不要。`drawAnno / drawFTL` のみに絞る。
-  - `nt_` ノートを新規生成する送信経路（`reelSendCur`）は自身で `reelNotes(true)` を明示的に呼ぶので影響なし。undo/redo/erase/shape/lasso/mann は元々 comment 側に触らないので影響なし。
-
-- (dev v2026.08.05.041) REEL 送信：「送るものがありません」toast を 3 パターンに分岐
-  - v.040 の toast をさらに細分化：(a) 現在フレームに既送信済ノートがある→「既に送信済です」＋削除案内、(b) pending に別フレーム描画あり→最寄りフレーム案内、(c) pending も sent も無し→「未送信の描画・コメントがありません」。
-  - 「見えている＝送れる」ではない設計副作用（一度送信すると `nt_...` ノート由来の描画が表示されるが pending は空になり再送できない）をユーザーが判別できるように。
-
-- (dev v2026.08.05.040) REEL 送信：inWin 判定を p.dur 焼き付き値ベースに＋silent early-return を toast 化
-  - サブエージェント解析（A1）で判明した「サムネが送られない」主犯：`reelSendCur` の `inWin` が `cf < p.f + pdur`（`pdur=durS.value`）で判定していたため、描画後に durS を狭めた／1F ズレたケースで `cur=[]` になり `newN.drawing` 未設定 → `noteBlock` のサムネ生成分岐に入らない不整合。
-  - `inWin` を `cf < p.f + (parseInt(p.dur)||pdur)` に変更。描画時に焼き付けた `p.dur` を優先し、`reelSyncEmbedFrame` の意味論（p.dur を尊重して embed 作成）と揃える。
-  - サイレント early-return を撤去し、`toastIn(d, ...)` で「現在 F<cf> / 描画は F<最寄り> 付近」を表示（描画・コメントどちらも空の場合はその旨）。ユーザーがフレームズレを診断できるように。
-  - 3 番目の対策（annotShotInto の iframe 越境根本対策）は保留。まずこの 2 つで多くのケースが解消する想定。
-
-- (dev v2026.08.05.039) REEL：送信ノートのサムネ canvas を iframe-doc で作り直して描画反映
-  - v.038 で `noShot=true` を外したが `noteBlock` の canvas はメイン document で作られ iframe に adopt される。Chrome の adoption 挙動で backing buffer への描画（`annotShotInto` の非同期 drawImage）が反映されずサムネが空のままだった。
-  - `reelNotes` で noteBlock 呼出後に、`.note-shot` を iframe-doc の canvas に差し替えて `annotShotInto(ifCv, shot, n)` を再発行。iframe 内で正しくサムネが描画される。
-
-- (dev v2026.08.05.038) REEL：描画済フレームで送信ボタンを押したら「サムネ付きコメント」として送信されるように
-  - `reelSendCur` の「描画のみ送信＝`noShot=true` でコメント欄に出さない」旧仕様を撤去。ユーザーがスライダを描画済フレームに合わせて送信ボタンを押した意図は「サムネ付きで送りたい」と解釈する方が自然。
-  - 送信ノートは通常のコメントとして扱われ、`noteBlock` の `annotShotInto` で動画フレーム＋描画を焼き込んだサムネがコメント欄に生成される。
-  - 自動同期の `reel_emb_` ノートは別経路（`reelSyncEmbedFrame`）で常に `noShot=true` のまま埋め込み専用（コメント欄非表示）維持。
-
-- (dev v2026.08.05.037) チェック待ちタブ：作業担当者による絞り込みを追加
-  - チェック担当者タブの下にコンパクトな select（`.chk-asg-bar`）を追加。「作業担当者ごとに REEL を作りたい」ユースケース（例：レビュアー A のカット群から作業者 B の分だけ REEL に送る）に対応。
-  - `state.checkAssignee` を新設。null=すべて、`CHK_NONE`=未割り当て、それ以外=member id。チェック担当者タブを切り替えたときは自動的に null にリセット。
-  - 選択肢は現在のチェック担当者バケットに実際に存在する作業担当者だけを列挙（名簿順→名簿外→未割り当て）。バケット切替で存在しなくなった選択は自動リセット。
-  - `hits` フィルタと `paintAddAllBtn` の `bucketPend` フィルタ両方に反映。「⧉ まとめてタブに追加」「▶ REEL にまとめて送る」も絞り込み後の件数・対象を表示。
-
 ---
 
 ## 反映済み beta v0.0.9（2026-08-05）
@@ -1182,6 +1152,32 @@ GLB モデル差し替え／Maya 準拠カメラ／複数選択マニピュレ�
 ---
 
 ## 反映済み・パッチノート記載なし（Beta 反映済み・PATCH_NOTES.md 未記載）
+
+- **【2026-08-05 Beta v0.0.9 追加反映（バージョン据え置き）】** 以下は laycat_dev.html → laycat.html にサイレント反映（`APP_VERSION='beta v0.0.9'` のまま）。PATCH_NOTES.md にも記載しない：
+  - (dev v2026.08.05.042) REEL：描画のたびにコメント欄がチカチカするのを修正
+    - `reelAfterEdit` の末尾で毎回 `reelNotes()` を呼んでコメント欄 DOM（`clist.innerHTML=''` → 全 note append し直し）を再構築していたため、描画（pointerup / erase / lasso / mannequin 操作）ごとにチカチカしていた。
+    - `reel_emb_` ノートは常にコメント欄に出さない設計（v.091 で明示非表示）なので、描画編集ではコメント欄の内容は変わらない → `reelNotes()` 呼出は不要。`drawAnno / drawFTL` のみに絞る。
+    - `nt_` ノートを新規生成する送信経路（`reelSendCur`）は自身で `reelNotes(true)` を明示的に呼ぶので影響なし。undo/redo/erase/shape/lasso/mann は元々 comment 側に触らないので影響なし。
+  - (dev v2026.08.05.041) REEL 送信：「送るものがありません」toast を 3 パターンに分岐
+    - v.040 の toast をさらに細分化：(a) 現在フレームに既送信済ノートがある→「既に送信済です」＋削除案内、(b) pending に別フレーム描画あり→最寄りフレーム案内、(c) pending も sent も無し→「未送信の描画・コメントがありません」。
+    - 「見えている＝送れる」ではない設計副作用（一度送信すると `nt_...` ノート由来の描画が表示されるが pending は空になり再送できない）をユーザーが判別できるように。
+  - (dev v2026.08.05.040) REEL 送信：inWin 判定を p.dur 焼き付き値ベースに＋silent early-return を toast 化
+    - サブエージェント解析（A1）で判明した「サムネが送られない」主犯：`reelSendCur` の `inWin` が `cf < p.f + pdur`（`pdur=durS.value`）で判定していたため、描画後に durS を狭めた／1F ズレたケースで `cur=[]` になり `newN.drawing` 未設定 → `noteBlock` のサムネ生成分岐に入らない不整合。
+    - `inWin` を `cf < p.f + (parseInt(p.dur)||pdur)` に変更。描画時に焼き付けた `p.dur` を優先し、`reelSyncEmbedFrame` の意味論（p.dur を尊重して embed 作成）と揃える。
+    - サイレント early-return を撤去し、`toastIn(d, ...)` で「現在 F<cf> / 描画は F<最寄り> 付近」を表示（描画・コメントどちらも空の場合はその旨）。ユーザーがフレームズレを診断できるように。
+    - 3 番目の対策（annotShotInto の iframe 越境根本対策）は保留。まずこの 2 つで多くのケースが解消する想定。
+  - (dev v2026.08.05.039) REEL：送信ノートのサムネ canvas を iframe-doc で作り直して描画反映
+    - v.038 で `noShot=true` を外したが `noteBlock` の canvas はメイン document で作られ iframe に adopt される。Chrome の adoption 挙動で backing buffer への描画（`annotShotInto` の非同期 drawImage）が反映されずサムネが空のままだった。
+    - `reelNotes` で noteBlock 呼出後に、`.note-shot` を iframe-doc の canvas に差し替えて `annotShotInto(ifCv, shot, n)` を再発行。iframe 内で正しくサムネが描画される。
+  - (dev v2026.08.05.038) REEL：描画済フレームで送信ボタンを押したら「サムネ付きコメント」として送信されるように
+    - `reelSendCur` の「描画のみ送信＝`noShot=true` でコメント欄に出さない」旧仕様を撤去。ユーザーがスライダを描画済フレームに合わせて送信ボタンを押した意図は「サムネ付きで送りたい」と解釈する方が自然。
+    - 送信ノートは通常のコメントとして扱われ、`noteBlock` の `annotShotInto` で動画フレーム＋描画を焼き込んだサムネがコメント欄に生成される。
+    - 自動同期の `reel_emb_` ノートは別経路（`reelSyncEmbedFrame`）で常に `noShot=true` のまま埋め込み専用（コメント欄非表示）維持。
+  - (dev v2026.08.05.037) チェック待ちタブ：作業担当者による絞り込みを追加
+    - チェック担当者タブの下にコンパクトな select（`.chk-asg-bar`）を追加。「作業担当者ごとに REEL を作りたい」ユースケース（例：レビュアー A のカット群から作業者 B の分だけ REEL に送る）に対応。
+    - `state.checkAssignee` を新設。null=すべて、`CHK_NONE`=未割り当て、それ以外=member id。チェック担当者タブを切り替えたときは自動的に null にリセット。
+    - 選択肢は現在のチェック担当者バケットに実際に存在する作業担当者だけを列挙（名簿順→名簿外→未割り当て）。バケット切替で存在しなくなった選択は自動リセット。
+    - `hits` フィルタと `paintAddAllBtn` の `bucketPend` フィルタ両方に反映。「⧉ まとめてタブに追加」「▶ REEL にまとめて送る」も絞り込み後の件数・対象を表示。
 
 - **【2026-08-05 Beta v0.0.9 反映時に PATCH_NOTES.md 記載を見送り】** 以下は laycat_dev.html → laycat.html にコピー済みだが PATCH_NOTES.md には記載せず beta v0.0.9 に含めない：
   - (dev v2026.08.05.036) REEL スクロールバーの見た目をアノテ窓（メイン）と同一に
