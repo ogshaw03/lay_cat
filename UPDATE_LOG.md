@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.06.004) エピソードフォルダの ＋追加 は「ショット／作業ページ」から選ぶ形に
+  - `typeSelector` に `opts.labels` / `opts.subs` 引数を追加してラベルをカスタマイズ可能に。
+  - `openAddModal` に `role='in-episode'` を追加。ページ種別セレクタを **ショット／作業ページ** ラベルで表示、選択に応じて工程セクションを出し分け（ショットなら表示、作業ページなら非表示）。
+  - セクション本文の ＋追加 ボタン（`renderSectionBody` 内）で、`cur` 直下に「孫を持つ子（＝カット）」があるかで `_isEpisodeCtx` 判定 → `role='in-episode'` を渡す。エピソード以外の従来動作は変更なし。
+
 - (dev v2026.08.06.003) 工程テンプレートAの既定を LAY / ANM / SEC に変更
   - `projectStageTemplates` の fallback（`stageTemplates` 未設定時の既定）を `['LAY','ANIM','FIN','COMP']` → `['LAY','ANM','SEC']` に。
   - 既にプロジェクトで `stageTemplates` を保存しているものは影響なし（fallback は未設定時のみ使用）。
