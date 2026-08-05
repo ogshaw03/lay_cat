@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.007';
+const APP_VERSION='2026.08.06.008';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4748,6 +4748,42 @@ function _emptyProjectGuide(cur){
   wrap.appendChild(mkBtn('film','作業ページを追加','動画・画像のレビュー／FB ログを残す作業ページ','review','task'));
   return wrap;
 }
+/* 空のフォルダに配置するガイドボタン。フォルダの階層位置に応じて表示するボタンを切替：
+   - エピソード相当（＝親がルート、かつルート配下の他フォルダに孫がある）→ カット／作業ページ の 2 択
+   - それ以外（カット相当）→ 作業ページのみ
+   フォルダが空でない場合や section 以外は null を返さず、シンプルな 1 択（作業ページ）を返す。 */
+function _emptyFolderGuide(cur){
+  const wrap=el('div','empty-proj-guide');
+  const mkBtn=(iconName,title,sub,tpref,role)=>{
+    const b=el('button','empty-proj-btn');b.type='button';
+    b.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:36px 18px;background:transparent;border:2px dashed var(--border);border-radius:var(--radius);color:var(--text2);cursor:pointer;transition:all .15s ease;min-height:180px;font:inherit';
+    b.onmouseenter=()=>{b.style.borderColor='var(--accent)';b.style.color='var(--text1)';b.style.background='rgba(255,255,255,.02)'};
+    b.onmouseleave=()=>{b.style.borderColor='var(--border)';b.style.color='var(--text2)';b.style.background='transparent'};
+    const ic=icoEl(iconName);ic.style.cssText='width:36px;height:36px';b.appendChild(ic);
+    const t=el('div');t.style.cssText='font-size:16px;font-weight:600';t.textContent=title;b.appendChild(t);
+    const sd=el('div');sd.style.cssText='font-size:12px;color:var(--text3);text-align:center;line-height:1.5';sd.textContent=sub;b.appendChild(sd);
+    b.onclick=()=>openAddModal(cur.id,tpref,role);
+    return b;
+  };
+  /* 階層判定：親がルート & 兄弟が「孫（＝作業ページ）を持つ子（＝カット）」を持てば
+     → 兄弟はエピソード群 → 自分もエピソード扱い（カット／作業ページ を提示）。
+     それ以外はカット扱い（作業ページのみ提示）。 */
+  const parent=cur.parentId?getNode(cur.parentId):null;
+  let isEpisode=false;
+  if(parent&&!parent.parentId){
+    const siblings=childrenOf(parent.id).filter(c=>c.id!==cur.id);
+    isEpisode=siblings.some(sib=>childrenOf(sib.id).some(gc=>childrenOf(gc.id).length>0));
+  }
+  const cols=isEpisode?2:1;
+  wrap.style.cssText='display:grid;grid-template-columns:repeat('+cols+',1fr);gap:14px;margin:16px auto 0;max-width:'+(cols*340)+'px;width:100%';
+  if(isEpisode){
+    wrap.appendChild(mkBtn('folder','カットを追加','1 カット単位のフォルダ（sh010 など）','section','cut'));
+    wrap.appendChild(mkBtn('film','作業ページを追加','動画・画像のレビュー／FB ログを残す作業ページ','review','task'));
+  }else{
+    wrap.appendChild(mkBtn('film','作業ページを追加','動画・画像のレビュー／FB ログを残す作業ページ','review','task'));
+  }
+  return wrap;
+}
 function renderProjTimeline(main,cur){
   const hidden=tlHiddenSet(cur.id);
   const visEv=e=>e.type==='submit'?(e.stages||[]).some(s=>!hidden.has(s)):!hidden.has(e.stage);
@@ -5561,7 +5597,11 @@ function renderSectionBody(s,cur){
   acts.appendChild(addBtn);
   secl.appendChild(acts);
   s.appendChild(secl);
-  if(!reviews.length){s.appendChild(el('div','empty','このフォルダ配下にタスクがありません。「+ 追加」で作成するか、左のツリーからアイテムを選択してください。'));return}
+  if(!reviews.length){
+    s.appendChild(el('div','empty','このフォルダ配下にはまだアイテムがありません。'));
+    s.appendChild(_emptyFolderGuide(cur));
+    return;
+  }
   const grid=el('div','grid');
   for(const r of reviews)grid.appendChild(pageReviewCard(cur,r));
   s.appendChild(grid);
@@ -7319,7 +7359,11 @@ function openAddModal(parentId,initialType,role){
     /* 作成する各フォルダ内の工程（親の設定を初期値に、その場で編集可）
        ＋ プロジェクト設定で作った工程テンプレートから一発適用も可能 */
     stgSection=el('div');
-    stgSection.appendChild(el('div','form-label','各フォルダ内に作成するタスク'));
+    stgSection.style.cssText='margin-top:14px;padding-top:14px;border-top:1px solid var(--border)';
+    const _stgHead=el('div');_stgHead.style.cssText='font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:8px';
+    _stgHead.appendChild(document.createTextNode('⚙ 各フォルダ内に作成する工程'));
+    stgSection.appendChild(_stgHead);
+    stgSection.appendChild(el('div','form-label','（プロジェクトの工程テンプレートを一発適用するか、その場で追加／削除できます）'));
     /* テンプレート適用プルダウン（プロジェクトルートの stageTemplates から拾う） */
     const _rootForTpl=cur?rootOf(cur):null;
     const _templates=_rootForTpl?projectStageTemplates(_rootForTpl):[];

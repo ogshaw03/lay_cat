@@ -14,6 +14,13 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.06.008) 追加モーダル 工程セクションに大きなタイトル＋空フォルダ画面に階層別ガイドボタン
+  - `openAddModal` の `stgSection` 冒頭に見出し「⚙ 各フォルダ内に作成する工程」を大きめフォント（14px/700）で追加。border-top で本体と視覚分離。従来の補足文言は下段に。
+  - `renderSectionBody` の空フォルダ表示を「大きなガイドボタン」に置換（`_emptyFolderGuide(cur)`）。階層位置に応じて出すボタンを切替：
+    - **エピソード相当**（親がルートで兄弟が孫を持つ）→ 「カットを追加」「作業ページを追加」の 2 択（grid 2 カラム）
+    - **カット相当**（それ以外の空フォルダ）→ 「作業ページを追加」のみ（1 カラム）
+  - ボタンは `_emptyProjectGuide` と同じ大きい dashed 枠デザイン、`role='cut'|'task'` を openAddModal に渡して直接その種別を作成。
+
 - (dev v2026.08.06.007) サイドバー ＋追加：ルート選択（無選択）時は エピソード／カット／作業ページ の 3 択
   - `typeSelector` に `opts.threeWay:true` モードを追加。3 択モードでは `get()` の返り値が `'episode' | 'cut' | 'task'`。
   - `openAddModal` に `role='in-root'` を新設。3-way selector を表示し、選択に応じて type / stgSection 表示を分岐：
