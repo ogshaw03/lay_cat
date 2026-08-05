@@ -14,6 +14,15 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.06.010) 設定モーダル（`openRename`）で階層種別（エピソード／カット／作業ページ）を後から変更可能に
+  - 従来の 2-way typeSelector（フォルダ／作業ページ）を 3-way に置換（プロジェクトルート以外）。初期値は `node.type` と `node.kind` から算出：
+    - `type='review'` → 'task'
+    - `type='section' && kind='episode'` → 'episode'
+    - それ以外の section → 'cut'
+  - save ハンドラで `ts.get()` の 'episode'/'cut'/'task' を `type + kind` にマップ。'episode'→section+kind=episode、'cut'→section+kind=cut、'task'→review+kind 削除。
+  - プロジェクトルートは常に section 扱いで 2-way のまま（実質固定）。
+  - 既存の警告メッセージも「タスク→作業ページ」等の新用語に微修正。
+
 - (dev v2026.08.06.009) 階層種別を作成時点で紐付け：`node.kind='episode'|'cut'` を保存し全ての判定で優先参照
   - 従来は「兄弟や孫の有無」で毎回位置関係から推定していたため、単独作成された EP01（兄弟なし・子なし）が「エピソード」と判定できずカット扱いになる問題があった。
   - `openAddModal` の save ハンドラで作成した node に `kind='episode'` または `'cut'` を焼き付け（role/raw から確定できる場合のみ）。

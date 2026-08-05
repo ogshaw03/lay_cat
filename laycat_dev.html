@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.009';
+const APP_VERSION='2026.08.06.010';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7478,9 +7478,18 @@ function openRename(node){
     sec(1,'📝','基本情報','このアイテムの表示名・種別・説明を編集します。');
     const nameRow=frow('名前','input');nameRow.f.value=node.name;
     inner.appendChild(nameRow.r);
-    const ts=typeSelector(node.type);inner.appendChild(ts.row);
+    /* プロジェクトルート以外は 3-way（エピソード／カット／作業ページ）で階層種別を後から変更可能。
+       ルートは常に section なので従来通り 2 択（section/review）にする（実質固定）。
+       3-way モードでは ts.get() が 'episode'|'cut'|'task' を返すので保存時にマップする。 */
+    let _initSel;
+    if(isProjectRoot){_initSel=node.type}
+    else if(node.type==='review'){_initSel='task'}
+    else if(node.kind==='episode'){_initSel='episode'}
+    else{_initSel='cut'}
+    const ts=typeSelector(_initSel,null,isProjectRoot?undefined:{threeWay:true});
+    inner.appendChild(ts.row);
     const kids=childrenOf(node.id).length,vers=node.versions.length;
-    if(kids||vers)inner.appendChild(el('div','form-label','※ 種別を変えてもデータは消えません（タスクにすると子アイテムは非表示、カテゴリにすると動画ログは非表示になります）。現在: 子'+kids+'件 / 動画'+vers+'本'));
+    if(kids||vers)inner.appendChild(el('div','form-label','※ 種別を変えてもデータは消えません（作業ページにすると子アイテムは非表示、フォルダにすると動画ログは非表示になります）。現在: 子'+kids+'件 / 動画'+vers+'本'));
     const descRow=frow('説明','textarea');descRow.f.value=node.description||'';
     inner.appendChild(descRow.r);
     /* セクションフォルダ：工程テンプレート
@@ -7727,7 +7736,16 @@ function openRename(node){
       inner.appendChild(delWrap);
     }
     const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=closeModal;
-    const save=el('button','btn btn-primary','保存');save.onclick=async()=>{if(!nameRow.f.value.trim())return toast('名前を入力してください');node.name=nameRow.f.value.trim();node.description=descRow.f.value.trim();node.type=ts.get();if(stArr)node.statuses=stArr.filter(x=>x.label.trim()).map(x=>({id:x.id||newId('st'),label:x.label.trim(),color:x.color}));if(spSel){const ids=spSel.get();if(ids.length)node.shotsParentIds=ids;else delete node.shotsParentIds;delete node.shotsParentId}if(stagesArr!=null){const s=stagesArr.map(x=>x.trim()).filter(Boolean);if(s.length&&ts.get()==='section')node.stages=s;else delete node.stages}
+    const save=el('button','btn btn-primary','保存');save.onclick=async()=>{if(!nameRow.f.value.trim())return toast('名前を入力してください');node.name=nameRow.f.value.trim();node.description=descRow.f.value.trim();
+      /* 3-way selector（episode/cut/task）→ type + kind にマップ。root は 2-way のまま。 */
+      {const raw=ts.get();
+       const newType=(raw==='episode'||raw==='cut')?'section':((raw==='task')?'review':raw);
+       node.type=newType;
+       if(raw==='episode')node.kind='episode';
+       else if(raw==='cut')node.kind='cut';
+       else delete node.kind; /* task / root の section/review 変更時は kind をクリア */
+      }
+      if(stArr)node.statuses=stArr.filter(x=>x.label.trim()).map(x=>({id:x.id||newId('st'),label:x.label.trim(),color:x.color}));if(spSel){const ids=spSel.get();if(ids.length)node.shotsParentIds=ids;else delete node.shotsParentIds;delete node.shotsParentId}if(stagesArr!=null){const s=stagesArr.map(x=>x.trim()).filter(Boolean);if(s.length&&node.type==='section')node.stages=s;else delete node.stages}
       /* プロジェクトルートの工程テンプレート保存。空を除去して保存。後方互換のため node.stages は先頭テンプレートで同期。 */
       if(stageTemplatesArr!=null){
         const tpls=stageTemplatesArr
