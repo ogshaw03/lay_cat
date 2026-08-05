@@ -14,6 +14,10 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.06.003) 工程テンプレートAの既定を LAY / ANM / SEC に変更
+  - `projectStageTemplates` の fallback（`stageTemplates` 未設定時の既定）を `['LAY','ANIM','FIN','COMP']` → `['LAY','ANM','SEC']` に。
+  - 既にプロジェクトで `stageTemplates` を保存しているものは影響なし（fallback は未設定時のみ使用）。
+
 - (dev v2026.08.06.002) 3 階層モデル：エピソード／作業ページ作成モーダルからページ種別・工程セクションを外す
   - `openAddModal(parentId, initialType, role)` に第 3 引数 `role`（'episode'|'cut'|'task'）を追加。ボタンから渡すことで文脈を明示。
   - **エピソード追加**：ページ種別セレクタ非表示、工程セクション非表示（EP フォルダの直下は工程ではなくカット）。

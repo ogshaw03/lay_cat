@@ -3031,7 +3031,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.002';
+const APP_VERSION='2026.08.06.003';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7323,7 +7323,7 @@ function projectStageTemplates(root){
   if(Array.isArray(root.stageTemplates)&&root.stageTemplates.length)return root.stageTemplates;
   const base=(Array.isArray(root.stages)?root.stages:[]).map(x=>typeof x==='string'?x:(x&&x.name)||'').filter(Boolean);
   if(base.length)return [{id:'tpl_default',name:'テンプレートA',stages:base}];
-  return [{id:'tpl_default',name:'テンプレートA',stages:['LAY','ANIM','FIN','COMP']}];
+  return [{id:'tpl_default',name:'テンプレートA',stages:['LAY','ANM','SEC']}];
 }
 function openRename(node){
   openModal(body=>{
