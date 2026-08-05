@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.012';
+const APP_VERSION='2026.08.06.013';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7069,10 +7069,10 @@ function openProjectModal(){
         storage._r2.setEndpoint(ep);
       }
       const id=addNode(null,name,descRow.f.value.trim(),'section');
-      if(backend==='r2'){
-        storage.setBackendR2(id);
-        /* R2 プロジェクト：作成者を owner として自動登録し、_access.json を先に PUT する
-           （Worker のブートストラップ判定を通すため、laycat.project.json の PUT より前に実行） */
+      /* 作成者を owner ＆ 最初のメンバーとして自動登録（backend 問わず）。
+         担当割り当て・＠メンションは members 名簿を元に動くので、自分が最初から入っていないと
+         自分をアサインできない。R2 の場合は追加で _access.json を PUT する。 */
+      {
         const _me=(authUser&&authUser.email)||'';
         if(_me){
           const _root=getNode(id);
@@ -7081,6 +7081,14 @@ function openProjectModal(){
           if(!_root.members.some(m=>String(m.id||'').toLowerCase()===_me.toLowerCase())){
             _root.members.push({id:_me,name:(authUser&&(authUser.name||authUser.displayName))||_me,roles:[]});
           }
+        }
+      }
+      if(backend==='r2'){
+        storage.setBackendR2(id);
+        /* R2 プロジェクト：_access.json を先に PUT する
+           （Worker のブートストラップ判定を通すため、laycat.project.json の PUT より前に実行） */
+        const _me=(authUser&&authUser.email)||'';
+        if(_me){
           try{await storage._r2.putAccess(id,_me,[_me])}catch(e){toast('R2 のアクセス設定に失敗しました：'+String(e&&e.message||e));}
         }
       }else if(projFolderHandle){
