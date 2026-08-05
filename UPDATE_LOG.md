@@ -14,6 +14,10 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.041) REEL 送信：「送るものがありません」toast を 3 パターンに分岐
+  - v.040 の toast をさらに細分化：(a) 現在フレームに既送信済ノートがある→「既に送信済です」＋削除案内、(b) pending に別フレーム描画あり→最寄りフレーム案内、(c) pending も sent も無し→「未送信の描画・コメントがありません」。
+  - 「見えている＝送れる」ではない設計副作用（一度送信すると `nt_...` ノート由来の描画が表示されるが pending は空になり再送できない）をユーザーが判別できるように。
+
 - (dev v2026.08.05.040) REEL 送信：inWin 判定を p.dur 焼き付き値ベースに＋silent early-return を toast 化
   - サブエージェント解析（A1）で判明した「サムネが送られない」主犯：`reelSendCur` の `inWin` が `cf < p.f + pdur`（`pdur=durS.value`）で判定していたため、描画後に durS を狭めた／1F ズレたケースで `cur=[]` になり `newN.drawing` 未設定 → `noteBlock` のサムネ生成分岐に入らない不整合。
   - `inWin` を `cf < p.f + (parseInt(p.dur)||pdur)` に変更。描画時に焼き付けた `p.dur` を優先し、`reelSyncEmbedFrame` の意味論（p.dur を尊重して embed 作成）と揃える。

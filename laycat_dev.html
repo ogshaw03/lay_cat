@@ -3023,7 +3023,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.040';
+const APP_VERSION='2026.08.05.041';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12730,14 +12730,21 @@ function openReel(){
     const inWin=p=>p.f!=null&&cf>=p.f&&cf<p.f+(parseInt(p.dur)||pdur);
     const cur=(c.pending||[]).filter(inWin);
     if(!txt&&!cur.length){
-      /* silent early return 廃止：ユーザーに何が起きたか伝える。特に「描画したフレームと
-         現在の再生位置がズレて cur=[] になった」ケースを診断しやすくする。 */
+      /* silent early return 廃止：ユーザーに何が起きたか伝える。3 パターンに分岐：
+         (a) 現在フレーム上に「既に送信済みの描画付きノート」がある → 「既に送信済」と説明
+         (b) pending に描画はあるが frame ズレ → 最寄りフレームを案内
+         (c) 完全に空 → その旨 */
+      const vv=vOf(c);
+      const isReelEmb=n=>n&&n.id&&n.id.indexOf('reel_emb_')===0;
+      const sentHere=vv&&Array.isArray(vv.review&&vv.review.notes)?vv.review.notes.some(n=>!isReelEmb(n)&&n.drawing&&n.drawing.length&&n.frame!=null&&cf>=n.frame&&cf<n.frame+(parseInt(n.dur)||1)):false;
       const pfList=(c.pending||[]).map(p=>p.f).filter(f=>f!=null);
-      if(pfList.length){
+      if(sentHere){
+        toastIn(d,'この描画は既に送信済みです（F'+cf+'）。同じ描画を再送するには一度ゴミ箱アイコンで削除してください');
+      }else if(pfList.length){
         const nearest=pfList.reduce((best,f)=>Math.abs(f-cf)<Math.abs(best-cf)?f:best,pfList[0]);
-        toastIn(d,'送るものがありません（現在 F'+cf+' / 描画は F'+nearest+' 付近）。当該フレームに合わせるか「表示X」を広げてください');
+        toastIn(d,'送るものがありません（現在 F'+cf+' / 未送信描画は F'+nearest+' 付近）。当該フレームに合わせるか「表示X」を広げてください');
       }else{
-        toastIn(d,'送るものがありません（描画・コメント どちらも空です）');
+        toastIn(d,'送るものがありません（未送信の描画・コメントがありません）');
       }
       return;
     }
