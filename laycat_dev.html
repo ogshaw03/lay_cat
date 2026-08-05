@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.006';
+const APP_VERSION='2026.08.06.007';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4208,15 +4208,18 @@ function renderSidebar(){
   const col=el('span','add','⊟');col.title='現在の階層以外を閉じる';col.onclick=()=>{state.expanded=new Set(pathOf(state.currentId).map(n=>n.id));renderSidebar()};ctrls.appendChild(col);
   /* ＋追加：現在選択中の階層（state.currentId）を親として作成。
      選択が review（作業ページ）ならその親フォルダを親に。親の子構造で role を判定：
-     - 親に「孫（作業ページ）を持つ子」があれば episode 相当→ role='in-episode'
-     - それ以外は role 未指定（default = カット／作業ページ セレクタ） */
+     - 親 = ルート（無選択）→ role='in-root'（エピソード／カット／作業ページ の 3 択）
+     - 親に「孫を持つ子」があれば episode 相当→ role='in-episode'（カット／作業ページ の 2 択）
+     - それ以外は role 未指定（default = カット／作業ページ） */
   const add=el('span','add','＋');add.title='この直下にアイテムを追加';
   add.onclick=()=>{
     let target=state.currentId?getNode(state.currentId):null;
     if(!target)target=root;
     if(target.type==='review'){const p=target.parentId?getNode(target.parentId):null;target=p||root}
-    const hasGrandKids=childrenOf(target.id).some(k=>k.type==='section'&&childrenOf(k.id).length>0);
-    openAddModal(target.id,undefined,hasGrandKids?'in-episode':undefined);
+    let addRole;
+    if(target.id===root.id){addRole='in-root'}
+    else{const hasGrandKids=childrenOf(target.id).some(k=>k.type==='section'&&childrenOf(k.id).length>0);addRole=hasGrandKids?'in-episode':undefined}
+    openAddModal(target.id,undefined,addRole);
   };
   ctrls.appendChild(add);
   lab.appendChild(ctrls);sb.appendChild(lab);
@@ -6872,17 +6875,35 @@ function frow(label,type){const r=el('div','form-row');r.appendChild(el('label',
 /* 追加（単体） */
 function typeSelector(initial,onChange,opts){
   opts=opts||{};
+  const threeWay=!!opts.threeWay;
   const labels=opts.labels||{section:'カット',review:'作業ページ'};
   const subs=opts.subs||{section:'カット単位のフォルダ（sh010 など）。中に工程を並べる',review:'動画・画像の FB ログを縦に残す作業ページ'};
-  let sel=initial||'section';
+  const epLabel=opts.epLabel||'エピソード';
+  const epSub=opts.epSub||'複数話の場合の話単位フォルダ（EP01 など）。中にカットを並べる';
+  /* 3-way モードでは get() の返り値は 'episode' | 'cut' | 'task'。
+     2-way モードは従来通り 'section' | 'review'。呼び出し側で必要に応じてマップする。 */
+  let sel=initial||(threeWay?'episode':'section');
   const row=el('div','form-row');row.appendChild(el('label','form-label','ページ種別'));
   const seg=el('div','seg');
   const svgS='<svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">'+ICONS.folder+'</svg>';
   const svgR='<svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">'+ICONS.film+'</svg>';
+  let optE=null;
+  if(threeWay){
+    optE=el('button','seg-opt');optE.type='button';optE.innerHTML=svgS+epLabel+'<small>'+epSub+'</small>';
+    seg.appendChild(optE);
+  }
   const optS=el('button','seg-opt');optS.type='button';optS.innerHTML=svgS+labels.section+'<small>'+subs.section+'</small>';
   const optR=el('button','seg-opt');optR.type='button';optR.innerHTML=svgR+labels.review+'<small>'+subs.review+'</small>';
-  const apply=()=>{optS.classList.toggle('active',sel==='section');optR.classList.toggle('active',sel==='review');if(onChange)onChange(sel)};
-  optS.onclick=()=>{sel='section';apply()};optR.onclick=()=>{sel='review';apply()};apply();
+  const cutVal=threeWay?'cut':'section';
+  const taskVal=threeWay?'task':'review';
+  const apply=()=>{
+    if(optE)optE.classList.toggle('active',sel==='episode');
+    optS.classList.toggle('active',sel===cutVal);
+    optR.classList.toggle('active',sel===taskVal);
+    if(onChange)onChange(sel);
+  };
+  if(optE)optE.onclick=()=>{sel='episode';apply()};
+  optS.onclick=()=>{sel=cutVal;apply()};optR.onclick=()=>{sel=taskVal;apply()};apply();
   seg.appendChild(optS);seg.appendChild(optR);row.appendChild(seg);
   return{row,get:()=>sel};
 }
@@ -7262,7 +7283,7 @@ function openAddModal(parentId,initialType,role){
     const cur=parentId?getNode(parentId):null;
     /* role が指定されている（3 階層モデルの導線ボタンから呼ばれた）場合はページ種別は自動で確定、
        選択 UI 自体を出さない。role='cut' のみ工程セクションを表示（カットの中に工程を並べる）。 */
-    const roleTitle={episode:'エピソードを追加',cut:'カットを追加',task:'作業ページを追加'}[role]||'アイテムを追加';
+    const roleTitle={episode:'エピソードを追加',cut:'カットを追加',task:'作業ページを追加','in-root':'アイテムを追加（エピソード／カット／作業ページ）','in-episode':'アイテムを追加（カット／作業ページ）'}[role]||'アイテムを追加';
     const inner=mHead(body,roleTitle,cur?('親: '+cur.name):'新規アイテム');
     const nameRow=frow('名前 / ベース名（例: ショット01 / cut）','input');
     inner.appendChild(nameRow.r);
@@ -7271,11 +7292,19 @@ function openAddModal(parentId,initialType,role){
     const _initT=role?((role==='task')?'review':'section'):((initialType==='review'||initialType==='section')?initialType:'section');
     /* ページ種別セレクタ：
        - role='episode'/'cut'/'task' は暗黙で確定するため出さない
-       - role='in-episode'（エピソードフォルダ配下の＋追加）はショット／作業ページのラベルで選択可
-       - role 未指定はデフォルトのフォルダ／作業ページラベルで選択可（サイドバー ＋ 等） */
-    const _tsOpts=(role==='in-episode')?{labels:{section:'カット',review:'作業ページ'},subs:{section:'カット単位のフォルダ（sh010 など）',review:'動画・画像の FB ログを残す作業ページ'}}:undefined;
-    const ts=typeSelector(_initT,t=>{if(stgSection)stgSection.style.display=(t==='section'&&role!=='episode'&&role!=='task')?'':'none'},_tsOpts);
-    if(!role||role==='in-episode')inner.appendChild(ts.row);
+       - role='in-root'（プロジェクトルート直下の＋追加、無選択時）は エピソード／カット／作業ページ の 3 択
+       - role='in-episode'（エピソードフォルダ配下の＋追加）は カット／作業ページ の 2 択
+       - role 未指定は default（カット／作業ページ） */
+    const _tsOpts=(role==='in-root')
+      ?{threeWay:true}
+      :((role==='in-episode')?{labels:{section:'カット',review:'作業ページ'},subs:{section:'カット単位のフォルダ（sh010 など）',review:'動画・画像の FB ログを残す作業ページ'}}:undefined);
+    /* 3-way モードでは sel 値が 'episode'|'cut'|'task'。工程セクションの表示は 'cut' のときだけ。 */
+    const ts=typeSelector(_initT,t=>{
+      if(!stgSection)return;
+      if(role==='in-root'){stgSection.style.display=(t==='cut')?'':'none'}
+      else{stgSection.style.display=(t==='section'&&role!=='episode'&&role!=='task')?'':'none'}
+    },_tsOpts);
+    if(!role||role==='in-episode'||role==='in-root')inner.appendChild(ts.row);
     /* 連番で複数作成（同じ工程を含むフォルダを一括作成） */
     const seqTop=el('label','form-label');seqTop.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px';
     const seqCb=el('input');seqCb.type='checkbox';seqTop.appendChild(seqCb);seqTop.appendChild(document.createTextNode('連番で複数作成'));
@@ -7323,21 +7352,30 @@ function openAddModal(parentId,initialType,role){
     stgSection.appendChild(addStg);
     inner.appendChild(stgSection);
     /* 初期タイプが review（タスク）／role='episode'|'task' なら工程セクションを非表示。
-       role='cut' のみ工程セクションを表示（カットに工程を並べる用途）。 */
-    if(_initT==='review'||role==='episode'||role==='task')stgSection.style.display='none';
+       role='cut' のみ工程セクションを表示（カットに工程を並べる用途）。
+       role='in-root' 時は 3-way selector 初期 'episode' で始まるので非表示スタート。 */
+    if(_initT==='review'||role==='episode'||role==='task'||role==='in-root')stgSection.style.display='none';
     const descRow=frow('説明（任意）','textarea');inner.appendChild(descRow.r);
     const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=closeModal;
     const save=el('button','btn btn-primary','追加');
     save.onclick=async()=>{
       const base=nameRow.f.value.trim();if(!base)return toast('名前を入力してください');
-      const type=ts.get();
+      /* 3-way モードでは ts.get() は 'episode'|'cut'|'task' → 内部 type にマップ。
+         2-way モードは 'section'|'review' がそのまま返る。 */
+      const raw=ts.get();
+      const type=(raw==='episode'||raw==='cut')?'section':(raw==='task'?'review':raw);
+      /* 工程セクションを作るのは「カット相当」のみ。エピソードは section だが工程は作らない。
+         - type='section' が前提（review には工程不要）
+         - role='episode' 明示は除外
+         - 3-way で raw='episode' 選択も除外 */
+      const wantStages=(type==='section')&&(role!=='episode')&&(raw!=='episode');
       let names=[base];
       if(seqCb.checked){
         const cnt=Math.max(1,Math.min(200,parseInt(cntI.value)||1));
         const start=parseInt(startI.value)||0,step=parseInt(stepI.value)||1,dig=Math.max(0,parseInt(digI.value)||0);
         names=[];for(let i=0;i<cnt;i++)names.push(base+String(start+i*step).padStart(dig,'0'));
       }
-      const stages=(type==='section')?stgArr.map(x=>x.trim()).filter(Boolean):[];
+      const stages=wantStages?stgArr.map(x=>x.trim()).filter(Boolean):[];
       const createdIds=[];
       for(const nm of names){
         const id=addNode(parentId,nm,names.length===1?descRow.f.value.trim():'',type);

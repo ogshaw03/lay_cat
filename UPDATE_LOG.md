@@ -14,6 +14,16 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.06.007) サイドバー ＋追加：ルート選択（無選択）時は エピソード／カット／作業ページ の 3 択
+  - `typeSelector` に `opts.threeWay:true` モードを追加。3 択モードでは `get()` の返り値が `'episode' | 'cut' | 'task'`。
+  - `openAddModal` に `role='in-root'` を新設。3-way selector を表示し、選択に応じて type / stgSection 表示を分岐：
+    - `episode`: type='section'、工程セクション非表示
+    - `cut`: type='section'、工程セクション表示
+    - `task`: type='review'、工程セクション非表示
+  - `save` ハンドラを更新：`raw`（3-way 値）→ `type`（section/review）マップと、`wantStages` を「type='section' かつ role/raw が 'episode' でない」に統一。
+  - サイドバー ＋追加ボタンで `target===root` のときに `role='in-root'` を渡す。
+  - モーダルタイトルも role 別に補足文言追加（「アイテムを追加（エピソード／カット／作業ページ）」等）。
+
 - (dev v2026.08.06.006) サイドバー ＋追加：現在選択階層に応じてモーダル内容を切替＋空白クリックでルート選択
   - サイドバー ＋追加ボタンを従来「常に root.id 配下に追加」→「`state.currentId` を親として追加」に変更。選択が review（作業ページ）ならその親フォルダに繰り上げ。
   - 親の子に「孫を持つ子（＝カット）」があれば `role='in-episode'` を渡してモーダルを ショット／作業ページ 選択形に、そうでなければ default（カット／作業ページ）表示。
