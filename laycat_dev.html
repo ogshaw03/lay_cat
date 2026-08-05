@@ -3031,7 +3031,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.004';
+const APP_VERSION='2026.08.06.005';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6847,8 +6847,8 @@ function frow(label,type){const r=el('div','form-row');r.appendChild(el('label',
 /* 追加（単体） */
 function typeSelector(initial,onChange,opts){
   opts=opts||{};
-  const labels=opts.labels||{section:'フォルダ',review:'作業ページ'};
-  const subs=opts.subs||{section:'エピソード／カット等の階層フォルダ（動画は不可）',review:'動画・画像の FB ログを縦に残す'};
+  const labels=opts.labels||{section:'カット',review:'作業ページ'};
+  const subs=opts.subs||{section:'カット単位のフォルダ（sh010 など）。中に工程を並べる',review:'動画・画像の FB ログを縦に残す作業ページ'};
   let sel=initial||'section';
   const row=el('div','form-row');row.appendChild(el('label','form-label','ページ種別'));
   const seg=el('div','seg');
@@ -7248,7 +7248,7 @@ function openAddModal(parentId,initialType,role){
        - role='episode'/'cut'/'task' は暗黙で確定するため出さない
        - role='in-episode'（エピソードフォルダ配下の＋追加）はショット／作業ページのラベルで選択可
        - role 未指定はデフォルトのフォルダ／作業ページラベルで選択可（サイドバー ＋ 等） */
-    const _tsOpts=(role==='in-episode')?{labels:{section:'ショット',review:'作業ページ'},subs:{section:'カット単位のフォルダ（sh010 など）',review:'動画・画像の FB ログを残す作業ページ'}}:undefined;
+    const _tsOpts=(role==='in-episode')?{labels:{section:'カット',review:'作業ページ'},subs:{section:'カット単位のフォルダ（sh010 など）',review:'動画・画像の FB ログを残す作業ページ'}}:undefined;
     const ts=typeSelector(_initT,t=>{if(stgSection)stgSection.style.display=(t==='section'&&role!=='episode'&&role!=='task')?'':'none'},_tsOpts);
     if(!role||role==='in-episode')inner.appendChild(ts.row);
     /* 連番で複数作成（同じ工程を含むフォルダを一括作成） */
