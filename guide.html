@@ -155,7 +155,8 @@
   <p class="sub">最初はプロジェクトが 1 つもありません。左上の <b>「＋ 新規プロジェクト」</b> を押します。</p>
   <img class="shot" src="slides_assets/guide_home.png" alt="ホーム画面">
   <figcaption>ホーム画面 ─ ここから始まる</figcaption>
-  <div class="warn"><b>⚠️ 作成後すぐにメンバー登録を。</b> 未登録だと他の人はこのプロジェクトに参加できません。作成完了時にダイアログが自動で開きます（あとで <a href="#projset" style="color:var(--blue);text-decoration:underline">STEP 13</a> からも開けます）。</div>
+  <div class="tip"><b>💡</b> 作成者（自分）は <b>owner ＆ 最初のメンバー</b>として自動登録されます。担当割り当てや＠メンションの候補にすぐ自分が出るので、そのまま使い始められます。</div>
+  <div class="warn"><b>⚠️ 他の人を参加させる場合はメンバー登録が必要。</b> 作成完了時にメンバー管理を促すダイアログが自動で開きます（あとで <a href="#projset" style="color:var(--blue);text-decoration:underline">STEP 13</a> からも開けます）。</div>
   <a href="#projset" class="jump">⚙ 作ったプロジェクトのメンバー・ステータス・工程を整える → プロジェクト設定 <span class="arrow">↓</span></a>
 </div>
 
@@ -188,26 +189,27 @@
 
 <!-- ============ STEP 4 ============ -->
 <div class="step">
-  <div class="head"><span class="n">4</span><span class="t">カテゴリ・ショット・工程を作る</span></div>
+  <div class="head"><span class="n">4</span><span class="t">エピソード・ショット・作業ページを作る</span></div>
   <p class="sub">プロジェクトの中を「3 階層」で組み立てます：</p>
-  <div class="todo"><b>構造</b>→ プロジェクト ▸ カテゴリ（EP01 / SEQ_A 等） ▸ ショット（SC001, SC002…） ▸ 工程（LAY / ANIM / COMP 等）</div>
+  <div class="todo"><b>構造</b>→ プロジェクト ▸ エピソード（EP01 / SEQ_A 等） ▸ ショット（SC001, SC002…） ▸ 作業ページ（LAY / ANIM / COMP 等）</div>
   <ol style="padding-left:20px;color:var(--text2);font-size:14px;margin-top:6px">
     <li style="margin-bottom:6px">先に <a href="#projset" style="color:var(--blue);text-decoration:underline">プロジェクト設定</a> で工程テンプレートを登録</li>
-    <li style="margin-bottom:6px"><b>「＋ 追加」</b>でカテゴリ（例：EP01）を作成</li>
-    <li style="margin-bottom:6px">その下にショットを追加、<b>「工程テンプレートから選択」</b>で一発適用</li>
-    <li>「連番で複数作成」で <code>SC001</code>〜<code>SC050</code> の一括作成も可能</li>
+    <li style="margin-bottom:6px">空プロジェクト画面の大きなガイドボタンから <b>「エピソードを追加」「ショットを追加」「作業ページを追加」</b> の 3 択で最初の一手を選ぶ</li>
+    <li style="margin-bottom:6px">エピソード内の <b>「＋ 追加」</b> は <b>「ショット／作業ページ」</b> の 2 択、ショット内は <b>「作業ページ」</b> のみに自動で切り替わります</li>
+    <li style="margin-bottom:6px">ショット追加時に <b>「工程テンプレートから選択」</b>で工程（作業ページ）を一発展開</li>
+    <li>「連番で複数作成」で <code>SC001</code>〜<code>SC050</code> の一括作成も可能（既定：開始 <code>1</code>・増分 <code>1</code>・桁数 <code>3</code>）</li>
   </ol>
   <img class="shot" src="slides_assets/guide_add_item.png" alt="アイテムを追加モーダル">
   <figcaption>アイテムを追加 ─ テンプレートを選ぶだけで工程が入る</figcaption>
-  <div class="tip"><b>💡</b> ショット名は <code>SC001</code>, <code>SC010</code> とゼロ埋めで数字順に並びます。</div>
+  <div class="tip"><b>💡</b> 階層種別は作成後もフォルダの ⚙ 設定 → <b>「種別」</b> から <b>エピソード／ショット／作業ページ</b> に切り替えできます。ショット名は <code>SC001</code>, <code>SC010</code> とゼロ埋めで数字順に並びます。</div>
 </div>
 
 <!-- ============ STEP 5 ============ -->
 <div class="step">
   <div class="head"><span class="n">5</span><span class="t">動画をアップロード</span></div>
-  <p class="sub">左サイドバーで <b>工程（タスク）</b> を選ぶと、右側にタスク画面が開く。右上の <b>「＋ 動画」</b> を押してファイルを選ぶだけ。</p>
-  <img class="shot" src="slides_assets/pre_task.png" alt="タスク画面">
-  <figcaption>タスク画面 ─ 右上の「＋ 動画」からアップ、下に版履歴が積み上がる</figcaption>
+  <p class="sub">左サイドバーで <b>作業ページ</b> を選ぶと、右側に作業ページが開く。右上の <b>「＋ 動画」</b> を押してファイルを選ぶだけ。</p>
+  <img class="shot" src="slides_assets/pre_task.png" alt="作業ページ">
+  <figcaption>作業ページ ─ 右上の「＋ 動画」からアップ、下に版履歴が積み上がる</figcaption>
   <div class="tip"><b>💡</b> <b>ドラッグ&ドロップ</b>も OK。複数まとめてドロップ可、EXR 連番は 1 版にまとまります。</div>
   <div class="warn"><b>⚠️</b> Animation / ProRes は再生不可。<b>H.264 の mp4 / mov</b> で書き出してください。</div>
   <a href="#submit" class="jump">📦 複数ショットを束ねて出す → サブミット <span class="arrow">↓</span></a>
@@ -235,9 +237,9 @@
 <!-- ============ STEP 7 ============ -->
 <div class="step">
   <div class="head"><span class="n">7</span><span class="t">担当者を決める（＝通知の宛先）</span></div>
-  <p class="sub">タスク画面上部で <b>「作業」「チェック」担当</b> を選ぶ。<b>チェック担当が未設定だと通知が誰にも飛びません。</b></p>
-  <div class="todo"><b>DO</b>→ タスク画面上部の「チェック」プルダウンからメンバーを選ぶ</div>
-  <div class="warn"><b>⚠️</b> 事前にメンバー管理でメンバー登録が必要です。</div>
+  <p class="sub">作業ページ上部で <b>「作業」「チェック」担当</b> を選ぶ。<b>チェック担当が未設定だと通知が誰にも飛びません。</b></p>
+  <div class="todo"><b>DO</b>→ 作業ページ上部の「チェック」プルダウンからメンバーを選ぶ</div>
+  <div class="tip"><b>💡</b> 作成者（自分）は最初から候補に入っています。他の人を候補に出したい場合はメンバー管理から追加してください。</div>
 </div>
 
 <!-- ============ STEP 8 ============ -->
@@ -254,7 +256,7 @@
   <div class="head"><span class="n">9</span><span class="t">進捗を見る</span></div>
   <p class="sub">プロジェクトの <b>「進捗」タブ</b> で、ショット × 工程 × 担当者を横並びで俯瞰できます。</p>
   <img class="shot" src="slides_assets/prog.png" alt="進捗ダッシュボード">
-  <figcaption>進捗ダッシュボード ─ 全カットのステータス分布と担当ごとの状況</figcaption>
+  <figcaption>進捗ダッシュボード ─ 全ショットのステータス分布と担当ごとの状況</figcaption>
 </div>
 
 <!-- ============ STEP 10 ============ -->
@@ -283,7 +285,7 @@
     <li><b>「File」メニュー</b>で名前を付けて保存 → 次回もヘッダから呼び出し可</li>
   </ol>
   <img class="shot" src="slides_assets/pre_reel.png" alt="REEL 画面">
-  <figcaption>REEL 画面 ─ 複数カットを並べて連続再生</figcaption>
+  <figcaption>REEL 画面 ─ 複数ショットを並べて連続再生</figcaption>
   <div class="tip"><b>💡</b> REEL で書いた指摘は <b>「まとめて記入」で各版の履歴に反映</b>されます。逆に <b>各工程ページからも 🎞 REEL バッジで REEL に一発ジャンプ</b>できます。</div>
 </div>
 
@@ -316,9 +318,9 @@
   <img class="shot" src="slides_assets/guide_proj_tpl.png" alt="工程テンプレートセクション">
   <figcaption>工程テンプレートを塊で複数登録</figcaption>
   <p style="color:var(--text2);font-size:14px;line-height:1.7;margin-top:10px">
-    アイテム追加やカテゴリ設定で <b>プルダウンから選ぶだけ</b>で工程が展開されます。適用後の個別編集も可能。
+    アイテム追加やショット設定で <b>プルダウンから選ぶだけ</b>で工程が展開されます。適用後の個別編集も可能。
   </p>
-  <img class="shot" src="slides_assets/guide_cat_settings.png" alt="カテゴリ設定でテンプレート適用">
+  <img class="shot" src="slides_assets/guide_cat_settings.png" alt="ショット設定でテンプレート適用">
   <figcaption>アイテム側 ─ テンプレートを選んで適用</figcaption>
 
   <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">② ステータス定義</h4>
@@ -331,13 +333,13 @@
 
   <h4 style="font-size:15px;font-weight:800;margin:22px 0 6px;color:var(--text)">③ メンバー管理</h4>
   <p style="color:var(--text2);font-size:14px;line-height:1.7">
-    <b>「👥 メンバー管理を開く」</b>で別ウィンドウが開き、担当割り当て・＠メンション・通知の候補になるメンバーを登録します。
+    <b>「👥 メンバー管理を開く」</b>で別ウィンドウが開き、担当割り当て・＠メンション・通知の候補になるメンバーを登録します。<b>作成者（自分）は owner ＆ 最初のメンバーとして自動で入っています</b>ので、追加が必要なのは他の人だけです。
   </p>
   <img class="shot" src="slides_assets/guide_proj_members.png" alt="プロジェクトメンバーセクション">
   <figcaption>設定モーダルのメンバー入口</figcaption>
   <img class="shot" src="slides_assets/guide_members.png" alt="メンバー管理ウィンドウ" style="margin-top:12px">
   <figcaption>別ウィンドウ ─ 名前・メール・色を編集</figcaption>
-  <div class="warn"><b>⚠️ 未登録だと他の人はこのプロジェクトに参加できません。</b> Google ログイン運用時は必ずメールアドレスを入れてください。</div>
+  <div class="warn"><b>⚠️ 他の人を参加させる場合は追加登録が必要。</b> Google ログイン運用時は必ずメールアドレスを入れてください（メールを鍵に判定します）。</div>
   <div class="tip"><b>💡</b> メンバー名簿は共有フォルダの <code>laycat.project.json</code> に保存され、共有相手全員に自動反映されます。</div>
 </div>
 
