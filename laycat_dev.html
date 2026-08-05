@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.011';
+const APP_VERSION='2026.08.06.012';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7376,7 +7376,7 @@ function openAddModal(parentId,initialType,role){
     const seqCb=el('input');seqCb.type='checkbox';seqTop.appendChild(seqCb);seqTop.appendChild(document.createTextNode('連番で複数作成'));
     const seqFields=el('div');seqFields.style.cssText='display:none;gap:12px;flex-wrap:wrap;margin:6px 0 6px';
     const mkNum=(lab,val)=>{const box=el('div');box.style.cssText='display:flex;flex-direction:column;gap:3px';const l=el('label','form-label',lab);l.style.margin='0';const i=el('input','form-input');i.type='number';i.value=String(val);i.style.width='84px';box.appendChild(l);box.appendChild(i);seqFields.appendChild(box);return i};
-    const cntI=mkNum('個数',3),startI=mkNum('開始番号',10),stepI=mkNum('増分',10),digI=mkNum('桁数',3);
+    const cntI=mkNum('個数',3),startI=mkNum('開始番号',1),stepI=mkNum('増分',1),digI=mkNum('桁数',3);
     const prev=el('div','form-label');prev.style.color='var(--text3)';
     const updPrev=()=>{if(!seqCb.checked){prev.textContent='';return}const base=nameRow.f.value.trim()||'name';const cnt=Math.min(4,Math.max(1,parseInt(cntI.value)||1));const start=parseInt(startI.value)||0,step=parseInt(stepI.value)||1,dig=Math.max(0,parseInt(digI.value)||0);const ex=[];for(let i=0;i<cnt;i++)ex.push(base+String(start+i*step).padStart(dig,'0'));prev.textContent='例: '+ex.join(', ')+((parseInt(cntI.value)||1)>4?' …':'')};
     [cntI,startI,stepI,digI,nameRow.f].forEach(i=>i.addEventListener('input',updPrev));
