@@ -3023,7 +3023,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.041';
+const APP_VERSION='2026.08.05.042';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12705,7 +12705,10 @@ function openReel(){
     if(!frames){reelSyncEmbedAll(c)}
     else{const set=frames instanceof Set?frames:new Set(frames);for(const fr of set)reelSyncEmbedFrame(c,fr)}
     scheduleReelPersist();
-    try{drawAnno();drawFTL();reelNotes()}catch(_){}
+    /* コメント欄再構築（reelNotes）は撤去：`reel_emb_` ノートは常にコメント欄に出さない設計なので、
+       描画編集ごとに `clist.innerHTML=''` → 全 note append し直しが走ってチカチカする原因になっていた。
+       nt_ ノートを新規生成する `reelSendCur` は自身で reelNotes(true) を呼ぶので影響なし。 */
+    try{drawAnno();drawFTL()}catch(_){}
   }
   /* 旧 reelEmbedPending：beforeunload 救済用にシンプル化（全同期＋即 persist）。以前の noShot=true 汎用生成は不要に。 */
   function reelEmbedPending(c){

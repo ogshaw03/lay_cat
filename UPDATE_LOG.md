@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.042) REEL：描画のたびにコメント欄がチカチカするのを修正
+  - `reelAfterEdit` の末尾で毎回 `reelNotes()` を呼んでコメント欄 DOM（`clist.innerHTML=''` → 全 note append し直し）を再構築していたため、描画（pointerup / erase / lasso / mannequin 操作）ごとにチカチカしていた。
+  - `reel_emb_` ノートは常にコメント欄に出さない設計（v.091 で明示非表示）なので、描画編集ではコメント欄の内容は変わらない → `reelNotes()` 呼出は不要。`drawAnno / drawFTL` のみに絞る。
+  - `nt_` ノートを新規生成する送信経路（`reelSendCur`）は自身で `reelNotes(true)` を明示的に呼ぶので影響なし。undo/redo/erase/shape/lasso/mann は元々 comment 側に触らないので影響なし。
+
 - (dev v2026.08.05.041) REEL 送信：「送るものがありません」toast を 3 パターンに分岐
   - v.040 の toast をさらに細分化：(a) 現在フレームに既送信済ノートがある→「既に送信済です」＋削除案内、(b) pending に別フレーム描画あり→最寄りフレーム案内、(c) pending も sent も無し→「未送信の描画・コメントがありません」。
   - 「見えている＝送れる」ではない設計副作用（一度送信すると `nt_...` ノート由来の描画が表示されるが pending は空になり再送できない）をユーザーが判別できるように。
