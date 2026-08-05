@@ -3031,7 +3031,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.001';
+const APP_VERSION='2026.08.06.002';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4703,7 +4703,7 @@ function tlHiddenSet(rootId){if(state.tlHiddenFor!==rootId){state.tlHiddenFor=ro
 function _emptyProjectGuide(cur){
   const wrap=el('div','empty-proj-guide');
   wrap.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:24px auto 0;max-width:1000px;width:100%';
-  const mkBtn=(iconName,title,sub,tpref)=>{
+  const mkBtn=(iconName,title,sub,tpref,role)=>{
     const b=el('button','empty-proj-btn');
     b.type='button';
     b.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:36px 18px;background:transparent;border:2px dashed var(--border);border-radius:var(--radius);color:var(--text2);cursor:pointer;transition:all .15s ease;min-height:180px;font:inherit';
@@ -4712,12 +4712,12 @@ function _emptyProjectGuide(cur){
     const ic=icoEl(iconName);ic.style.cssText='width:36px;height:36px';b.appendChild(ic);
     const t=el('div');t.style.cssText='font-size:16px;font-weight:600';t.textContent=title;b.appendChild(t);
     const s=el('div');s.style.cssText='font-size:12px;color:var(--text3);text-align:center;line-height:1.5';s.textContent=sub;b.appendChild(s);
-    b.onclick=()=>openAddModal(cur.id,tpref);
+    b.onclick=()=>openAddModal(cur.id,tpref,role);
     return b;
   };
-  wrap.appendChild(mkBtn('folder','エピソードを追加','複数話ある場合の話単位フォルダ（EP01 など）','section'));
-  wrap.appendChild(mkBtn('folder','カットを追加','1 カット単位のフォルダ（sh010 など）。エピソードなしなら直接ここから','section'));
-  wrap.appendChild(mkBtn('film','作業ページを追加','動画・画像のレビュー／FB ログを残す作業ページ','review'));
+  wrap.appendChild(mkBtn('folder','エピソードを追加','複数話ある場合の話単位フォルダ（EP01 など）','section','episode'));
+  wrap.appendChild(mkBtn('folder','カットを追加','1 カット単位のフォルダ（sh010 など）。エピソードなしなら直接ここから','section','cut'));
+  wrap.appendChild(mkBtn('film','作業ページを追加','動画・画像のレビュー／FB ログを残す作業ページ','review','task'));
   return wrap;
 }
 function renderProjTimeline(main,cur){
@@ -7225,16 +7225,21 @@ function openR2ConnectModal(){
     mFoot(body,[cancel,connect]);
   });
 }
-function openAddModal(parentId,initialType){
+function openAddModal(parentId,initialType,role){
   openModal(body=>{
     const cur=parentId?getNode(parentId):null;
-    const inner=mHead(body,'アイテムを追加',cur?('親: '+cur.name):'新規アイテム');
+    /* role が指定されている（3 階層モデルの導線ボタンから呼ばれた）場合はページ種別は自動で確定、
+       選択 UI 自体を出さない。role='cut' のみ工程セクションを表示（カットの中に工程を並べる）。 */
+    const roleTitle={episode:'エピソードを追加',cut:'カットを追加',task:'作業ページを追加'}[role]||'アイテムを追加';
+    const inner=mHead(body,roleTitle,cur?('親: '+cur.name):'新規アイテム');
     const nameRow=frow('名前 / ベース名（例: ショット01 / cut）','input');
     inner.appendChild(nameRow.r);
     const nameLab=nameRow.r.querySelector('label');
     let stgSection=null;
-    const _initT=(initialType==='review'||initialType==='section')?initialType:'section';
-    const ts=typeSelector(_initT,t=>{if(stgSection)stgSection.style.display=(t==='section')?'':'none'});inner.appendChild(ts.row);
+    const _initT=role?((role==='task')?'review':'section'):((initialType==='review'||initialType==='section')?initialType:'section');
+    /* ページ種別セレクタ：role 指定時は暗黙で確定するため出さない。呼び出し口が汎用のとき（サイドバー ＋ 等）のみ表示。 */
+    const ts=typeSelector(_initT,t=>{if(stgSection)stgSection.style.display=(t==='section'&&role!=='episode'&&role!=='task')?'':'none'});
+    if(!role)inner.appendChild(ts.row);
     /* 連番で複数作成（同じ工程を含むフォルダを一括作成） */
     const seqTop=el('label','form-label');seqTop.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px';
     const seqCb=el('input');seqCb.type='checkbox';seqTop.appendChild(seqCb);seqTop.appendChild(document.createTextNode('連番で複数作成'));
@@ -7281,8 +7286,9 @@ function openAddModal(parentId,initialType){
     const addStg=el('button','btn btn-ghost btn-sm','＋ 工程を追加');addStg.style.marginBottom='6px';addStg.onclick=()=>{stgArr.push('新工程');redrawStg()};
     stgSection.appendChild(addStg);
     inner.appendChild(stgSection);
-    /* 初期タイプが review（タスク）ならタスク用の工程セクションを非表示にする */
-    if(_initT==='review')stgSection.style.display='none';
+    /* 初期タイプが review（タスク）／role='episode'|'task' なら工程セクションを非表示。
+       role='cut' のみ工程セクションを表示（カットに工程を並べる用途）。 */
+    if(_initT==='review'||role==='episode'||role==='task')stgSection.style.display='none';
     const descRow=frow('説明（任意）','textarea');inner.appendChild(descRow.r);
     const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=closeModal;
     const save=el('button','btn btn-primary','追加');
