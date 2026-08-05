@@ -3023,7 +3023,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.042';
+const APP_VERSION='2026.08.05.043';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5915,6 +5915,7 @@ function paintStrokeList(ctx,W,H,list,alpha){
   for(const st of list){
     if(st.kind==='head'){paintHead(ctx,W,H,st,alpha);ctx.globalAlpha=alpha;continue}
     if(st.kind==='mannequin'){paintMannequin(ctx,W,H,st,alpha);ctx.globalAlpha=alpha;continue}
+    if(st.kind==='image'){paintImage(ctx,W,H,st,alpha);ctx.globalAlpha=alpha;continue}
     if(st.kind==='rect'||st.kind==='ellipse'||st.kind==='arrow'){paintShape(ctx,W,H,st,alpha);ctx.globalAlpha=alpha;continue}
     if(!st.points||st.points.length<2)continue;
     ctx.strokeStyle=st.color||'#ff4d4d';
@@ -6021,6 +6022,35 @@ function paintShape(ctx,W,H,s,alpha){
 }
 /* 3D マネキン注釈：3D エディタから受け取った base64 PNG を、正規化中心座標 (cx,cy) と正規化幅 (w) で描画。
    高さは画像アスペクト比を維持。Phase 1 では移動・拡縮は未対応（中心固定）。 */
+/* 画像アイテムを描画（回転・拡縮・移動対応）。
+   s = {kind:'image', src, cx, cy, w, rot, layer, f, aspect?}
+     src   : dataURL（PNG/JPEG）
+     cx,cy : 中心座標（0-1 相対）
+     w     : 幅（0-1 相対、W 基準）
+     rot   : 回転（ラジアン、0=無回転、時計回り正）
+     aspect: h/w （画像本来のアスペクト比）— 初回配置時に焼き付け */
+const _imgCache=new Map(); /* src → HTMLImageElement のキャッシュ */
+function _loadImageEl(src){
+  if(!src)return null;
+  let img=_imgCache.get(src);
+  if(img)return img;
+  img=new Image();img.src=src;_imgCache.set(src,img);
+  return img;
+}
+function paintImage(ctx,W,H,s,alpha){
+  const img=_loadImageEl(s.src);
+  if(!img||!img.complete||!img.naturalWidth)return;
+  const nw=Math.max(0.02,Math.min(2,s.w||0.4));
+  const ar=s.aspect||(img.naturalHeight/img.naturalWidth);
+  const dw=nw*W;const dh=dw*ar;
+  const cx=(s.cx==null?0.5:s.cx)*W;
+  const cy=(s.cy==null?0.5:s.cy)*H;
+  const rot=+s.rot||0;
+  ctx.save();ctx.globalAlpha=alpha;
+  ctx.translate(cx,cy);if(rot)ctx.rotate(rot);
+  ctx.drawImage(img,-dw/2,-dh/2,dw,dh);
+  ctx.restore();
+}
 function paintMannequin(ctx,W,H,s,alpha){
   const img=_mannLoad(s.img);
   if(!img||!img.complete||!img.naturalWidth) return;
@@ -6039,6 +6069,7 @@ function eraseFromList(list,x,y,r,aspect,layer){
   const out=[];let changed=false;
   for(const s of list){
     if(s.kind==='head'){if((s.layer||1)===layer&&Math.hypot(s.cx-x,(s.cy-y)*aspect)<=r+(s.r||0.12)*0.25){changed=true;continue}out.push(s);continue}
+    if(s.kind==='image'){out.push(s);continue} /* 画像は消しゴム対象外（マネキンと同じく明示削除のみ） */
     if(s.kind==='mannequin'){
       const cx=s.cx==null?0.5:s.cx, cy=s.cy==null?0.5:s.cy, hw=(s.w||0.32)/2;
       if((s.layer||1)===layer && Math.abs(x-cx)<=hw && Math.abs(y-cy)*aspect<=hw*1.2){changed=true;continue}
@@ -6278,6 +6309,7 @@ function noteEmbedOnly(n){return !!(n&&n.drawing&&n.drawing.length&&!(n.text&&St
 function cloneDrawItem(p){
   if(p.kind==='head') return {kind:'head',cx:p.cx,cy:p.cy,r:p.r,yaw:p.yaw,pitch:p.pitch,roll:p.roll,color:p.color,layer:p.layer||1};
   if(p.kind==='mannequin') return {kind:'mannequin',cx:p.cx,cy:p.cy,w:p.w,img:p.img,pose:p.pose,viewQuat:(p.viewQuat?p.viewQuat.slice():[0,0,0,1]),layer:p.layer||1};
+  if(p.kind==='image') return {kind:'image',src:p.src,cx:p.cx,cy:p.cy,w:p.w,rot:p.rot||0,aspect:p.aspect,layer:p.layer||1};
   if(p.kind==='rect'||p.kind==='ellipse'||p.kind==='arrow') return {kind:p.kind,x0:p.x0,y0:p.y0,x1:p.x1,y1:p.y1,color:p.color,w:p.w,layer:p.layer||1};
   return {color:p.color,points:p.points,layer:p.layer||1,w:p.w};
 }
@@ -11327,6 +11359,9 @@ function openReel(){
   const mannB=mkB('','3D マネキン：クリックで 3D エディタを開いてポーズを作成。反映後はアノテ内で移動／四隅=拡縮／緑=ヨー／赤=ピッチ／青=ロール／黄=カメラ軸／ダブルクリック=再編集。');
   /* 3D は絵文字ではなく無彩色の立方体 SVG アイコン＋テキスト（アノテ窓と揃える） */
   mannB.innerHTML='<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M8 2 L14 5 L14 11 L8 14 L2 11 L2 5 Z"/><path d="M8 2 L8 8 L14 5 M8 8 L2 5 M8 8 L8 14"/></svg>3D';
+  /* 画像挿入ツール：クリックで画像ファイル選択→中央に配置。以後は移動／四隅拡縮／上端で回転／Delete で削除。 */
+  const imgB=mkB('','画像挿入：クリックで画像ファイル選択→中央に配置。移動／四隅拡縮／上端で回転／Delete で削除。');
+  imgB.innerHTML='<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><rect x="2" y="3" width="12" height="10" rx="1"/><circle cx="6" cy="7" r="1.2" fill="currentColor" stroke="none"/><path d="M2 11 L6 8 L9 11 L12 9 L14 11"/></svg>画像';
   /* 投げ縄／矩形範囲選択（アノテ窓の lassoBtn と同じ）— まずは未送信 pending のみを対象。committed 対応は後追い。 */
   const R_LASSO_SVG='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8c0-2.5 3.5-4.5 7.5-4.5s7.5 2 7.5 4.5-3.5 4.5-7.5 4.5c-1.6 0-3.1-.3-4.4-.9"/><path d="M7 12L5.5 17"/><circle cx="5.5" cy="17" r="1.2" fill="currentColor"/></svg>';
   const R_RECTSEL_SVG='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 2"><rect x="4" y="5" width="16" height="14" rx="1"/></svg>';
@@ -11425,7 +11460,7 @@ function openReel(){
   const fbarTop=ce(d,'div','ctr');fbarTop.style.cssText='border-top:none;border-bottom:1px solid;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1';
   /* 統合 sizeS は brushS/eraseS の代わりに 1 つだけ配置（アノテ窓と同じ配置） */
   /* アノテ窓と同順（pen,erase,size,pres,shape,lasso,head,mann,color,dur,ghost,eye,trace,layer,undo,redo,clear） */
-  [drawB,eraseB,sizeS,presB,shapeWrap,lassoWrap,headB,mannB,clrs,colorI,durS,ghostB,eyeB,traceB,layB,undoB,redoB,clrB].forEach(x=>fbarTop.appendChild(x));
+  [drawB,eraseB,sizeS,presB,shapeWrap,lassoWrap,headB,mannB,imgB,clrs,colorI,durS,ghostB,eyeB,traceB,layB,undoB,redoB,clrB].forEach(x=>fbarTop.appendChild(x));
   maincol.insertBefore(fbarTop,stage);
   [pF,nF,fLab,fpsS,ziBtn,zoBtn,zoomLab,zrBtn,handB,flipB,inB,outB,rangeClrB].forEach(x=>fbar.appendChild(x));
   /* 画面操作ヒント（右寄せ・2行2列）。REELはズーム＝ホイール/ボタン、パン＝「トラック」＋ドラッグ、回転なし */
@@ -11910,6 +11945,8 @@ function openReel(){
         ctx.restore();
       }
     }
+    /* 画像ツール選択中は選択枠・ハンドルを描画 */
+    if(RV.tool==='image')try{drawReelImgOverlay(ctx)}catch(_){}
     updateLayerPanel();
   }
   /* ==== ゴースト / トレペ / ズーム・トラック（レビューページと同じ） ==== */
@@ -12055,7 +12092,7 @@ function openReel(){
   ftl.onpointermove=e=>{if(!RV.scrub)return;gSeek(gFromX(e));RV.last=-1};
   ftl.onpointerup=()=>{RV.scrub=false;RV.scrubT=-1;RV.last=-1};
   /* ツール */
-  function setRTool(t){RV.tool=t;drawB.classList.toggle('on',t==='draw');eraseB.classList.toggle('on',t==='erase');headB.classList.toggle('on',t==='head');shapeB.classList.toggle('on',t==='shape');lassoB.classList.toggle('on',t==='lasso');mannB.classList.toggle('on',t==='mann');if(t!=='head'){rHeadActive=null;rHeadDrag=null}if(t!=='shape'){rShapeDraft=null}if(t!=='lasso'){try{reelLassoClearSelection()}catch(_){}}if(t!=='mann'){reelSelectedMann=null;reelMannDrag=null;reelMannHoverAxis=null}anno.style.pointerEvents=t?'auto':'none';anno.style.cursor=(t==='draw'||t==='erase')?'none':(t?'crosshair':'');if(t!=='draw'&&t!=='erase'){try{szRing.style.display='none'}catch(_){}}if(t){RZ.hand=false;handB.classList.remove('on');stage.style.cursor='';video.pause()}try{rebuildRSizeSel()}catch(_){}}
+  function setRTool(t){RV.tool=t;drawB.classList.toggle('on',t==='draw');eraseB.classList.toggle('on',t==='erase');headB.classList.toggle('on',t==='head');shapeB.classList.toggle('on',t==='shape');lassoB.classList.toggle('on',t==='lasso');mannB.classList.toggle('on',t==='mann');imgB.classList.toggle('on',t==='image');if(t!=='head'){rHeadActive=null;rHeadDrag=null}if(t!=='shape'){rShapeDraft=null}if(t!=='lasso'){try{reelLassoClearSelection()}catch(_){}}if(t!=='mann'){reelSelectedMann=null;reelMannDrag=null;reelMannHoverAxis=null}if(t!=='image'){reelSelectedImg=null;reelImgDrag=null}anno.style.pointerEvents=t?'auto':'none';anno.style.cursor=(t==='draw'||t==='erase')?'none':(t?'crosshair':'');if(t!=='draw'&&t!=='erase'){try{szRing.style.display='none'}catch(_){}}if(t){RZ.hand=false;handB.classList.remove('on');stage.style.cursor='';video.pause()}try{rebuildRSizeSel()}catch(_){}}
   /* 初期化：ツール未選択でも一覧を作っておく（disable 状態） */
   try{RV.brushW=RV.brushW||4;RV.eraseW=RV.eraseW||16;rebuildRSizeSel()}catch(_){}
   /* 初期状態は「ツール未選択」— 明示的に anno の pointer-events を none にしないと canvas の CSS デフォルト（auto）で
@@ -12072,6 +12109,8 @@ function openReel(){
   let rLassoPath=null,rLassoRect=null,rLassoStart=null,rLassoSel=null,rLassoDrag=null;
   /* マネキン用の状態（アノテ窓の selectedMann / mannDrag / mannHoverAxis と同じ） */
   let reelSelectedMann=null,reelMannDrag=null,reelMannHoverAxis=null;
+  /* 画像アイテムの選択・ドラッグ状態。reelSelectedImg = 対象 image item, reelImgDrag = ドラッグ中の詳細 */
+  let reelSelectedImg=null,reelImgDrag=null;
   let _reelMannRenderQ=null,_reelMannRenderNext=null;
   let _reelMannActiveEditor=null,_reelMannActiveHandler=null;
   /* 別窓のマネキン画像がロードされたら drawAnno を呼ぶ（画像 onload → 表示反映） */
@@ -12084,6 +12123,46 @@ function openReel(){
   headB.onclick=()=>setRTool(RV.tool==='head'?null:'head');
   shapeB.onclick=()=>setRTool(RV.tool==='shape'?null:'shape');
   lassoB.onclick=()=>setRTool(RV.tool==='lasso'?null:'lasso');
+  /* 画像挿入：ファイル選択→中央に配置（アスペクト比 = 画像本来）→画像ツール ON にして即編集可能に */
+  imgB.onclick=()=>{
+    const fi=d.createElement('input');fi.type='file';fi.accept='image/*';
+    fi.onchange=async()=>{
+      const file=fi.files&&fi.files[0];if(!file)return;
+      try{
+        /* 大きすぎる画像は保存サイズ肥大の原因なので長辺 800px にリサイズ＋JPEG 80%（PNG は原則そのまま、
+           透過を保ちたいなら明示的に PNG のまま維持）。透過が要らない写真系は JPEG に、PNG は PNG のまま。 */
+        const {src,aspect}=await _reelPrepareImgSrc(file);
+        const c=reelUI.clips[reelUI.cur];if(!c)return;
+        const item={kind:'image',src,cx:0.5,cy:0.5,w:0.4,rot:0,aspect,f:dispF(),layer:RV.activeLayer};
+        RV.pending.push(item);
+        reelSelectedImg=item;setRTool('image');
+        try{reelAfterEdit(c,new Set([item.f]))}catch(_){}
+        try{_pushHistR()}catch(_){}
+        drawAnno();drawFTL();updUnsent();
+      }catch(err){toastIn(d,'画像の読み込みに失敗しました');console.warn(err)}
+    };
+    fi.click();
+  };
+  /* 画像ファイルを dataURL 化（必要ならリサイズ）。長辺 800px 超は縮小、
+     透過持ちの PNG は PNG のまま、それ以外は JPEG 80% 品質で保存サイズを抑える。 */
+  async function _reelPrepareImgSrc(file){
+    return new Promise((resolve,reject)=>{
+      const url=URL.createObjectURL(file);const img=new Image();
+      img.onload=()=>{
+        const MAX=800;const iw=img.naturalWidth||1,ih=img.naturalHeight||1;
+        const scale=Math.min(1,MAX/Math.max(iw,ih));
+        const dw=Math.max(1,Math.round(iw*scale)),dh=Math.max(1,Math.round(ih*scale));
+        const cvs=d.createElement('canvas');cvs.width=dw;cvs.height=dh;
+        cvs.getContext('2d').drawImage(img,0,0,dw,dh);
+        const isPng=/png/i.test(file.type||'');
+        const src=cvs.toDataURL(isPng?'image/png':'image/jpeg',isPng?undefined:0.8);
+        try{URL.revokeObjectURL(url)}catch(_){}
+        resolve({src,aspect:dh/dw});
+      };
+      img.onerror=()=>{try{URL.revokeObjectURL(url)}catch(_){}reject(new Error('image load failed'))};
+      img.src=url;
+    });
+  }
   /* マネキン：現在レイヤー×現在フレームの既存があれば再編集、なければ新規 */
   mannB.onclick=()=>{
     const f=dispF();
@@ -12224,6 +12303,112 @@ function openReel(){
     if(wasRotate)_reelMannScheduleRender(p,600);
     _pushHistR();drawAnno();updUnsent();
   }
+  /* ==== 画像アイテムのヒットテスト・ドラッグ ====
+     ヒット判定は image を「回転後の 4 頂点で作る矩形」として：
+     - 中央（body）→ 移動
+     - 4 隅（tl/tr/bl/br）→ 拡縮（対角固定・アスペクト比維持）
+     - 上端の外側にあるハンドル → 回転
+     座標系は 0-1 相対。アスペクト比は W:H = 1 : (H/W) なので、ヒット判定では x を W 倍、y を H 倍して pixel 空間で計算する。 */
+  function _reelImgBounds(p){
+    /* p の描画矩形（回転前）の 4 頂点を pixel 座標で返す。回転は centre 基準。 */
+    const W=anno.width,H=anno.height;
+    const nw=Math.max(0.02,Math.min(2,p.w||0.4));
+    const ar=p.aspect||1;
+    const dw=nw*W,dh=dw*ar;
+    const cx=(p.cx==null?0.5:p.cx)*W,cy=(p.cy==null?0.5:p.cy)*H;
+    const rot=+p.rot||0;const cs=Math.cos(rot),sn=Math.sin(rot);
+    const local=[[-dw/2,-dh/2],[dw/2,-dh/2],[dw/2,dh/2],[-dw/2,dh/2]];
+    const pts=local.map(([lx,ly])=>[cx+lx*cs-ly*sn,cy+lx*sn+ly*cs]);
+    const rotHandle=[cx+0*cs-(-dh/2-24)*sn,cy+0*sn+(-dh/2-24)*cs]; /* 上端から 24px 上に回転ハンドル */
+    return {cx,cy,dw,dh,rot,pts,rotHandle};
+  }
+  function reelImgHitTest(nx,ny){
+    const W=anno.width,H=anno.height;const x=nx*W,y=ny*H;const f=dispF();
+    /* pending の image を後ろから走査（後追加が上に描画される） */
+    for(let i=RV.pending.length-1;i>=0;i--){
+      const p=RV.pending[i];if(p.kind!=='image'||p.f!==f||(p.layer||1)!==RV.activeLayer)continue;
+      const b=_reelImgBounds(p);
+      /* 回転ハンドル */
+      if(Math.hypot(x-b.rotHandle[0],y-b.rotHandle[1])<=12)return {p,mode:'rotate',x0:x,y0:y};
+      /* 4 隅ハンドル（ヒット半径 12px） */
+      const cn=['tl','tr','br','bl'];
+      for(let k=0;k<4;k++){if(Math.hypot(x-b.pts[k][0],y-b.pts[k][1])<=12)return {p,mode:'resize',corner:cn[k],x0:x,y0:y}}
+      /* 本体（回転後矩形内部） */
+      const cs=Math.cos(-b.rot),sn=Math.sin(-b.rot);
+      const lx=(x-b.cx)*cs-(y-b.cy)*sn,ly=(x-b.cx)*sn+(y-b.cy)*cs;
+      if(Math.abs(lx)<=b.dw/2&&Math.abs(ly)<=b.dh/2)return {p,mode:'move',x0:x,y0:y};
+    }
+    return null;
+  }
+  function reelImgDown(e){
+    const [nx,ny]=ptA(e);
+    const hit=reelImgHitTest(nx,ny);
+    if(!hit){if(reelSelectedImg){reelSelectedImg=null;drawAnno()}return}
+    anno.setPointerCapture(e.pointerId);
+    reelSelectedImg=hit.p;
+    if(hit.mode==='move'){reelImgDrag={p:hit.p,mode:'move',x0:nx,y0:ny,cx0:hit.p.cx,cy0:hit.p.cy}}
+    else if(hit.mode==='resize'){reelImgDrag={p:hit.p,mode:'resize',corner:hit.corner,x0:hit.x0,y0:hit.y0,w0:hit.p.w||0.4,cx0:hit.p.cx,cy0:hit.p.cy}}
+    else if(hit.mode==='rotate'){const b=_reelImgBounds(hit.p);reelImgDrag={p:hit.p,mode:'rotate',ang0:Math.atan2(hit.y0-b.cy,hit.x0-b.cx),rot0:+hit.p.rot||0}}
+    drawAnno();
+  }
+  function reelImgMove(e){
+    if(!reelImgDrag)return;
+    const [nx,ny]=ptA(e);const W=anno.width,H=anno.height;
+    const dd=reelImgDrag,p=dd.p;
+    if(dd.mode==='move'){p.cx=Math.max(0.02,Math.min(0.98,dd.cx0+(nx-dd.x0)));p.cy=Math.max(0.02,Math.min(0.98,dd.cy0+(ny-dd.y0)))}
+    else if(dd.mode==='resize'){
+      const b=_reelImgBounds(p);
+      const x=nx*W,y=ny*H;
+      /* 対角の頂点を固定端として、そこから現マウスまでの距離で w を再計算 */
+      const oppIdx={tl:2,tr:3,br:0,bl:1}[dd.corner];
+      const opp=b.pts[oppIdx];
+      const dxOpp=(x-opp[0]),dyOpp=(y-opp[1]);
+      /* 対角距離 → w に換算：対角距離 = sqrt(dw^2 + dh^2), dw = w*W, dh = dw*ar → 対角 = w*W*sqrt(1+ar^2) */
+      const ar=p.aspect||1;
+      const diag=Math.hypot(dxOpp,dyOpp);
+      const wNew=diag/(W*Math.sqrt(1+ar*ar));
+      p.w=Math.max(0.03,Math.min(2,wNew));
+      /* 中心も対角から算出して固定端を動かさない */
+      const b2=_reelImgBounds(p);
+      const oppNew=b2.pts[oppIdx];
+      p.cx=Math.max(0.02,Math.min(0.98,(p.cx*W+(opp[0]-oppNew[0]))/W));
+      p.cy=Math.max(0.02,Math.min(0.98,(p.cy*H+(opp[1]-oppNew[1]))/H));
+    }
+    else if(dd.mode==='rotate'){
+      const b=_reelImgBounds(p);
+      const ang=Math.atan2(ny*H-b.cy,nx*W-b.cx);
+      p.rot=dd.rot0+(ang-dd.ang0);
+    }
+    drawAnno();
+  }
+  function reelImgUp(){
+    if(!reelImgDrag)return;
+    const c=reelUI.clips[reelUI.cur];const f=reelImgDrag.p.f;
+    reelImgDrag=null;
+    try{reelAfterEdit(c,new Set([f]))}catch(_){}
+    try{_pushHistR()}catch(_){}
+    drawAnno();updUnsent();
+  }
+  /* 画像の選択枠・4 隅ハンドル・回転ハンドルを描画 */
+  function drawReelImgOverlay(ctx){
+    if(!reelSelectedImg)return;
+    const p=reelSelectedImg;
+    if(p.kind!=='image')return;
+    const b=_reelImgBounds(p);
+    ctx.save();
+    ctx.strokeStyle='#4a9eff';ctx.lineWidth=1.5;ctx.setLineDash([6,4]);
+    ctx.beginPath();ctx.moveTo(b.pts[0][0],b.pts[0][1]);for(let i=1;i<4;i++)ctx.lineTo(b.pts[i][0],b.pts[i][1]);ctx.closePath();ctx.stroke();
+    ctx.setLineDash([]);
+    /* 4 隅ハンドル */
+    ctx.fillStyle='#4a9eff';
+    for(const [hx,hy] of b.pts){ctx.beginPath();ctx.arc(hx,hy,5,0,Math.PI*2);ctx.fill()}
+    /* 回転ハンドル：中心線＋◯ */
+    const topMid=[(b.pts[0][0]+b.pts[1][0])/2,(b.pts[0][1]+b.pts[1][1])/2];
+    ctx.strokeStyle='#4a9eff';ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.moveTo(topMid[0],topMid[1]);ctx.lineTo(b.rotHandle[0],b.rotHandle[1]);ctx.stroke();
+    ctx.beginPath();ctx.arc(b.rotHandle[0],b.rotHandle[1],6,0,Math.PI*2);ctx.fillStyle='#4a9eff';ctx.fill();
+    ctx.restore();
+  }
   /* ダブルクリック=既存マネキンのポーズ再編集 */
   /* A2 修正：REEL でもダブルクリック時のみ送信済み drawing 内のマネキンもヒット対象に。 */
   function reelMannHitTestAny(nx,ny){
@@ -12276,7 +12461,7 @@ function openReel(){
     RV.pending.splice(0,RV.pending.length,...JSON.parse(JSON.stringify(s.pending)));
     RV.stroke=null;
     /* undo/redo 時に各ツールのドラッグ状態を残すと選択枠やドラフトがゾンビ化するのでリセット */
-    try{rShapeDraft=null;rLassoSel=null;rLassoPath=null;rLassoRect=null;rLassoStart=null;rLassoDrag=null;rHeadDrag=null;rHeadActive=null;rHoverPt=null;reelMannDrag=null;reelSelectedMann=null;reelMannHoverAxis=null}catch(_){}
+    try{rShapeDraft=null;rLassoSel=null;rLassoPath=null;rLassoRect=null;rLassoStart=null;rLassoDrag=null;rHeadDrag=null;rHeadActive=null;rHoverPt=null;reelMannDrag=null;reelSelectedMann=null;reelMannHoverAxis=null;reelSelectedImg=null;reelImgDrag=null}catch(_){}
   };
   const _pushHistR=()=>{RV.hist=RV.hist.slice(0,RV.histIdx+1);RV.hist.push(_snapR());RV.histIdx=RV.hist.length-1;if(RV.hist.length>50){RV.hist=RV.hist.slice(-50);RV.histIdx=RV.hist.length-1}};
   _pushHistR(); /* 初期状態を履歴の起点として保存 */
@@ -12483,6 +12668,19 @@ function openReel(){
       }
       if(e.key==='Escape'){e.preventDefault();reelSelectedMann=null;reelMannHoverAxis=null;drawAnno();return}
     }
+    /* 画像選択中の Delete/Backspace＝削除、Esc=選択解除 */
+    if(RV.tool==='image'&&reelSelectedImg){
+      if(e.key==='Delete'||e.key==='Backspace'){
+        e.preventDefault();
+        const p=reelSelectedImg;const affected=new Set();if(p.f!=null)affected.add(p.f);
+        RV.pending.splice(0,RV.pending.length,...RV.pending.filter(x=>x!==p));
+        reelSelectedImg=null;reelImgDrag=null;
+        drawAnno();drawFTL();updUnsent();_pushHistR();
+        try{reelAfterEdit(reelUI.clips[reelUI.cur],affected)}catch(_){}
+        return;
+      }
+      if(e.key==='Escape'){e.preventDefault();reelSelectedImg=null;drawAnno();return}
+    }
     /* 投げ縄の選択操作 */
     if(RV.tool!=='lasso'||!rLassoSel)return;
     if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();reelLassoDelete()}
@@ -12518,8 +12716,9 @@ function openReel(){
     else if(RV.tool==='shape'){reelShapeDown(e)}
     else if(RV.tool==='lasso'){reelLassoDown(e)}
     else if(RV.tool==='mann'){reelMannDown(e)}
+    else if(RV.tool==='image'){reelImgDown(e)}
   };
-  anno.onpointermove=e=>{if(RV.stroke){const evs=e.getCoalescedEvents?e.getCoalescedEvents():null;if(evs&&evs.length){for(const ce of evs){const p=ptA(ce);const pr=samplePressure(ce);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}}else{const p=ptA(e);const pr=samplePressure(e);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}drawAnno()}else if(RV.erasing)eraseR(e);else if(rHeadDrag)reelHeadMove(e);else if(RV.tool==='shape'&&rShapeDraft)reelShapeMove(e);else if(RV.tool==='lasso')reelLassoMove(e);else if(reelMannDrag||RV.tool==='mann')reelMannMove(e);else if(RV.tool==='head'){const [_hx,_hy]=ptA(e);rHoverPt=[_hx,_hy];drawAnno()} /* head ホバー座標を更新して drawAnno に反映（アノテ窓と統一） */
+  anno.onpointermove=e=>{if(RV.stroke){const evs=e.getCoalescedEvents?e.getCoalescedEvents():null;if(evs&&evs.length){for(const ce of evs){const p=ptA(ce);const pr=samplePressure(ce);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}}else{const p=ptA(e);const pr=samplePressure(e);if(pr!=null)p.push(pr);RV.stroke.points.push(p)}drawAnno()}else if(RV.erasing)eraseR(e);else if(rHeadDrag)reelHeadMove(e);else if(RV.tool==='shape'&&rShapeDraft)reelShapeMove(e);else if(RV.tool==='lasso')reelLassoMove(e);else if(reelMannDrag||RV.tool==='mann')reelMannMove(e);else if(reelImgDrag)reelImgMove(e);else if(RV.tool==='head'){const [_hx,_hy]=ptA(e);rHoverPt=[_hx,_hy];drawAnno()} /* head ホバー座標を更新して drawAnno に反映（アノテ窓と統一） */
     /* draw / erase 時のブラシサイズカーソル（アノテ窓と同じ挙動） */
     if((RV.tool==='draw'||RV.tool==='erase')&&!rvSz)reelMoveHoverRing(e);
   }; /* 合体イベントで速書きの中間点も取得。ペン時は筆圧を付与 */
@@ -12540,6 +12739,7 @@ function openReel(){
     if(RV.tool==='shape'&&rShapeDraft){reelShapeUp();/* _pushHistR は reelShapeUp が呼ぶので changed は false のまま */}
     if(RV.tool==='lasso'&&(rLassoPath||rLassoRect||rLassoDrag||rLassoStart)){reelLassoUp();/* 内部で _pushHistR / drawAnno 呼ぶ */}
     if(reelMannDrag){reelMannUp();/* 内部で _pushHistR / drawAnno / updUnsent 呼ぶ */}
+    if(reelImgDrag){reelImgUp();/* 内部で _pushHistR / drawAnno / updUnsent 呼ぶ */}
     if(changed)_pushHistR();
     /* 描画・変形が入ったら v.review.notes の REEL embed ノートを同期＋debounce persist */
     try{reelAfterEdit(reelUI.clips[reelUI.cur])}catch(_){}

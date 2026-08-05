@@ -14,6 +14,15 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.043) REEL：ノートに画像を挿入（移動／拡縮／回転／削除）＋送信時に保存できるように
+  - 新規 `kind:'image'` アイテムをサポート。`{kind:'image', src, cx, cy, w, rot, aspect, layer, f}`。src は dataURL（長辺 800px + JPEG 80% / PNG は PNG のまま）。
+  - `paintImage(ctx,W,H,s,alpha)` を新設（回転対応：`translate → rotate → drawImage`）。`_imgCache` で HTMLImageElement をキャッシュ。`paintStrokeList` / `cloneDrawItem` / `eraseFromList`（対象外）に image ケースを追加。
+  - REEL ツールバーに **画像ボタン** 追加（アイコンは picture-frame SVG）。クリックでファイル選択→中央に配置＋自動選択で即操作可能。
+  - **移動**：本体をドラッグ／**拡縮**：4 隅ハンドルドラッグ（対角固定・アスペクト比維持）／**回転**：上端の◯ハンドルドラッグ／**削除**：Delete または Backspace／**選択解除**：Esc。
+  - 選択枠は青の破線＋4 隅の●＋上端の回転ハンドル（`drawReelImgOverlay`）。
+  - `_pushHistR` で Undo/Redo 対象、`reelAfterEdit` で `reel_emb_` に同期→送信で `nt_` ノートへ昇格（既存フロー流用、コード追加なし）。
+  - 大きな画像は事前リサイズで `v.review.notes` の肥大を抑制（長辺 800px、透過画像は PNG 維持、それ以外 JPEG 80%）。
+
 ---
 
 ## 反映済み beta v0.0.9（2026-08-05）
