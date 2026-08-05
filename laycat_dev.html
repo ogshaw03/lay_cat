@@ -3023,7 +3023,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.039';
+const APP_VERSION='2026.08.05.040';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12723,9 +12723,24 @@ function openReel(){
     c.commentDraft=cta.value;c._mentions=(cta._mentions||[]).slice();
     const cf=dispF();const pdur=parseInt(durS.value)||1;
     const txt=(c.commentDraft||'').trim();
-    const inWin=p=>p.f!=null&&cf>=p.f&&cf<p.f+pdur;
+    /* inWin：描画時に焼き付けた `p.dur` を優先して判定する。以前は `pdur=durS.value` のみで
+       判定していたため、描画後に durS を狭めると 1F ズレで cur=[] になり drawing 抜けの
+       newN（サムネなし）ができる不整合があった。reelSyncEmbedFrame は p.dur を尊重するので
+       送信側もそれに合わせる。 */
+    const inWin=p=>p.f!=null&&cf>=p.f&&cf<p.f+(parseInt(p.dur)||pdur);
     const cur=(c.pending||[]).filter(inWin);
-    if(!txt&&!cur.length)return; /* 送るものが無い */
+    if(!txt&&!cur.length){
+      /* silent early return 廃止：ユーザーに何が起きたか伝える。特に「描画したフレームと
+         現在の再生位置がズレて cur=[] になった」ケースを診断しやすくする。 */
+      const pfList=(c.pending||[]).map(p=>p.f).filter(f=>f!=null);
+      if(pfList.length){
+        const nearest=pfList.reduce((best,f)=>Math.abs(f-cf)<Math.abs(best-cf)?f:best,pfList[0]);
+        toastIn(d,'送るものがありません（現在 F'+cf+' / 描画は F'+nearest+' 付近）。当該フレームに合わせるか「表示X」を広げてください');
+      }else{
+        toastIn(d,'送るものがありません（描画・コメント どちらも空です）');
+      }
+      return;
+    }
     const vv=vOf(c);if(!vv)return;
     const nd=c.nodeId?getNode(c.nodeId):null;const root=nd?rootOf(nd):curRoot();
     const drawings=cur.map(cloneDrawItem);

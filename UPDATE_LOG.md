@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.040) REEL 送信：inWin 判定を p.dur 焼き付き値ベースに＋silent early-return を toast 化
+  - サブエージェント解析（A1）で判明した「サムネが送られない」主犯：`reelSendCur` の `inWin` が `cf < p.f + pdur`（`pdur=durS.value`）で判定していたため、描画後に durS を狭めた／1F ズレたケースで `cur=[]` になり `newN.drawing` 未設定 → `noteBlock` のサムネ生成分岐に入らない不整合。
+  - `inWin` を `cf < p.f + (parseInt(p.dur)||pdur)` に変更。描画時に焼き付けた `p.dur` を優先し、`reelSyncEmbedFrame` の意味論（p.dur を尊重して embed 作成）と揃える。
+  - サイレント early-return を撤去し、`toastIn(d, ...)` で「現在 F<cf> / 描画は F<最寄り> 付近」を表示（描画・コメントどちらも空の場合はその旨）。ユーザーがフレームズレを診断できるように。
+  - 3 番目の対策（annotShotInto の iframe 越境根本対策）は保留。まずこの 2 つで多くのケースが解消する想定。
+
 - (dev v2026.08.05.039) REEL：送信ノートのサムネ canvas を iframe-doc で作り直して描画反映
   - v.038 で `noShot=true` を外したが `noteBlock` の canvas はメイン document で作られ iframe に adopt される。Chrome の adoption 挙動で backing buffer への描画（`annotShotInto` の非同期 drawImage）が反映されずサムネが空のままだった。
   - `reelNotes` で noteBlock 呼出後に、`.note-shot` を iframe-doc の canvas に差し替えて `annotShotInto(ifCv, shot, n)` を再発行。iframe 内で正しくサムネが描画される。
