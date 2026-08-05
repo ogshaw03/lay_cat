@@ -14,6 +14,16 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.05.044) タスクページ右カラムの NOTE パネルに画像挿入対応（拡縮／回転／削除）
+  - ユーザーが求めていたのは REEL ではなくタスクページの NOTE パネル（`buildTaskNotePane`、contenteditable）だった。v.043（REEL 画像挿入）は誤対応。
+  - ツールバーに「画像」ボタン追加：クリック→ファイル選択→リサイズ（長辺 600px, PNG は PNG のまま/その他は JPEG 80%）→現在カーソル位置に `<img class="note-img" src="..." style="width:240px;transform:rotate(0deg)">` を `insertHTML` で挿入。
+  - `.note-img` クリック → 選択＋浮動ミニツールバー表示：
+    - 幅：`− / ＋`（0.85x / 1.18x 増減、40〜1200px クランプ）
+    - 回転：`↺15° / ↻15° / ↻90° / 0°`（style.transform を書き換え）
+    - 削除：`✕`
+  - エディタ外クリックでツールバー閉じ、Delete/Backspace で選択画像削除。
+  - `_noteResizeImage(file, maxSide)` を新設。`node.note` HTML に埋め込むため事前縮小が必須。
+
 - (dev v2026.08.05.043) REEL：ノートに画像を挿入（移動／拡縮／回転／削除）＋送信時に保存できるように
   - 新規 `kind:'image'` アイテムをサポート。`{kind:'image', src, cx, cy, w, rot, aspect, layer, f}`。src は dataURL（長辺 800px + JPEG 80% / PNG は PNG のまま）。
   - `paintImage(ctx,W,H,s,alpha)` を新設（回転対応：`translate → rotate → drawImage`）。`_imgCache` で HTMLImageElement をキャッシュ。`paintStrokeList` / `cloneDrawItem` / `eraseFromList`（対象外）に image ケースを追加。
