@@ -3023,7 +3023,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.037';
+const APP_VERSION='2026.08.05.038';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12720,7 +12720,10 @@ function openReel(){
     const newN={id:'nt_'+Math.random().toString(36).slice(2,10),author:who,time:now,frame:cf,dur:pdur};
     if(drawings.length)newN.drawing=drawings;
     if(txt){newN.text=txt;const mns=extractMentions(txt,root,c._mentions||[]);if(mns&&mns.length)newN.mentions=mns}
-    if(drawings.length&&!txt)newN.noShot=true; /* 描画のみ確定送信＝コメント欄には出さない */
+    /* 旧仕様は「描画のみで送信＝noShot=true でコメント欄に出さない」だったが、ユーザーが
+       スライダーを描画済フレームに合わせて送信ボタンを押した意図＝「サムネ付きで送信したい」
+       と解釈する方が自然。noShot は付けず、通常のコメントとして扱いサムネ生成させる。
+       （自動同期の reel_emb_ ノートは別経路で常に noShot=true のまま埋め込み専用） */
     vv.review.notes.push(newN);
     /* 現在フレーム分の pending を除去 → reelAfterEdit で該当フレームの embed ノートも同期削除。
        **重要**：c.pending は RV.pending と同一参照（loadCur で RV.pending = c.pending にバインド済み）。
