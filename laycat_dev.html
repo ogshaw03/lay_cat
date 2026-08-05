@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.008';
+const APP_VERSION='2026.08.06.009';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4218,7 +4218,11 @@ function renderSidebar(){
     if(target.type==='review'){const p=target.parentId?getNode(target.parentId):null;target=p||root}
     let addRole;
     if(target.id===root.id){addRole='in-root'}
-    else{const hasGrandKids=childrenOf(target.id).some(k=>k.type==='section'&&childrenOf(k.id).length>0);addRole=hasGrandKids?'in-episode':undefined}
+    else{
+      /* target.kind==='episode' 明示があれば in-episode 確定、無ければ孫の有無で推定 */
+      const isEp=(target.kind==='episode')||childrenOf(target.id).some(k=>k.type==='section'&&childrenOf(k.id).length>0);
+      addRole=isEp?'in-episode':undefined;
+    }
     openAddModal(target.id,undefined,addRole);
   };
   ctrls.appendChild(add);
@@ -4765,14 +4769,19 @@ function _emptyFolderGuide(cur){
     b.onclick=()=>openAddModal(cur.id,tpref,role);
     return b;
   };
-  /* 階層判定：親がルート & 兄弟が「孫（＝作業ページ）を持つ子（＝カット）」を持てば
-     → 兄弟はエピソード群 → 自分もエピソード扱い（カット／作業ページ を提示）。
-     それ以外はカット扱い（作業ページのみ提示）。 */
-  const parent=cur.parentId?getNode(cur.parentId):null;
+  /* 階層判定：優先順位
+     1. `cur.kind` が保存されていればそれを使う（作成時点で確定）
+     2. 親がルート & 兄弟が「孫を持つ子」を持てば自分もエピソード
+     3. それ以外はカット扱い */
   let isEpisode=false;
-  if(parent&&!parent.parentId){
-    const siblings=childrenOf(parent.id).filter(c=>c.id!==cur.id);
-    isEpisode=siblings.some(sib=>childrenOf(sib.id).some(gc=>childrenOf(gc.id).length>0));
+  if(cur.kind==='episode')isEpisode=true;
+  else if(cur.kind==='cut')isEpisode=false;
+  else{
+    const parent=cur.parentId?getNode(cur.parentId):null;
+    if(parent&&!parent.parentId){
+      const siblings=childrenOf(parent.id).filter(c=>c.id!==cur.id);
+      isEpisode=siblings.some(sib=>sib.kind==='episode'||childrenOf(sib.id).some(gc=>childrenOf(gc.id).length>0));
+    }
   }
   const cols=isEpisode?2:1;
   wrap.style.cssText='display:grid;grid-template-columns:repeat('+cols+',1fr);gap:14px;margin:16px auto 0;max-width:'+(cols*340)+'px;width:100%';
@@ -5261,12 +5270,14 @@ function setupShotAutoplay(){
   }
 }
 /* 進捗タブ用：プロジェクト配下でショット親になり得るノード（孫を持つ） */
-/* 3 階層モデル（エピソード → ショット → 作業ページ）に沿った自動判定：
-   ・ルート直下の子フォルダの中に「孫（ショット）→ 曾孫（作業ページ）」を持つものがあれば
-     それらは「エピソード」→ ショット親として全て返す
-   ・そういう子フォルダが 1 つも無ければ、ルート自身がショット親（＝直下がショット） */
+/* 3 階層モデル（エピソード → カット → 作業ページ）に沿った自動判定：
+   ・優先：ルート直下の子で `kind==='episode'` の明示指定があればそれ
+   ・次に：ルート直下の子で「孫（カット）→ 曾孫（作業ページ）」を持つ子があればそれ
+   ・どちらも無ければルート自身（＝直下がカット） */
 function pmProgressParents(root){
   const rootChildren=childrenOf(root.id);
+  const marked=rootChildren.filter(rc=>rc.kind==='episode');
+  if(marked.length)return marked;
   const episodes=rootChildren.filter(rc=>childrenOf(rc.id).some(sh=>childrenOf(sh.id).length>0));
   if(episodes.length)return episodes;
   return [root];
@@ -5591,8 +5602,10 @@ function renderSectionBody(s,cur){
   const secl=el('div','section-label');secl.appendChild(el('span',null,'タスク'));
   const acts=el('div','acts');
   const addBtn=el('button','btn btn-ghost btn-sm','+ 追加');
-  /* エピソードフォルダ（直下の子がさらに子を持つ＝孫がある）の＋追加は「ショット／作業ページ」から選ぶ形に */
-  const _isEpisodeCtx=childrenOf(cur.id).some(ch=>ch.type==='section'&&childrenOf(ch.id).length>0);
+  /* エピソードフォルダ判定：
+     - cur.kind==='episode' なら確定
+     - 直下の子がさらに子を持つ（＝孫あり）なら episode 相当 */
+  const _isEpisodeCtx=(cur.kind==='episode')||childrenOf(cur.id).some(ch=>ch.type==='section'&&childrenOf(ch.id).length>0);
   addBtn.onclick=()=>openAddModal(cur.id,undefined,_isEpisodeCtx?'in-episode':undefined);
   acts.appendChild(addBtn);
   secl.appendChild(acts);
@@ -7420,11 +7433,17 @@ function openAddModal(parentId,initialType,role){
         names=[];for(let i=0;i<cnt;i++)names.push(base+String(start+i*step).padStart(dig,'0'));
       }
       const stages=wantStages?stgArr.map(x=>x.trim()).filter(Boolean):[];
+      /* 階層ヒント：作成後の空フォルダ判定（_emptyFolderGuide 等）で兄弟がまだ無い場合の
+         フォールバックとして「これはエピソード」「これはカット」の印を残す。role/raw から確定できる場合のみ。 */
+      const kindHint=(raw==='episode'||role==='episode')?'episode'
+                    :((raw==='cut'||role==='cut'||(type==='section'&&role==='in-episode'))?'cut':null);
       const createdIds=[];
       for(const nm of names){
         const id=addNode(parentId,nm,names.length===1?descRow.f.value.trim():'',type);
         createdIds.push(id);
-        if(stages.length){for(const st of stages)addNode(id,st,'','review');getNode(id).stages=stages.slice()}
+        const nd=getNode(id);
+        if(kindHint)nd.kind=kindHint;
+        if(stages.length){for(const st of stages)addNode(id,st,'','review');nd.stages=stages.slice()}
       }
       await persist();closeModal();if(parentId)state.expanded.add(parentId);render();resolveThumbs();
       if(names.length>1)toast(names.length+'件を作成しました');
