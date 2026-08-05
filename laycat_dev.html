@@ -3031,7 +3031,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.05.045';
+const APP_VERSION='2026.08.06.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4695,17 +4695,18 @@ function projectStageNames(rootId){return [...new Set(descendants(rootId).filter
 /* タイムラインで非表示にしている工程名（プロジェクト単位・切替時にリセット） */
 function tlHiddenSet(rootId){if(state.tlHiddenFor!==rootId){state.tlHiddenFor=rootId;state.tlHidden=new Set()}return state.tlHidden;}
 
-/* 空プロジェクトの初回ガイド：カテゴリ／タスク追加への大きな導線ボタン
-   openAddModal を呼ぶが、ボタン側で選択タイプを暗黙に伝えたいので data 属性で示唆
-   （現状 openAddModal は type セレクタが「セクション（カテゴリ）」既定なので、
-    タスクの場合はモーダル内でユーザーに切り替えてもらう。将来ここを引数で pre-select 可能に） */
+/* 空プロジェクトの初回ガイド：3 階層に対応した大きな導線ボタン
+   エピソード（＝ルート直下のフォルダ）／カット（＝エピソード直下 or ルート直下のフォルダ）／
+   作業ページ（＝カット直下のレビューページ）。
+   openAddModal は section/review の 2 種しか扱わないので、エピソードとカットはどちらも
+   'section' を渡し、モーダル内で名前をユーザーが入れる形（内部データ的にも同じ section）。 */
 function _emptyProjectGuide(cur){
   const wrap=el('div','empty-proj-guide');
-  wrap.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px auto 0;max-width:900px;width:100%';
+  wrap.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:24px auto 0;max-width:1000px;width:100%';
   const mkBtn=(iconName,title,sub,tpref)=>{
     const b=el('button','empty-proj-btn');
     b.type='button';
-    b.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:38px 20px;background:transparent;border:2px dashed var(--border);border-radius:var(--radius);color:var(--text2);cursor:pointer;transition:all .15s ease;min-height:180px;font:inherit';
+    b.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:36px 18px;background:transparent;border:2px dashed var(--border);border-radius:var(--radius);color:var(--text2);cursor:pointer;transition:all .15s ease;min-height:180px;font:inherit';
     b.onmouseenter=()=>{b.style.borderColor='var(--accent)';b.style.color='var(--text1)';b.style.background='rgba(255,255,255,.02)'};
     b.onmouseleave=()=>{b.style.borderColor='var(--border)';b.style.color='var(--text2)';b.style.background='transparent'};
     const ic=icoEl(iconName);ic.style.cssText='width:36px;height:36px';b.appendChild(ic);
@@ -4714,8 +4715,9 @@ function _emptyProjectGuide(cur){
     b.onclick=()=>openAddModal(cur.id,tpref);
     return b;
   };
-  wrap.appendChild(mkBtn('folder','カテゴリを追加','工程・階層を管理するフォルダ（動画は入れない）','section'));
-  wrap.appendChild(mkBtn('film','タスクを追加','動画・画像のレビューページ（FBログを残す）','review'));
+  wrap.appendChild(mkBtn('folder','エピソードを追加','複数話ある場合の話単位フォルダ（EP01 など）','section'));
+  wrap.appendChild(mkBtn('folder','カットを追加','1 カット単位のフォルダ（sh010 など）。エピソードなしなら直接ここから','section'));
+  wrap.appendChild(mkBtn('film','作業ページを追加','動画・画像のレビュー／FB ログを残す作業ページ','review'));
   return wrap;
 }
 function renderProjTimeline(main,cur){
@@ -5195,13 +5197,23 @@ function setupShotAutoplay(){
   }
 }
 /* 進捗タブ用：プロジェクト配下でショット親になり得るノード（孫を持つ） */
-function pmProgressParents(root){const all=[root,...descendants(root.id)];const c=all.filter(n=>childrenOf(n.id).some(ch=>childrenOf(ch.id).length>0));return c.length?c:[root];}
+/* 3 階層モデル（エピソード → ショット → 作業ページ）に沿った自動判定：
+   ・ルート直下の子フォルダの中に「孫（ショット）→ 曾孫（作業ページ）」を持つものがあれば
+     それらは「エピソード」→ ショット親として全て返す
+   ・そういう子フォルダが 1 つも無ければ、ルート自身がショット親（＝直下がショット） */
+function pmProgressParents(root){
+  const rootChildren=childrenOf(root.id);
+  const episodes=rootChildren.filter(rc=>childrenOf(rc.id).some(sh=>childrenOf(sh.id).length>0));
+  if(episodes.length)return episodes;
+  return [root];
+}
 /* 有効なショット親（複数可）：プロジェクト設定の指定を優先、なければ自動検出。
-   エピソードが別フォルダに分かれている場合、複数の親フォルダをまとめて扱う */
+   エピソードが別フォルダに分かれている場合、複数の親フォルダをまとめて扱う。
+   自動時は 3 階層モデルに則り「エピソードがあれば全エピソード、無ければルート」を返す。 */
 function shotsParentsOf(root){
   if(Array.isArray(root.shotsParentIds)){const v=root.shotsParentIds.filter(id=>getNode(id));if(v.length)return v;}
   if(root.shotsParentId&&getNode(root.shotsParentId))return [root.shotsParentId]; /* 旧・単一指定との後方互換 */
-  return [pmProgressParents(root)[0].id];
+  return pmProgressParents(root).map(n=>n.id);
 }
 /* 後方互換：単一の親が必要な箇所用（先頭を返す） */
 function shotsParentOf(root){return shotsParentsOf(root)[0];}
@@ -6835,8 +6847,8 @@ function typeSelector(initial,onChange){
   const seg=el('div','seg');
   const svgS='<svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">'+ICONS.folder+'</svg>';
   const svgR='<svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">'+ICONS.film+'</svg>';
-  const optS=el('button','seg-opt');optS.type='button';optS.innerHTML=svgS+'カテゴリ<small>工程・階層を管理／動画は不可</small>';
-  const optR=el('button','seg-opt');optR.type='button';optR.innerHTML=svgR+'タスク<small>動画FBログを縦に残す</small>';
+  const optS=el('button','seg-opt');optS.type='button';optS.innerHTML=svgS+'フォルダ<small>エピソード／カット等の階層フォルダ（動画は不可）</small>';
+  const optR=el('button','seg-opt');optR.type='button';optR.innerHTML=svgR+'作業ページ<small>動画・画像の FB ログを縦に残す</small>';
   const apply=()=>{optS.classList.toggle('active',sel==='section');optR.classList.toggle('active',sel==='review');if(onChange)onChange(sel)};
   optS.onclick=()=>{sel='section';apply()};optR.onclick=()=>{sel='review';apply()};apply();
   seg.appendChild(optS);seg.appendChild(optR);row.appendChild(seg);
