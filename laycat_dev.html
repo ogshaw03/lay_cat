@@ -2319,7 +2319,7 @@ const storage={
   },
   /* backend は削除前に外から明示的に渡すのが望ましい（DB/REG から node/entry が消えた後だと _backend が folder に戻ってしまい R2 purge が呼ばれない）。
      省略時は _backend で判定するが、フォールバック扱い。 */
-  async delProject(id,backend){try{localStorage.removeItem('layna_proj_'+id)}catch(_){}try{await idbDel('kv','proj_'+id)}catch(_){}try{const ph=await this.projRoot(id);if(ph){try{await ph.removeEntry(this._projFileName)}catch(_){}try{await ph.removeEntry(this._projFileNameOld)}catch(_){}/* Phase 1/2: 個別サブミット / ショット JSON も掃除（残しても実害は無いが混乱防止） */try{await ph.removeEntry('submits',{recursive:true})}catch(_){}try{await ph.removeEntry('shots',{recursive:true})}catch(_){}}}catch(_){}const be=backend||this._backend(id);if(be==='r2'){try{await this._r2.purge(id)}catch(_){}}/* 変更検知キャッシュも破棄 */try{delete _saveCache.submit[id];delete _saveCache.shot[id];delete _saveCache.proj[id]}catch(_){}},
+  async delProject(id,backend){try{localStorage.removeItem('layna_proj_'+id)}catch(_){}try{localStorage.removeItem('layna_reels_'+id)}catch(_){}try{await idbDel('kv','proj_'+id)}catch(_){}try{const ph=await this.projRoot(id);if(ph){try{await ph.removeEntry(this._projFileName)}catch(_){}try{await ph.removeEntry(this._projFileNameOld)}catch(_){}/* Phase 1/2: 個別サブミット / ショット JSON も掃除（残しても実害は無いが混乱防止） */try{await ph.removeEntry('submits',{recursive:true})}catch(_){}try{await ph.removeEntry('shots',{recursive:true})}catch(_){}/* リールも共有フォルダから削除（reels/reels.json） */try{await ph.removeEntry('reels',{recursive:true})}catch(_){}}}catch(_){}const be=backend||this._backend(id);if(be==='r2'){try{await this._r2.purge(id)}catch(_){}}/* 変更検知キャッシュも破棄 */try{delete _saveCache.submit[id];delete _saveCache.shot[id];delete _saveCache.proj[id];delete _saveCache.reels[id]}catch(_){}},
   /* リール：プロジェクトフォルダ内 reels/reels.json に格納（共有可能）。フォルダ未設定なら localStorage */
   async loadReels(id){
     if(this._backend(id)==='r2'){
@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.023';
+const APP_VERSION='2026.08.06.024';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8543,7 +8543,16 @@ async function _doDeleteNode(node,opts){
   if(!_skipMediaDel){for(const n of all)for(const v of n.versions||[]){await storage.delMedia(v.file);await storage.delMedia(v.thumb)}}
   const ids=new Set(all.map(n=>n.id));
   if(isProject){
-    DB.reels=(DB.reels||[]).filter(r=>(r.projectId||reelProjectId(r))!==node.id);
+    /* プロジェクト削除時のリール掃除：
+       ① projectId が一致するリール（通常経路）
+       ② 万一 projectId 未設定でも、いずれかのクリップが削除対象ノードを参照していれば削除
+       （legacy データや reelProjectId が null を返すケースを拾う） */
+    DB.reels=(DB.reels||[]).filter(r=>{
+      const rpid=r.projectId||reelProjectId(r);
+      if(rpid===node.id)return false;
+      if((r.clips||[]).some(c=>ids.has(c.nodeId)))return false;
+      return true;
+    });
   }else{
     DB.reels=(DB.reels||[]).map(r=>{
       if(!r.clips||!r.clips.some(c=>ids.has(c.nodeId)))return r;
@@ -8557,8 +8566,10 @@ async function _doDeleteNode(node,opts){
   if(isProject){
     REG=REG.filter(e=>e.id!==node.id);delete _saveCache.proj[node.id];delete _saveCache.reels[node.id];
     if(keepData){
-      /* 接続解除のみ：クライアント側の folder handle を破棄。バケット/フォルダのデータには手を付けない。 */
+      /* 接続解除のみ：クライアント側の folder handle と localStorage キャッシュを破棄。バケット/フォルダのデータには手を付けない。 */
       try{await storage.clearProjRoot(node.id)}catch(_){}
+      try{localStorage.removeItem('layna_reels_'+node.id)}catch(_){}
+      try{localStorage.removeItem('layna_proj_'+node.id)}catch(_){}
     }else{
       try{await storage.delProject(node.id,_backend);await storage.clearProjRoot(node.id)}catch(_){}
     }

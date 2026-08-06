@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.06.024) プロジェクト削除時にリールも確実に消えるよう修正
+  - `_doDeleteNode` のリール掃除：`projectId` 一致のほか、いずれかのクリップが削除対象ノードを参照している場合も削除対象に（legacy データや `reelProjectId` が null を返すケースを拾う）。
+  - `storage.delProject`：共有フォルダ内 `reels/reels.json`（reels/ ディレクトリごと）と `localStorage['layna_reels_'+id]` を削除、`_saveCache.reels[id]` もクリア。
+  - keepData（接続だけ解除）ケース：`localStorage['layna_reels_'+id]` と `localStorage['layna_proj_'+id]` のクライアント側キャッシュを破棄（共有フォルダのデータには手を付けない）。
+
 - (dev v2026.08.06.023) 新規プロジェクトモーダル「保存先フォルダを選択」見出しの絵文字 📁 を無彩色 SVG（`ICONS.folder` を `currentColor` で描画）に変更
 
 - (dev v2026.08.06.022) 新規プロジェクトモーダルの「保存先フォルダ」指定を目立たせる
