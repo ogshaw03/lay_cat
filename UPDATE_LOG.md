@@ -14,6 +14,8 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.06.017) REEL のコメントパネル（`.fb-side`）をさらに拡張：393 → 460px
+
 - (dev v2026.08.06.016) v.015 で対象外の作業ページ NOTE パネル（`.review-note-col`）まで広げていたのを元に戻す
   - `.review-note-col`：510 → 340px（元に戻す）
   - `.task-topbar::after` の下線 offset：`right:-546px` → `right:-376px`（元に戻す）

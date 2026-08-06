@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.016';
+const APP_VERSION='2026.08.06.017';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11454,7 +11454,7 @@ function openReel(){
    +'.lyr-add{margin:2px 0 10px;padding:7px;border:1px dashed #3a3a42;border-radius:8px;color:#5a5a6a;font-size:12px;cursor:pointer;background:none}'
    +'.lyr-add:hover{color:#e8e8ec;border-color:#e8e8ec}'
    /* コメントパネル（FBと同じ挙動・noteBlock共用） */
-   +'.fb-side{width:393px;border-left:1px solid;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1;box-shadow:-1px 0 10px rgba(96,165,255,.14);background:#141416;display:flex;flex-direction:column;min-height:0;flex-shrink:0}'
+   +'.fb-side{width:460px;border-left:1px solid;border-image:linear-gradient(135deg,#5cc7ef,#7a5cff) 1;box-shadow:-1px 0 10px rgba(96,165,255,.14);background:#141416;display:flex;flex-direction:column;min-height:0;flex-shrink:0}'
    +'.fb-side-head{font-size:10px;font-weight:700;letter-spacing:1px;color:#5a5a6a;text-transform:uppercase;padding:12px 14px 8px}'
    +'.reel-status{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:0 12px 10px;margin-bottom:6px;border-bottom:1px solid #2a2a2f}'
    +'.reel-status .rs-lab{width:100%;font-size:11px;color:#9a9aaa;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
