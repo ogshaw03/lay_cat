@@ -128,7 +128,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
    sticky top は 84px：`.task-topbar`（＋動画/設定/削除ボタン列、sticky top:0）の
    下端（padding+ボタン+border+margin-bottom 合計で約 70〜75px）よりも下に来るようにする。
    これで NOTE 上端が上部ボタンバーと同じ Y に並んで干渉して見えるのを防ぐ。 */
-.review-note-col{flex:0 0 510px;position:sticky;top:84px;height:calc(100vh - 316px);max-height:calc(100vh - 316px);align-self:flex-start;display:flex;flex-direction:column;overflow:hidden}
+.review-note-col{flex:0 0 340px;position:sticky;top:84px;height:calc(100vh - 316px);max-height:calc(100vh - 316px);align-self:flex-start;display:flex;flex-direction:column;overflow:hidden}
 @media (max-width:960px){.review-layout{flex-direction:column;min-height:0}.review-note-col{flex:1 1 auto;position:static;height:auto;max-height:none;width:100%;overflow:visible}}
 /* NOTE パネル：右カラム全体を埋める */
 .task-note{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:12px;display:flex;flex-direction:column;gap:8px;flex:1 1 auto;min-height:0;box-sizing:border-box}
@@ -157,13 +157,13 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .note-img-tb .lbl{font-size:10px;color:var(--text3);align-self:center;margin:0 2px}
 /* 作業ページ/カテゴリページ左上の固定バー（スクロール追従） */
 /* task-topbar は main-col 内にあるが、下線 (border-bottom) は行全体を横断する見た目に
-   したいので、`::after` で右方向 (note-col の右端まで = gap 16 + note-col 510 + scroll 右パディング 20 = 546px)
+   したいので、`::after` で右方向 (note-col の右端まで = gap 16 + note-col 340 + scroll 右パディング 20 = 376px)
    に線だけ延長する。box-sizing:border-box の overflow ペナルティを避けられる。 */
 .task-topbar{position:sticky;top:0;z-index:15;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 -20px 16px;padding:12px 20px;background:var(--bg);border-bottom:1px solid var(--border)}
 /* 右スライド内の FB ログヘッダ：幅が狭く動画タイトルとボタン群が横一列で被るため、上段=ボタン群／下段=タイトルの 2 段表示にする */
 .drawer .log-head{flex-wrap:wrap;row-gap:2px}
 .drawer .log-head .log-title{flex:0 0 100%;order:2;margin-top:4px}
-.task-topbar::after{content:'';position:absolute;left:100%;right:-546px;bottom:-1px;height:1px;background:var(--border);pointer-events:none}
+.task-topbar::after{content:'';position:absolute;left:100%;right:-376px;bottom:-1px;height:1px;background:var(--border);pointer-events:none}
 @media (max-width:960px){.task-topbar::after{display:none}} /* 1 カラム表示のときは note-col 分の延長は不要 */
 .task-topbar .tt-head{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
 .task-topbar .tt-proc{font-family:var(--font-code);font-size:19px;font-weight:700;letter-spacing:.2px;display:flex;align-items:center;gap:10px;margin:0} /* 英数字コード(C04等)も日本語もきれいに見える Space Grotesk + Noto Sans JP に */
@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.015';
+const APP_VERSION='2026.08.06.016';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
