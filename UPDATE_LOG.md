@@ -1517,6 +1517,56 @@ Firestore に作品名を含めるかどうかで 3 パターン。セキュリ�
 
 要望が強ければ P1 を後追い、P2 は最終手段（LayCAT のスケール的にはたぶん一生要らない）。
 
+### メンバー追加 → 招待メール自動送信 → URL クリックで参加 → フォルダ接続
+
+**背景**：owner がメンバー追加した後、招待 URL を Slack/Gmail 等で手動共有する現状の運用を自動化したい。
+
+**現状の LayCAT で出来ること・出来ないこと**
+
+| ステップ | 現状 |
+|---|---|
+| owner がメンバー追加 | ✅ プロジェクト設定のメンバー管理 UI から可能 |
+| 招待トークン生成 | ⚠️ 仕組みはあるが LayCAT からは生成できない（Firestore `laynaAccessInvites/{token}` に手動書き込みが必要・`access-console.html` 経由想定） |
+| Firestore に登録 | ⚠️ 全体ホワイトリスト（`laynaAccess/invited`）のみ・**プロジェクト単位の members には R2 のみ登録、フォルダ運用は登録先なし** |
+| メール送信 | ❌ 完全に未実装。手動で共有必要 |
+
+**既存機構**（[laycat_dev.html:13915-14089](laycat_dev.html:13915) 付近）
+- URL ハッシュ `#invite=<token>` → sessionStorage 保持
+- `redeemInvite(tok, u)` で Firestore token 検証 → `laynaAccess/invited` に追加
+- コメント引用：「本命はFirestoreセキュリティルールでの強制（クライアント判定は補助・最終防壁にはならない）」
+
+**必要な追加実装**
+1. LayCAT UI から招待トークン生成（メンバー管理 UI から「＋招待を送る」ボタン）
+2. メール送信バックエンド（候補：Firebase Extensions Trigger Email / Cloudflare Workers + MailChannels / SendGrid / Resend / Postmark）
+3. **プロジェクト単位の招待化**（現状の「LayCAT 全体ホワイトリスト」から「project X の members にだけ追加」へ構造化）
+4. 参加時のフォルダ接続モーダル（hintName 表示・projectId 突合検証）
+5. デスクトップ版（Tauri）ならカスタム URL スキーム＋自動フォルダオープンで完全自動化可能
+
+**セキュリティ観点で先に監査すべきポイント**
+
+前提として、既存 invite 機構は Firestore セキュリティルール依存。**実装より先にルール監査が必要**：
+
+- **クライアント検証の限界**：`active !== false` や `expires` チェックはクライアント JS で走るため開発者ツールでバイパス可能。**Firestore Rules で強制**必須
+- **URL 拡散リスク**：招待 URL がブラウザ履歴・スクリーンショット・メールアーカイブ・チャット共有で漏洩の可能性。対策：
+  - **1 回使用で無効化**（consume-once）
+  - **短い有効期限**（例：72 時間）
+  - **email クレーム紐付け**：token 発行時に「この token は `user@example.com` 専用」と Firestore に記録 → redeem 時に Firebase Auth の email と一致確認（現状は誰でも redeem 可能）
+- **ホワイトリスト vs プロジェクト単位**：現状の招待は LayCAT アプリ全体のホワイトリスト。project A の招待で他プロジェクトも見られる可能性 → 構造化必須
+- **メール送信サーバー側の情報漏洩**：SendGrid/Firebase Trigger Email 等を使うと本文（招待 URL 含む）が外部サービスに保存される。対策：URL 分割送信・自社ドメイン短縮 URL 経由
+- **Firestore セキュリティルール監査**（別ファイル管理・要確認）：
+  - `laynaAccessInvites` の write 権限は正しく制限されているか
+  - `laynaAccess/invited` は有効な token を持つ人だけ書けるか
+  - Firebase Auth の email verification 必須になっているか
+
+**実装順序（推奨）**
+1. **Firestore セキュリティルール監査**（先に必ずやる）
+2. プロジェクト単位の招待構造化（`laycatProjects/{pid}/invites/{token}`）
+3. LayCAT UI から招待トークン生成＋既存 invite 機構との配線
+4. メール送信バックエンド接続
+5. 参加時のフォルダ接続モーダル（`_access.json` を Firestore に分離する上位 TODO と統合実装が筋良し）
+
+**上位 TODO との関係**：この機能は「フォルダ運用でも自分のプロジェクト一覧を実現（`_access.json` 分離）」と密接に関連。同時に実装するのが自然。
+
 ### ショートカットキーのユーザーカスタマイズ
 
 **背景**：現状アノテ窓・REEL 側でキー配置は完全ハードコード（`if(e.key==='v')` 等）。ユーザーごとに再生キー・IN/OUT・Undo などを好みに変更したい要望あり。
