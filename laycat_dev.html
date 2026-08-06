@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.018';
+const APP_VERSION='2026.08.06.019';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5889,6 +5889,77 @@ function buildTaskNotePane(container,cur){
       if(selHr){e.preventDefault();selHr.remove();cur.note=ed.innerHTML;if(!dirty)setDirty(true);}
     }
   });
+  /* クリップボードからの画像ペースト対応：Ctrl+V／⌘V で clipboardData の image を検出、
+     ファイル選択時と同じく _noteResizeImage で 600px にリサイズ→ カーソル位置に挿入。 */
+  ed.addEventListener('paste',async e=>{
+    const items=(e.clipboardData&&e.clipboardData.items)||[];
+    for(const it of items){
+      if(it.kind==='file'&&(it.type||'').startsWith('image/')){
+        e.preventDefault();
+        const file=it.getAsFile();if(!file)return;
+        try{
+          const src=await _noteResizeImage(file,600);
+          ed.focus();
+          const html='<img class="note-img" src="'+src+'" style="width:240px;transform:rotate(0deg);transform-origin:center center">';
+          document.execCommand('insertHTML',false,html);
+          cur.note=ed.innerHTML;if(!dirty)setDirty(true);
+        }catch(_){}
+        return;
+      }
+    }
+  });
+  /* 画像の右上に浮遊「拡大」ボタン（フローティング／単一 DOM を移動）。
+     hover で対象画像に位置合わせして表示。クリックで modal を開き、元画像を大きく表示。 */
+  let imgZoomBtn=null,imgZoomTarget=null,imgZoomHideT=null;
+  const hideZoomBtn=()=>{if(imgZoomBtn){try{imgZoomBtn.remove()}catch(_){}imgZoomBtn=null;imgZoomTarget=null}};
+  const positionZoomBtn=()=>{
+    if(!imgZoomBtn||!imgZoomTarget)return;
+    const r=imgZoomTarget.getBoundingClientRect();
+    imgZoomBtn.style.left=(window.scrollX+r.right-26)+'px';
+    imgZoomBtn.style.top=(window.scrollY+r.top+4)+'px';
+  };
+  const showZoomBtn=(imgEl)=>{
+    if(imgZoomHideT){clearTimeout(imgZoomHideT);imgZoomHideT=null}
+    if(imgZoomTarget===imgEl&&imgZoomBtn)return;
+    hideZoomBtn();
+    imgZoomTarget=imgEl;
+    const b=document.createElement('button');b.type='button';b.title='拡大表示';
+    b.innerHTML='<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 L14 14"/><path d="M5 7h4M7 5v4"/></svg>';
+    b.style.cssText='position:absolute;z-index:101;width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(20,20,25,.86);border:1px solid rgba(255,255,255,.28);color:#e8e8ec;border-radius:5px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.45)';
+    b.onmousedown=e=>e.preventDefault();
+    b.onmouseenter=()=>{if(imgZoomHideT){clearTimeout(imgZoomHideT);imgZoomHideT=null}};
+    b.onmouseleave=()=>{imgZoomHideT=setTimeout(hideZoomBtn,140)};
+    b.onclick=e=>{
+      e.preventDefault();e.stopPropagation();
+      const src=imgEl.src;if(!src)return;
+      openModal(body=>{
+        body.classList.add('proj-modal');
+        body.style.cssText='background:rgba(10,10,13,.96);padding:16px';
+        const wrap2=el('div');wrap2.style.cssText='display:flex;flex-direction:column;align-items:center;gap:8px';
+        const im=el('img');im.src=src;im.style.cssText='max-width:100%;max-height:82vh;object-fit:contain;border-radius:6px';
+        wrap2.appendChild(im);
+        const cls=el('button','btn btn-ghost btn-sm','閉じる');cls.onclick=closeModal;
+        wrap2.appendChild(cls);
+        body.appendChild(wrap2);
+      },true);
+    };
+    document.body.appendChild(b);imgZoomBtn=b;
+    positionZoomBtn();
+  };
+  ed.addEventListener('mouseover',e=>{
+    const t=e.target;
+    if(t&&t.tagName==='IMG'&&t.classList.contains('note-img'))showZoomBtn(t);
+  });
+  ed.addEventListener('mouseout',e=>{
+    const t=e.target;
+    if(t&&t.tagName==='IMG'&&t.classList.contains('note-img')){
+      /* ボタン側に mouseenter する前に消えないよう少し猶予 */
+      if(imgZoomHideT)clearTimeout(imgZoomHideT);
+      imgZoomHideT=setTimeout(hideZoomBtn,140);
+    }
+  });
+  ed.addEventListener('scroll',()=>{if(imgZoomBtn)positionZoomBtn()});
+  window.addEventListener('scroll',()=>{if(imgZoomBtn)positionZoomBtn()},true);
   container.appendChild(wrap);
 }
 /* 未保存の NOTE を持つタスク ID の集合（beforeunload で警告するため） */

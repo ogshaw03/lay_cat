@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.06.019) NOTE の画像機能拡張：クリップボードペースト対応＋各画像右上に拡大表示ボタン
+  - **クリップボードペースト**：`ed` に `paste` リスナー追加。`clipboardData.items` に `image/*` の file があれば `_noteResizeImage(file,600)` でリサイズして insertHTML。ファイル選択挿入と同一形式（`<img class="note-img" style="width:240px;transform:rotate(0deg)">`）。
+  - **拡大ボタン**：hover 時に単一のフローティングボタン（アイコンのみ・虫眼鏡＋プラス）を画像右上に位置合わせして表示。クリックで `openModal(_,true)` に元 src の img を大表示（`max-height:82vh`）。
+  - フローティングボタンは単一 DOM を移動使い回し。mouseleave で 140ms 猶予後 hide（ボタン側 mouseenter に間に合うように）。
+  - scroll イベントで追従位置補正。
+
 - (dev v2026.08.06.018) アノテ窓のコメントパネル対象修正＋ REEL を差し戻し
   - v.015/v.017 で「アノテ窓のコメント欄」だと思って `.log-side`（実は別オーバーレイ用）を広げていたが、実際の `openReviewOverlay` の右コメント列は `.fb-side`（[laycat_dev.html:9321](laycat_dev.html:9321)）だった。
   - `.log-side`：510 → 340px（元に戻す）
