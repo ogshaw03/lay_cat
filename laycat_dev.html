@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.021';
+const APP_VERSION='2026.08.06.022';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7104,11 +7104,16 @@ function openProjectModal(){
     /* ローカルフォルダ用 UI */
     let projFolderHandle=null;
     const folderBox=el('div');
-    folderBox.appendChild(el('div','form-label','保存先フォルダ（このプロジェクト専用。動画・画像・サムネイルを格納）'));
+    folderBox.style.cssText='margin-top:14px;padding-top:14px;border-top:1px solid var(--border)';
+    const _folderHead=el('div');
+    _folderHead.style.cssText='font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:8px';
+    _folderHead.appendChild(document.createTextNode('📁 保存先フォルダを選択'));
+    folderBox.appendChild(_folderHead);
+    folderBox.appendChild(el('div','form-label','このプロジェクト専用のフォルダを指定してください（動画・画像・サムネイルを格納）'));
     if(storage.supportsFolder()){
       const fwrap=el('div');fwrap.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px';
       const fcur=el('span','form-label');fcur.style.margin='0';fcur.textContent='未指定（フォルダなしでは動画・サムネイルを保存できません）';
-      const fpick=el('button','btn btn-ghost btn-sm','フォルダを指定');fpick.type='button';
+      const fpick=el('button','btn btn-primary btn-sm','フォルダを指定');fpick.type='button';
       fpick.onclick=async()=>{try{const h=await window.showDirectoryPicker({mode:'readwrite'});projFolderHandle=h;fcur.textContent='現在: '+h.name}catch(e){if(e&&e.name!=='AbortError')toast(pickerFailMsg(e))}};
       const fclr=el('button','btn btn-ghost btn-sm','解除');fclr.type='button';
       fclr.onclick=()=>{projFolderHandle=null;fcur.textContent='未指定（フォルダなしでは動画・サムネイルを保存できません）'};
