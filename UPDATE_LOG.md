@@ -14,6 +14,8 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.06.020) NOTE 画像の拡大ボタンのアイコンを対角矢印（↗↙）に変更（従来は虫眼鏡＋プラス）
+
 - (dev v2026.08.06.019) NOTE の画像機能拡張：クリップボードペースト対応＋各画像右上に拡大表示ボタン
   - **クリップボードペースト**：`ed` に `paste` リスナー追加。`clipboardData.items` に `image/*` の file があれば `_noteResizeImage(file,600)` でリサイズして insertHTML。ファイル選択挿入と同一形式（`<img class="note-img" style="width:240px;transform:rotate(0deg)">`）。
   - **拡大ボタン**：hover 時に単一のフローティングボタン（アイコンのみ・虫眼鏡＋プラス）を画像右上に位置合わせして表示。クリックで `openModal(_,true)` に元 src の img を大表示（`max-height:82vh`）。

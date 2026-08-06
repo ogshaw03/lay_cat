@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.019';
+const APP_VERSION='2026.08.06.020';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5924,7 +5924,7 @@ function buildTaskNotePane(container,cur){
     hideZoomBtn();
     imgZoomTarget=imgEl;
     const b=document.createElement('button');b.type='button';b.title='拡大表示';
-    b.innerHTML='<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 L14 14"/><path d="M5 7h4M7 5v4"/></svg>';
+    b.innerHTML='<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2 H10 M14 2 V6 M14 2 L9 7"/><path d="M2 14 H6 M2 14 V10 M2 14 L7 9"/></svg>';
     b.style.cssText='position:absolute;z-index:101;width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(20,20,25,.86);border:1px solid rgba(255,255,255,.28);color:#e8e8ec;border-radius:5px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.45)';
     b.onmousedown=e=>e.preventDefault();
     b.onmouseenter=()=>{if(imgZoomHideT){clearTimeout(imgZoomHideT);imgZoomHideT=null}};
