@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.022';
+const APP_VERSION='2026.08.06.023';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7107,7 +7107,7 @@ function openProjectModal(){
     folderBox.style.cssText='margin-top:14px;padding-top:14px;border-top:1px solid var(--border)';
     const _folderHead=el('div');
     _folderHead.style.cssText='font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:8px';
-    _folderHead.appendChild(document.createTextNode('📁 保存先フォルダを選択'));
+    _folderHead.innerHTML='<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round">'+ICONS.folder+'</svg><span>保存先フォルダを選択</span>';
     folderBox.appendChild(_folderHead);
     folderBox.appendChild(el('div','form-label','このプロジェクト専用のフォルダを指定してください（動画・画像・サムネイルを格納）'));
     if(storage.supportsFolder()){
