@@ -274,6 +274,12 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .pm-stab{background:var(--bg3);border:1px solid var(--border);color:var(--text3);border-radius:7px;padding:7px 15px;font-size:13px;font-weight:600;cursor:pointer}
 .pm-stab:hover{color:var(--text)}
 .pm-stab.on{background:rgba(96,165,255,.16);border-color:var(--edge);color:var(--text)}
+/* ショットタブ グリッド／縦並び切替スイッチ（セグメンテッド） */
+.sv-sw{display:inline-flex;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:2px;gap:0}
+.sv-sw-btn{background:none;border:none;color:var(--text3);padding:5px 10px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s,color .12s}
+.sv-sw-btn:hover{color:var(--text)}
+.sv-sw-btn.on{background:var(--bg2);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.sv-sw-btn svg{display:block}
 /* チェック待ち：作業担当者フィルタバー（reviewer タブの下にコンパクトに置く） */
 .chk-asg-bar{display:flex;align-items:center;gap:8px;margin:2px 0 14px;padding:0 2px;font-size:11px;color:var(--text3)}
 .chk-asg-bar label{margin:0}
@@ -3037,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.002';
+const APP_VERSION='2026.08.07.003';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5084,9 +5090,11 @@ function renderProjShots(main,cur){
   head.appendChild(_hcnt);
   head.appendChild(el('span',null,'ショット — 各ショットの最新動画'));
   const sp=el('div');sp.style.flex='1';head.appendChild(sp);
-  const seg=el('div','pm-tabs');seg.style.margin='0';
-  const mkBtn=(mode,label)=>{const b=el('button','pm-stab'+(state.shotsView===mode?' on':''),label);b.onclick=()=>{if(state.shotsView!==mode){state.shotsView=mode;try{localStorage.setItem('layna_shotsView',mode)}catch(_){}renderBody();resolveThumbs()}};return b;};
-  seg.appendChild(mkBtn('grid','▦ グリッド'));seg.appendChild(mkBtn('list','≡ 縦並び'));
+  const seg=el('div','sv-sw');
+  const ICON_GRID='<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>';
+  const ICON_LIST='<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/></svg>';
+  const mkBtn=(mode,svg,title)=>{const b=el('button','sv-sw-btn'+(state.shotsView===mode?' on':''));b.type='button';b.innerHTML=svg;b.title=title;b.onclick=()=>{if(state.shotsView!==mode){state.shotsView=mode;try{localStorage.setItem('layna_shotsView',mode)}catch(_){}renderBody();resolveThumbs()}};return b;};
+  seg.appendChild(mkBtn('grid',ICON_GRID,'グリッド表示'));seg.appendChild(mkBtn('list',ICON_LIST,'縦並び表示'));
   head.appendChild(seg);
   main.appendChild(head);
   /* 選択中のショットを REEL に追加するツールバー（選択が有るときのみ表示）
