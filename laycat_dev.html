@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.020';
+const APP_VERSION='2026.08.06.021';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8478,21 +8478,65 @@ function openMembersWindow(root){
   };
 }
 
-/* 削除（子孫・メディアも） */
+/* 削除（子孫・メディアも）
+   プロジェクト削除は「データも削除／接続だけ解除」の 2 択モーダルを出す。
+   子ノード削除は従来どおり confirm ダイアログ。 */
 async function deleteNode(node){
+  const isProject=!node.parentId;
+  if(isProject){openProjectDeleteModal(node);return}
   const desc=descendants(node.id);const cnt=desc.length;
   if(!confirm('「'+node.name+'」'+(cnt?('と配下の'+cnt+'アイテム'):'')+'を削除しますか？（動画も削除されます）'))return;
+  await _doDeleteNode(node,{keepData:false});
+}
+/* プロジェクト削除の選択モーダル：
+   ・データも削除：従来通り（`storage.delProject` で `laycat.project.json`＋media 一括削除、R2 なら purge）
+   ・接続だけ解除：REG から外し folder handle を破棄。フォルダ内のデータはそのまま。他メンバーは影響なし */
+function openProjectDeleteModal(node){
+  const be=storage._backend(node.id);
+  const desc=descendants(node.id);const cnt=desc.length;
+  openModal(body=>{
+    const inner=mHead(body,'プロジェクトを削除','「'+node.name+'」'+(cnt?('（配下 '+cnt+' アイテム）'):''));
+    let choice='keep';
+    const mk=(val,title,desc,warn)=>{
+      const w=el('label');w.style.cssText='display:block;padding:12px 14px;margin-bottom:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;cursor:pointer;user-select:none';
+      const top=el('div');top.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:4px';
+      const r=el('input');r.type='radio';r.name='_projdel_'+node.id;r.value=val;if(val===choice)r.checked=true;
+      r.onchange=()=>{if(r.checked)choice=val};
+      const t=el('span');t.style.cssText='font-weight:700;font-size:14px;color:var(--text)';t.textContent=title;
+      top.appendChild(r);top.appendChild(t);w.appendChild(top);
+      const d=el('div');d.style.cssText='font-size:12px;color:var(--text2);line-height:1.6;margin-left:22px';d.textContent=desc;w.appendChild(d);
+      if(warn){const wn=el('div');wn.style.cssText='font-size:11px;color:#e0a63a;line-height:1.6;margin-left:22px;margin-top:3px';wn.textContent=warn;w.appendChild(wn)}
+      inner.appendChild(w);
+    };
+    mk('keep','接続だけ解除する（データは残す）',
+      be==='r2'
+        ?'ホームのタイル一覧から外します。R2 バケット上のデータ（laycat.project.json・media）はそのまま残るので、あとで「⇄ プロジェクトに接続」から再接続すれば復帰できます。他メンバーには影響しません。'
+        :'ホームのタイル一覧から外します。共有フォルダ内の laycat.project.json・media はそのまま残るので、あとで「⇄ プロジェクトに接続」で同じフォルダを選び直せば復帰できます。他メンバーには影響しません。');
+    mk('purge','データも削除する',
+      be==='r2'
+        ?'R2 バケットのプロジェクトデータ（laycat.project.json・media・_access.json）を全て削除します。'
+        :'共有フォルダ内の laycat.project.json・shots/・submits/ を削除します。動画本体（media）も削除されます。',
+      '⚠ この操作は取り消せません。'+(be==='r2'?' メンバー全員がアクセス不能になります。':' 共有フォルダを使っている全員に影響します。'));
+    const foot=el('div');foot.style.cssText='display:flex;gap:8px;justify-content:flex-end;margin-top:14px';
+    const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=closeModal;
+    const ok=el('button','btn btn-danger','削除を実行');
+    ok.onclick=async()=>{closeModal();await _doDeleteNode(node,{keepData:choice==='keep'})};
+    foot.appendChild(cancel);foot.appendChild(ok);inner.appendChild(foot);
+  });
+}
+/* 削除の実処理：keepData=true のときは storage.delProject / delMedia を呼ばない。
+   ノード/REG/reels/_saveCache などクライアント状態はどちらも掃除する。 */
+async function _doDeleteNode(node,opts){
+  opts=opts||{};
+  const keepData=!!opts.keepData;
+  const desc=descendants(node.id);
   const all=[node,...desc];
   const isProject=!node.parentId;
-  /* R2 プロジェクトなら、後段の delProject でバケットまるごと purge するため
-     個別メディア削除は不要（かつ削除数×リクエストで無料枠を無駄に消費するため省略）。
-     backend も削除前に確定させておく（DB/REG から node/entry を消した後は _backend が folder に戻る） */
   const _backend=isProject?storage._backend(node.id):null;
-  const _skipMediaDel=isProject&&_backend==='r2';
+  /* keepData のときは media を残す。データ削除時のみ従来ロジックを適用（R2 は purge 側で一括なのでスキップ） */
+  const _skipMediaDel=keepData||(isProject&&_backend==='r2');
   if(!_skipMediaDel){for(const n of all)for(const v of n.versions||[]){await storage.delMedia(v.file);await storage.delMedia(v.thumb)}}
   const ids=new Set(all.map(n=>n.id));
-  /* リールの掃除：プロジェクト削除時はそのプロジェクトのリール全て。
-     ノード削除時は該当クリップだけを取り除き、空になったリールのみ削除（無関係なクリップを巻き添えにしない） */
   if(isProject){
     DB.reels=(DB.reels||[]).filter(r=>(r.projectId||reelProjectId(r))!==node.id);
   }else{
@@ -8502,16 +8546,21 @@ async function deleteNode(node){
       return r;
     }).filter(r=>r.clips&&r.clips.length);
   }
-  if(!isProject){const _root=rootOf(node);if(_root){_root._tomb=Array.isArray(_root._tomb)?_root._tomb:[];const _at=nowIso();for(const _id of ids)_root._tomb.push({id:_id,at:_at});}} /* #5: 削除IDをtombstoneに記録し他者フォルダからの復活を防ぐ（プロジェクト削除はフォルダごと消えるため対象外） */
+  if(!isProject){const _root=rootOf(node);if(_root){_root._tomb=Array.isArray(_root._tomb)?_root._tomb:[];const _at=nowIso();for(const _id of ids)_root._tomb.push({id:_id,at:_at});}}
   DB.nodes=DB.nodes.filter(n=>!ids.has(n.id));
   DB.submits=(DB.submits||[]).filter(s=>!ids.has(s.nodeId||s.projectId)&&s.projectId!==node.id);
-  if(isProject){/* プロジェクト削除：保存データと接続情報も破棄 */
+  if(isProject){
     REG=REG.filter(e=>e.id!==node.id);delete _saveCache.proj[node.id];delete _saveCache.reels[node.id];
-    /* backend は先に確定させておいた _backend を渡す（この時点で DB.nodes/REG から消えているため _backend が folder に戻ってしまうため） */
-    try{await storage.delProject(node.id,_backend);await storage.clearProjRoot(node.id)}catch(_){}
+    if(keepData){
+      /* 接続解除のみ：クライアント側の folder handle を破棄。バケット/フォルダのデータには手を付けない。 */
+      try{await storage.clearProjRoot(node.id)}catch(_){}
+    }else{
+      try{await storage.delProject(node.id,_backend);await storage.clearProjRoot(node.id)}catch(_){}
+    }
   }
   await persist();
   const parent=node.parentId;go(getNode(parent)?parent:null);
+  if(isProject)toast(keepData?'プロジェクトを一覧から外しました（データは残っています）':'プロジェクトを削除しました');
 }
 
 /* ============================================================

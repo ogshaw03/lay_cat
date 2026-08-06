@@ -14,6 +14,14 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.06.021) プロジェクト削除に「データも削除／接続だけ解除」の 2 択モーダルを追加
+  - 従来は `confirm()` で問答無用のフル削除だった。
+  - `deleteNode` を分岐：プロジェクトの場合は `openProjectDeleteModal(node)` で選択式モーダル。子ノードは従来通り confirm。
+  - **接続だけ解除**：REG から外し folder handle を破棄。`laycat.project.json`・media・R2 バケットのデータには手を付けない。あとで「⇄ プロジェクトに接続」で再接続すれば復帰可能。他メンバー影響なし。
+  - **データも削除**：従来と同じ挙動（`storage.delProject` で JSON・media・R2 なら purge）。警告文追加。
+  - 実処理は `_doDeleteNode(node, {keepData})` に分離。keepData=true のとき `storage.delMedia` / `storage.delProject` をスキップし、`storage.clearProjRoot` のみ実行。
+  - 完了 toast も分岐（「一覧から外しました（データは残っています）」／「プロジェクトを削除しました」）。
+
 - (dev v2026.08.06.020) NOTE 画像の拡大ボタンのアイコンを対角矢印（↗↙）に変更（従来は虫眼鏡＋プラス）
 
 - (dev v2026.08.06.019) NOTE の画像機能拡張：クリップボードペースト対応＋各画像右上に拡大表示ボタン
