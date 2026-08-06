@@ -14,6 +14,13 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.06.015) アノテ窓 / REEL のコメント欄横幅を約 1.5 倍に拡張（行数増加を軽減）
+  - `.review-note-col`（作業ページのコメント列）：340 → 510px
+  - `.log-side`（アノテ窓オーバーレイのコメント列）：340 → 510px
+  - `.fb-side`（REEL のコメントパネル）：262 → 393px
+  - `.task-topbar::after` の下線 offset（`right:-376px` → `right:-546px`）と関連コメントも合わせて更新
+  - モバイル（`max-width:960px`）はもともと 1 カラム表示になるので影響なし
+
 - (dev v2026.08.06.014) 起動時に `navigator.storage.persist()` をリクエスト（IndexedDB を永続化）
   - Chrome/Edge はブックマーク・PWA・通知許可・訪問頻度から自動判定で granted になりやすい。Safari は 1 回ダイアログが出るが拒否されても致命ではない。
   - 目的：フォルダハンドル（`_fileHandle`）・メディア blob（`idb:` 参照）・`_saveCache` などがブラウザストレージひっ迫や Safari の ITP 7 日ルールで消失するのを減らす。
