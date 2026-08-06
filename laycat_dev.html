@@ -3033,7 +3033,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.06.024';
+const APP_VERSION='2026.08.07.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5068,9 +5068,16 @@ function renderProjCheck(main,root){
 function renderProjShots(main,cur){
   const parents=shotsParentsOf(cur);
   const allShots=shotsOf(cur);
+  /* フィルタ後の shots を先に算出しておき、ヘッダ左に表示中件数を出す */
+  const shots=allShots.filter(shotFilterPass);
   if(!state.shotsView){try{state.shotsView=localStorage.getItem('layna_shotsView')||'grid'}catch(_){state.shotsView='grid'}}
   /* ヘッダ＋表示切替スイッチ（グリッド／縦並び） */
   const head=el('div','pm-h');head.style.cssText='display:flex;align-items:center;gap:12px;flex-wrap:wrap';
+  const cntTxt=(shots.length===allShots.length)?String(shots.length):(shots.length+' / '+allShots.length);
+  const _hcnt=el('span','pm-shot-count',cntTxt+' ショット');
+  _hcnt.style.cssText='font-family:var(--font-code);font-weight:700;font-size:13px;color:var(--text);background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:2px 10px;font-variant-numeric:tabular-nums';
+  _hcnt.title=(shots.length===allShots.length)?'表示中のショット数':('表示中 '+shots.length+' 件 / 全 '+allShots.length+' 件');
+  head.appendChild(_hcnt);
   head.appendChild(el('span',null,'ショット — 各ショットの最新動画'));
   const sp=el('div');sp.style.flex='1';head.appendChild(sp);
   const seg=el('div','pm-tabs');seg.style.margin='0';
@@ -5146,7 +5153,6 @@ function renderProjShots(main,cur){
   };
   if(!allShots.length){main.appendChild(el('div','pm-empty','ショットがありません。'));return}
   const fb=assignFilterBar(cur);if(fb)main.appendChild(fb); /* 担当フィルタ */
-  const shots=allShots.filter(shotFilterPass);
   if(!shots.length){main.appendChild(el('div','pm-empty','フィルタに一致するショットがありません。'));return}
   /* 動画が無くてもステータス・担当を出すため、代表となる工程ノードを決める
      （動画があればその工程／無ければ工程設定順で先頭 or 最後の進行中工程）。

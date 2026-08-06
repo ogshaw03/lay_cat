@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.001) ショットタブのヘッダ左上に表示中のショット数を表示（担当フィルタ適用時は「表示中 N / 全 M」形式）
+  - `renderProjShots` で `shots=allShots.filter(shotFilterPass)` を head 構築前に前倒し算出
+  - フィルタなし＝件数のみ、フィルタあり＝`N / M ショット` を表示。tabular-nums で桁揃え・title に補足
+  - 従来 5149 行にあった `const shots=` 定義は前倒し済みのため削除
+
 - (dev v2026.08.06.024) プロジェクト削除時にリールも確実に消えるよう修正
   - `_doDeleteNode` のリール掃除：`projectId` 一致のほか、いずれかのクリップが削除対象ノードを参照している場合も削除対象に（legacy データや `reelProjectId` が null を返すケースを拾う）。
   - `storage.delProject`：共有フォルダ内 `reels/reels.json`（reels/ ディレクトリごと）と `localStorage['layna_reels_'+id]` を削除、`_saveCache.reels[id]` もクリア。
