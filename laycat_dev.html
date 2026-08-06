@@ -3012,13 +3012,17 @@ function isDoneStatus(root,statusId){
   const s=projStatuses(root).find(x=>x.id===statusId);
   return !!(s&&/完了|承認|上がり|フィックス|オミット|ok\b|omit|done|fix|approve|complete/i.test(s.label));
 }
-/* チェック待ち（未チェック）判定：まだ担当が判断していない＝初期ステータス（＝プロジェクトの先頭ステータス）。
-   OK / リテイク / NG など担当が判断済みのものは「チェック待ち」ではない。 */
+/* チェック待ち（未チェック）判定：
+   ・プロジェクト設定で `checkWait:true` を明示指定されたステータスは全てチェック待ちに含める
+   ・明示指定が無いプロジェクト（旧データ）は従来通り先頭ステータス＝チェック待ち */
 function isAwaitingCheck(root,statusId){
   if(!statusId||statusId==='empty')return false;
   if(isDoneStatus(root,statusId))return false; /* 完了系は「チェック待ち」ではない（先頭ステータスが完了系でも誤判定しない） */
-  if(statusId==='pending')return true;
   const sts=projStatuses(root);
+  const explicit=sts.filter(s=>s.checkWait===true);
+  if(explicit.length)return explicit.some(s=>s.id===statusId);
+  /* 後方互換：明示指定が無ければ 'pending' or 先頭ステータス */
+  if(statusId==='pending')return true;
   return !!(sts.length&&statusId===sts[0].id);
 }
 /* プロジェクト（ルート）が完了か。動画のあるレビューが全て完了ステータスなら完了 */
@@ -3033,7 +3037,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.001';
+const APP_VERSION='2026.08.07.002';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7722,23 +7726,32 @@ function openRename(node){
       ovWrap.appendChild(ovS);inner.appendChild(ovWrap);
       inner.appendChild(el('div','form-label','※「自動判定」は全ショット（動画のある工程）が完了（OK/オミット等）になると自動で「完了」になります。'));
       ovSel={get:()=>ovS.value};
-      sec(secN++,'🚦','ステータス定義','各ショット・工程に付けるステータス（チェック待ち／OK／リテイク／NG など）のラベルと色を、このプロジェクトに合わせて自由に編集できます。ここで並べた順に、レビュー画面の判定ボタンや進捗ダッシュボードにそのまま並びます。先頭のステータスが新規追加時の既定値になります。');
+      sec(secN++,'🚦','ステータス定義','各ショット・工程に付けるステータス（チェック待ち／OK／リテイク／NG など）のラベルと色を、このプロジェクトに合わせて自由に編集できます。ここで並べた順に、レビュー画面の判定ボタンや進捗ダッシュボードにそのまま並びます。先頭のステータスが新規追加時の既定値になります。右端の「☑ チェック待ち」にチェックを入れたステータスが、チェック待ちタブに集約されます（複数選択可・旧データは先頭ステータスを自動的にチェック待ち扱い）。');
       const stWrap=el('div','step-grid');
       stArr=(node.statuses&&node.statuses.length?node.statuses:DEFAULT_STATUSES).map(x=>({...x}));
+      /* 旧データ（checkWait 未定義）の初期値：先頭ステータスをチェック待ちに */
+      if(!stArr.some(s=>s.checkWait===true||s.checkWait===false)){
+        stArr.forEach((s,i)=>{s.checkWait=(i===0)});
+      }
       const redrawSt=()=>{
         stWrap.innerHTML='';
         stArr.forEach((st2,i)=>{
           const row=el('div','step-row');
           const color=el('input');color.type='color';color.value=st2.color;color.style.cssText='width:36px;height:30px;background:none;border:none';color.oninput=()=>st2.color=color.value;
           const nm=el('input','form-input');nm.value=st2.label;nm.oninput=()=>st2.label=nm.value;
+          /* チェック待ち集約フラグ：☑ 複数選択可 */
+          const cwLabel=el('label');cwLabel.style.cssText='display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;user-select:none;white-space:nowrap;padding:0 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg3)';
+          const cwCb=el('input');cwCb.type='checkbox';cwCb.checked=(st2.checkWait===true);cwCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
+          cwCb.onchange=()=>{st2.checkWait=cwCb.checked};
+          cwLabel.appendChild(cwCb);cwLabel.appendChild(document.createTextNode('チェック待ち'));
           const del=el('button','btn btn-danger btn-sm','削除');del.onclick=()=>{stArr.splice(i,1);redrawSt()};
-          row.appendChild(color);row.appendChild(nm);row.appendChild(del);stWrap.appendChild(row);
+          row.appendChild(color);row.appendChild(nm);row.appendChild(cwLabel);row.appendChild(del);stWrap.appendChild(row);
         });
       };
       redrawSt();
       inner.appendChild(stWrap);
       const addSt=el('button','btn btn-ghost btn-sm','＋ ステータスを追加');addSt.style.marginBottom='12px';
-      addSt.onclick=()=>{stArr.push({id:newId('st'),label:'新ステータス',color:'#60a5ff'});redrawSt()};
+      addSt.onclick=()=>{stArr.push({id:newId('st'),label:'新ステータス',color:'#60a5ff',checkWait:false});redrawSt()};
       inner.appendChild(addSt);
       /* 工程バッジの色（工程名ごと・全ショット共通）。実在する工程名を列挙し、一度選べば同名の全工程に反映される。 */
       sec(secN++,'🎨','工程バッジの色','工程名（LAY / ANIM / COMP など）ごとに固有色を割り当てられます。1 回設定すれば、全ショットの同じ工程バッジに反映されます。「自動」ボタンで自動配色に戻せます。');
@@ -7858,7 +7871,7 @@ function openRename(node){
        else if(raw==='cut')node.kind='cut';
        else delete node.kind; /* task / root の section/review 変更時は kind をクリア */
       }
-      if(stArr)node.statuses=stArr.filter(x=>x.label.trim()).map(x=>({id:x.id||newId('st'),label:x.label.trim(),color:x.color}));if(spSel){const ids=spSel.get();if(ids.length)node.shotsParentIds=ids;else delete node.shotsParentIds;delete node.shotsParentId}if(stagesArr!=null){const s=stagesArr.map(x=>x.trim()).filter(Boolean);if(s.length&&node.type==='section')node.stages=s;else delete node.stages}
+      if(stArr)node.statuses=stArr.filter(x=>x.label.trim()).map(x=>({id:x.id||newId('st'),label:x.label.trim(),color:x.color,checkWait:x.checkWait===true}));if(spSel){const ids=spSel.get();if(ids.length)node.shotsParentIds=ids;else delete node.shotsParentIds;delete node.shotsParentId}if(stagesArr!=null){const s=stagesArr.map(x=>x.trim()).filter(Boolean);if(s.length&&node.type==='section')node.stages=s;else delete node.stages}
       /* プロジェクトルートの工程テンプレート保存。空を除去して保存。後方互換のため node.stages は先頭テンプレートで同期。 */
       if(stageTemplatesArr!=null){
         const tpls=stageTemplatesArr
