@@ -14,6 +14,13 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.06.018) アノテ窓のコメントパネル対象修正＋ REEL を差し戻し
+  - v.015/v.017 で「アノテ窓のコメント欄」だと思って `.log-side`（実は別オーバーレイ用）を広げていたが、実際の `openReviewOverlay` の右コメント列は `.fb-side`（[laycat_dev.html:9321](laycat_dev.html:9321)）だった。
+  - `.log-side`：510 → 340px（元に戻す）
+  - `.fb-side`（グローバル定義・アノテ窓用）：272 → 408px（1.5 倍・要望通り）
+  - REEL の `.fb-side`（`openReel` 内の動的注入 CSS）：460 → 393px（v.017 の追加拡張を差し戻し）
+  - モバイル `@media (max-width:900px)` の `.fb-side{width:230px}` はそのまま
+
 - (dev v2026.08.06.017) REEL のコメントパネル（`.fb-side`）をさらに拡張：393 → 460px
 
 - (dev v2026.08.06.016) v.015 で対象外の作業ページ NOTE パネル（`.review-note-col`）まで広げていたのを元に戻す
