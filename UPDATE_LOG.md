@@ -14,6 +14,10 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.006) REEL のステータス変更プルダウン：直接 `color-scheme:dark` をインラインで適用
+  - v.005 の `:root{color-scheme:dark}` だけでは反映されないケースがあった（`background:transparent` インライン指定が UA popup 判定に影響していた可能性）
+  - `reel-status-sel` の `style.cssText` に `color-scheme:dark` を追加
+
 - (dev v2026.08.07.005) REEL のネイティブ `<select>` プルダウンをダークテーマに（アノテ窓と揃える）
   - REEL は iframe 内の独立 document のため、ブラウザの UA form control がライトモードで描画されて白く見えていた
   - `st.textContent` の先頭に `:root{color-scheme:dark}` を追加 → OS/ブラウザにダーク配色を指示 → ステータス切替プルダウンの popup もダーク配色になる

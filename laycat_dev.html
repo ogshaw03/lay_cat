@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.005';
+const APP_VERSION='2026.08.07.006';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11936,7 +11936,7 @@ function openReel(){
     if(!n)return;
     const cur=nodeStatus(n);const _ps=projStatuses(n);
     const sel=ce(d,'select','reel-status-sel');
-    sel.style.cssText='font-size:11px;padding:1px 6px;border-radius:10px;background:transparent;font-weight:600;white-space:nowrap;height:22px';
+    sel.style.cssText='font-size:11px;padding:1px 6px;border-radius:10px;background:transparent;font-weight:600;white-space:nowrap;height:22px;color-scheme:dark';
     {const o=ce(d,'option',null,'未着手');o.value='empty';if(cur==='empty')o.selected=true;sel.appendChild(o)}
     for(const stt of _ps){const o=ce(d,'option',null,stt.label);o.value=stt.id;if(cur===stt.id)o.selected=true;sel.appendChild(o)}
     if(cur!=='empty'&&!_ps.some(s=>s.id===cur)){const o=ce(d,'option',null,'（不明: '+cur+'）');o.value=cur;o.selected=true;sel.appendChild(o)} /* 未知IDでも消さず保持 */
