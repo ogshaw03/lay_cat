@@ -14,6 +14,14 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.011 / mannequin v3) 3D エディタ（マネキン）に指ボーンを追加（左右 5 本 × 3 関節 = 30 本）
+  - `VRM_MAP` に `J_Bip_L/R_{Thumb,Index,Middle,Ring,Little}{1,2,3}` の 30 ボーンを追加
+  - `BONE_ORDER` にも同順で追加（親→人差→中→薬→小、各 3 関節）→ boneList に自動表示
+  - `displayName` に日本語表示追加（例：左親指①/②/③、左人差①/②/③、...）
+  - `pickJointSize` を指用に階段状に調整：末節 3=0.010、中節 2=0.013、基節 1=0.016（手 0.05 より控えめ、選択には十分な当たり判定）
+  - `MANN_VERSION` を `2` → `3` に bump（`mannequin_3d.html` のキャッシュ破棄）
+  - VRM 標準に準拠しているので、`mannequin_model.glb` にすでに含まれている指ボーンをそのまま拾える（追加のアセット差し替え不要）
+
 - (dev v2026.08.07.010) 作業担当・チェック担当（および状態系スカラー）の「未割当に戻す」操作が巻き戻るバグを修正
   - **症状**：担当を持つ工程を「未割当」に変更した直後に他ユーザーの保存や `autoRefresh` が走ると、旧値に戻ってしまう
   - **原因**：`_mergeNode3` が `_mergeNodeInto`（fill-only）を先に呼ぶ設計だったため、ours の `assignee=undefined`（削除意図）が theirs の旧値で埋められていた。3-way チェックは fill-only の結果に対して「ours==base かつ theirs!=base」の場合のみ theirs 採用、という追加処理でしかなく、削除意図を汲めなかった

@@ -264,7 +264,18 @@ const VRM_MAP = {
   'J_Bip_L_Foot':'leftFoot',
   'J_Bip_R_UpperLeg':'rightUpperLeg',
   'J_Bip_R_LowerLeg':'rightLowerLeg',
-  'J_Bip_R_Foot':'rightFoot'
+  'J_Bip_R_Foot':'rightFoot',
+  /* 指ボーン（VRM 標準：親指/人差指/中指/薬指/小指 × 3 関節 × 左右） */
+  'J_Bip_L_Thumb1':'leftThumb1','J_Bip_L_Thumb2':'leftThumb2','J_Bip_L_Thumb3':'leftThumb3',
+  'J_Bip_L_Index1':'leftIndex1','J_Bip_L_Index2':'leftIndex2','J_Bip_L_Index3':'leftIndex3',
+  'J_Bip_L_Middle1':'leftMiddle1','J_Bip_L_Middle2':'leftMiddle2','J_Bip_L_Middle3':'leftMiddle3',
+  'J_Bip_L_Ring1':'leftRing1','J_Bip_L_Ring2':'leftRing2','J_Bip_L_Ring3':'leftRing3',
+  'J_Bip_L_Little1':'leftLittle1','J_Bip_L_Little2':'leftLittle2','J_Bip_L_Little3':'leftLittle3',
+  'J_Bip_R_Thumb1':'rightThumb1','J_Bip_R_Thumb2':'rightThumb2','J_Bip_R_Thumb3':'rightThumb3',
+  'J_Bip_R_Index1':'rightIndex1','J_Bip_R_Index2':'rightIndex2','J_Bip_R_Index3':'rightIndex3',
+  'J_Bip_R_Middle1':'rightMiddle1','J_Bip_R_Middle2':'rightMiddle2','J_Bip_R_Middle3':'rightMiddle3',
+  'J_Bip_R_Ring1':'rightRing1','J_Bip_R_Ring2':'rightRing2','J_Bip_R_Ring3':'rightRing3',
+  'J_Bip_R_Little1':'rightLittle1','J_Bip_R_Little2':'rightLittle2','J_Bip_R_Little3':'rightLittle3'
 };
 
 const dracoLoader = new DRACOLoader();
@@ -383,6 +394,10 @@ function loadGLBModel(){
 function pickJointSize(name){
   // 大きい関節は大きめ・指先は小さめの見た目にする
   if(name==='root') return 0.09;
+  /* 指ボーン：末節（3）が一番小さく、基節（1）へ向かって少しずつ大きく。手より控えめ。 */
+  if(/(Thumb|Index|Middle|Ring|Little)3$/.test(name)) return 0.010;
+  if(/(Thumb|Index|Middle|Ring|Little)2$/.test(name)) return 0.013;
+  if(/(Thumb|Index|Middle|Ring|Little)1$/.test(name)) return 0.016;
   if(/Hand|Foot/.test(name)) return 0.05;
   if(/Shoulder|Hip/.test(name)) return 0.055;
   if(name==='head' || name==='neck') return 0.055;
@@ -658,7 +673,18 @@ function displayName(n){
     leftShoulder:'左肩', leftUpperArm:'左上腕', leftLowerArm:'左前腕', leftHand:'左手',
     rightShoulder:'右肩', rightUpperArm:'右上腕', rightLowerArm:'右前腕', rightHand:'右手',
     leftHip:'左股関節', leftUpperLeg:'左太もも', leftLowerLeg:'左脛', leftFoot:'左足',
-    rightHip:'右股関節', rightUpperLeg:'右太もも', rightLowerLeg:'右脛', rightFoot:'右足'
+    rightHip:'右股関節', rightUpperLeg:'右太もも', rightLowerLeg:'右脛', rightFoot:'右足',
+    /* 指ボーン（1=基節・2=中節・3=末節） */
+    leftThumb1:'左親指①', leftThumb2:'左親指②', leftThumb3:'左親指③',
+    leftIndex1:'左人差①', leftIndex2:'左人差②', leftIndex3:'左人差③',
+    leftMiddle1:'左中指①', leftMiddle2:'左中指②', leftMiddle3:'左中指③',
+    leftRing1:'左薬指①', leftRing2:'左薬指②', leftRing3:'左薬指③',
+    leftLittle1:'左小指①', leftLittle2:'左小指②', leftLittle3:'左小指③',
+    rightThumb1:'右親指①', rightThumb2:'右親指②', rightThumb3:'右親指③',
+    rightIndex1:'右人差①', rightIndex2:'右人差②', rightIndex3:'右人差③',
+    rightMiddle1:'右中指①', rightMiddle2:'右中指②', rightMiddle3:'右中指③',
+    rightRing1:'右薬指①', rightRing2:'右薬指②', rightRing3:'右薬指③',
+    rightLittle1:'右小指①', rightLittle2:'右小指②', rightLittle3:'右小指③'
   };
   return map[n] || n;
 }
@@ -846,7 +872,19 @@ const BONE_ORDER = ['root','spine','chest','neck','head',
   'leftShoulder','leftUpperArm','leftLowerArm','leftHand',
   'rightShoulder','rightUpperArm','rightLowerArm','rightHand',
   'leftHip','leftUpperLeg','leftLowerLeg','leftFoot',
-  'rightHip','rightUpperLeg','rightLowerLeg','rightFoot'];
+  'rightHip','rightUpperLeg','rightLowerLeg','rightFoot',
+  /* 左手の指（親→小の順・各 3 関節） */
+  'leftThumb1','leftThumb2','leftThumb3',
+  'leftIndex1','leftIndex2','leftIndex3',
+  'leftMiddle1','leftMiddle2','leftMiddle3',
+  'leftRing1','leftRing2','leftRing3',
+  'leftLittle1','leftLittle2','leftLittle3',
+  /* 右手の指 */
+  'rightThumb1','rightThumb2','rightThumb3',
+  'rightIndex1','rightIndex2','rightIndex3',
+  'rightMiddle1','rightMiddle2','rightMiddle3',
+  'rightRing1','rightRing2','rightRing3',
+  'rightLittle1','rightLittle2','rightLittle3'];
 function refreshBoneList(){
   const list = document.getElementById('boneList');
   list.innerHTML = '';
