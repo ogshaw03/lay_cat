@@ -14,6 +14,13 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.009) REEL のステータス変更プルダウンをカスタム DIV ドロップダウンに置き換え（ネイティブ `<select>` 廃止）
+  - v.005〜v.008 で `color-scheme:dark` を CSS/meta/documentElement/initialHTML に多重指定したが、**Chrome の iframe 内 UA popup はダーク配色にならない挙動が確定**
+  - 対策：`<select>` を廃止し、DIV ベースのボタン＋浮動 popover に置換
+  - 表示：外側は現行と同じ丸みボーダー（ステータス色）、内側 popover はアノテ窓の `.mention-pop` と同じダーク（#141416 + #3a3a42）
+  - popover：現在選択項目に薄い青ハイライト、他はホバーで薄い白、クリックで即確定＋外クリックで閉じる
+  - 未知 ID・「未着手」の選択肢も従来通り保持
+
 - (dev v2026.08.07.008) REEL iframe の初期 HTML 書き出し時点で `color-scheme:dark` を documentElement 属性に埋め込む
   - `_mkReelShim` の `ifd.write('...')` に `<html lang="ja" style="color-scheme:dark">` と `<meta name="color-scheme" content="dark">` を初期HTMLに直接記述
   - v.007 では JS で後から `d.documentElement.style.colorScheme='dark'` を付けていたが、それだと Chrome の iframe で UA popup が light のまま出るケースがあった → ドキュメント作成時点で属性に入れる

@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.008';
+const APP_VERSION='2026.08.07.009';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11941,15 +11941,45 @@ function openReel(){
     const c=reelUI.clips[reelUI.cur];const n=c&&c.nodeId?getNode(c.nodeId):null;
     if(!n)return;
     const cur=nodeStatus(n);const _ps=projStatuses(n);
-    const sel=ce(d,'select','reel-status-sel');
-    sel.style.cssText='font-size:11px;padding:1px 6px;border-radius:10px;background:transparent;font-weight:600;white-space:nowrap;height:22px;color-scheme:dark';
-    {const o=ce(d,'option',null,'未着手');o.value='empty';if(cur==='empty')o.selected=true;sel.appendChild(o)}
-    for(const stt of _ps){const o=ce(d,'option',null,stt.label);o.value=stt.id;if(cur===stt.id)o.selected=true;sel.appendChild(o)}
-    if(cur!=='empty'&&!_ps.some(s=>s.id===cur)){const o=ce(d,'option',null,'（不明: '+cur+'）');o.value=cur;o.selected=true;sel.appendChild(o)} /* 未知IDでも消さず保持 */
-    const c2=(cur==='empty')?STAGE_GRAY:((_ps.find(s=>s.id===cur)||{}).color||STAGE_GRAY);sel.style.borderColor=c2;sel.style.color=c2;
-    sel.onchange=async()=>{if(sel.value==='empty')delete n.status;else n.status=sel.value;await persist();updReelHeaderInfo();try{render();resolveThumbs()}catch(_){}try{reelRender()}catch(_){}};
+    /* Chrome の iframe 内で <select> の popup が light になる制約を回避するため、
+       ネイティブ <select> ではなく DIV ベースのカスタムドロップダウンで置き換え。
+       アノテ窓の buildStatusSelect のダークな popup と揃える。 */
+    const opts=[{id:'empty',label:'未着手',color:STAGE_GRAY}];
+    for(const stt of _ps)opts.push({id:stt.id,label:stt.label,color:stt.color||STAGE_GRAY});
+    if(cur!=='empty'&&!_ps.some(s=>s.id===cur))opts.push({id:cur,label:'（不明: '+cur+'）',color:STAGE_GRAY});
+    const wrap=ce(d,'div','reel-status-sel');wrap.style.cssText='position:relative;display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:1px 8px 1px 8px;border-radius:10px;background:transparent;font-weight:600;white-space:nowrap;height:22px;cursor:pointer;border:1px solid #3a3a42;user-select:none';
+    const curOpt=opts.find(o=>o.id===cur)||opts[0];
+    const c2=curOpt.color||STAGE_GRAY;wrap.style.borderColor=c2;wrap.style.color=c2;
+    const lab=ce(d,'span',null,curOpt.label);
+    const cv=ce(d,'span',null,'▾');cv.style.cssText='font-size:9px;opacity:.7;line-height:1;margin-left:2px';
+    wrap.appendChild(lab);wrap.appendChild(cv);
+    let pop=null;
+    const closePop=()=>{if(pop){try{pop.remove()}catch(_){}pop=null;try{d.removeEventListener('mousedown',outside,true)}catch(_){}}};
+    const outside=(ev)=>{if(pop&&!pop.contains(ev.target)&&!wrap.contains(ev.target))closePop()};
+    wrap.onclick=(ev)=>{
+      ev.stopPropagation();
+      if(pop){closePop();return}
+      pop=ce(d,'div','reel-status-pop');
+      pop.style.cssText='position:absolute;z-index:1000;top:calc(100% + 4px);left:0;min-width:'+Math.max(120,wrap.offsetWidth)+'px;background:#141416;border:1px solid #3a3a42;border-radius:6px;box-shadow:0 8px 26px rgba(0,0,0,.55);padding:4px;display:flex;flex-direction:column;gap:1px;overflow:hidden';
+      for(const o of opts){
+        const it=ce(d,'div',null,o.label);
+        const isCur=(o.id===cur);
+        it.style.cssText='padding:5px 10px;font-size:11px;color:'+(o.color||'#e8e8ec')+';border-radius:4px;cursor:pointer;font-weight:600;white-space:nowrap;'+(isCur?'background:rgba(96,165,255,.16);':'');
+        it.onmouseenter=()=>{if(!isCur)it.style.background='rgba(255,255,255,.06)'};
+        it.onmouseleave=()=>{if(!isCur)it.style.background=''};
+        it.onclick=async(e2)=>{
+          e2.stopPropagation();closePop();
+          if(o.id===cur)return;
+          if(o.id==='empty')delete n.status;else n.status=o.id;
+          await persist();updReelHeaderInfo();try{render();resolveThumbs()}catch(_){}try{reelRender()}catch(_){}
+        };
+        pop.appendChild(it);
+      }
+      wrap.appendChild(pop);
+      setTimeout(()=>d.addEventListener('mousedown',outside,true),0);
+    };
     /* clipInfo には updReelHeaderInfo が名前・バッジを埋めた後に append される（loadCur の呼び出し順で担保） */
-    clipInfo.appendChild(sel);
+    clipInfo.appendChild(wrap);
   }
   reelUI.updStatus=updReelStatus;
   /* ヘッダ (REEL / LayCAT の隣) に「ショット名 / 工程名」と担当・レビュー担当バッジを表示。
