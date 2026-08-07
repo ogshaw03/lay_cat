@@ -1274,6 +1274,11 @@ function serializePose(){
               target:[controls.target.x, controls.target.y, controls.target.z] }
   };
 }
+/* ヘッドレス判定を loadPose 定義より前で確定させる（TDZ 事故防止）。
+   本体の headless セットアップは 1541 行付近の if(isHeadless){...} で行うが、
+   `const` は TDZ があるため loadPose 内から typeof/参照するときは初期化済みでなければ
+   ReferenceError になり得る。ここで先に評価して普通のブール変数として持つ。 */
+const IS_HEADLESS = new URLSearchParams(location.search).get('headless') === '1';
 function loadPose(pose){
   if(!pose || !pose.bones) return;
   for(const [n, e] of Object.entries(pose.bones)){
@@ -1282,8 +1287,7 @@ function loadPose(pose){
   /* headless（アノテ窓・REEL からの描画）ではポーズのカメラ角度は反映しない。
      3D エディタ = ポーズ作りの場所、アノテ／REEL = キャラをフィギュアのように回して見る場所、
      という役割分担にする（ユーザー要望 2026-08-07）。カメラは常に初期位置＝正面のまま。 */
-  const _isHeadless=(typeof isHeadless!=='undefined')&&isHeadless;
-  if(pose.camera && !_isHeadless){
+  if(pose.camera && !IS_HEADLESS){
     if(pose.camera.pos) camera.position.set(...pose.camera.pos);
     if(pose.camera.target) controls.target.set(...pose.camera.target);
     controls.update();
@@ -1521,7 +1525,8 @@ function tick(){
 // ---------- Headless mode (hidden iframe rendering) ----------
 // URL ?headless=1 で UI を隠し、親ウィンドウからの postMessage コマンドで
 // pose とカメラ角度を受け取り PNG を返す。laycat_dev.html のアノテ内 3D 回転で使用。
-const isHeadless = new URLSearchParams(location.search).get('headless') === '1';
+// 判定は loadPose 上部で IS_HEADLESS として先に確定済み（TDZ 回避のため）。
+const isHeadless = IS_HEADLESS;
 
 if(isHeadless){
   document.querySelector('header').style.display='none';

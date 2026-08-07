@@ -14,6 +14,16 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.014 / mannequin v6) 3D エディタからの 2 回目以降「レビューに反映」が効かない不具合を修正
+  - **原因1（headless 側 TDZ）**：v.012 で `loadPose` 内に追加した `typeof isHeadless!=='undefined'` が、`const isHeadless` の TDZ（Temporal Dead Zone）で例外を投げる恐れがあった。ES modules は `const` に対する `typeof` も ReferenceError。
+    - 修正：`IS_HEADLESS` を `loadPose` 定義より前で確定させ、内部からは通常のブール変数として参照。既存 `const isHeadless` は `IS_HEADLESS` のエイリアスに。
+    - この例外が発生すると headless の render コマンドが完了せず、LayCAT 側の `_mannRenderQ` が永久に pending → 以降の apply が queue に詰まって発火しない。
+  - **原因2（レース制御）**：2 回目の apply がすぐ来ると 1 回目の `_mannRender` の `.then` が最新 editor snapshot を古い render で上書きしてしまう。
+    - 修正：`_mannScheduleRender` / `_reelMannScheduleRender` でリクエスト時の `p.pose` を捕捉、応答時に別 pose に差替わっていたら結果を無視。
+  - **原因3（queue デッドロック）**：`_mannRender` が例外や拒否で resolve しない場合、`_mannRenderQ` が null にならず後続 render がすべて queue で詰まる。
+    - 修正：`.catch` を追加して失敗時も `_mannRenderQ=null` にし、`_mannRenderNext` を drain。
+  - `MANN_VERSION` を `5` → `6` に bump（`mannequin_3d.html` のキャッシュ破棄）。
+
 - (dev v2026.08.07.013 / mannequin v5) アノテ窓/REEL 反映時の初期フレーミングを改善（キャラを近く・大きく表示）
   - 3D エディタ用の初期カメラ `(0,1.5,5.5)` だと四角枠に対してキャラが小さすぎる問題
   - headless 初期化ブロックで camera を `(0,1.2,3.6)`・target を `(0,1.0,0)` に上書き（キャラ中心を注視）
