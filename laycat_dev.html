@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.007';
+const APP_VERSION='2026.08.07.008';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11488,7 +11488,10 @@ function _buildReelFloat(){
 function _mkReelShim(shell,ifr,cbtn,onMove,onUp){
   const ifw=ifr.contentWindow;
   const ifd=ifr.contentDocument||ifw.document;
-  ifd.open();ifd.write('<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>LayCAT REEL</title></head><body></body></html>');ifd.close();
+  /* ネイティブ <select> ドロップダウン等の UA UI をダーク配色にするため、
+     documentElement の style="color-scheme:dark" と <meta name="color-scheme"> を初期 HTML に埋める。
+     ここに書かないと Chrome の iframe で light popup が出るケースがある（JS で後から付けても遅い）。 */
+  ifd.open();ifd.write('<!DOCTYPE html><html lang="ja" style="color-scheme:dark"><head><meta charset="UTF-8"><meta name="color-scheme" content="dark"><title>LayCAT REEL</title></head><body></body></html>');ifd.close();
   const shim={
     _shell:shell,_ifw:ifw,
     document:ifd,head:ifd.head,body:ifd.body,

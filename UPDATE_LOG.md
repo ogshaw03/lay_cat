@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.008) REEL iframe の初期 HTML 書き出し時点で `color-scheme:dark` を documentElement 属性に埋め込む
+  - `_mkReelShim` の `ifd.write('...')` に `<html lang="ja" style="color-scheme:dark">` と `<meta name="color-scheme" content="dark">` を初期HTMLに直接記述
+  - v.007 では JS で後から `d.documentElement.style.colorScheme='dark'` を付けていたが、それだと Chrome の iframe で UA popup が light のまま出るケースがあった → ドキュメント作成時点で属性に入れる
+  - v.007 で追加した誤爆リスクのある srcdoc アプローチは採用せず、doc.write ベースを維持
+
 - (dev v2026.08.07.007) REEL iframe の color-scheme:dark を多重指定で強制
   - `d.documentElement.style.colorScheme='dark'` を JS で直接セット
   - `<meta name="color-scheme" content="dark">` を head に追加
