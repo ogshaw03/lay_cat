@@ -14,6 +14,17 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.010) 作業担当・チェック担当（および状態系スカラー）の「未割当に戻す」操作が巻き戻るバグを修正
+  - **症状**：担当を持つ工程を「未割当」に変更した直後に他ユーザーの保存や `autoRefresh` が走ると、旧値に戻ってしまう
+  - **原因**：`_mergeNode3` が `_mergeNodeInto`（fill-only）を先に呼ぶ設計だったため、ours の `assignee=undefined`（削除意図）が theirs の旧値で埋められていた。3-way チェックは fill-only の結果に対して「ours==base かつ theirs!=base」の場合のみ theirs 採用、という追加処理でしかなく、削除意図を汲めなかった
+  - **修正**：スカラー 3-way ロジックを厳格化
+    - `ours != base` → **ours 採用**（`undefined`／`null`／空文字なら `null` を格納 = 削除意図）
+    - `ours == base && theirs != base` → **theirs 採用**（削除意図も同様に `null`）
+    - どちらも変更なし → m の現状維持
+  - **`null` を使う理由**：`delete m[k]` だと後続の `_deepMergeInPlace`（"source に無いキーは残す" 設計）で DB 側の古い値が生き残ってしまう。明示的な `null` で削除意図を反映側まで伝える。UI 側は `!n.assignee` で判定するので null も未割当扱いで問題なし
+  - 対象キー：`status / assignee / reviewer / name / description / thumbnail / thumbCrop`
+  - 副次効果：ステータス・レビュー担当・工程名・説明等の「クリア操作」も同じ経路で正しく反映されるようになった
+
 - (dev v2026.08.07.009) REEL のステータス変更プルダウンをカスタム DIV ドロップダウンに置き換え（ネイティブ `<select>` 廃止）
   - v.005〜v.008 で `color-scheme:dark` を CSS/meta/documentElement/initialHTML に多重指定したが、**Chrome の iframe 内 UA popup はダーク配色にならない挙動が確定**
   - 対策：`<select>` を廃止し、DIV ベースのボタン＋浮動 popover に置換

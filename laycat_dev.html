@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.009';
+const APP_VERSION='2026.08.07.010';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8195,9 +8195,29 @@ function _merge3(base,ours,theirs){
 function _mergeNode3(base,ours,theirs){
   const m=JSON.parse(JSON.stringify(ours));
   _mergeNodeInto(m,theirs);
-  if(base){const js=x=>JSON.stringify(x);for(const k of ['status','assignee','reviewer','name','description','thumbnail','thumbCrop']){
-    if(js(ours[k])===js(base[k])&&js(theirs[k])!==js(base[k]))m[k]=theirs[k];
-  }}
+  /* スカラー 3-way：`_mergeNodeInto` は fill-only なので、ours が「削除意図で undefined」の場合に
+     theirs の旧値で埋められて **未割当に戻す操作が巻き戻る** バグがあった。
+     ここで正しい 3-way 判定でスカラーを上書き直す：
+     - ours != base → ours 採用（削除意図の undefined も含む）
+     - ours == base && theirs != base → theirs 採用
+     - どちらも変更なし → m の現状維持（実質 base 値）
+
+     削除意図は `null` で表現する：`delete m[k]` だと後続の `_deepMergeInPlace`
+     （source に無いキーは残す設計）で DB 側の古い値が生き残ってしまうため、
+     明示的に null を入れて "削除された" ことを伝える。UI 側は `!n.assignee` で判定するので null も未割当扱い。 */
+  if(base){
+    const js=x=>JSON.stringify(x);
+    const _empty=v=>(v==null||v==='');
+    for(const k of ['status','assignee','reviewer','name','description','thumbnail','thumbCrop']){
+      const oursChanged=js(ours[k])!==js(base[k]);
+      const theirsChanged=js(theirs[k])!==js(base[k]);
+      if(oursChanged){
+        m[k]=_empty(ours[k])?null:ours[k];
+      }else if(theirsChanged){
+        m[k]=_empty(theirs[k])?null:theirs[k];
+      }
+    }
+  }
   return m;
 }
 /* マージ結果を DB に反映（当該プロジェクトのノード/サブミットを置換） */
