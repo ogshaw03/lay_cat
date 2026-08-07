@@ -14,6 +14,16 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.012 / mannequin v4) 3D マネキンの役割分離：3D エディタのカメラ角度をアノテ窓/REEL に反映しない＋拡大時の解像度自動追従
+  - **役割分離**：3D エディタ = ポーズ作りの場所、アノテ窓 / REEL = キャラを回して見る場所。
+    - `loadPose` に headless 判定を追加し、pose に含まれる `camera.pos` / `target` の復元を headless では skip。
+    - headless の初期カメラ（`(0, 1.5, 5.5)`, target=原点、OrbitControls 無効）＝正面固定になる。
+    - ユーザーはアノテ窓 / REEL 内で従来通り yaw/pitch/roll ／eye ジャイロで自由にキャラをフィギュア回転できる（カメラは動かさない）。
+  - **拡大時の解像度追従**：`_mannScheduleRender` / `_reelMannScheduleRender` の `size` 未指定時、`p.w` とキャンバス幅から `clamp(400, round(cw * p.w * 2), 1600)` を算出。小さい時は 600 相当、大きく引き伸ばすほど pixel も上げる → 拡大時のジャギー・解像度不足を解消。
+    - リサイズドラッグ完了時（`mannPointerUp` / `reelMannUp` の `mode==='resize'` 分岐）にも自動サイズで再レンダー。
+    - ドラッグ中は従来通り明示的な低解像度（400）で軽く。
+  - `MANN_VERSION` を `3` → `4` に bump（`mannequin_3d.html` のキャッシュ破棄）。
+
 - (dev v2026.08.07.011 / mannequin v3) 3D エディタ（マネキン）に指ボーンを追加（左右 5 本 × 3 関節 = 30 本）
   - `VRM_MAP` に `J_Bip_L/R_{Thumb,Index,Middle,Ring,Little}{1,2,3}` の 30 ボーンを追加
   - `BONE_ORDER` にも同順で追加（親→人差→中→薬→小、各 3 関節）→ boneList に自動表示

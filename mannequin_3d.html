@@ -1279,7 +1279,11 @@ function loadPose(pose){
   for(const [n, e] of Object.entries(pose.bones)){
     if(bones[n]) bones[n].rotation.set(e[0]||0, e[1]||0, e[2]||0);
   }
-  if(pose.camera){
+  /* headless（アノテ窓・REEL からの描画）ではポーズのカメラ角度は反映しない。
+     3D エディタ = ポーズ作りの場所、アノテ／REEL = キャラをフィギュアのように回して見る場所、
+     という役割分担にする（ユーザー要望 2026-08-07）。カメラは常に初期位置＝正面のまま。 */
+  const _isHeadless=(typeof isHeadless!=='undefined')&&isHeadless;
+  if(pose.camera && !_isHeadless){
     if(pose.camera.pos) camera.position.set(...pose.camera.pos);
     if(pose.camera.target) controls.target.set(...pose.camera.target);
     controls.update();
