@@ -1533,6 +1533,13 @@ if(isHeadless){
   controls.enabled = false;
   tc.visible = false;    // headless では TransformControls は不要（描画から外す）
   tc.enabled = false;
+  /* アノテ窓/REEL に反映する PNG のフレーミング：3D エディタ用の初期カメラ (0,1.5,5.5) だと
+     四角枠に対してキャラが小さすぎるので、少し近づけて全身が枠にゆったり収まる程度に。
+     controls.target はキャラ中心（characterGroup.position.y=1.0）に合わせる。 */
+  camera.position.set(0, 1.2, 3.6);
+  controls.target.set(0, 1.0, 0);
+  camera.lookAt(controls.target);
+  camera.updateProjectionMatrix();
   // Signal readiness once first frame renders
   requestAnimationFrame(()=>{
     try{ (window.parent || window.opener || window).postMessage({source:'laycat_mannequin_headless', ready:true}, '*'); }catch(_){}
