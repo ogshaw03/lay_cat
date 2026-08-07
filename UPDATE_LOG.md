@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.007) REEL iframe の color-scheme:dark を多重指定で強制
+  - `d.documentElement.style.colorScheme='dark'` を JS で直接セット
+  - `<meta name="color-scheme" content="dark">` を head に追加
+  - CSS 側も `html{color-scheme:dark}` を追加
+  - Chrome の iframe レンダで `:root{color-scheme:dark}` だけでは反映されないケースがあるため三重保険
+
 - (dev v2026.08.07.006) REEL のステータス変更プルダウン：直接 `color-scheme:dark` をインラインで適用
   - v.005 の `:root{color-scheme:dark}` だけでは反映されないケースがあった（`background:transparent` インライン指定が UA popup 判定に影響していた可能性）
   - `reel-status-sel` の `style.cssText` に `color-scheme:dark` を追加

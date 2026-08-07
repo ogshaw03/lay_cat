@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.006';
+const APP_VERSION='2026.08.07.007';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11536,10 +11536,13 @@ function openReel(){
   const parts=_buildReelFloat();
   reelWin=_mkReelShim(parts.shell,parts.ifr,parts.cbtn,parts.onMove,parts.onUp);
   const d=reelWin.document;
+  /* ネイティブ <select> ポップアップ等の UA UI をダーク配色にするため、
+     iframe の documentElement に直接 color-scheme:dark を適用＋ <meta name="color-scheme"> も差し込む。
+     CSS の :root{color-scheme:dark} だけでは Chrome の iframe レンダで反映されないケースがあるため多重指定。 */
+  try{d.documentElement.style.colorScheme='dark'}catch(_){}
+  try{const _m=d.createElement('meta');_m.name='color-scheme';_m.content='dark';(d.head||d.documentElement).appendChild(_m)}catch(_){}
   const st=d.createElement('style');
-  /* :root に color-scheme:dark を宣言して、ネイティブ <select> プルダウン等の UA UI をダーク配色に強制。
-     アノテ窓（メイン document）ではブラウザ既定の判定で暗くなっていた場合と挙動を揃える。 */
-  st.textContent=':root{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}body{background:#0d0d0f;color:#e8e8ec;font-family:system-ui,"Noto Sans JP",sans-serif;font-size:13px;display:flex;flex-direction:column;height:100vh;overflow:hidden}'
+  st.textContent=':root{color-scheme:dark}html{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}body{background:#0d0d0f;color:#e8e8ec;font-family:system-ui,"Noto Sans JP",sans-serif;font-size:13px;display:flex;flex-direction:column;height:100vh;overflow:hidden}'
    /* スクロールバー：メイン（アノテ窓）と同じ見た目に合わせる（bg4=#232327 / bg=#0d0d0f） */
    +'::-webkit-scrollbar{width:10px;height:10px}'
    +'::-webkit-scrollbar-thumb{background:#232327;border-radius:6px;border:2px solid #0d0d0f}'
