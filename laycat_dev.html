@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.015';
+const APP_VERSION='2026.08.07.016';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8697,8 +8697,10 @@ async function uploadVersion(node,file,ui,opts){
     node.versions.push(version);if(thumbRef)node.thumbnail=thumbRef;
     /* アップロード時に自動でステータスを「チェック待ち」（プロジェクトの先頭ステータス）に設定。
        新しい版が来たので既存の判定はリセットして再チェックに戻す。サブミット経由の場合は
-       このあと呼び出し側で b.status によって上書きされる（ユーザー指定を優先）。 */
-    {const sts=projStatuses(node);if(sts&&sts.length)node.status=sts[0].id}
+       このあと呼び出し側で b.status によって上書きされる（ユーザー指定を優先）。
+       サイレント・アップロード（opts.notify===false）ではステータスも触らない：
+       「チェック依頼を出さない = 現状ステータスを維持したい」意図とセットで扱う。 */
+    if(opts.notify!==false){const sts=projStatuses(node);if(sts&&sts.length)node.status=sts[0].id}
     await persist();ui.bi.style.width='100%';render();resolveThumbs();toast('アップロード完了: '+version.name);
   }catch(e){ui.prog.classList.add('hidden');toast('アップロード失敗: '+e.message)}
 }
