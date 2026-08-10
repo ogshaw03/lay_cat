@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.014';
+const APP_VERSION='2026.08.07.015';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3476,6 +3476,7 @@ function scanMentionsForMe(){
       for(const ver of (n.versions||[])){
         if(!ver||!ver.id)continue;
         if(ver.submitId)continue; /* サブミット経由（=上のループで拾う）は二重通知しない */
+        if(ver.noNotify)continue; /* アップロード時にサイレント指定された版は通知対象外 */
         const uploader=String(ver.uploadedBy||'').trim();
         const upperLc=uploader.toLowerCase();
         /* 自分自身のアップロードは通知しない（byEmail 相当が版に無いため名前で比較） */
@@ -8686,6 +8687,9 @@ async function uploadVersion(node,file,ui,opts){
     /* 名前：入力があればそれ、空欄なら動画のタイトル（拡張子なしのファイル名） */
     const vname=(opts.name&&opts.name.trim())||file.name.replace(/\.[^.]+$/,'');
     const version={id:newId('ver'),name:vname,type:isVideo?'video':'image',file:mediaRef,thumb:thumbRef,uploadedBy:currentUser(),uploadedAt:nowIso(),review:{status:'pending',notes:[]}};
+    /* サイレント・アップロード：チェック依頼通知を出さない設定（アップロードモーダルの
+       「チェック担当者に通知を送る」☑ が OFF のとき）。通知スキャナで版ごとにスキップする。 */
+    if(opts.notify===false)version.noNotify=true;
     /* EXR の場合はフラグを立てておく（レビュー画面で「EXR 表示調整」ボタンを出すため） */
     if(isExr){version.exr=true;version.exrView={exposure:0,gamma:2.2}}
     /* アップロード時のコメントは「メッセージ」（node.comments）として記録（ショット全体コメントは廃止） */
@@ -8790,12 +8794,23 @@ function openUploadModal(node,file){
       nameRow.f.placeholder=file.name.replace(/\.[^.]+$/,'');
       const cmtRow=frow('コメント（任意・メッセージとして記録）','textarea');
       inner.appendChild(nameRow.r);inner.appendChild(cmtRow.r);
+      /* チェック依頼通知を送るかどうか（既定 ON）。オフのときは version.noNotify=true を焼き、
+         通知スキャナ（rq:v:...）でスキップ。無音アップロード用途に使う。 */
+      const notifyRow=el('label','form-row');
+      notifyRow.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin:0';
+      const notifyCb=el('input');notifyCb.type='checkbox';notifyCb.checked=true;
+      notifyCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
+      notifyRow.appendChild(notifyCb);
+      const notifyLab=el('span','form-label');notifyLab.style.margin='0';
+      notifyLab.innerHTML='<b>チェック担当者に通知を送る</b><span style="color:var(--text3);margin-left:6px;font-size:11px">（オフ＝サイレント・アップロード）</span>';
+      notifyRow.appendChild(notifyLab);
+      inner.appendChild(notifyRow);
       const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=()=>{closeModal();res(false)};
       const ok=el('button','btn btn-primary','アップロード');
       ok.onclick=async()=>{
         closeModal();
         const proot=rootOf(node);
-        await uploadVersion(node,file,curUploadUI||{prog:{classList:{add(){},remove(){}}},bi:{style:{}},pct:{}},{name:nameRow.f.value,comment:cmtRow.f.value,projectId:proot?proot.id:null});
+        await uploadVersion(node,file,curUploadUI||{prog:{classList:{add(){},remove(){}}},bi:{style:{}},pct:{}},{name:nameRow.f.value,comment:cmtRow.f.value,projectId:proot?proot.id:null,notify:notifyCb.checked});
         res(true);
       };
       mFoot(body,[cancel,ok]);

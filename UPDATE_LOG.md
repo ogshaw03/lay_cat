@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.015) アップロードモーダルに「チェック担当者に通知を送る」チェックボックスを追加（既定 ON）
+  - `openUploadModal`：既存の名前・コメント欄の下に ☑ を追加。ラベル「チェック担当者に通知を送る（オフ＝サイレント・アップロード）」。
+  - `uploadVersion`：`opts.notify===false` のとき `version.noNotify=true` を焼き込む。
+  - 通知スキャナ（`rq:v:...` 生成ループ）で `if(ver.noNotify)continue;` を追加し、サイレント指定の版は通知対象外に。
+  - サブミット経由（`ver.submitId` あり）は従来通り上のループで拾うので二重通知しない。
+
 - (dev v2026.08.07.014 / mannequin v6) 3D エディタからの 2 回目以降「レビューに反映」が効かない不具合を修正
   - **原因1（headless 側 TDZ）**：v.012 で `loadPose` 内に追加した `typeof isHeadless!=='undefined'` が、`const isHeadless` の TDZ（Temporal Dead Zone）で例外を投げる恐れがあった。ES modules は `const` に対する `typeof` も ReferenceError。
     - 修正：`IS_HEADLESS` を `loadPose` 定義より前で確定させ、内部からは通常のブール変数として参照。既存 `const isHeadless` は `IS_HEADLESS` のエイリアスに。
