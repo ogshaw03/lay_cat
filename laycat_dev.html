@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.018';
+const APP_VERSION='2026.08.07.019';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5069,8 +5069,9 @@ function renderProjCheck(main,root){
     bd.appendChild(t);
     const ab=taskAssignBadges(n);if(ab)bd.appendChild(ab); /* 作業/チェック担当 */
     bd.appendChild(el('div','tl-meta',lv?('最新: '+lv.v.name+'　by '+(lv.v.uploadedBy||'-')+'・'+fmt(lv.v.uploadedAt)):'動画なし'));
-    /* サブミット経由でチェック待ちに乗った版は、そのサブミット本体コメント＋この工程宛の個別コメントを掲載。
-       レビュアーがどの意図で送られたか一目で分かるように。 */
+    it.appendChild(bd);
+    /* サブミット経由でチェック待ちに乗った版は、そのサブミット本体コメント＋この工程宛の個別コメントを右カラムに掲載。
+       行の右側の余白を活かして、左のショット情報と横並びで一望できるようにする。 */
     if(lv&&lv.v&&lv.v.submitId){
       const sb=(DB.submits||[]).find(x=>x&&x.id===lv.v.submitId);
       if(sb){
@@ -5079,7 +5080,7 @@ function renderProjCheck(main,root){
         const perCmt=item&&item.comment?String(item.comment).trim():'';
         if(wholeCmt||perCmt){
           const box=el('div','tl-submitcmt');
-          box.style.cssText='margin-top:6px;padding:6px 10px;background:var(--bg3);border-left:3px solid var(--edge);border-radius:0 6px 6px 0;font-size:12px;line-height:1.55;color:var(--text2);white-space:pre-wrap;word-break:break-word;max-width:100%';
+          box.style.cssText='flex:0 1 340px;min-width:200px;max-width:420px;padding:8px 12px;background:var(--bg3);border-left:3px solid var(--edge);border-radius:0 6px 6px 0;font-size:12px;line-height:1.55;color:var(--text2);white-space:pre-wrap;word-break:break-word;align-self:stretch;overflow:auto';
           if(wholeCmt){
             const h=el('div');h.style.cssText='font-size:10px;font-weight:700;color:var(--text3);margin-bottom:2px;letter-spacing:.4px';
             h.textContent='サブミット「'+(sb.name||'')+'」';
@@ -5092,11 +5093,11 @@ function renderProjCheck(main,root){
             box.appendChild(h2);
             const t2=el('div');t2.textContent=perCmt;box.appendChild(t2);
           }
-          bd.appendChild(box);
+          box.onclick=e=>e.stopPropagation(); /* コメントテキストの選択を邪魔しない */
+          it.appendChild(box);
         }
       }
     }
-    it.appendChild(bd);
     list.appendChild(it);
   }
   main.appendChild(list);
