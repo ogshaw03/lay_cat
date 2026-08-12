@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.018) チェック待ちタブの各行に「サブミットコメント」を表示
+  - `renderProjCheck` の tl-item に、最新版 `lv.v.submitId` から `DB.submits` を引いてサブミット本体コメント（`sb.comment`）と、このショット宛の個別コメント（`item.comment`）を掲載
+  - 見た目：`.tl-submitcmt` として左に細いエッジ帯・薄背景・見出し「サブミット「XX」」／「このショット宛」で 2 段構成（片方だけでも OK）
+  - `white-space:pre-wrap` で改行を保持、`word-break:break-word` で長文を折り返し
+  - サブミット経由でない直接アップロードの版は従来通り（余計な枠は出さない）
+
 - (dev v2026.08.07.017) draw/erase ツール中のカーソルを `none` → `crosshair` に変更（Parsec 等リモート接続時のマウス感度低下を回避）
   - 原因：`cursor:none` にしていたため、OS の高速追従カーソルが消え、JS 描画のブラシサイズリングが pointer イベント経由でラグ描画されていた。Parsec のようなリモート環境だと round-trip 遅延がそのまま出て「マウス感度が落ちた」ように感じる。
   - 修正：アノテ窓の `setTool`（[laycat_dev.html:10084](laycat_dev.html:10084)）と REEL の `setRTool`（[laycat_dev.html:12629](laycat_dev.html:12629)）の両方で `cursor` を常に `crosshair` に。
