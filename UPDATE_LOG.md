@@ -14,6 +14,11 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.017) draw/erase ツール中のカーソルを `none` → `crosshair` に変更（Parsec 等リモート接続時のマウス感度低下を回避）
+  - 原因：`cursor:none` にしていたため、OS の高速追従カーソルが消え、JS 描画のブラシサイズリングが pointer イベント経由でラグ描画されていた。Parsec のようなリモート環境だと round-trip 遅延がそのまま出て「マウス感度が落ちた」ように感じる。
+  - 修正：アノテ窓の `setTool`（[laycat_dev.html:10084](laycat_dev.html:10084)）と REEL の `setRTool`（[laycat_dev.html:12629](laycat_dev.html:12629)）の両方で `cursor` を常に `crosshair` に。
+  - サイズリング（`sizeRing` / `szRing`）は継続表示。OS の crosshair とリングの二重表示になるが、リモート・ローカル両方でカーソル追従がスムーズに。
+
 - (dev v2026.08.07.016) サイレント・アップロード時はステータス自動変更も無効化
   - v.015 で追加した「チェック担当者に通知を送る」☑ を OFF にしたとき、通知を出さないだけでなく、ステータスの「チェック待ち」への自動変更もスキップ
   - `uploadVersion` の `node.status=sts[0].id` を `if(opts.notify!==false){...}` でガード

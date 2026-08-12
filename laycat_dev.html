@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.016';
+const APP_VERSION='2026.08.07.017';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10081,7 +10081,10 @@ function openReview(nodeId,versionId,opts){
     if(tool!=='lasso'){try{lassoClearSelection()}catch(_){}}
     if(tool!=='shape'){shapeDraft=null}
     canvas.style.pointerEvents=tool?'auto':'none';
-    canvas.style.cursor=(tool==='draw'||tool==='erase')?'none':((tool==='mann'||tool==='lasso'||tool==='shape')?'crosshair':'crosshair');
+    /* draw / erase 中も OS 標準の crosshair を残す（v.017）：
+       Parsec 等のリモート接続時に cursor:'none' だと JS 描画リングが pointer イベント経由で
+       ラグ描画され「マウス感度が落ちた」ように感じる問題を回避。ローカル利用でも影響最小。 */
+    canvas.style.cursor=tool?'crosshair':'';
     if(tool!=='draw'&&tool!=='erase'){try{sizeRing.style.display='none'}catch(_){}}
     if(tool){Zm.hand=false;handBtn.classList.remove('active');wrap.style.cursor='';if(isVideo)media.pause()}
     rebuildSizeSel();
@@ -12626,7 +12629,7 @@ function openReel(){
   ftl.onpointermove=e=>{if(!RV.scrub)return;gSeek(gFromX(e));RV.last=-1};
   ftl.onpointerup=()=>{RV.scrub=false;RV.scrubT=-1;RV.last=-1};
   /* ツール */
-  function setRTool(t){RV.tool=t;drawB.classList.toggle('on',t==='draw');eraseB.classList.toggle('on',t==='erase');headB.classList.toggle('on',t==='head');shapeB.classList.toggle('on',t==='shape');lassoB.classList.toggle('on',t==='lasso');mannB.classList.toggle('on',t==='mann');if(t!=='head'){rHeadActive=null;rHeadDrag=null}if(t!=='shape'){rShapeDraft=null}if(t!=='lasso'){try{reelLassoClearSelection()}catch(_){}}if(t!=='mann'){reelSelectedMann=null;reelMannDrag=null;reelMannHoverAxis=null}anno.style.pointerEvents=t?'auto':'none';anno.style.cursor=(t==='draw'||t==='erase')?'none':(t?'crosshair':'');if(t!=='draw'&&t!=='erase'){try{szRing.style.display='none'}catch(_){}}if(t){RZ.hand=false;handB.classList.remove('on');stage.style.cursor='';video.pause()}try{rebuildRSizeSel()}catch(_){}}
+  function setRTool(t){RV.tool=t;drawB.classList.toggle('on',t==='draw');eraseB.classList.toggle('on',t==='erase');headB.classList.toggle('on',t==='head');shapeB.classList.toggle('on',t==='shape');lassoB.classList.toggle('on',t==='lasso');mannB.classList.toggle('on',t==='mann');if(t!=='head'){rHeadActive=null;rHeadDrag=null}if(t!=='shape'){rShapeDraft=null}if(t!=='lasso'){try{reelLassoClearSelection()}catch(_){}}if(t!=='mann'){reelSelectedMann=null;reelMannDrag=null;reelMannHoverAxis=null}anno.style.pointerEvents=t?'auto':'none';anno.style.cursor=t?'crosshair':'';/* v.017: draw/erase でも crosshair 維持（Parsec 等リモート接続時のラグ回避） */if(t!=='draw'&&t!=='erase'){try{szRing.style.display='none'}catch(_){}}if(t){RZ.hand=false;handB.classList.remove('on');stage.style.cursor='';video.pause()}try{rebuildRSizeSel()}catch(_){}}
   /* 初期化：ツール未選択でも一覧を作っておく（disable 状態） */
   try{RV.brushW=RV.brushW||4;RV.eraseW=RV.eraseW||16;rebuildRSizeSel()}catch(_){}
   /* 初期状態は「ツール未選択」— 明示的に anno の pointer-events を none にしないと canvas の CSS デフォルト（auto）で
