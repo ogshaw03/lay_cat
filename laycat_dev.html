@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.021';
+const APP_VERSION='2026.08.07.022';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -9816,6 +9816,15 @@ function openReview(nodeId,versionId,opts){
     const pdur=parseInt(durSel.value)||1;
     ctx.fillStyle='rgba(224,138,74,.5)';
     for(const p of pending)if(p.f!=null)ctx.fillRect(p.f*fw,2,Math.max(3,fw*pdur),7);
+    /* 動画埋め込み（anno_emb_）マーカー：内部的に自動 persist されているので「保存済み」扱いで表示。
+       コメント付きノートと区別するため少しくすんだオレンジ（#a5652f）で 100% 塗り。
+       pending マーカーの上に重ねて描画するので、実質「保存済み表示」で上書きされる。 */
+    ctx.fillStyle='#a5652f';
+    for(const n of shownNotes()){
+      if(!(n.id&&n.id.indexOf(_annoEmbPfx)===0))continue;
+      if(n.frame==null)continue;
+      ctx.fillRect(n.frame*fw,2,Math.max(3,fw*(parseInt(n.dur)||1)),7);
+    }
     /* コメント＝赤の菱形（最前面レイヤー）。菱形の中心を目盛り＆プレイヘッドと同じ「フレーム左端」に揃える。 */
     for(const n of shownNotes()){
       if(n.frame==null||(n.drawing&&n.drawing.length))continue;
