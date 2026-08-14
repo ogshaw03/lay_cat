@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.020';
+const APP_VERSION='2026.08.07.021';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8878,6 +8878,57 @@ function openReview(nodeId,versionId,opts){
 
   let FPS=v.fps||24,totalFrames=1,lastFrame=-1;
   let tool=null,erasing=false,pending=[],stroke=null,brushW=4,eraseW=16;
+  /* ==== 動画埋め込みの自動同期（REEL の reelSyncEmbedFrame と同じ設計） ====
+     アノテ窓で描いた pending を、v.review.notes 上の noShot=true ノート
+     （id: anno_emb_<versionId>_<frame>）にライブで反映する。閉じても消えない。
+     再オープン時は annoHydratePending が embed ノートから pending を復元する。
+     コメント欄には出さない（noteEmbedOnly で除外される）。 */
+  const _annoEmbPfx='anno_emb_'+v.id+'_';
+  function annoSyncEmbedFrame(frame){
+    if(!isVideo)return;
+    const key=_annoEmbPfx+frame;
+    v.review.notes=v.review.notes.filter(n=>n.id!==key);
+    const items=pending.filter(p=>p.f===frame);
+    if(!items.length)return;
+    const curPdur=(typeof durSel!=='undefined'&&durSel)?(parseInt(durSel.value)||1):1;
+    const dur=Math.max(1,...items.map(p=>parseInt(p.dur)||curPdur));
+    v.review.notes.push({
+      id:key,author:currentUser(),time:nowIso(),frame:frame,dur:dur,
+      drawing:items.map(cloneDrawItem),noShot:true
+    });
+  }
+  function annoSyncEmbedAll(){
+    if(!isVideo)return;
+    const frames=new Set();
+    for(const n of v.review.notes)if(n.id&&n.id.startsWith(_annoEmbPfx))frames.add(n.frame);
+    for(const p of pending)if(p.f!=null)frames.add(p.f);
+    for(const fr of frames)annoSyncEmbedFrame(fr);
+  }
+  function annoHydratePending(){
+    if(!isVideo)return;
+    const arr=[];
+    for(const n of v.review.notes){
+      if(!n.id||!n.id.startsWith(_annoEmbPfx))continue;
+      if(!n.drawing)continue;
+      const itemDur=parseInt(n.dur)||1;
+      for(const s of n.drawing){const cl=cloneDrawItem(s);cl.f=n.frame;if(cl.dur==null)cl.dur=itemDur;arr.push(cl)}
+    }
+    pending=arr;
+  }
+  let _annoPersistTimer=null;
+  function annoSchedulePersist(){
+    if(_annoPersistTimer)clearTimeout(_annoPersistTimer);
+    _annoPersistTimer=setTimeout(()=>{_annoPersistTimer=null;persist().catch(()=>{})},400);
+  }
+  function annoAfterEdit(frames){
+    if(!isVideo)return;
+    const curPdur=(typeof durSel!=='undefined'&&durSel)?(parseInt(durSel.value)||1):1;
+    for(const p of pending)if(p.dur==null)p.dur=curPdur;
+    if(!frames)annoSyncEmbedAll();
+    else{const set=frames instanceof Set?frames:new Set(frames);for(const fr of set)annoSyncEmbedFrame(fr)}
+    annoSchedulePersist();
+  }
+  annoHydratePending();
   /* 顔の向きガイド（ヘッドジンバル）操作状態 */
   let headActive=null,headDrag=null,hoverPt=null;
   /* 移動ハンドル（中心の破線円）。ホバー時のみ表示。アノテ本体には描かない */
@@ -8903,7 +8954,7 @@ function openReview(nodeId,versionId,opts){
     try{if(typeof headDrag!=='undefined')headDrag=null}catch(_){}
     try{if(typeof mannDrag!=='undefined'){mannDrag=null;selectedMann=null;mannHoverAxis=null}}catch(_){}
   };
-  const _pushHist=()=>{_hist=_hist.slice(0,_histIdx+1);_hist.push(_snap());_histIdx=_hist.length-1;if(_hist.length>50){_hist=_hist.slice(-50);_histIdx=_hist.length-1}};
+  const _pushHist=()=>{_hist=_hist.slice(0,_histIdx+1);_hist.push(_snap());_histIdx=_hist.length-1;if(_hist.length>50){_hist=_hist.slice(-50);_histIdx=_hist.length-1}try{annoAfterEdit()}catch(_){}};
   _pushHist(); /* 初期状態を履歴の起点として保存 */
   /* 比較再生（A/B）：B は同じウィンドウ内で横並び表示・A に同期。アノテーションは A（開いている版）に描く */
   let cmpOn=false,bVid=null,paneB=null,cmpBtn=null,bSeekBusy=false,_bSeekGuard=null;
@@ -8914,6 +8965,9 @@ function openReview(nodeId,versionId,opts){
   /* リスナー/Observer/rAF/タイマーの後始末のみ（DOM や画面遷移は触らない）。close も外部クローズも再オープンも必ずここを通す */
   function cleanup(){
     alive=false;
+    /* 動画埋め込みの最終同期＋確実な persist（外部クローズや再オープンでも pending を失わない） */
+    try{annoSyncEmbedAll()}catch(_){}
+    if(_annoPersistTimer){clearTimeout(_annoPersistTimer);_annoPersistTimer=null;try{persist()}catch(_){}}
     try{document.removeEventListener('keydown',onKey)}catch(_){}
     try{document.removeEventListener('keydown',fbKeyDownSpin);document.removeEventListener('keyup',fbKeyUpSpin)}catch(_){}
     try{window.removeEventListener('resize',fit)}catch(_){}
@@ -8927,7 +8981,17 @@ function openReview(nodeId,versionId,opts){
     if(_fbCleanup===cleanup)_fbCleanup=null;
   }
   _fbCleanup=cleanup;
-  function close(){const unsent=drafts.length||pending.length||(ta&&ta.value.trim());if(unsent&&!confirm('未保存の記入・アノテーションがあります。閉じると失われます。よろしいですか？'))return;if(typeof flushCommitted==='function')flushCommitted();cleanup();ov.remove();const bd=$('#fbBackdrop');if(bd)bd.remove();state.reviewOpen=null;render();syncHash();resolveThumbs()}
+  function close(){
+    /* pending の描画は annoSyncEmbedAll で v.review.notes に「動画埋め込み」として自動同期されるので未保存扱いしない。
+       確認ダイアログは記入下書き（drafts）または入力中コメント（ta）が残っている場合のみ。 */
+    const unsent=drafts.length||(ta&&ta.value.trim());
+    if(unsent&&!confirm('未保存の記入・コメントがあります。閉じると失われます。よろしいですか？'))return;
+    /* 閉じる前に pending を最終同期＋確実に永続化（debounce タイマーが未発火の場合の保険） */
+    try{annoSyncEmbedAll()}catch(_){}
+    if(_annoPersistTimer){clearTimeout(_annoPersistTimer);_annoPersistTimer=null;try{persist()}catch(_){}}
+    if(typeof flushCommitted==='function')flushCommitted();
+    cleanup();ov.remove();const bd=$('#fbBackdrop');if(bd)bd.remove();state.reviewOpen=null;render();syncHash();resolveThumbs();
+  }
   /* 表示モード（モーダル⇄全画面） */
   function fbBackdropEnsure(){let bd=$('#fbBackdrop');if(!bd){bd=el('div','fb-backdrop');bd.id='fbBackdrop';bd.onclick=()=>close();if(ov.parentNode)ov.parentNode.insertBefore(bd,ov);else document.body.appendChild(bd)}return bd}
   function fbApplyMode(){if(fbFullscreen){ov.classList.remove('fb-modal');const bd=$('#fbBackdrop');if(bd)bd.remove()}else{ov.classList.add('fb-modal');fbBackdropEnsure()}if(fsBtn){fsBtn.textContent=fbFullscreen?'❐':'⛶';fsBtn.title=fbFullscreen?'モーダル表示に戻す':'全画面表示'}}
@@ -9741,8 +9805,10 @@ function openReview(nodeId,versionId,opts){
     ctx.strokeStyle='rgba(255,255,255,.4)';ctx.fillStyle='rgba(255,255,255,.55)';ctx.font='9px monospace';ctx.beginPath();
     for(let f=0;f<totalFrames;f+=step){const x=Math.round(f*fw)+.5;ctx.moveTo(x,H-18);ctx.lineTo(x,H);ctx.fillText(String(f),x+3,H-20)}
     ctx.stroke();
-    /* マーカー：アノテ＝下レイヤー（オレンジのバー）、コメント＝上レイヤー（赤の菱形） */
+    /* マーカー：アノテ＝下レイヤー（オレンジのバー）、コメント＝上レイヤー（赤の菱形）。
+       anno_emb_ ノートは pending マーカーで表示するのでここでは除外（重複防止） */
     for(const n of shownNotes()){
+      if(n.id&&n.id.indexOf(_annoEmbPfx)===0)continue;
       if(n.frame==null||!(n.drawing&&n.drawing.length))continue;
       ctx.fillStyle=n._draft?'rgba(224,138,74,.6)':'#e08a4a';ctx.fillRect(n.frame*fw,2,Math.max(3,fw*(parseInt(n.dur)||1)),7);
     }
@@ -9921,7 +9987,8 @@ function openReview(nodeId,versionId,opts){
       eye.textContent=layerVis[i-1]?'👁':'—';
       const c=cv.getContext('2d');c.fillStyle='#101013';c.fillRect(0,0,cv.width,cv.height);
       const list=[];
-      for(const n of shownNotes())if(n.drawing&&n.drawing.length&&visibleAt(n,f))for(const s of n.drawing)if((s.layer||1)===i)list.push(s);
+      /* anno_emb_ ノートは pending と重複するのでレイヤープレビューでも除外 */
+      for(const n of shownNotes())if(!(n.id&&n.id.indexOf(_annoEmbPfx)===0)&&n.drawing&&n.drawing.length&&visibleAt(n,f))for(const s of n.drawing)if((s.layer||1)===i)list.push(s);
       for(const p of pending)if(inWin(p)&&(p.layer||1)===i)list.push(p);
       if(stroke&&inWin(stroke)&&(stroke.layer||1)===i)list.push(stroke);
       paintStrokeList(c,cv.width,cv.height,list,1);
@@ -9933,10 +10000,14 @@ function openReview(nodeId,versionId,opts){
   function drawAll(){
     const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);
     const f=dispFrame();
+    /* anno_emb_ ノート（動画埋め込み専用）は pending と重複するので描画ループでは除外。
+       実際の描画は下の pending ブロックが担当（drag 中もリアルタイム反映）。REEL 側と同じ設計。 */
+    const _isAnnoEmb=n=>n&&n.id&&n.id.indexOf(_annoEmbPfx)===0;
     if(annotVisible){
       /* ゴースト：前後フレームのアノテーションを薄く表示 */
       if(ghostOn&&isVideo){
         for(const n of shownNotes()){
+          if(_isAnnoEmb(n))continue;
           if(!n.drawing||!n.drawing.length||n.frame==null)continue;
           if(visibleAt(n,f))continue;
           const d=Math.min(Math.abs(n.frame-f),Math.abs(n.frame+durOf(n)-1-f));
@@ -9944,7 +10015,7 @@ function openReview(nodeId,versionId,opts){
         }
       }
       /* 現在フレームのアノテーション（確定＋記入下書き） */
-      for(const n of shownNotes())if(n.drawing&&n.drawing.length&&visibleAt(n,f))paintStrokes(ctx,n.drawing.filter(layerOn),1);
+      for(const n of shownNotes())if(!_isAnnoEmb(n)&&n.drawing&&n.drawing.length&&visibleAt(n,f))paintStrokes(ctx,n.drawing.filter(layerOn),1);
     }
     /* 未送信の描画（描いたフレームから、選択中の表示F数のあいだ表示） */
     const pdur=parseInt(durSel.value)||1;
@@ -10996,6 +11067,8 @@ function openReview(nodeId,versionId,opts){
     if(!drafts.length)return;
     for(const n of drafts){delete n._draft;v.review.notes.push(n)}
     drafts=[];
+    /* 送信で pending 由来の描画がコメント付きノートに昇格。対応フレームの embed ノート（重複）を掃除 */
+    try{annoSyncEmbedAll()}catch(_){}
     renderNotes(true);drawAll();drawTimeline();updSubmit();
     persist().then(()=>{try{renderBody();resolveThumbs()}catch(_){}}).catch(e=>{try{console.warn('persist(submit) failed',e);toast('保存に失敗しました')}catch(_){}});
   }
@@ -11007,6 +11080,8 @@ function openReview(nodeId,versionId,opts){
     if(!drafts.length)return;
     for(const n of drafts){delete n._draft;v.review.notes.push(n)}
     drafts=[];
+    /* 送信で pending 由来の描画がコメント付きノートに昇格。対応フレームの embed ノート（重複）を掃除 */
+    try{annoSyncEmbedAll()}catch(_){}
     /* UI を先に更新（送信の体感速度をゼロレイテンシに） */
     renderNotes(true);drawAll();drawTimeline();updSubmit();
     /* 保存はバックグラウンド。_persistChain で直列化されるので連続送信も安全 */

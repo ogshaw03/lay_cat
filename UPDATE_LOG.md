@@ -14,6 +14,17 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.021) アノテ窓に「動画埋め込み」自動同期を導入（描画のみ→送信せず閉じても消えない）
+  - **背景**：REEL では pending の描画が `reel_emb_<node>_<frame>` ノートとして自動同期・永続化されていたが、アノテ窓は「送信」を押さないと pending が失われる仕様だった。ユーザー期待「描画のみだと動画埋め込み」に沿うよう、アノテ窓にも同等機構を導入
+  - **新設**：`annoSyncEmbedFrame` / `annoSyncEmbedAll` / `annoHydratePending` / `annoAfterEdit` / `annoSchedulePersist`（REEL 実装をアノテ窓に移植）
+  - **ノート ID**：`anno_emb_<versionId>_<frame>`（noShot=true、drawing 配列に当該フレームの pending 全種を格納）
+  - **同期タイミング**：`_pushHist` 内で `annoAfterEdit()` を毎回呼び出し → 描画・消しゴム・投げ縄・図形・head・mann の各操作後に自動同期＋400ms debounce persist
+  - **開き直し**：openReview の pending 初期化直後に `annoHydratePending()` → 前回の embed ノートから pending を復元
+  - **閉じる時**：`close()` と `cleanup()` の両方で最終同期＋即時 persist（debounce 未発火の保険）。close の確認ダイアログは pending 描画を除外（drafts と入力中コメントのみ警告）
+  - **送信時の重複除去**：`sendCurrent` / `submit` で drafts→v.review.notes 昇格後に `annoSyncEmbedAll()` を呼び、対応フレームの embed ノートを掃除（同じ描画の二重ノート防止）
+  - **描画ループ**：`drawAll`（ゴースト・現在フレーム）／レイヤープレビュー／タイムラインマーカーで anno_emb ノートを除外（pending と重複描画しないよう REEL と同じ設計）
+  - **コメント欄**：`noteEmbedOnly` フィルタで anno_emb は自動的にコメント欄から除外される（noShot=true+drawing+no text の判定）
+
 - (dev v2026.08.07.020) チェック待ちタブのサブミットコメント幅を拡張（左寄せ）
   - v.019 では `flex:0 1 340px; max-width:420px` で右端に固定サイズだったが、まだ右に寄りすぎとの指摘
   - `flex:1 1 300px; min-width:220px; max-width:640px` に変更 → 残余スペースを埋めるように伸びる
