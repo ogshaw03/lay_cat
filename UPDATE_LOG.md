@@ -14,6 +14,17 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.023) ノート・コメント内の URL を自動リンク化（クリックで新規タブで開く）
+  - **共通ヘルパ**：`appendTextWithLinks(container, text)` を新設（http/https を `<a target=_blank rel=noopener>` に変換、末尾の句読点はリンクから除外）
+  - **コメント**（アノテ・サブミット・アップロード）：`renderMentionText` の text push を `appendTextWithLinks` 経由に変更 → 既存の全コメント表示で URL がクリック可能に
+  - **チェック待ちタブのサブミットコメント**（`.tl-submitcmt`）：`textContent` から `appendTextWithLinks` に置換
+  - **NOTE パネル**（作業ページ右カラム contenteditable）：
+    - paste ハンドラ拡張：プレーンテキストの URL をペースト時に `<a>` に変換して insertHTML
+    - リッチテキスト（HTML）ペーストはブラウザ既定挙動を維持
+    - click ハンドラ拡張：contenteditable の既定挙動を上書きしてクリックで新規タブで開く（Alt+クリックで通常編集）
+  - **リンク色**：エッジ色 `#5cc7ef`（サイアン系）＋下線、`word-break:break-all` で長い URL も折返し
+  - **セキュリティ**：`rel="noopener noreferrer"` を必ず付与
+
 - (dev v2026.08.07.022) タイムラインの動画埋め込みマーカーを専用色（`#a5652f`）100% 塗りに
   - v.021 では埋め込み描画は pending マーカー（50% 透明オレンジ）だけで表示されていて暗く見えた
   - `anno_emb_` ノート専用のマーカー loop を追加し、pending マーカーの上に 100% 塗りで重ねる

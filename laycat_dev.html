@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.022';
+const APP_VERSION='2026.08.07.023';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3358,11 +3358,36 @@ function extractMentions(text,root,tracked){
   return out;
 }
 /* テキストを @メンションをチップ化して container に描画（ownerDocument 対応） */
+/* URL 抽出用の正規表現（http/https、末尾の句読点は避けるため慎重に切る）。
+   `[^\s<>"'（）「」【】]+` で日本語括弧までは URL の一部と見なす。トレーリング `.,;:!?` は URL から外す。 */
+const _URL_RE=/(https?:\/\/[^\s<>"'（）「」【】]+)/g;
+function _trimUrl(u){return u.replace(/[.,;:!?、。]+$/,'')}
+/* 与えられた container にテキストを追加する。URL 部分は <a target=_blank rel=noopener> に変換。 */
+function appendTextWithLinks(container,text){
+  if(!text)return;
+  const d=container.ownerDocument||document;
+  const s=String(text);
+  let last=0;_URL_RE.lastIndex=0;let m;
+  while((m=_URL_RE.exec(s))){
+    if(m.index>last)container.appendChild(d.createTextNode(s.slice(last,m.index)));
+    let url=m[0];const trailing=url.length-_trimUrl(url).length;
+    if(trailing>0)url=url.slice(0,-trailing);
+    const a=d.createElement('a');
+    a.href=url;a.target='_blank';a.rel='noopener noreferrer';
+    a.textContent=url;
+    a.style.cssText='color:#5cc7ef;text-decoration:underline;word-break:break-all';
+    a.onclick=e=>e.stopPropagation(); /* 親（コメントブロック等）のクリック遷移を発火させない */
+    container.appendChild(a);
+    last=m.index+m[0].length-(trailing>0?trailing:0);
+    if(trailing>0)_URL_RE.lastIndex=last;
+  }
+  if(last<s.length)container.appendChild(d.createTextNode(s.slice(last)));
+}
 function renderMentionText(container,text,root){
   const d=container.ownerDocument||document;const t=String(text||'');const parts=scanMentions(t,root);
-  let pos=0;const push=s=>{if(s)container.appendChild(d.createTextNode(s))};
-  for(const p of parts){push(t.slice(pos,p.start));const chip=d.createElement('span');chip.className='mention mention-'+p.type;chip.textContent='@'+p.name;if(p.type==='user'&&p.color)chip.style.color=p.color;container.appendChild(chip);pos=p.end}
-  push(t.slice(pos));return container;
+  let pos=0;
+  for(const p of parts){appendTextWithLinks(container,t.slice(pos,p.start));const chip=d.createElement('span');chip.className='mention mention-'+p.type;chip.textContent='@'+p.name;if(p.type==='user'&&p.color)chip.style.color=p.color;container.appendChild(chip);pos=p.end}
+  appendTextWithLinks(container,t.slice(pos));return container;
 }
 /* textarea に @ オートコンプリートを付与（重複付与ガード付き・ownerDocument 対応） */
 function attachMention(ta,root){
@@ -5085,13 +5110,13 @@ function renderProjCheck(main,root){
             const h=el('div');h.style.cssText='font-size:10px;font-weight:700;color:var(--text3);margin-bottom:2px;letter-spacing:.4px';
             h.textContent='サブミット「'+(sb.name||'')+'」';
             box.appendChild(h);
-            const t=el('div');t.textContent=wholeCmt;box.appendChild(t);
+            const t=el('div');appendTextWithLinks(t,wholeCmt);box.appendChild(t);
           }
           if(perCmt){
             const h2=el('div');h2.style.cssText='font-size:10px;font-weight:700;color:var(--text3);margin:'+(wholeCmt?'6px':'0')+' 0 2px;letter-spacing:.4px';
             h2.textContent='このショット宛';
             box.appendChild(h2);
-            const t2=el('div');t2.textContent=perCmt;box.appendChild(t2);
+            const t2=el('div');appendTextWithLinks(t2,perCmt);box.appendChild(t2);
           }
           box.onclick=e=>e.stopPropagation(); /* コメントテキストの選択を邪魔しない */
           it.appendChild(box);
@@ -5913,6 +5938,9 @@ function buildTaskNotePane(container,cur){
     const t=e.target;
     /* 画像クリック → 選択＋ツールバー表示 */
     if(t.tagName==='IMG'&&t.classList.contains('note-img')){e.stopPropagation();showImgTB(t);ed.querySelectorAll('hr.selected').forEach(h=>h.classList.remove('selected'));return}
+    /* リンククリック → 新規タブで開く（contenteditable の既定挙動を上書き。編集中は Alt+クリックで無効化） */
+    const a=t.closest&&t.closest('a[href]');
+    if(a&&!e.altKey){e.preventDefault();e.stopPropagation();try{window.open(a.href,'_blank','noopener,noreferrer')}catch(_){}return}
     /* 画像以外をクリック → 画像 UI 解除 */
     hideImgTB();
     /* HR 以外をクリックしたら HR 選択解除 */
@@ -5954,6 +5982,30 @@ function buildTaskNotePane(container,cur){
         return;
       }
     }
+    /* プレーンテキストのペースト時、URL 部分を <a> に自動変換して挿入する。
+       clipboardData.getData('text/html') がある場合はブラウザ既定の挙動に任せる。 */
+    const html=e.clipboardData&&e.clipboardData.getData('text/html');
+    if(html)return; /* リッチテキストのペーストはそのまま */
+    const text=e.clipboardData&&e.clipboardData.getData('text/plain');
+    if(!text)return;
+    if(!/https?:\/\//.test(text))return; /* URL を含まないプレーンテキストは既定挙動 */
+    e.preventDefault();
+    /* URL を <a> に変換して HTML 化。テキスト部分は execCommand の insertHTML 用にエスケープ */
+    const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    let out='',last=0;const re=/(https?:\/\/[^\s<>"'（）「」【】]+)/g;let m;
+    while((m=re.exec(text))){
+      if(m.index>last)out+=esc(text.slice(last,m.index));
+      let u=m[0].replace(/[.,;:!?、。]+$/,'');const trailing=m[0].length-u.length;
+      out+='<a href="'+esc(u)+'" target="_blank" rel="noopener noreferrer" style="color:#5cc7ef;text-decoration:underline">'+esc(u)+'</a>';
+      if(trailing>0)out+=esc(m[0].slice(-trailing));
+      last=m.index+m[0].length;
+    }
+    if(last<text.length)out+=esc(text.slice(last));
+    /* 改行は <br> に */
+    out=out.replace(/\r?\n/g,'<br>');
+    ed.focus();
+    document.execCommand('insertHTML',false,out);
+    cur.note=ed.innerHTML;if(!dirty)setDirty(true);
   });
   /* 画像の右上に浮遊「拡大」ボタン（フローティング／単一 DOM を移動）。
      hover で対象画像に位置合わせして表示。クリックで modal を開き、元画像を大きく表示。 */
