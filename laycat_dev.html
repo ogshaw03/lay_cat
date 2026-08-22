@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.023';
+const APP_VERSION='2026.08.07.024';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6955,7 +6955,7 @@ function logItem(node,v){
     const exrGridBtn=el('button','btn btn-ghost btn-sm','🎨 全レイヤー');exrGridBtn.title='EXR に含まれる全レイヤーをタイル一覧で表示';
     exrGridBtn.onclick=e=>{e.stopPropagation();openExrLayerGrid(node,v)};head.appendChild(exrGridBtn);
   }
-  if(v.type==='video'){const cmp=el('button','btn btn-ghost btn-sm','⇄ 比較');cmp.title='別の版・ショットと横並びで比較再生';cmp.onclick=()=>openComparePicker(node,v);head.appendChild(cmp);const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);head.appendChild(rb)}
+  if(v.type==='video'){const cmp=el('button','btn btn-ghost btn-sm','⇄ 比較');cmp.title='別の版・ショットと横並びで比較再生';cmp.onclick=()=>openComparePicker(node,v);head.appendChild(cmp);const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);head.appendChild(rb);const rt=el('button','btn btn-ghost btn-sm','⧗ リタイム');rt.title='AE 互換タイムリマップ・ビューアを開く（タメツメ指示用）';rt.onclick=()=>openRetimer(node,v);head.appendChild(rt)}
   /* この動画が含まれる保存済みリール */
   for(const r of (DB.reels||[]).filter(r=>r.clips.some(c=>c.vId===v.id)).slice(0,2)){
     const lb=elIco('button','btn btn-ghost btn-sm','reel',' '+r.name);lb.title='保存済みリールを開く';
@@ -11754,6 +11754,269 @@ function _mkReelShim(shell,ifr,cbtn,onMove,onUp){
 }
 function ce(d,t,c,x){const e=d.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
 function fmtSec(s){s=Math.max(0,s||0);const m=Math.floor(s/60);return m+':'+String(Math.floor(s%60)).padStart(2,'0')}
+
+/* ============================================================
+   タイムリマップ・ビューア（アノテ窓とは独立）
+   AE と同じ「表示時刻→ソース時刻」のリニアキーフレーム。ベジェは無し。
+   データ：version.timeRemap = {enabled, keyframes: [{t,s}, ...]}
+     t = 表示フレーム、s = ソースフレーム。
+   セグメント傾き = 1 で等倍、0 でフリーズ（タメ）、>1 でツメ、<0 で逆再生。
+   ============================================================ */
+function _rmEnabled(v){return !!(v&&v.timeRemap&&v.timeRemap.enabled&&v.timeRemap.keyframes&&v.timeRemap.keyframes.length>=2)}
+function _rmKeyframes(v){return (v&&v.timeRemap&&v.timeRemap.keyframes)?v.timeRemap.keyframes.slice().sort((a,b)=>a.t-b.t):[]}
+function _rmDisplayTotal(v,srcTotal){
+  if(!_rmEnabled(v))return srcTotal;
+  const kf=_rmKeyframes(v);
+  return Math.max(1,Math.round(kf[kf.length-1].t)+1);
+}
+function _rmDisplayToSource(v,D){
+  if(!_rmEnabled(v))return D;
+  const kf=_rmKeyframes(v);
+  if(D<=kf[0].t)return kf[0].s;
+  if(D>=kf[kf.length-1].t)return kf[kf.length-1].s;
+  for(let i=0;i<kf.length-1;i++){
+    const a=kf[i],b=kf[i+1];
+    if(D>=a.t&&D<=b.t){
+      if(b.t===a.t)return a.s;
+      const u=(D-a.t)/(b.t-a.t);
+      return a.s+u*(b.s-a.s);
+    }
+  }
+  return kf[kf.length-1].s;
+}
+let _retimerActive=null;
+function closeRetimer(){
+  if(!_retimerActive)return;
+  try{_retimerActive.cleanup()}catch(_){}
+  try{_retimerActive.overlay.remove()}catch(_){}
+  _retimerActive=null;
+}
+async function openRetimer(node,v){
+  if(!v||v.type!=='video'){toast('リタイムは動画のみ対応です');return}
+  closeRetimer();
+  /* データ初期化：初回は必ず 2 キーフレーム（始点・終点で等倍） */
+  v.timeRemap=v.timeRemap||{enabled:false,keyframes:[]};
+  const FPS=v.fps||24;
+  const url=await storage.getURL(v.file);if(!url){toast('動画ファイルが読み込めません');return}
+  const ov=el('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,10,13,.96);z-index:9500;display:flex;flex-direction:column;padding:16px;gap:12px';
+  document.body.appendChild(ov);
+  /* ヘッダ */
+  const head=el('div');head.style.cssText='display:flex;align-items:center;gap:10px';
+  const ttl=el('div');ttl.style.cssText='font-family:var(--font-head);font-weight:700;font-size:15px;color:var(--text);flex:1';
+  ttl.innerHTML='<span style="opacity:.6;margin-right:6px">⧗</span>タイムリマップ — '+((v.name||'')+'  '+(node&&node.name?('（'+node.name+'）'):''));
+  head.appendChild(ttl);
+  const remapWrap=el('label');remapWrap.style.cssText='display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-size:12px';
+  const remapCb=el('input');remapCb.type='checkbox';remapCb.checked=!!v.timeRemap.enabled;remapCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
+  remapWrap.appendChild(remapCb);remapWrap.appendChild(document.createTextNode('リタイム ON'));
+  head.appendChild(remapWrap);
+  const closeBtn=el('button','btn btn-ghost btn-sm','✕ 閉じる');
+  head.appendChild(closeBtn);
+  ov.appendChild(head);
+  /* 動画エリア */
+  const stage=el('div');stage.style.cssText='flex:1;min-height:0;background:#000;position:relative;display:flex;align-items:center;justify-content:center;border-radius:8px;overflow:hidden;border:1px solid var(--border)';
+  const video=el('video');video.style.cssText='max-width:100%;max-height:100%;object-fit:contain;display:block';
+  video.preload='auto';video.playsInline=true;video.src=url;
+  stage.appendChild(video);
+  ov.appendChild(stage);
+  /* 情報行 */
+  const info=el('div');info.style.cssText='display:flex;align-items:center;gap:14px;font-size:12px;color:var(--text2);font-family:var(--font-code);font-variant-numeric:tabular-nums';
+  const infoDisp=el('span');const infoSrc=el('span');const infoRate=el('span');const infoTotal=el('span');
+  info.appendChild(infoDisp);info.appendChild(infoSrc);info.appendChild(infoRate);
+  const spacer=el('span');spacer.style.flex='1';info.appendChild(spacer);
+  info.appendChild(infoTotal);
+  /* キーバインドヘルプ */
+  const help=el('span');help.style.cssText='font-size:11px;color:var(--text3)';
+  help.textContent='K=キーフレーム追加  Del=選択削除  Space=再生／停止  ← →=1F送り';
+  info.appendChild(help);
+  ov.appendChild(info);
+  /* タイムライン（上：スクラブ、下：キーフレーム） */
+  const tlWrap=el('div');tlWrap.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;gap:2px';
+  const tlCanvas=el('canvas');tlCanvas.style.cssText='width:100%;height:44px;display:block;cursor:pointer;touch-action:none';
+  tlWrap.appendChild(tlCanvas);
+  ov.appendChild(tlWrap);
+  /* 再生コントロール */
+  const ctrls=el('div');ctrls.style.cssText='display:flex;align-items:center;gap:8px';
+  const btnPrev=el('button','btn btn-ghost btn-sm','◀ 1F');
+  const btnPlay=el('button','btn btn-primary btn-sm','▶ 再生');btnPlay.style.width='90px';
+  const btnNext=el('button','btn btn-ghost btn-sm','1F ▶');
+  const btnKF=el('button','btn btn-ghost btn-sm','＋ キーフレーム (K)');
+  const btnDel=el('button','btn btn-ghost btn-sm','削除選択 (Del)');
+  const btnReset=el('button','btn btn-ghost btn-sm','リセット');
+  ctrls.appendChild(btnPrev);ctrls.appendChild(btnPlay);ctrls.appendChild(btnNext);
+  const cSpacer=el('span');cSpacer.style.flex='1';ctrls.appendChild(cSpacer);
+  ctrls.appendChild(btnKF);ctrls.appendChild(btnDel);ctrls.appendChild(btnReset);
+  ov.appendChild(ctrls);
+
+  /* ==== 状態 ==== */
+  let srcTotal=1;      /* ソース総フレーム数（video.duration*FPS） */
+  let displayF=0;      /* 現在の表示フレーム */
+  let playing=false;
+  let playStartTs=0,playStartF=0;
+  let rafId=0;
+  let selectedKF=-1;   /* 選択中キーフレームの index */
+
+  const totalDisp=()=>_rmDisplayTotal(v,srcTotal);
+  const isRemap=()=>!!(v.timeRemap.enabled&&v.timeRemap.keyframes.length>=2);
+  const seekSourceFrame=(sf)=>{try{video.currentTime=Math.max(0,Math.min(srcTotal-1,sf))/FPS}catch(_){}};
+  const drawTL=()=>{
+    const ctx=tlCanvas.getContext('2d');
+    const cw=tlCanvas.clientWidth||600,ch=44;
+    if(tlCanvas.width!==cw||tlCanvas.height!==ch){tlCanvas.width=cw;tlCanvas.height=ch}
+    ctx.clearRect(0,0,cw,ch);
+    const tot=totalDisp();
+    const fw=cw/Math.max(1,tot);
+    /* 目盛り */
+    ctx.strokeStyle='rgba(255,255,255,.15)';ctx.beginPath();ctx.moveTo(0,ch-.5);ctx.lineTo(cw,ch-.5);ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.35)';ctx.font='9px monospace';
+    const step=Math.max(1,Math.round(tot/(cw/40)));
+    for(let f=0;f<tot;f+=step){const x=Math.round(f*fw)+.5;ctx.fillStyle='rgba(255,255,255,.55)';ctx.fillText(String(f),x+2,ch-30);ctx.strokeStyle='rgba(255,255,255,.15)';ctx.beginPath();ctx.moveTo(x,ch-20);ctx.lineTo(x,ch-14);ctx.stroke()}
+    /* リタイム ON の場合はセグメント別に速度で色分け（オレンジ＝タメ or 逆再生、シアン＝ツメ、白＝等倍近い） */
+    if(isRemap()){
+      const kf=_rmKeyframes(v);
+      for(let i=0;i<kf.length-1;i++){
+        const a=kf[i],b=kf[i+1];const dt=b.t-a.t;const ds=b.s-a.s;
+        if(dt<=0)continue;
+        const rate=ds/dt; /* 1=等倍, 0=フリーズ, >1=速い, <0=逆 */
+        let col='rgba(255,255,255,.18)';
+        if(rate<=0)col='rgba(224,138,74,.35)';   /* タメ/逆 */
+        else if(rate<0.9)col='rgba(224,138,74,.28)';  /* スロー寄り */
+        else if(rate>1.1)col='rgba(92,199,239,.28)';  /* ツメ寄り */
+        ctx.fillStyle=col;
+        ctx.fillRect(a.t*fw,ch-12,dt*fw,10);
+      }
+    }
+    /* キーフレーム（ダイヤ） */
+    const kf=_rmKeyframes(v);
+    for(let i=0;i<kf.length;i++){
+      const k=kf[i];const cx=k.t*fw;const cy=ch-24;
+      ctx.fillStyle=(i===selectedKF)?'#ffd66e':'#e0b23a';
+      ctx.beginPath();ctx.moveTo(cx,cy-6);ctx.lineTo(cx+5,cy);ctx.lineTo(cx,cy+6);ctx.lineTo(cx-5,cy);ctx.closePath();ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,.5)';ctx.lineWidth=1;ctx.stroke();
+    }
+    /* プレイヘッド */
+    const phX=displayF*fw;
+    ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(phX,0);ctx.lineTo(phX,ch);ctx.stroke();
+  };
+  const updInfo=()=>{
+    const src=isRemap()?_rmDisplayToSource(v,displayF):displayF;
+    infoDisp.textContent='表示 F'+Math.round(displayF);
+    infoSrc.textContent='元 F'+Math.round(src);
+    if(isRemap()){
+      const kf=_rmKeyframes(v);
+      let rate=1;
+      for(let i=0;i<kf.length-1;i++){const a=kf[i],b=kf[i+1];if(displayF>=a.t&&displayF<=b.t){const dt=b.t-a.t;if(dt>0)rate=(b.s-a.s)/dt;break}}
+      infoRate.textContent='速度 '+(rate.toFixed(2))+'x';
+      infoRate.style.color=rate<0?'#e08a4a':(rate<0.9?'#e08a4a':(rate>1.1?'#5cc7ef':'var(--text3)'));
+    }else{infoRate.textContent='速度 1.00x（リタイム OFF）';infoRate.style.color='var(--text3)'}
+    infoTotal.textContent='総表示 '+totalDisp()+'F / 元 '+srcTotal+'F';
+  };
+  const applyFrame=()=>{
+    const src=isRemap()?_rmDisplayToSource(v,displayF):displayF;
+    seekSourceFrame(src);
+    updInfo();drawTL();
+  };
+  /* 再生ループ（等倍再生：1s で FPS 表示フレーム進行） */
+  const stopRAF=()=>{if(rafId){cancelAnimationFrame(rafId);rafId=0}};
+  const playTick=(ts)=>{
+    if(!playing)return;
+    const elapsed=(ts-playStartTs)/1000;
+    let f=playStartF+elapsed*FPS;
+    if(f>=totalDisp()-0.001){f=totalDisp()-1;displayF=f;applyFrame();stopPlay();return}
+    displayF=f;applyFrame();
+    rafId=requestAnimationFrame(playTick);
+  };
+  const startPlay=()=>{
+    if(playing)return;
+    if(displayF>=totalDisp()-1)displayF=0;
+    playing=true;playStartTs=performance.now();playStartF=displayF;
+    btnPlay.textContent='⏸ 一時停止';
+    rafId=requestAnimationFrame(playTick);
+  };
+  const stopPlay=()=>{playing=false;stopRAF();btnPlay.textContent='▶ 再生'};
+  btnPlay.onclick=()=>{if(playing)stopPlay();else startPlay()};
+  btnPrev.onclick=()=>{stopPlay();displayF=Math.max(0,Math.round(displayF)-1);applyFrame()};
+  btnNext.onclick=()=>{stopPlay();displayF=Math.min(totalDisp()-1,Math.round(displayF)+1);applyFrame()};
+  btnKF.onclick=()=>{addKFAtCurrent();};
+  btnDel.onclick=()=>{deleteSelectedKF()};
+  btnReset.onclick=()=>{if(!confirm('全キーフレームを削除して初期化しますか？'))return;v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];selectedKF=-1;applyFrame();persist()};
+  remapCb.onchange=()=>{v.timeRemap.enabled=remapCb.checked;/* リタイム ON にした瞬間、キーフレームが無ければ初期化 */if(v.timeRemap.enabled&&v.timeRemap.keyframes.length<2){v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}]}displayF=Math.min(displayF,totalDisp()-1);applyFrame();persist()};
+  const addKFAtCurrent=()=>{
+    if(!v.timeRemap.keyframes)v.timeRemap.keyframes=[];
+    const D=Math.round(displayF);
+    const S=Math.round(isRemap()?_rmDisplayToSource(v,D):D);
+    /* 同じ t のキーフレームがあれば置換、無ければ追加 */
+    const kf=v.timeRemap.keyframes;
+    const idx=kf.findIndex(k=>Math.round(k.t)===D);
+    if(idx>=0)kf[idx].s=S;else kf.push({t:D,s:S});
+    kf.sort((a,b)=>a.t-b.t);
+    /* 自動で ON に */
+    if(!v.timeRemap.enabled&&kf.length>=2){v.timeRemap.enabled=true;remapCb.checked=true}
+    applyFrame();persist();
+  };
+  const deleteSelectedKF=()=>{
+    if(selectedKF<0)return;
+    const kf=v.timeRemap.keyframes;
+    if(kf.length<=2){toast('最低 2 つのキーフレームが必要です（リセットで初期化）');return}
+    kf.splice(selectedKF,1);selectedKF=-1;applyFrame();persist();
+  };
+  /* タイムラインクリック：キーフレーム選択 or スクラブ */
+  tlCanvas.onmousedown=(e)=>{
+    stopPlay();
+    const r=tlCanvas.getBoundingClientRect();
+    const x=e.clientX-r.left;
+    const cw=tlCanvas.clientWidth;
+    const tot=totalDisp();const fw=cw/Math.max(1,tot);
+    /* ヒットテスト：キーフレームダイヤ（±7px） */
+    const kf=_rmKeyframes(v);
+    let hit=-1;for(let i=0;i<kf.length;i++){if(Math.abs(kf[i].t*fw-x)<=7){hit=i;break}}
+    if(hit>=0){
+      /* v.timeRemap.keyframes は sort されているので index 一致でよい */
+      selectedKF=v.timeRemap.keyframes.findIndex(k=>k===kf[hit])||v.timeRemap.keyframes.indexOf(kf[hit]);
+      drawTL();
+      return;
+    }
+    selectedKF=-1;
+    /* スクラブ */
+    const scrub=(cx)=>{const D=Math.max(0,Math.min(tot-1,(cx-r.left)/fw));displayF=D;applyFrame()};
+    scrub(e.clientX);
+    const mv=(ev)=>scrub(ev.clientX);
+    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  };
+  /* キーボード */
+  const onKey=(e)=>{
+    if(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
+    if(e.key==='Escape'){e.preventDefault();closeRetimer();return}
+    if(e.key===' '||e.code==='Space'){e.preventDefault();if(playing)stopPlay();else startPlay();return}
+    if(e.key==='ArrowLeft'){e.preventDefault();stopPlay();displayF=Math.max(0,Math.round(displayF)-1);applyFrame();return}
+    if(e.key==='ArrowRight'){e.preventDefault();stopPlay();displayF=Math.min(totalDisp()-1,Math.round(displayF)+1);applyFrame();return}
+    if(e.key==='k'||e.key==='K'){e.preventDefault();addKFAtCurrent();return}
+    if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();deleteSelectedKF();return}
+  };
+  document.addEventListener('keydown',onKey);
+  closeBtn.onclick=()=>closeRetimer();
+  /* ウィンドウ外クリックで閉じない（誤操作防止） */
+  const onResize=()=>drawTL();
+  window.addEventListener('resize',onResize);
+  /* 動画メタデータ読込完了で総フレームを確定 */
+  video.addEventListener('loadedmetadata',()=>{
+    srcTotal=Math.max(1,Math.round((video.duration||1)*FPS));
+    if(v.timeRemap.keyframes.length===0){v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}]}
+    displayF=0;applyFrame();
+  });
+  /* cleanup */
+  const cleanup=()=>{
+    stopPlay();
+    try{document.removeEventListener('keydown',onKey)}catch(_){}
+    try{window.removeEventListener('resize',onResize)}catch(_){}
+    try{video.pause()}catch(_){}
+    try{video.removeAttribute('src');video.load()}catch(_){}
+    try{persist()}catch(_){}
+  };
+  _retimerActive={overlay:ov,cleanup};
+  updInfo();drawTL();
+}
 
 function openReel(){
   if(reelAlive()){reelWin.focus();return}
