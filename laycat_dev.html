@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.024';
+const APP_VERSION='2026.08.07.025';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11835,6 +11835,19 @@ async function openRetimer(node,v){
   const tlCanvas=el('canvas');tlCanvas.style.cssText='width:100%;height:44px;display:block;cursor:pointer;touch-action:none';
   tlWrap.appendChild(tlCanvas);
   ov.appendChild(tlWrap);
+  /* グラフエディタ（AE 相当のバリューグラフ・リニアのみ）
+     X 軸 = 表示F、Y 軸 = ソース F。傾き 1 = 等倍（対角線）。
+     キーフレームは黄色ダイヤ、ドラッグで t/s を同時編集。隣接キーの t を越えないようクランプ。 */
+  const gWrap=el('div');gWrap.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px 10px 6px;display:flex;flex-direction:column;gap:4px;min-height:190px';
+  const gHead=el('div');gHead.style.cssText='display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text3)';
+  const gTtl=el('span');gTtl.style.cssText='font-weight:700;color:var(--text2);letter-spacing:.3px';gTtl.textContent='グラフ（横=表示F・縦=ソースF・傾き1=等倍）';
+  gHead.appendChild(gTtl);
+  const gSpacer=el('span');gSpacer.style.flex='1';gHead.appendChild(gSpacer);
+  const gHint=el('span');gHint.textContent='キーフレーム：クリック選択／ドラッグで移動（隣接キーを越えない）';gHead.appendChild(gHint);
+  gWrap.appendChild(gHead);
+  const gCanvas=el('canvas');gCanvas.style.cssText='width:100%;height:200px;display:block;touch-action:none;background:#0b0b0e;border-radius:4px;cursor:crosshair';
+  gWrap.appendChild(gCanvas);
+  ov.appendChild(gWrap);
   /* 再生コントロール */
   const ctrls=el('div');ctrls.style.cssText='display:flex;align-items:center;gap:8px';
   const btnPrev=el('button','btn btn-ghost btn-sm','◀ 1F');
@@ -11849,12 +11862,14 @@ async function openRetimer(node,v){
   ov.appendChild(ctrls);
 
   /* ==== 状態 ==== */
-  let srcTotal=1;      /* ソース総フレーム数（video.duration*FPS） */
+  let srcTotal=1;      /* ソース総フレーム数（video.duration*FPS）。loadedmetadata 後に確定 */
   let displayF=0;      /* 現在の表示フレーム */
   let playing=false;
   let playStartTs=0,playStartF=0;
   let rafId=0;
   let selectedKF=-1;   /* 選択中キーフレームの index */
+  let videoReady=false;/* loadedmetadata 済みか */
+  let pendingPlay=false;/* 読込前に再生ボタンを押した場合、ready で自動再生 */
 
   const totalDisp=()=>_rmDisplayTotal(v,srcTotal);
   const isRemap=()=>!!(v.timeRemap.enabled&&v.timeRemap.keyframes.length>=2);
@@ -11911,10 +11926,122 @@ async function openRetimer(node,v){
     }else{infoRate.textContent='速度 1.00x（リタイム OFF）';infoRate.style.color='var(--text3)'}
     infoTotal.textContent='総表示 '+totalDisp()+'F / 元 '+srcTotal+'F';
   };
+  /* グラフ描画（AE バリューグラフ） */
+  const drawGraph=()=>{
+    const ctx=gCanvas.getContext('2d');
+    const cw=gCanvas.clientWidth||600,ch=200;
+    if(gCanvas.width!==cw||gCanvas.height!==ch){gCanvas.width=cw;gCanvas.height=ch}
+    ctx.clearRect(0,0,cw,ch);
+    const pad={l:36,r:12,t:10,b:20};
+    const plotW=cw-pad.l-pad.r,plotH=ch-pad.t-pad.b;
+    const tot=totalDisp();const smax=Math.max(1,srcTotal-1);
+    const x=(t)=>pad.l+plotW*(t/Math.max(1,tot-1));
+    const y=(s)=>pad.t+plotH-plotH*(s/smax);
+    /* 背景グリッド */
+    ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=1;
+    const gridCols=Math.min(10,Math.max(3,Math.floor(plotW/60)));
+    for(let i=0;i<=gridCols;i++){const gx=pad.l+plotW*(i/gridCols);ctx.beginPath();ctx.moveTo(gx,pad.t);ctx.lineTo(gx,pad.t+plotH);ctx.stroke()}
+    const gridRows=Math.min(8,Math.max(3,Math.floor(plotH/40)));
+    for(let i=0;i<=gridRows;i++){const gy=pad.t+plotH*(i/gridRows);ctx.beginPath();ctx.moveTo(pad.l,gy);ctx.lineTo(pad.l+plotW,gy);ctx.stroke()}
+    /* 軸ラベル */
+    ctx.fillStyle='rgba(255,255,255,.35)';ctx.font='9px monospace';
+    for(let i=0;i<=gridCols;i++){const t=Math.round((tot-1)*(i/gridCols));const gx=pad.l+plotW*(i/gridCols);ctx.fillText(String(t),gx-8,ch-6)}
+    for(let i=0;i<=gridRows;i++){const s=Math.round(smax*(1-i/gridRows));const gy=pad.t+plotH*(i/gridRows);ctx.fillText(String(s),4,gy+3)}
+    /* 対角線（等倍参考） */
+    ctx.strokeStyle='rgba(255,255,255,.15)';ctx.setLineDash([4,4]);ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x(0),y(0));ctx.lineTo(x(Math.min(tot-1,smax)),y(Math.min(tot-1,smax)));ctx.stroke();
+    ctx.setLineDash([]);
+    /* キーフレーム折線 */
+    const kf=_rmKeyframes(v);
+    if(kf.length>=2){
+      ctx.strokeStyle='#e0b23a';ctx.lineWidth=1.5;
+      ctx.beginPath();
+      for(let i=0;i<kf.length;i++){const px=x(kf[i].t),py=y(kf[i].s);if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py)}
+      ctx.stroke();
+    }
+    /* プレイヘッド（縦線） */
+    const phX=x(displayF);
+    ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(phX,pad.t);ctx.lineTo(phX,pad.t+plotH);ctx.stroke();
+    /* 現在の displayF に対応する source を横線で示す（リタイム ON 時のみ意味あり） */
+    if(isRemap()){
+      const cs=_rmDisplayToSource(v,displayF);const phY=y(cs);
+      ctx.strokeStyle='rgba(92,199,239,.4)';ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.moveTo(pad.l,phY);ctx.lineTo(pad.l+plotW,phY);ctx.stroke();ctx.setLineDash([]);
+      /* 交点マーカー */
+      ctx.fillStyle='#5cc7ef';ctx.beginPath();ctx.arc(phX,phY,3.5,0,2*Math.PI);ctx.fill();
+    }
+    /* キーフレームドット（選択強調） */
+    for(let i=0;i<kf.length;i++){
+      const px=x(kf[i].t),py=y(kf[i].s);
+      const isSel=(v.timeRemap.keyframes.indexOf(kf[i])===selectedKF);
+      ctx.fillStyle=isSel?'#ffd66e':'#e0b23a';
+      ctx.beginPath();ctx.arc(px,py,isSel?6:5,0,2*Math.PI);ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,.6)';ctx.lineWidth=1;ctx.stroke();
+      /* 選択時：座標ラベル */
+      if(isSel){
+        ctx.fillStyle='#ffd66e';ctx.font='10px monospace';
+        ctx.fillText('t='+Math.round(kf[i].t)+' s='+Math.round(kf[i].s),px+8,py-6);
+      }
+    }
+    /* 枠線 */
+    ctx.strokeStyle='rgba(255,255,255,.18)';ctx.lineWidth=1;
+    ctx.strokeRect(pad.l+.5,pad.t+.5,plotW-1,plotH-1);
+  };
+  /* グラフの座標系ヘルパ（drawGraph と共有） */
+  const gPad={l:36,r:12,t:10,b:20};
+  const gToT=(px)=>{const cw=gCanvas.clientWidth||600;const plotW=cw-gPad.l-gPad.r;const tot=totalDisp();return Math.max(0,Math.min(tot-1,(px-gPad.l)/plotW*(tot-1)))};
+  const gToS=(py)=>{const ch=200;const plotH=ch-gPad.t-gPad.b;const smax=Math.max(1,srcTotal-1);return Math.max(0,Math.min(smax,smax-(py-gPad.t)/plotH*smax))};
+  const gHitKF=(px,py)=>{
+    const kf=_rmKeyframes(v);
+    const cw=gCanvas.clientWidth||600;const ch=200;const plotW=cw-gPad.l-gPad.r,plotH=ch-gPad.t-gPad.b;
+    const tot=totalDisp();const smax=Math.max(1,srcTotal-1);
+    for(let i=0;i<kf.length;i++){
+      const kx=gPad.l+plotW*(kf[i].t/Math.max(1,tot-1));
+      const ky=gPad.t+plotH-plotH*(kf[i].s/smax);
+      if(Math.hypot(kx-px,ky-py)<=10)return i;
+    }
+    return -1;
+  };
+  /* グラフのマウス操作：クリック選択・ドラッグで移動（隣接キーを越えないようクランプ） */
+  gCanvas.onmousedown=(e)=>{
+    const r=gCanvas.getBoundingClientRect();
+    const px=e.clientX-r.left,py=e.clientY-r.top;
+    const hit=gHitKF(px,py);
+    if(hit<0){
+      /* キーフレーム以外をクリック：選択解除＋スクラブ */
+      selectedKF=-1;
+      const newT=Math.round(gToT(px));
+      displayF=newT;applyFrame();
+      return;
+    }
+    /* ソート後の配列 kf の hit と、実配列 v.timeRemap.keyframes の index を対応させる */
+    const kf=_rmKeyframes(v);const target=kf[hit];
+    selectedKF=v.timeRemap.keyframes.indexOf(target);
+    drawGraph();drawTL();
+    /* ドラッグ準備：隣接キーの t で制約 */
+    const prevT=hit>0?kf[hit-1].t:0;
+    const nextT=hit<kf.length-1?kf[hit+1].t:1e9;
+    const move=(ev)=>{
+      const r2=gCanvas.getBoundingClientRect();
+      const nx=ev.clientX-r2.left,ny=ev.clientY-r2.top;
+      let nt=gToT(nx),ns=gToS(ny);
+      /* 端点（先頭・末尾）は t を動かせない設計（AE ライク） */
+      if(hit===0)nt=0;
+      else if(hit===kf.length-1)nt=target.t; /* 末尾は t 固定 */
+      /* 中間キー：隣接 t の間にクランプ */
+      else nt=Math.max(prevT+0.5,Math.min(nextT-0.5,nt));
+      target.t=Math.round(nt);
+      target.s=Math.round(ns);
+      drawGraph();drawTL();updInfo();
+    };
+    const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);persist()};
+    document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+  };
   const applyFrame=()=>{
     const src=isRemap()?_rmDisplayToSource(v,displayF):displayF;
     seekSourceFrame(src);
-    updInfo();drawTL();
+    updInfo();drawTL();drawGraph();
   };
   /* 再生ループ（等倍再生：1s で FPS 表示フレーム進行） */
   const stopRAF=()=>{if(rafId){cancelAnimationFrame(rafId);rafId=0}};
@@ -11928,12 +12055,13 @@ async function openRetimer(node,v){
   };
   const startPlay=()=>{
     if(playing)return;
+    if(!videoReady||srcTotal<=1){pendingPlay=true;btnPlay.textContent='⏳ 読込中';return}
     if(displayF>=totalDisp()-1)displayF=0;
     playing=true;playStartTs=performance.now();playStartF=displayF;
     btnPlay.textContent='⏸ 一時停止';
     rafId=requestAnimationFrame(playTick);
   };
-  const stopPlay=()=>{playing=false;stopRAF();btnPlay.textContent='▶ 再生'};
+  const stopPlay=()=>{playing=false;pendingPlay=false;stopRAF();btnPlay.textContent='▶ 再生'};
   btnPlay.onclick=()=>{if(playing)stopPlay();else startPlay()};
   btnPrev.onclick=()=>{stopPlay();displayF=Math.max(0,Math.round(displayF)-1);applyFrame()};
   btnNext.onclick=()=>{stopPlay();displayF=Math.min(totalDisp()-1,Math.round(displayF)+1);applyFrame()};
@@ -11973,7 +12101,7 @@ async function openRetimer(node,v){
     if(hit>=0){
       /* v.timeRemap.keyframes は sort されているので index 一致でよい */
       selectedKF=v.timeRemap.keyframes.findIndex(k=>k===kf[hit])||v.timeRemap.keyframes.indexOf(kf[hit]);
-      drawTL();
+      drawTL();drawGraph();
       return;
     }
     selectedKF=-1;
@@ -11997,14 +12125,19 @@ async function openRetimer(node,v){
   document.addEventListener('keydown',onKey);
   closeBtn.onclick=()=>closeRetimer();
   /* ウィンドウ外クリックで閉じない（誤操作防止） */
-  const onResize=()=>drawTL();
+  const onResize=()=>{drawTL();drawGraph()};
   window.addEventListener('resize',onResize);
   /* 動画メタデータ読込完了で総フレームを確定 */
   video.addEventListener('loadedmetadata',()=>{
-    srcTotal=Math.max(1,Math.round((video.duration||1)*FPS));
+    const dur=(isFinite(video.duration)&&video.duration>0)?video.duration:1;
+    srcTotal=Math.max(1,Math.round(dur*FPS));
     if(v.timeRemap.keyframes.length===0){v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}]}
+    videoReady=true;
     displayF=0;applyFrame();
+    /* 読込前に押されていた再生ボタンをここで発火 */
+    if(pendingPlay){pendingPlay=false;startPlay()}
   });
+  video.addEventListener('error',()=>{toast('リタイム：動画の読み込みに失敗しました');btnPlay.textContent='× 読込失敗';btnPlay.disabled=true});
   /* cleanup */
   const cleanup=()=>{
     stopPlay();
@@ -12015,7 +12148,7 @@ async function openRetimer(node,v){
     try{persist()}catch(_){}
   };
   _retimerActive={overlay:ov,cleanup};
-  updInfo();drawTL();
+  updInfo();drawTL();drawGraph();
 }
 
 function openReel(){
