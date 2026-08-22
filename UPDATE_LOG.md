@@ -14,354 +14,44 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-- (dev v2026.08.07.026) タイムリマップ再生を軽量化：ネイティブ `video.play()` + `playbackRate` に切替
-  - 問題：v.024/v.025 で毎 rAF に `video.currentTime` を書き換える方式にしていたため、H.264 デコーダの seek が詰まって激重だった
-  - 修正：**ハイブリッド再生**
-    - 正の rate → `video.playbackRate = rate` に設定し `video.play()` で滑らかにデコード進行、rAF はドリフト監視のみ（3F 超で `currentTime` 補正）
-    - rate = 0（フリーズ・タメ）→ `video.pause()` してその位置に固定
-    - rate < 0（逆再生）→ 手動 seek（現状レア）
-    - rate は 0.0625〜16 にクランプ（`playbackRate` の一般的な有効域）
-  - `stopPlay` で `video.pause()` を明示（play 中の再生ハング防止）
-  - タイムライン/グラフ描画は rAF ごとに継続（Canvas は軽量、seek のような重処理ではない）
+---
 
-- (dev v2026.08.07.025) タイムリマップ・ビューア：再生バグ修正＋グラフエディタ追加
-  - **再生バグ修正**：`loadedmetadata` 前に再生ボタンを押すと `srcTotal=1` で即終端判定 → 動かなかった問題。`videoReady` フラグを追加、未 ready で押下したら `pendingPlay=true` で保留し、ready 到達時に自動再生。`error` イベントもトースト＋ボタン無効化
-  - **グラフエディタ追加**（AE 相当のバリューグラフ・リニアのみ）：
-    - X 軸 = 表示F、Y 軸 = ソースF、対角線が等倍参照
-    - 背景グリッド＋軸ラベル、キーフレーム間を折線で描画
-    - キーフレームは黄色ドット、クリックで選択（座標ラベル `t=... s=...` 表示）
-    - **ドラッグで移動**：横=t、縦=s を同時編集。隣接キーの t を越えないようクランプ。端点（先頭・末尾）は t 固定・s のみ編集可
-    - プレイヘッド縦線＋現在ソース横線（リタイム ON 時のみ、交点にシアンドット）
-  - リサイズ・スクラブ・キーフレーム操作でグラフも自動再描画
+## 反映済み beta v0.1.0（2026-08-07）
+
+### A. タイムリマップ・ビューア新設（パッチノート掲載）
 
 - (dev v2026.08.07.024) タイムリマップ・ビューア（独立エンジン）を実装 — AE 互換のリニアキーフレーム、タメツメ指示用
   - **エントリー**：動画タイルの版ヘッダに「⧗ リタイム」ボタン追加（比較・REEL 送るの隣）
   - **独立モーダル `openRetimer(node, v)`**：アノテ窓と分離した独自 UI／独自再生エンジン。既存アノテ機能は無変更
   - **データモデル**：`version.timeRemap = {enabled, keyframes: [{t, s}, ...]}`（t=表示F、s=ソースF）。版に紐付いて永続化（persist）
-  - **リニア補間再生**：リタイム ON 時は rAF ステッパーで表示Fを FPS 進行 → `_rmDisplayToSource(v, D)` でソースF算出 → `video.currentTime` で seek。OFF 時は video 素の再生
   - **速度計算**：セグメント傾き = 1 で等倍、0 でフリーズ（タメ）、>1 でツメ、<0 で逆再生
-  - **キーバインド（AE 準拠）**：`K`＝キーフレーム追加（現在表示F にキーフレームを打ち、s は現在ソースF）／`Delete`＝選択キーフレーム削除／`Space`＝再生・停止／`← →`＝1F 送り／`Escape`＝閉じる
-  - **タイムライン**：キーフレームを黄色ダイヤで表示、セグメントを速度で色分け（オレンジ＝タメ／逆、シアン＝ツメ）、プレイヘッド、目盛り、クリックでスクラブ、ダイヤクリックで選択
-  - **ステータス行**：現在表示F、元F、現在セグメントの速度倍率、総表示F/元F を表示
-  - **リセットボタン**：全キーフレーム削除→初期化（始点・終点で等倍の 2 個）
-  - **自動同期**：初回開いた時にキーフレームが空なら 2 個の始点・終点で自動初期化。ON トグルも同様
-  - **out of scope（次 Phase）**：ドラッグでキーフレーム編集、速度カーブグラフ、アノテとの表示F整合、REEL 対応、複数バージョン間コピー
+  - **キーバインド（AE 準拠）**：`K`＝キーフレーム追加／`Delete`＝選択キーフレーム削除／`Space`＝再生・停止／`← →`＝1F 送り／`Escape`＝閉じる
+  - **タイムライン**：キーフレームを黄色ダイヤで表示、セグメントを速度で色分け（オレンジ＝タメ／逆、シアン＝ツメ）
+- (dev v2026.08.07.025) 再生バグ修正＋グラフエディタ追加
+  - `videoReady` フラグを追加、未 ready で押下したら `pendingPlay=true` で保留し、ready 到達時に自動再生
+  - グラフエディタ（AE バリューグラフ・リニアのみ）：X=表示F・Y=ソースF、ドラッグで t/s 同時編集、隣接キーの t を越えないようクランプ
+- (dev v2026.08.07.026) ネイティブ `video.play()` + `playbackRate` に切替で軽量化
+  - 毎 rAF に `currentTime` 書き換えていた方式を撤去、rAF はドリフト監視のみ
 
-- (dev v2026.08.07.023) ノート・コメント内の URL を自動リンク化（クリックで新規タブで開く）
-  - **共通ヘルパ**：`appendTextWithLinks(container, text)` を新設（http/https を `<a target=_blank rel=noopener>` に変換、末尾の句読点はリンクから除外）
-  - **コメント**（アノテ・サブミット・アップロード）：`renderMentionText` の text push を `appendTextWithLinks` 経由に変更 → 既存の全コメント表示で URL がクリック可能に
-  - **チェック待ちタブのサブミットコメント**（`.tl-submitcmt`）：`textContent` から `appendTextWithLinks` に置換
-  - **NOTE パネル**（作業ページ右カラム contenteditable）：
-    - paste ハンドラ拡張：プレーンテキストの URL をペースト時に `<a>` に変換して insertHTML
-    - リッチテキスト（HTML）ペーストはブラウザ既定挙動を維持
-    - click ハンドラ拡張：contenteditable の既定挙動を上書きしてクリックで新規タブで開く（Alt+クリックで通常編集）
-  - **リンク色**：エッジ色 `#5cc7ef`（サイアン系）＋下線、`word-break:break-all` で長い URL も折返し
-  - **セキュリティ**：`rel="noopener noreferrer"` を必ず付与
-
-- (dev v2026.08.07.022) タイムラインの動画埋め込みマーカーを専用色（`#a5652f`）100% 塗りに
-  - v.021 では埋め込み描画は pending マーカー（50% 透明オレンジ）だけで表示されていて暗く見えた
-  - `anno_emb_` ノート専用のマーカー loop を追加し、pending マーカーの上に 100% 塗りで重ねる
-  - 色は既存の送信済みマーカー（`#e08a4a`）より少しくすんだオレンジ `#a5652f` で、「保存済みだがコメント無し」を視覚区別
+### B. アノテ窓の「動画埋め込み」自動同期（パッチノート掲載）
 
 - (dev v2026.08.07.021) アノテ窓に「動画埋め込み」自動同期を導入（描画のみ→送信せず閉じても消えない）
-  - **背景**：REEL では pending の描画が `reel_emb_<node>_<frame>` ノートとして自動同期・永続化されていたが、アノテ窓は「送信」を押さないと pending が失われる仕様だった。ユーザー期待「描画のみだと動画埋め込み」に沿うよう、アノテ窓にも同等機構を導入
-  - **新設**：`annoSyncEmbedFrame` / `annoSyncEmbedAll` / `annoHydratePending` / `annoAfterEdit` / `annoSchedulePersist`（REEL 実装をアノテ窓に移植）
-  - **ノート ID**：`anno_emb_<versionId>_<frame>`（noShot=true、drawing 配列に当該フレームの pending 全種を格納）
-  - **同期タイミング**：`_pushHist` 内で `annoAfterEdit()` を毎回呼び出し → 描画・消しゴム・投げ縄・図形・head・mann の各操作後に自動同期＋400ms debounce persist
-  - **開き直し**：openReview の pending 初期化直後に `annoHydratePending()` → 前回の embed ノートから pending を復元
-  - **閉じる時**：`close()` と `cleanup()` の両方で最終同期＋即時 persist（debounce 未発火の保険）。close の確認ダイアログは pending 描画を除外（drafts と入力中コメントのみ警告）
-  - **送信時の重複除去**：`sendCurrent` / `submit` で drafts→v.review.notes 昇格後に `annoSyncEmbedAll()` を呼び、対応フレームの embed ノートを掃除（同じ描画の二重ノート防止）
-  - **描画ループ**：`drawAll`（ゴースト・現在フレーム）／レイヤープレビュー／タイムラインマーカーで anno_emb ノートを除外（pending と重複描画しないよう REEL と同じ設計）
-  - **コメント欄**：`noteEmbedOnly` フィルタで anno_emb は自動的にコメント欄から除外される（noShot=true+drawing+no text の判定）
+  - REEL の `reel_emb_` 機構をアノテ窓に移植：ノート ID `anno_emb_<versionId>_<frame>`、noShot=true で管理
+  - 描画・消しゴム・投げ縄・図形・head・mann の各操作後に自動同期＋400ms debounce persist
+  - 開き直し時は embed ノートから pending を復元、閉じる時は最終同期＋即時 persist
+  - 送信時は該当フレームの embed ノートを掃除して重複防止
+- (dev v2026.08.07.022) タイムラインの動画埋め込みマーカーを専用色（`#a5652f`）100% 塗りに（コメント付き `#e08a4a` と区別）
 
-- (dev v2026.08.07.020) チェック待ちタブのサブミットコメント幅を拡張（左寄せ）
-  - v.019 では `flex:0 1 340px; max-width:420px` で右端に固定サイズだったが、まだ右に寄りすぎとの指摘
-  - `flex:1 1 300px; min-width:220px; max-width:640px` に変更 → 残余スペースを埋めるように伸びる
-  - ワイド画面：右カラムがショット情報と右端の中間まで伸びる／狭い画面：min-width 220 で確保／ultra-wide でも 640 で頭打ち
-
-- (dev v2026.08.07.019) チェック待ちタブのサブミットコメントを右カラムに移動（左のショット情報と横並び）
-  - v.018 では tl-body の内側（下段）に置いていたが、行の右側が空いていて見づらいという指摘
-  - `.tl-submitcmt` を tl-body の下ではなく tl-item 直下に append → flex 行の右カラムに
-  - `flex:0 1 340px; min-width:200px; max-width:420px; align-self:stretch` で右側を占有・縦は行に追従・長文なら内部スクロール
-  - `onclick` で親行への遷移を止めて、コメントテキストの選択・コピーを可能に
-
-- (dev v2026.08.07.018) チェック待ちタブの各行に「サブミットコメント」を表示
-  - `renderProjCheck` の tl-item に、最新版 `lv.v.submitId` から `DB.submits` を引いてサブミット本体コメント（`sb.comment`）と、このショット宛の個別コメント（`item.comment`）を掲載
-  - 見た目：`.tl-submitcmt` として左に細いエッジ帯・薄背景・見出し「サブミット「XX」」／「このショット宛」で 2 段構成（片方だけでも OK）
-  - `white-space:pre-wrap` で改行を保持、`word-break:break-word` で長文を折り返し
-  - サブミット経由でない直接アップロードの版は従来通り（余計な枠は出さない）
-
-- (dev v2026.08.07.017) draw/erase ツール中のカーソルを `none` → `crosshair` に変更（Parsec 等リモート接続時のマウス感度低下を回避）
-  - 原因：`cursor:none` にしていたため、OS の高速追従カーソルが消え、JS 描画のブラシサイズリングが pointer イベント経由でラグ描画されていた。Parsec のようなリモート環境だと round-trip 遅延がそのまま出て「マウス感度が落ちた」ように感じる。
-  - 修正：アノテ窓の `setTool`（[laycat_dev.html:10084](laycat_dev.html:10084)）と REEL の `setRTool`（[laycat_dev.html:12629](laycat_dev.html:12629)）の両方で `cursor` を常に `crosshair` に。
-  - サイズリング（`sizeRing` / `szRing`）は継続表示。OS の crosshair とリングの二重表示になるが、リモート・ローカル両方でカーソル追従がスムーズに。
-
-- (dev v2026.08.07.016) サイレント・アップロード時はステータス自動変更も無効化
-  - v.015 で追加した「チェック担当者に通知を送る」☑ を OFF にしたとき、通知を出さないだけでなく、ステータスの「チェック待ち」への自動変更もスキップ
-  - `uploadVersion` の `node.status=sts[0].id` を `if(opts.notify!==false){...}` でガード
-  - 「通知しない ＝ 現状ステータスを維持したい」意図とセットで扱う設計
-
-- (dev v2026.08.07.015) アップロードモーダルに「チェック担当者に通知を送る」チェックボックスを追加（既定 ON）
-  - `openUploadModal`：既存の名前・コメント欄の下に ☑ を追加。ラベル「チェック担当者に通知を送る（オフ＝サイレント・アップロード）」。
-  - `uploadVersion`：`opts.notify===false` のとき `version.noNotify=true` を焼き込む。
-  - 通知スキャナ（`rq:v:...` 生成ループ）で `if(ver.noNotify)continue;` を追加し、サイレント指定の版は通知対象外に。
-  - サブミット経由（`ver.submitId` あり）は従来通り上のループで拾うので二重通知しない。
-
-- (dev v2026.08.07.014 / mannequin v6) 3D エディタからの 2 回目以降「レビューに反映」が効かない不具合を修正
-  - **原因1（headless 側 TDZ）**：v.012 で `loadPose` 内に追加した `typeof isHeadless!=='undefined'` が、`const isHeadless` の TDZ（Temporal Dead Zone）で例外を投げる恐れがあった。ES modules は `const` に対する `typeof` も ReferenceError。
-    - 修正：`IS_HEADLESS` を `loadPose` 定義より前で確定させ、内部からは通常のブール変数として参照。既存 `const isHeadless` は `IS_HEADLESS` のエイリアスに。
-    - この例外が発生すると headless の render コマンドが完了せず、LayCAT 側の `_mannRenderQ` が永久に pending → 以降の apply が queue に詰まって発火しない。
-  - **原因2（レース制御）**：2 回目の apply がすぐ来ると 1 回目の `_mannRender` の `.then` が最新 editor snapshot を古い render で上書きしてしまう。
-    - 修正：`_mannScheduleRender` / `_reelMannScheduleRender` でリクエスト時の `p.pose` を捕捉、応答時に別 pose に差替わっていたら結果を無視。
-  - **原因3（queue デッドロック）**：`_mannRender` が例外や拒否で resolve しない場合、`_mannRenderQ` が null にならず後続 render がすべて queue で詰まる。
-    - 修正：`.catch` を追加して失敗時も `_mannRenderQ=null` にし、`_mannRenderNext` を drain。
-  - `MANN_VERSION` を `5` → `6` に bump（`mannequin_3d.html` のキャッシュ破棄）。
-
-- (dev v2026.08.07.013 / mannequin v5) アノテ窓/REEL 反映時の初期フレーミングを改善（キャラを近く・大きく表示）
-  - 3D エディタ用の初期カメラ `(0,1.5,5.5)` だと四角枠に対してキャラが小さすぎる問題
-  - headless 初期化ブロックで camera を `(0,1.2,3.6)`・target を `(0,1.0,0)` に上書き（キャラ中心を注視）
-  - 3D エディタ側の初期カメラは据え置き（headless 分岐でのみ差替え）
-
-- (dev v2026.08.07.012 / mannequin v4) 3D マネキンの役割分離：3D エディタのカメラ角度をアノテ窓/REEL に反映しない＋拡大時の解像度自動追従
-  - **役割分離**：3D エディタ = ポーズ作りの場所、アノテ窓 / REEL = キャラを回して見る場所。
-    - `loadPose` に headless 判定を追加し、pose に含まれる `camera.pos` / `target` の復元を headless では skip。
-    - headless の初期カメラ（`(0, 1.5, 5.5)`, target=原点、OrbitControls 無効）＝正面固定になる。
-    - ユーザーはアノテ窓 / REEL 内で従来通り yaw/pitch/roll ／eye ジャイロで自由にキャラをフィギュア回転できる（カメラは動かさない）。
-  - **拡大時の解像度追従**：`_mannScheduleRender` / `_reelMannScheduleRender` の `size` 未指定時、`p.w` とキャンバス幅から `clamp(400, round(cw * p.w * 2), 1600)` を算出。小さい時は 600 相当、大きく引き伸ばすほど pixel も上げる → 拡大時のジャギー・解像度不足を解消。
-    - リサイズドラッグ完了時（`mannPointerUp` / `reelMannUp` の `mode==='resize'` 分岐）にも自動サイズで再レンダー。
-    - ドラッグ中は従来通り明示的な低解像度（400）で軽く。
-  - `MANN_VERSION` を `3` → `4` に bump（`mannequin_3d.html` のキャッシュ破棄）。
-
-- (dev v2026.08.07.011 / mannequin v3) 3D エディタ（マネキン）に指ボーンを追加（左右 5 本 × 3 関節 = 30 本）
-  - `VRM_MAP` に `J_Bip_L/R_{Thumb,Index,Middle,Ring,Little}{1,2,3}` の 30 ボーンを追加
-  - `BONE_ORDER` にも同順で追加（親→人差→中→薬→小、各 3 関節）→ boneList に自動表示
-  - `displayName` に日本語表示追加（例：左親指①/②/③、左人差①/②/③、...）
-  - `pickJointSize` を指用に階段状に調整：末節 3=0.010、中節 2=0.013、基節 1=0.016（手 0.05 より控えめ、選択には十分な当たり判定）
-  - `MANN_VERSION` を `2` → `3` に bump（`mannequin_3d.html` のキャッシュ破棄）
-  - VRM 標準に準拠しているので、`mannequin_model.glb` にすでに含まれている指ボーンをそのまま拾える（追加のアセット差し替え不要）
-
-- (dev v2026.08.07.010) 作業担当・チェック担当（および状態系スカラー）の「未割当に戻す」操作が巻き戻るバグを修正
-  - **症状**：担当を持つ工程を「未割当」に変更した直後に他ユーザーの保存や `autoRefresh` が走ると、旧値に戻ってしまう
-  - **原因**：`_mergeNode3` が `_mergeNodeInto`（fill-only）を先に呼ぶ設計だったため、ours の `assignee=undefined`（削除意図）が theirs の旧値で埋められていた。3-way チェックは fill-only の結果に対して「ours==base かつ theirs!=base」の場合のみ theirs 採用、という追加処理でしかなく、削除意図を汲めなかった
-  - **修正**：スカラー 3-way ロジックを厳格化
-    - `ours != base` → **ours 採用**（`undefined`／`null`／空文字なら `null` を格納 = 削除意図）
-    - `ours == base && theirs != base` → **theirs 採用**（削除意図も同様に `null`）
-    - どちらも変更なし → m の現状維持
-  - **`null` を使う理由**：`delete m[k]` だと後続の `_deepMergeInPlace`（"source に無いキーは残す" 設計）で DB 側の古い値が生き残ってしまう。明示的な `null` で削除意図を反映側まで伝える。UI 側は `!n.assignee` で判定するので null も未割当扱いで問題なし
-  - 対象キー：`status / assignee / reviewer / name / description / thumbnail / thumbCrop`
-  - 副次効果：ステータス・レビュー担当・工程名・説明等の「クリア操作」も同じ経路で正しく反映されるようになった
-
-- (dev v2026.08.07.009) REEL のステータス変更プルダウンをカスタム DIV ドロップダウンに置き換え（ネイティブ `<select>` 廃止）
-  - v.005〜v.008 で `color-scheme:dark` を CSS/meta/documentElement/initialHTML に多重指定したが、**Chrome の iframe 内 UA popup はダーク配色にならない挙動が確定**
-  - 対策：`<select>` を廃止し、DIV ベースのボタン＋浮動 popover に置換
-  - 表示：外側は現行と同じ丸みボーダー（ステータス色）、内側 popover はアノテ窓の `.mention-pop` と同じダーク（#141416 + #3a3a42）
-  - popover：現在選択項目に薄い青ハイライト、他はホバーで薄い白、クリックで即確定＋外クリックで閉じる
-  - 未知 ID・「未着手」の選択肢も従来通り保持
-
-- (dev v2026.08.07.008) REEL iframe の初期 HTML 書き出し時点で `color-scheme:dark` を documentElement 属性に埋め込む
-  - `_mkReelShim` の `ifd.write('...')` に `<html lang="ja" style="color-scheme:dark">` と `<meta name="color-scheme" content="dark">` を初期HTMLに直接記述
-  - v.007 では JS で後から `d.documentElement.style.colorScheme='dark'` を付けていたが、それだと Chrome の iframe で UA popup が light のまま出るケースがあった → ドキュメント作成時点で属性に入れる
-  - v.007 で追加した誤爆リスクのある srcdoc アプローチは採用せず、doc.write ベースを維持
-
-- (dev v2026.08.07.007) REEL iframe の color-scheme:dark を多重指定で強制
-  - `d.documentElement.style.colorScheme='dark'` を JS で直接セット
-  - `<meta name="color-scheme" content="dark">` を head に追加
-  - CSS 側も `html{color-scheme:dark}` を追加
-  - Chrome の iframe レンダで `:root{color-scheme:dark}` だけでは反映されないケースがあるため三重保険
-
-- (dev v2026.08.07.006) REEL のステータス変更プルダウン：直接 `color-scheme:dark` をインラインで適用
-  - v.005 の `:root{color-scheme:dark}` だけでは反映されないケースがあった（`background:transparent` インライン指定が UA popup 判定に影響していた可能性）
-  - `reel-status-sel` の `style.cssText` に `color-scheme:dark` を追加
-
-- (dev v2026.08.07.005) REEL のネイティブ `<select>` プルダウンをダークテーマに（アノテ窓と揃える）
-  - REEL は iframe 内の独立 document のため、ブラウザの UA form control がライトモードで描画されて白く見えていた
-  - `st.textContent` の先頭に `:root{color-scheme:dark}` を追加 → OS/ブラウザにダーク配色を指示 → ステータス切替プルダウンの popup もダーク配色になる
-  - REEL 側のみ修正（ショットリスト／進捗ウィンドウの CSS 注入は今回対象外）
-
-- (dev v2026.08.07.004) ショットタブ右スライドの工程タイル：ダブルクリックでタブに追加
-  - シングルクリック＝ドロワー内で工程切替（従来通り）
-  - **ダブルクリック＝ドロワーを閉じてタブに追加**（`go(st.id)`）
-  - 240ms クリックタイマーでシングル／ダブルを分離
-  - タイル title と section-label を更新して操作方法を明示
-
-- (dev v2026.08.07.003) ショットタブのグリッド／縦並び切替を「アイコンだけのセグメンテッドスイッチ」に変更
-  - 従来：`▦ グリッド` `≡ 縦並び` の 2 個の独立ボタン（`.pm-tabs` / `.pm-stab`）
-  - 新規：`.sv-sw` / `.sv-sw-btn` で一体型セグメンテッド（内側パディング 2px、選択側だけ背景 var(--bg2) を敷いてスライドバー風）
-  - グリッドアイコンは 2x2 四角形（塗り）、リストアイコンは横棒 3 本（ストローク）
-  - ホバーで文字色↑、選択で背景↑＋薄いドロップシャドウ、tooltip でモード名を明示
-  - `.pm-tabs` / `.pm-stab` は他所（`⚙ 設定で変更` ボタン等）で継続使用のため据え置き
-
-- (dev v2026.08.07.002) チェック待ちに集約するステータスをプロジェクト設定で選択可能に
-  - `isAwaitingCheck` を「ステータスの `checkWait:true` フラグで判定」に変更（複数選択可）。明示指定が無い旧データは従来通り先頭ステータス／`'pending'` を自動的にチェック待ち扱いに（後方互換）。
-  - プロジェクト設定「🚦 ステータス定義」の各行に「☑ チェック待ち」チェックボックスを追加。初回オープン時、旧データは先頭ステータスのみ既定 true として表示。
-  - save ハンドラで `node.statuses[].checkWait` を保存。
-  - 追加時（＋ステータスを追加）は `checkWait:false` で新規作成。
-
-- (dev v2026.08.07.001) ショットタブのヘッダ左上に表示中のショット数を表示（担当フィルタ適用時は「表示中 N / 全 M」形式）
-  - `renderProjShots` で `shots=allShots.filter(shotFilterPass)` を head 構築前に前倒し算出
-  - フィルタなし＝件数のみ、フィルタあり＝`N / M ショット` を表示。tabular-nums で桁揃え・title に補足
-  - 従来 5149 行にあった `const shots=` 定義は前倒し済みのため削除
-
-- (dev v2026.08.06.024) プロジェクト削除時にリールも確実に消えるよう修正
-  - `_doDeleteNode` のリール掃除：`projectId` 一致のほか、いずれかのクリップが削除対象ノードを参照している場合も削除対象に（legacy データや `reelProjectId` が null を返すケースを拾う）。
-  - `storage.delProject`：共有フォルダ内 `reels/reels.json`（reels/ ディレクトリごと）と `localStorage['layna_reels_'+id]` を削除、`_saveCache.reels[id]` もクリア。
-  - keepData（接続だけ解除）ケース：`localStorage['layna_reels_'+id]` と `localStorage['layna_proj_'+id]` のクライアント側キャッシュを破棄（共有フォルダのデータには手を付けない）。
-
-- (dev v2026.08.06.023) 新規プロジェクトモーダル「保存先フォルダを選択」見出しの絵文字 📁 を無彩色 SVG（`ICONS.folder` を `currentColor` で描画）に変更
-
-- (dev v2026.08.06.022) 新規プロジェクトモーダルの「保存先フォルダ」指定を目立たせる
-  - `folderBox` 冒頭に大見出し「📁 保存先フォルダを選択」（14px/700・`border-top` で区切り）を追加。既存の補足文言は下段に。
-  - 「フォルダを指定」ボタンを `btn-ghost` → `btn-primary` に昇格。
-
-- (dev v2026.08.06.021) プロジェクト削除に「データも削除／接続だけ解除」の 2 択モーダルを追加
-  - 従来は `confirm()` で問答無用のフル削除だった。
-  - `deleteNode` を分岐：プロジェクトの場合は `openProjectDeleteModal(node)` で選択式モーダル。子ノードは従来通り confirm。
-  - **接続だけ解除**：REG から外し folder handle を破棄。`laycat.project.json`・media・R2 バケットのデータには手を付けない。あとで「⇄ プロジェクトに接続」で再接続すれば復帰可能。他メンバー影響なし。
-  - **データも削除**：従来と同じ挙動（`storage.delProject` で JSON・media・R2 なら purge）。警告文追加。
-  - 実処理は `_doDeleteNode(node, {keepData})` に分離。keepData=true のとき `storage.delMedia` / `storage.delProject` をスキップし、`storage.clearProjRoot` のみ実行。
-  - 完了 toast も分岐（「一覧から外しました（データは残っています）」／「プロジェクトを削除しました」）。
-
-- (dev v2026.08.06.020) NOTE 画像の拡大ボタンのアイコンを対角矢印（↗↙）に変更（従来は虫眼鏡＋プラス）
-
-- (dev v2026.08.06.019) NOTE の画像機能拡張：クリップボードペースト対応＋各画像右上に拡大表示ボタン
-  - **クリップボードペースト**：`ed` に `paste` リスナー追加。`clipboardData.items` に `image/*` の file があれば `_noteResizeImage(file,600)` でリサイズして insertHTML。ファイル選択挿入と同一形式（`<img class="note-img" style="width:240px;transform:rotate(0deg)">`）。
-  - **拡大ボタン**：hover 時に単一のフローティングボタン（アイコンのみ・虫眼鏡＋プラス）を画像右上に位置合わせして表示。クリックで `openModal(_,true)` に元 src の img を大表示（`max-height:82vh`）。
-  - フローティングボタンは単一 DOM を移動使い回し。mouseleave で 140ms 猶予後 hide（ボタン側 mouseenter に間に合うように）。
-  - scroll イベントで追従位置補正。
-
-- (dev v2026.08.06.018) アノテ窓のコメントパネル対象修正＋ REEL を差し戻し
-  - v.015/v.017 で「アノテ窓のコメント欄」だと思って `.log-side`（実は別オーバーレイ用）を広げていたが、実際の `openReviewOverlay` の右コメント列は `.fb-side`（[laycat_dev.html:9321](laycat_dev.html:9321)）だった。
-  - `.log-side`：510 → 340px（元に戻す）
-  - `.fb-side`（グローバル定義・アノテ窓用）：272 → 408px（1.5 倍・要望通り）
-  - REEL の `.fb-side`（`openReel` 内の動的注入 CSS）：460 → 393px（v.017 の追加拡張を差し戻し）
-  - モバイル `@media (max-width:900px)` の `.fb-side{width:230px}` はそのまま
-
-- (dev v2026.08.06.017) REEL のコメントパネル（`.fb-side`）をさらに拡張：393 → 460px
-
-- (dev v2026.08.06.016) v.015 で対象外の作業ページ NOTE パネル（`.review-note-col`）まで広げていたのを元に戻す
-  - `.review-note-col`：510 → 340px（元に戻す）
-  - `.task-topbar::after` の下線 offset：`right:-546px` → `right:-376px`（元に戻す）
-  - アノテ窓（`.log-side`）と REEL（`.fb-side`）の 1.5 倍拡張はそのまま維持
-
-- (dev v2026.08.06.015) アノテ窓 / REEL のコメント欄横幅を約 1.5 倍に拡張（行数増加を軽減）
-  - `.log-side`（アノテ窓オーバーレイのコメント列）：340 → 510px
-  - `.fb-side`（REEL のコメントパネル）：262 → 393px
-  - モバイル（`max-width:960px`）はもともと 1 カラム表示になるので影響なし
-  - ※ v.015 で `.review-note-col`（作業ページ NOTE）まで巻き込んで広げてしまったが、v.016 で戻した
-
-- (dev v2026.08.06.014) 起動時に `navigator.storage.persist()` をリクエスト（IndexedDB を永続化）
-  - Chrome/Edge はブックマーク・PWA・通知許可・訪問頻度から自動判定で granted になりやすい。Safari は 1 回ダイアログが出るが拒否されても致命ではない。
-  - 目的：フォルダハンドル（`_fileHandle`）・メディア blob（`idb:` 参照）・`_saveCache` などがブラウザストレージひっ迫や Safari の ITP 7 日ルールで消失するのを減らす。
-  - `boot()` 冒頭で `storage.persisted()` を先に確認して未 persist の場合のみ `persist()` を呼ぶ。未対応ブラウザ・失敗はサイレント。
-
-- (doc) `guide.html` 更新：v.011〜v.013 の変更に追従（app version bump なし、静的ドキュメントのみ）
-  - STEP 2：作成者は自動でメンバー登録される旨を追記、警告を「他の人を参加させる場合」に緩和
-  - STEP 4：カテゴリ→エピソード／タスク→作業ページに用語統一、空プロジェクト時の 3 択ガイドボタン・階層別の＋追加挙動・「連番で複数作成」既定値（開始 1／増分 1）を反映
-  - STEP 5・7：「タスク画面」→「作業ページ」、事前メンバー登録の警告を撤去
-  - STEP 13 ③ メンバー管理：作成者が自動で入っている旨を追記、警告を「他の人を参加させる場合」に緩和
-  - キャプション残：全カット→全ショット／複数カット→複数ショット／カテゴリ設定→ショット設定
-
-- (dev v2026.08.06.013) 新規プロジェクト作成時、ログイン中のユーザーを自動的に owner ＆ 最初のメンバーとして登録
-  - 従来は R2 バックエンドのときのみ auto-add（Worker のブートストラップ判定のため）。ローカルフォルダで作成すると自分がメンバー未登録のままで、担当割り当てや＠メンションの候補に自分が出ない不便があった。
-  - `openProjectModal` の save ハンドラで backend 問わず common step として `root.owner=me` ＋ `root.members` へ自分を push。R2 の `_access.json` PUT は従来どおり別枝で実行。
-  - 作成直後の「先にメンバーを登録」モーダルは残す（他のメンバーを追加する導線として）。
-
-- (dev v2026.08.06.012) 追加モーダルの「連番で複数作成」既定値：開始番号 10→1、増分 10→1（桁数=3 のまま → 例: name001, name002, name003）
-  - 旧デフォルトは cut010, cut020, cut030 想定だったが、直感的でないというフィードバック。step=1 と揃えて素直な連番になるように。
-
-- (dev v2026.08.06.011) 階層モデル名称統一：エピソード階層のラベルを "エピソード" に、旧 "タスク" 表示を "作業ページ" に統一（ショット呼称は据え置き）
-  - `ROLE_META` に `episode` を追加（`label='エピソード'`）し、`roleOf` で `node.kind==='episode'` を最優先判定に。旧データ向けに「ルート直下で兄弟が孫を持つ／自分の孫がある」ケースも episode 推定にフォールバック。
-  - 既存 `shot`（`label='ショット'`）はそのまま。UI 文言側の "タスク"→"作業ページ" 統一のみ：
-    - "タスクタブ"→"タブ"（バーヘッダ／`まとめてタブに追加` ボタンなど）
-    - 新規プロジェクトモーダル「カテゴリ・タスクを追加していけます」→「エピソード・ショット・作業ページを追加していけます」
-    - 空フォルダ／該当なし系メッセージ：「動画のあるタスクがありません」→「動画のある作業ページがありません」など
-    - タイトル系：「クリックでタスクページ〜」→「クリックで作業ページ〜」（表示 tooltip 全般）
-  - 一時的にラベルを "カット" に振っていたが、ユーザー指示で "ショット" に統一（社内呼称の慣性を優先）。
-  - 階層モデル呼称は「エピソード（section+kind='episode'）／ショット（section+kind='cut'）／作業ページ（review）」で確定。内部 `kind='cut'` はデータ互換のため据え置き。
-
-- (dev v2026.08.06.010) 設定モーダル（`openRename`）で階層種別（エピソード／カット／作業ページ）を後から変更可能に
-  - 従来の 2-way typeSelector（フォルダ／作業ページ）を 3-way に置換（プロジェクトルート以外）。初期値は `node.type` と `node.kind` から算出：
-    - `type='review'` → 'task'
-    - `type='section' && kind='episode'` → 'episode'
-    - それ以外の section → 'cut'
-  - save ハンドラで `ts.get()` の 'episode'/'cut'/'task' を `type + kind` にマップ。'episode'→section+kind=episode、'cut'→section+kind=cut、'task'→review+kind 削除。
-  - プロジェクトルートは常に section 扱いで 2-way のまま（実質固定）。
-  - 既存の警告メッセージも「タスク→作業ページ」等の新用語に微修正。
-
-- (dev v2026.08.06.009) 階層種別を作成時点で紐付け：`node.kind='episode'|'cut'` を保存し全ての判定で優先参照
-  - 従来は「兄弟や孫の有無」で毎回位置関係から推定していたため、単独作成された EP01（兄弟なし・子なし）が「エピソード」と判定できずカット扱いになる問題があった。
-  - `openAddModal` の save ハンドラで作成した node に `kind='episode'` または `'cut'` を焼き付け（role/raw から確定できる場合のみ）。
-  - 判定箇所を全て「kind 優先 → 無ければ従来の位置関係推定」に更新：
-    - `_emptyFolderGuide`（空フォルダガイドの階層判定）
-    - `pmProgressParents`（進捗タブのショット親自動検出）
-    - `renderSectionBody` の ＋追加 ボタン（`_isEpisodeCtx`）
-    - サイドバー ＋追加 ボタン
-  - 既存プロジェクト（kind 未設定）は従来の推定にフォールバックするので後方互換維持。
-
-- (dev v2026.08.06.008) 追加モーダル 工程セクションに大きなタイトル＋空フォルダ画面に階層別ガイドボタン
-  - `openAddModal` の `stgSection` 冒頭に見出し「⚙ 各フォルダ内に作成する工程」を大きめフォント（14px/700）で追加。border-top で本体と視覚分離。従来の補足文言は下段に。
-  - `renderSectionBody` の空フォルダ表示を「大きなガイドボタン」に置換（`_emptyFolderGuide(cur)`）。階層位置に応じて出すボタンを切替：
-    - **エピソード相当**（親がルートで兄弟が孫を持つ）→ 「カットを追加」「作業ページを追加」の 2 択（grid 2 カラム）
-    - **カット相当**（それ以外の空フォルダ）→ 「作業ページを追加」のみ（1 カラム）
-  - ボタンは `_emptyProjectGuide` と同じ大きい dashed 枠デザイン、`role='cut'|'task'` を openAddModal に渡して直接その種別を作成。
-
-- (dev v2026.08.06.007) サイドバー ＋追加：ルート選択（無選択）時は エピソード／カット／作業ページ の 3 択
-  - `typeSelector` に `opts.threeWay:true` モードを追加。3 択モードでは `get()` の返り値が `'episode' | 'cut' | 'task'`。
-  - `openAddModal` に `role='in-root'` を新設。3-way selector を表示し、選択に応じて type / stgSection 表示を分岐：
-    - `episode`: type='section'、工程セクション非表示
-    - `cut`: type='section'、工程セクション表示
-    - `task`: type='review'、工程セクション非表示
-  - `save` ハンドラを更新：`raw`（3-way 値）→ `type`（section/review）マップと、`wantStages` を「type='section' かつ role/raw が 'episode' でない」に統一。
-  - サイドバー ＋追加ボタンで `target===root` のときに `role='in-root'` を渡す。
-  - モーダルタイトルも role 別に補足文言追加（「アイテムを追加（エピソード／カット／作業ページ）」等）。
-
-- (dev v2026.08.06.006) サイドバー ＋追加：現在選択階層に応じてモーダル内容を切替＋空白クリックでルート選択
-  - サイドバー ＋追加ボタンを従来「常に root.id 配下に追加」→「`state.currentId` を親として追加」に変更。選択が review（作業ページ）ならその親フォルダに繰り上げ。
-  - 親の子に「孫を持つ子（＝カット）」があれば `role='in-episode'` を渡してモーダルを ショット／作業ページ 選択形に、そうでなければ default（カット／作業ページ）表示。
-  - サイドバーの見出し「ショット / 工程」自体がクリック可能ボタン化し、ルート選択に戻す。`currentId===root` のときは青のグロー付き `active` スタイル。
-  - サイドバー空白部分／`.tree` 背景クリックでもルート選択（何も選ばない状態）に戻せる。
-
-- (dev v2026.08.06.005) typeSelector のラベルを「フォルダ／作業ページ」「ショット／作業ページ」→ 全て「カット／作業ページ」に統一
-  - `typeSelector` の default labels を `フォルダ` → `カット` に、`role='in-episode'` の labels も `ショット` → `カット` に。3 階層モデル上、フォルダ側の選択肢は常に「カット」で通る。
-  - sub 説明文もカット向けに更新（「カット単位のフォルダ（sh010 など）。中に工程を並べる」）。
-
-- (dev v2026.08.06.004) エピソードフォルダの ＋追加 は「ショット／作業ページ」から選ぶ形に
-  - `typeSelector` に `opts.labels` / `opts.subs` 引数を追加してラベルをカスタマイズ可能に。
-  - `openAddModal` に `role='in-episode'` を追加。ページ種別セレクタを **ショット／作業ページ** ラベルで表示、選択に応じて工程セクションを出し分け（ショットなら表示、作業ページなら非表示）。
-  - セクション本文の ＋追加 ボタン（`renderSectionBody` 内）で、`cur` 直下に「孫を持つ子（＝カット）」があるかで `_isEpisodeCtx` 判定 → `role='in-episode'` を渡す。エピソード以外の従来動作は変更なし。
-
-- (dev v2026.08.06.003) 工程テンプレートAの既定を LAY / ANM / SEC に変更
-  - `projectStageTemplates` の fallback（`stageTemplates` 未設定時の既定）を `['LAY','ANIM','FIN','COMP']` → `['LAY','ANM','SEC']` に。
-  - 既にプロジェクトで `stageTemplates` を保存しているものは影響なし（fallback は未設定時のみ使用）。
-
-- (dev v2026.08.06.002) 3 階層モデル：エピソード／作業ページ作成モーダルからページ種別・工程セクションを外す
-  - `openAddModal(parentId, initialType, role)` に第 3 引数 `role`（'episode'|'cut'|'task'）を追加。ボタンから渡すことで文脈を明示。
-  - **エピソード追加**：ページ種別セレクタ非表示、工程セクション非表示（EP フォルダの直下は工程ではなくカット）。
-  - **カット追加**：ページ種別セレクタ非表示、工程セクションは表示（従来通りその場で工程を並べる／テンプレ適用可能）。
-  - **作業ページ追加**：ページ種別セレクタ非表示、工程セクション非表示（作業ページは工程そのもの）。
-  - モーダルタイトルも role に応じて「エピソードを追加／カットを追加／作業ページを追加」に切り替わり。
-  - role 未指定（サイドバー ＋ ボタン等）は従来通り両方選択可・stgSection 動的表示で後方互換維持。
-
-- (dev v2026.08.06.001) 3 階層モデル導入：エピソード → カット → 作業ページ の空プロジェクト導線＋進捗タブの自動判定改良
-  - 空プロジェクト画面のガイドボタンを 2 個 → **3 個** に：「エピソードを追加」「カットを追加」「作業ページを追加」。grid を `1fr 1fr` → `repeat(3,1fr)` に。エピソード／カットはどちらも内部データ的には section だが、ボタン名で「複数話は EP フォルダ」「1 話はカット直接」の役割を明示。
-  - `typeSelector` のラベルも「カテゴリ／タスク」→「フォルダ／作業ページ」に統一。
-  - **進捗タブの shot 親自動判定**を 3 階層モデルに合わせて改良：`pmProgressParents(root)` を「ルート直下の子で『孫（カット）→ 曾孫（作業ページ）』を持つもの＝エピソード」を全て返す形に変更。エピソードが無ければルート自身を返す。
-  - `shotsParentsOf` は自動時に `pmProgressParents` の全結果を採用（従来は先頭の 1 つだけ）。これにより「エピソード複数話ある場合はプロジェクト設定を触らなくても各エピソードのカットが集約表示される」ようになる。
-  - 明示指定（`root.shotsParentIds` / `root.shotsParentId`）がある場合は従来通り上書き優先で後方互換維持。
-
-- (dev v2026.08.05.045) REEL 画像挿入ツールを撤去（v.043 の誤対応を revert）
-  - ユーザーが求めていたのはタスクページ右カラムの NOTE パネルへの画像挿入（v.044 で対応済み）で、REEL 側は不要だった。v.043 で入れた REEL 画像挿入ツール（imgB ボタン、`kind:'image'` アイテム、`paintImage`、`_imgCache`、`reelImg*` ハンドラ、hit test、選択枠オーバーレイ、Del キー、`cloneDrawItem`/`eraseFromList` の image 分岐等）を全て撤去。
-  - `paintImage` 関数と `_imgCache` はメイン CSS 側だったが未使用になるため削除。
+### C. NOTE パネル画像機能（パッチノート掲載）
 
 - (dev v2026.08.05.044) タスクページ右カラムの NOTE パネルに画像挿入対応（拡縮／回転／削除）
-  - ユーザーが求めていたのは REEL ではなくタスクページの NOTE パネル（`buildTaskNotePane`、contenteditable）だった。v.043（REEL 画像挿入）は誤対応。
-  - ツールバーに「画像」ボタン追加：クリック→ファイル選択→リサイズ（長辺 600px, PNG は PNG のまま/その他は JPEG 80%）→現在カーソル位置に `<img class="note-img" src="..." style="width:240px;transform:rotate(0deg)">` を `insertHTML` で挿入。
-  - `.note-img` クリック → 選択＋浮動ミニツールバー表示：
-    - 幅：`− / ＋`（0.85x / 1.18x 増減、40〜1200px クランプ）
-    - 回転：`↺15° / ↻15° / ↻90° / 0°`（style.transform を書き換え）
-    - 削除：`✕`
-  - エディタ外クリックでツールバー閉じ、Delete/Backspace で選択画像削除。
-  - `_noteResizeImage(file, maxSide)` を新設。`node.note` HTML に埋め込むため事前縮小が必須。
+- (dev v2026.08.06.019) NOTE の画像機能拡張：クリップボードペースト対応＋各画像右上に拡大表示ボタン
+- (dev v2026.08.06.020) NOTE 画像の拡大ボタンのアイコンを対角矢印（↗↙）に変更（従来は虫眼鏡＋プラス）
+
+### D. Parsec 等リモート接続時のマウス感度低下を回避（パッチノート掲載）
+
+- (dev v2026.08.07.017) draw/erase ツール中のカーソルを `none` → `crosshair` に変更
+  - JS 描画のサイズリングはそのまま。OS の crosshair とリングの二重表示になるが、リモート・ローカル両方でカーソル追従がスムーズに
 
 ---
 
@@ -1501,6 +1191,51 @@ GLB モデル差し替え／Maya 準拠カメラ／複数選択マニピュレ�
 ---
 
 ## 反映済み・パッチノート記載なし（Beta 反映済み・PATCH_NOTES.md 未記載）
+
+- **【2026-08-07 Beta v0.1.0 追加反映】** 以下の 43 件は dev → beta にサイレント反映（v0.1.0 パッチノートには載せず、UI 微調整・バグ修正・階層モデル整備・機能追加は次以降のパッチノートで拾う候補）：
+  - (dev v2026.08.07.023) ノート・コメント内の URL を自動リンク化（クリックで新規タブで開く）
+  - (dev v2026.08.07.020) チェック待ちタブのサブミットコメント幅を拡張（左寄せ）
+  - (dev v2026.08.07.019) チェック待ちタブのサブミットコメントを右カラムに移動（左のショット情報と横並び）
+  - (dev v2026.08.07.018) チェック待ちタブの各行に「サブミットコメント」を表示
+  - (dev v2026.08.07.016) サイレント・アップロード時はステータス自動変更も無効化
+  - (dev v2026.08.07.015) アップロードモーダルに「チェック担当者に通知を送る」チェックボックスを追加（既定 ON）
+  - (dev v2026.08.07.014 / mannequin v6) 3D エディタからの 2 回目以降「レビューに反映」が効かない不具合を修正（TDZ 例外／レース／queue デッドロックの 3 点対策）
+  - (dev v2026.08.07.013 / mannequin v5) アノテ窓/REEL 反映時の初期フレーミングを改善（キャラを近く・大きく表示）
+  - (dev v2026.08.07.012 / mannequin v4) 3D マネキンの役割分離：3D エディタのカメラ角度をアノテ窓/REEL に反映しない＋拡大時の解像度自動追従
+  - (dev v2026.08.07.011 / mannequin v3) 3D エディタ（マネキン）に指ボーンを追加（左右 5 本 × 3 関節 = 30 本、VRM 標準）
+  - (dev v2026.08.07.010) 作業担当・チェック担当（および状態系スカラー）の「未割当に戻す」操作が巻き戻るバグを修正（`_mergeNode3` の 3-way 厳格化）
+  - (dev v2026.08.07.009) REEL のステータス変更プルダウンをカスタム DIV ドロップダウンに置き換え（ネイティブ `<select>` の白ポップアップ問題を回避）
+  - (dev v2026.08.07.008) REEL iframe の初期 HTML 書き出し時点で `color-scheme:dark` を documentElement 属性に埋め込む
+  - (dev v2026.08.07.007) REEL iframe の color-scheme:dark を多重指定で強制
+  - (dev v2026.08.07.006) REEL のステータス変更プルダウン：直接 `color-scheme:dark` をインラインで適用
+  - (dev v2026.08.07.005) REEL のネイティブ `<select>` プルダウンをダークテーマに（アノテ窓と揃える）
+  - (dev v2026.08.07.004) ショットタブ右スライドの工程タイル：ダブルクリックでタブに追加
+  - (dev v2026.08.07.003) ショットタブのグリッド／縦並び切替を「アイコンだけのセグメンテッドスイッチ」に変更
+  - (dev v2026.08.07.002) チェック待ちに集約するステータスをプロジェクト設定で選択可能に（`checkWait:true` フラグ・複数選択可）
+  - (dev v2026.08.07.001) ショットタブのヘッダ左上に表示中のショット数を表示（担当フィルタ適用時は「表示中 N / 全 M」形式）
+  - (dev v2026.08.06.024) プロジェクト削除時にリールも確実に消えるよう修正（`DB.reels` 防御的フィルタ＋共有フォルダ `reels/` 掃除）
+  - (dev v2026.08.06.023) 新規プロジェクトモーダル「保存先フォルダを選択」見出しの絵文字 📁 を無彩色 SVG に変更
+  - (dev v2026.08.06.022) 新規プロジェクトモーダルの「保存先フォルダ」指定を目立たせる（大見出し＋区切り線＋主要ボタン化）
+  - (dev v2026.08.06.021) プロジェクト削除に「データも削除／接続だけ解除」の 2 択モーダルを追加
+  - (dev v2026.08.06.018) アノテ窓のコメントパネル対象修正（`.log-side`→`.fb-side`・272→408px）＋ REEL は 393px に差し戻し
+  - (dev v2026.08.06.017) REEL のコメントパネル（`.fb-side`）をさらに拡張：393 → 460px
+  - (dev v2026.08.06.016) v.015 で対象外の作業ページ NOTE パネル（`.review-note-col`）まで広げていたのを元に戻す
+  - (dev v2026.08.06.015) アノテ窓 / REEL のコメント欄横幅を約 1.5 倍に拡張（行数増加を軽減）
+  - (dev v2026.08.06.014) 起動時に `navigator.storage.persist()` をリクエスト（IndexedDB を永続化）
+  - (dev v2026.08.06.013) 新規プロジェクト作成時、ログイン中のユーザーを自動的に owner ＆ 最初のメンバーとして登録
+  - (dev v2026.08.06.012) 追加モーダルの「連番で複数作成」既定値：開始番号 10→1、増分 10→1（桁数=3 のまま → 例: name001, name002, name003）
+  - (dev v2026.08.06.011) 階層モデル名称統一：エピソード階層のラベルを "エピソード" に、旧 "タスク" 表示を "作業ページ" に統一（ショット呼称は据え置き）
+  - (dev v2026.08.06.010) 設定モーダル（`openRename`）で階層種別（エピソード／カット／作業ページ）を後から変更可能に
+  - (dev v2026.08.06.009) 階層種別を作成時点で紐付け：`node.kind='episode'|'cut'` を保存し全ての判定で優先参照
+  - (dev v2026.08.06.008) 追加モーダル 工程セクションに大きなタイトル＋空フォルダ画面に階層別ガイドボタン
+  - (dev v2026.08.06.007) サイドバー ＋追加：ルート選択（無選択）時は エピソード／カット／作業ページ の 3 択
+  - (dev v2026.08.06.006) サイドバー ＋追加：現在選択階層に応じてモーダル内容を切替＋空白クリックでルート選択
+  - (dev v2026.08.06.005) typeSelector のラベルを「フォルダ／作業ページ」「ショット／作業ページ」→ 全て「カット／作業ページ」に統一
+  - (dev v2026.08.06.004) エピソードフォルダの ＋追加 は「ショット／作業ページ」から選ぶ形に
+  - (dev v2026.08.06.003) 工程テンプレートAの既定を LAY / ANM / SEC に変更
+  - (dev v2026.08.06.002) 3 階層モデル：エピソード／作業ページ作成モーダルからページ種別・工程セクションを外す
+  - (dev v2026.08.06.001) 3 階層モデル導入：エピソード → カット → 作業ページ の空プロジェクト導線＋進捗タブの自動判定改良
+  - (dev v2026.08.05.045) REEL 画像挿入ツールを撤去（v.043 の誤対応を revert）
 
 - **【2026-08-05 Beta v0.0.9 追加反映（バージョン据え置き）】** 以下は laycat_dev.html → laycat.html にサイレント反映（`APP_VERSION='beta v0.0.9'` のまま）。PATCH_NOTES.md にも記載しない：
   - (dev v2026.08.05.042) REEL：描画のたびにコメント欄がチカチカするのを修正
