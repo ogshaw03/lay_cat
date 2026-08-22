@@ -14,6 +14,16 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.026) タイムリマップ再生を軽量化：ネイティブ `video.play()` + `playbackRate` に切替
+  - 問題：v.024/v.025 で毎 rAF に `video.currentTime` を書き換える方式にしていたため、H.264 デコーダの seek が詰まって激重だった
+  - 修正：**ハイブリッド再生**
+    - 正の rate → `video.playbackRate = rate` に設定し `video.play()` で滑らかにデコード進行、rAF はドリフト監視のみ（3F 超で `currentTime` 補正）
+    - rate = 0（フリーズ・タメ）→ `video.pause()` してその位置に固定
+    - rate < 0（逆再生）→ 手動 seek（現状レア）
+    - rate は 0.0625〜16 にクランプ（`playbackRate` の一般的な有効域）
+  - `stopPlay` で `video.pause()` を明示（play 中の再生ハング防止）
+  - タイムライン/グラフ描画は rAF ごとに継続（Canvas は軽量、seek のような重処理ではない）
+
 - (dev v2026.08.07.025) タイムリマップ・ビューア：再生バグ修正＋グラフエディタ追加
   - **再生バグ修正**：`loadedmetadata` 前に再生ボタンを押すと `srcTotal=1` で即終端判定 → 動かなかった問題。`videoReady` フラグを追加、未 ready で押下したら `pendingPlay=true` で保留し、ready 到達時に自動再生。`error` イベントもトースト＋ボタン無効化
   - **グラフエディタ追加**（AE 相当のバリューグラフ・リニアのみ）：

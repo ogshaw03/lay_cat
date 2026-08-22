@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.025';
+const APP_VERSION='2026.08.07.026';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12043,14 +12043,44 @@ async function openRetimer(node,v){
     seekSourceFrame(src);
     updInfo();drawTL();drawGraph();
   };
-  /* 再生ループ（等倍再生：1s で FPS 表示フレーム進行） */
+  /* 再生ループ（等倍再生：1s で FPS 表示フレーム進行）
+     パフォーマンス方針：ネイティブ video.play + playbackRate で再生し、rAF は「表示F 追跡＋ドリフト補正」に徹する。
+     - 正の rate → playbackRate = rate、video.play() で滑らかにデコード進行
+     - rate = 0（フリーズ） → video.pause() ＋ その位置に固定
+     - rate < 0（逆再生） → 手動 seek（レア）
+     - ドリフトが 2F 超えたら currentTime を補正
+     グラフとタイムラインは常時描画（軽量）だが、drawGraph は最頻でも rAF ごとで十分速い。 */
   const stopRAF=()=>{if(rafId){cancelAnimationFrame(rafId);rafId=0}};
+  const _clampRate=(r)=>Math.max(0.0625,Math.min(16,r));
+  const _segRateAt=(D)=>{
+    if(!isRemap())return 1;
+    const kf=_rmKeyframes(v);
+    for(let i=0;i<kf.length-1;i++){const a=kf[i],b=kf[i+1];if(D>=a.t&&D<=b.t){const dt=b.t-a.t;return dt>0?(b.s-a.s)/dt:0}}
+    return 1;
+  };
   const playTick=(ts)=>{
     if(!playing)return;
     const elapsed=(ts-playStartTs)/1000;
     let f=playStartF+elapsed*FPS;
-    if(f>=totalDisp()-0.001){f=totalDisp()-1;displayF=f;applyFrame();stopPlay();return}
-    displayF=f;applyFrame();
+    const tot=totalDisp();
+    if(f>=tot-0.001){f=tot-1;displayF=f;applyFrame();stopPlay();return}
+    displayF=f;
+    const expectedSrc=isRemap()?_rmDisplayToSource(v,f):f;
+    const rate=_segRateAt(f);
+    if(rate>0){
+      const nr=_clampRate(rate);
+      if(Math.abs(video.playbackRate-nr)>0.01)video.playbackRate=nr;
+      if(video.paused){video.currentTime=expectedSrc/FPS;video.play().catch(()=>{})}
+      /* 大きなドリフトのみ補正（数フレーム超で seek）。少しのズレは無視して滑らかさ優先 */
+      const drift=Math.abs(video.currentTime*FPS-expectedSrc);
+      if(drift>3)video.currentTime=expectedSrc/FPS;
+    }else{
+      /* フリーズ or 逆再生：ネイティブ再生を停止して手動 seek */
+      if(!video.paused){try{video.pause()}catch(_){}}
+      const cur=video.currentTime*FPS;
+      if(Math.abs(cur-expectedSrc)>0.5)video.currentTime=Math.max(0,Math.min(srcTotal-1,expectedSrc))/FPS;
+    }
+    updInfo();drawTL();drawGraph();
     rafId=requestAnimationFrame(playTick);
   };
   const startPlay=()=>{
@@ -12061,7 +12091,7 @@ async function openRetimer(node,v){
     btnPlay.textContent='⏸ 一時停止';
     rafId=requestAnimationFrame(playTick);
   };
-  const stopPlay=()=>{playing=false;pendingPlay=false;stopRAF();btnPlay.textContent='▶ 再生'};
+  const stopPlay=()=>{playing=false;pendingPlay=false;stopRAF();try{video.pause()}catch(_){}btnPlay.textContent='▶ 再生'};
   btnPlay.onclick=()=>{if(playing)stopPlay();else startPlay()};
   btnPrev.onclick=()=>{stopPlay();displayF=Math.max(0,Math.round(displayF)-1);applyFrame()};
   btnNext.onclick=()=>{stopPlay();displayF=Math.min(totalDisp()-1,Math.round(displayF)+1);applyFrame()};
