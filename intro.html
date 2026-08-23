@@ -371,9 +371,10 @@
           アップするたびに版（v1・v2…）が残り、履歴も辿れます。
         </p>
         <ul>
-          <li>アップロードは「＋ 動画」ボタンひとつ</li>
+          <li>アップロードは「＋ 動画」ボタンひとつ（通知の ON/OFF もその場で選べる）</li>
           <li>版ごとにコメント／判定を切替表示</li>
           <li>ステータス・作業／チェック担当をその場で設定</li>
+          <li>右カラムの NOTE パネルに <b>画像貼付け・拡縮・回転・拡大表示</b> つきのメモを残せる（クリップボード直接ペースト可）</li>
         </ul>
       </div>
       <div class="feature-media">
@@ -386,16 +387,97 @@
         <span class="label-sm">Annotation</span>
         <h3>動画のコマに、直接「絵」で指示。</h3>
         <p>
-          動画のフレームに直接ブラシで描き込めます。指示はレイヤーで分けられ、あとから編集・削除も可能。
+          動画のフレームに直接ブラシで描き込めます。指示はレイヤーで分けられ、あとから編集・削除も可能。<b>描いて閉じるだけでその位置に自動保存</b>されるので、送信を忘れて消える心配もありません。
         </p>
         <ul>
           <li>レイヤーで指示を分類（演出／作画／修正）</li>
           <li>ブラシ・消しゴム・トレーシングペーパー・ゴースト</li>
           <li>筆圧検知（ペンタブ対応）</li>
+          <li>描画のみは動画埋め込み、コメント付きはログ化 — 自動で使い分け</li>
         </ul>
       </div>
       <div class="feature-media">
         <img src="slides_assets/pre_review_anno.png" alt="アノテーション・レイヤー">
+      </div>
+    </div>
+
+    <div class="feature-row">
+      <div class="feature-text">
+        <span class="label-sm">Time Remap · NEW</span>
+        <h3>タメツメの指示は、映像で。</h3>
+        <p>
+          「このポーズをあと 2F 長く」「この 3F を詰めて 1F に」を <b>そのまま映像で見せる</b> AE 互換のタイムリマップ機能。任意のフレームにキーフレームを打って、詰めたり伸ばしたりでタイミング調整。修正後の映像を再生ボタンで確認できるので、アニメーターへの指示が言葉ではなく尺で伝わります。
+        </p>
+        <ul>
+          <li>AE 準拠のバリューグラフ（横=表示F・縦=元F）でリニア補間</li>
+          <li>キーフレームをドラッグして t / s を同時編集</li>
+          <li>K でキーフレーム追加、Space で再生、Delete で削除（AE と同じ操作感）</li>
+          <li>タメ（フリーズ）・ツメ（早送り）を色分けで直感表示</li>
+        </ul>
+      </div>
+      <div class="feature-media">
+        <svg viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;border-radius:8px;background:#0b0b0e;border:1px solid #26262e">
+          <defs>
+            <linearGradient id="rtBg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#141416"/>
+              <stop offset="100%" stop-color="#0a0a0d"/>
+            </linearGradient>
+          </defs>
+          <rect width="640" height="360" fill="url(#rtBg)"/>
+          <!-- Header bar -->
+          <rect x="0" y="0" width="640" height="34" fill="#141416"/>
+          <text x="16" y="22" fill="#c8c8d0" font-family="'Space Grotesk',sans-serif" font-size="13" font-weight="700">⧗ タイムリマップ — sh010_lay.mp4</text>
+          <rect x="510" y="8" width="90" height="20" rx="4" fill="#1c1c22" stroke="#26262e"/>
+          <text x="520" y="22" fill="#a0a0b0" font-size="10">リタイム ON</text>
+          <!-- Video stage -->
+          <rect x="20" y="46" width="600" height="140" rx="6" fill="#000" stroke="#26262e"/>
+          <text x="320" y="120" fill="#3a3a42" font-size="12" text-anchor="middle">▶</text>
+          <!-- Timeline strip -->
+          <rect x="20" y="196" width="600" height="26" rx="4" fill="#141416" stroke="#26262e"/>
+          <!-- Segment color bars -->
+          <rect x="30" y="210" width="180" height="10" fill="rgba(224,138,74,.35)"/><!-- タメ -->
+          <rect x="210" y="210" width="240" height="10" fill="rgba(255,255,255,.18)"/><!-- 等倍 -->
+          <rect x="450" y="210" width="160" height="10" fill="rgba(92,199,239,.35)"/><!-- ツメ -->
+          <!-- Keyframe diamonds -->
+          <g fill="#e0b23a" stroke="#000" stroke-width="1">
+            <polygon points="30,207 35,213 30,219 25,213"/>
+            <polygon points="210,207 215,213 210,219 205,213"/>
+            <polygon points="450,207 455,213 450,219 445,213"/>
+            <polygon points="610,207 615,213 610,219 605,213"/>
+          </g>
+          <!-- Playhead -->
+          <line x1="330" y1="196" x2="330" y2="222" stroke="#fff" stroke-width="1.5"/>
+          <!-- Value graph area -->
+          <rect x="20" y="232" width="600" height="112" rx="4" fill="#0b0b0e" stroke="#26262e"/>
+          <text x="26" y="246" fill="#606070" font-size="9" font-family="monospace">グラフ（横=表示F・縦=ソースF・傾き1=等倍）</text>
+          <!-- Grid -->
+          <g stroke="rgba(255,255,255,.06)" stroke-width="1">
+            <line x1="80" y1="256" x2="80" y2="336"/><line x1="160" y1="256" x2="160" y2="336"/>
+            <line x1="240" y1="256" x2="240" y2="336"/><line x1="320" y1="256" x2="320" y2="336"/>
+            <line x1="400" y1="256" x2="400" y2="336"/><line x1="480" y1="256" x2="480" y2="336"/>
+            <line x1="560" y1="256" x2="560" y2="336"/>
+            <line x1="50" y1="280" x2="600" y2="280"/><line x1="50" y1="300" x2="600" y2="300"/>
+            <line x1="50" y1="320" x2="600" y2="320"/>
+          </g>
+          <!-- Identity diagonal (reference) -->
+          <line x1="50" y1="336" x2="600" y2="256" stroke="rgba(255,255,255,.15)" stroke-dasharray="4 4"/>
+          <!-- Keyframe polyline (linear remap) -->
+          <polyline points="50,336 210,300 450,300 600,256" fill="none" stroke="#e0b23a" stroke-width="1.8"/>
+          <!-- Keyframe dots -->
+          <g fill="#e0b23a" stroke="#000" stroke-width="1">
+            <circle cx="50" cy="336" r="5"/>
+            <circle cx="210" cy="300" r="5"/>
+            <circle cx="450" cy="300" r="5"/>
+            <circle cx="600" cy="256" r="5"/>
+          </g>
+          <!-- Playhead vertical + intersection dot -->
+          <line x1="330" y1="256" x2="330" y2="336" stroke="rgba(255,255,255,.4)"/>
+          <line x1="50" y1="300" x2="600" y2="300" stroke="rgba(92,199,239,.4)" stroke-dasharray="3 3"/>
+          <circle cx="330" cy="300" r="4" fill="#5cc7ef"/>
+          <!-- Axis labels -->
+          <text x="30" y="256" fill="rgba(255,255,255,.35)" font-size="8" font-family="monospace">元F</text>
+          <text x="580" y="352" fill="rgba(255,255,255,.35)" font-size="8" font-family="monospace">表示F</text>
+        </svg>
       </div>
     </div>
 
@@ -429,6 +511,8 @@
           <li>Alt+ドラッグで回転／パン／ズーム、W=移動 E=回転 F=フォーカス</li>
           <li>腕・脚に IK：手首／足首を引くと肩・肘・股・膝が自動追従</li>
           <li>腰を動かしても足は接地したまま、姿勢もキープ</li>
+          <li>指ボーン 30 本（親・人差・中・薬・小 × 3 関節 × 左右）で手の表情まで指示可</li>
+          <li>アノテ窓ではフィギュアのようにキャラを回転して見せる（カメラは正面固定）</li>
         </ul>
       </div>
       <div class="feature-media">
