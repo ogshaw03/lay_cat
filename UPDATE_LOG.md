@@ -14,6 +14,17 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.027) ステータス勝手切替バグの対策：`_mergeNode3` の 3-way 判定を厳格化＋ EXR 連番のサイレント対応
+  - **原因1（B1・主因候補）**：v.010 の 3-way マージ判定 `theirsChanged=js(theirs[k])!==js(base[k])` が、theirs にキーそのものが無いだけで「削除意図」と誤認し `m[k]=null` を焼き付けていた。
+    - 旧バージョンや外部ツールで作られた status キー無しのショット JSON を読み込んだり、他クライアントが `delete` した副作用で status キーが消えたショットを受け取ると、local の status が null に上書きされ UI 上「未着手」に転落する事故が起きうる。
+    - `normalizeNodes` は `n.status==null` かつ `lv.review.status!=='pending'` のとき node.status を legacy 値で復元するため、レガシー review.status が残っていると「元のステータスに戻る」現象として顕在化する。
+    - 修正：`_has(theirs,k)=Object.prototype.hasOwnProperty.call(theirs,k)` を追加し、`theirsChanged=_has(theirs,k)&&js(theirs[k])!==js(base[k])`。キーが無い＝言及なし＝維持、と扱う。削除意図は「明示的な null」だけに限定。
+    - assignee/reviewer/name/description/thumbnail/thumbCrop も同ループなので同じ効果で救済される。
+  - **原因2（B3・確定）**：EXR 連番アップロード（`uploadExrSequence`）で `notify` ガードが抜けており、`opts.notify===false` の指定に関わらず必ず先頭ステータスに戻していた。
+    - 修正：通常動画版と同じく `if(opts.notify!==false){...}` でガード。`version.noNotify=true` も焼くように統一。
+  - **副次**：担当・レビュー・サムネイル・名前・説明の「勝手切替／消失」現象も同じ原因なので同時解決見込み。
+  - スカウトエージェント（session: laycat-status-flip）による徹底解析結果に基づく。
+
 ---
 
 ## 反映済み beta v0.1.0（2026-08-07）

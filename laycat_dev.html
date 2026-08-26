@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.026';
+const APP_VERSION='2026.08.07.027';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8289,9 +8289,14 @@ function _mergeNode3(base,ours,theirs){
   if(base){
     const js=x=>JSON.stringify(x);
     const _empty=v=>(v==null||v==='');
+    const _has=(o,k)=>o&&Object.prototype.hasOwnProperty.call(o,k);
     for(const k of ['status','assignee','reviewer','name','description','thumbnail','thumbCrop']){
+      /* v.027 修正：theirs は「そのキーに明示的に言及したか」で変更検知する。
+         キー自体が無い場合は「言及なし＝維持」であり、削除意図（null）とは区別する。
+         これをしないと、旧バージョンや外部ツールで作られた status キー無しのショット JSON を
+         読み込んだだけで local の status が null に上書きされ、UI 上「未着手」に転落する事故が起きる。 */
       const oursChanged=js(ours[k])!==js(base[k]);
-      const theirsChanged=js(theirs[k])!==js(base[k]);
+      const theirsChanged=_has(theirs,k)&&js(theirs[k])!==js(base[k]);
       if(oursChanged){
         m[k]=_empty(ours[k])?null:ours[k];
       }else if(theirsChanged){
@@ -8835,8 +8840,10 @@ async function uploadExrSequence(node,seq,ui,opts){
       review:{status:'pending',notes:[]}
     };
     if(opts.comment&&opts.comment.trim())(node.comments=node.comments||[]).push({id:newId('sc'),author:currentUser(),text:opts.comment.trim(),time:nowIso(),kind:'upload'});
+    if(opts.notify===false)version.noNotify=true;
     node.versions.push(version);if(thumbRef)node.thumbnail=thumbRef;
-    {const sts=projStatuses(node);if(sts&&sts.length)node.status=sts[0].id}
+    /* v.027 修正：通常動画版と同じく notify ガードを追加（サイレント時はステータス自動変更しない） */
+    if(opts.notify!==false){const sts=projStatuses(node);if(sts&&sts.length)node.status=sts[0].id}
     await persist();ui.bi.style.width='100%';ui.pct.textContent='完了 '+total+' / '+total;render();resolveThumbs();
     toast('EXR 連番アップロード完了: '+version.name+'（'+total+' フレーム）');
   }catch(e){ui.prog.classList.add('hidden');toast('EXR 連番アップロード失敗: '+(e&&e.message||''))}
