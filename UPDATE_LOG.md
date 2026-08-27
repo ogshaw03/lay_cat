@@ -14,6 +14,17 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.028) アノテ焼き込み動画書き出し機能（単一版＋REEL 両対応・MP4／音声込み）
+  - **共通関数** `exportAnnotated(clipList, opts)`：Canvas + MediaRecorder API
+  - **単一版**：動画タイルヘッダに「⬇ アノテ込み書出」ボタン追加（比較・REEL 送る・リタイムの隣）
+  - **REEL 全体**：File メニューに「⬇ アノテ込みで書き出し」追加。全クリップを連続録画
+  - **合成対象**：ペン描画・図形・投げ縄・head ガイド・3D マネキン（既存の `paintStrokeList` を再利用）
+  - **音声**：`AudioContext + MediaStreamDestination` で video 音声を録音ストリームへ経路化。REEL は 1 系統の MediaElementSource で video.src 差替に追従
+  - **形式選定**：MP4（`avc1+mp4a` → `avc1` → `mp4`）→ WebM（`vp9+opus` → `vp8+opus` → `webm`）の順に `MediaRecorder.isTypeSupported` で自動選択。Chromium 系ならほぼ MP4 で出力
+  - **UI**：フルスクリーン進捗オーバーレイ（クリップ N/M・パーセント・グラデバー）＋ 中断ボタン＋「実時間録画・タブをフォアグラウンドに」の注意書き
+  - **フレーム精度**：Canvas を FPS で `captureStream(FPS)`、rAF ループで video.currentTime に紐付いたアノテを描画
+  - **制約**：実時間書き出し（5 分の動画は 5 分かかる）／タブ非フォアグラウンドで rAF スロットル → タブ前面推奨
+
 - (dev v2026.08.07.027) ステータス勝手切替バグの対策：`_mergeNode3` の 3-way 判定を厳格化＋ EXR 連番のサイレント対応
   - **原因1（B1・主因候補）**：v.010 の 3-way マージ判定 `theirsChanged=js(theirs[k])!==js(base[k])` が、theirs にキーそのものが無いだけで「削除意図」と誤認し `m[k]=null` を焼き付けていた。
     - 旧バージョンや外部ツールで作られた status キー無しのショット JSON を読み込んだり、他クライアントが `delete` した副作用で status キーが消えたショットを受け取ると、local の status が null に上書きされ UI 上「未着手」に転落する事故が起きうる。
