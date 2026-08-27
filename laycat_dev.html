@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.028';
+const APP_VERSION='2026.08.07.029';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11834,10 +11834,12 @@ async function exportAnnotated(clipList,exportOpts){
   await new Promise((res,rej)=>{video.onloadedmetadata=res;video.onerror=()=>rej(new Error('load failed'));setTimeout(()=>rej(new Error('timeout')),15000)}).catch(e=>{toast('動画の読み込みに失敗しました');throw e});
   const W=video.videoWidth||1280,H=video.videoHeight||720;
   const FPS=(clips[0].v.fps||24);
-  /* Canvas + Stream */
+  /* Canvas + Stream
+     captureStream(60) で高頻度サンプリング（source が 24/30 でもオーバーサンプル）。
+     実表示フレームは下の requestVideoFrameCallback で駆動するので、captureStream は「その時の canvas 内容」を 60Hz で拾う。 */
   const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
   const ctx=canvas.getContext('2d');
-  const canvasStream=canvas.captureStream(FPS);
+  const canvasStream=canvas.captureStream(60);
   /* Audio：AudioContext + MediaStreamDestination で video 音声を録音ストリームへ経路化。
      video の src を差し替えても MediaElementSource は追従するので、REEL でも 1 系統で通せる。 */
   let audioCtx=null,audioSrcNode=null,audioDest=null;
@@ -11851,7 +11853,7 @@ async function exportAnnotated(clipList,exportOpts){
     for(const t of audioDest.stream.getAudioTracks())canvasStream.addTrack(t);
   }catch(e){try{console.warn('audio setup failed',e)}catch(_){}}
   /* Recorder */
-  const recorder=new MediaRecorder(canvasStream,{mimeType,videoBitsPerSecond:8_000_000,audioBitsPerSecond:128_000});
+  const recorder=new MediaRecorder(canvasStream,{mimeType,videoBitsPerSecond:12_000_000,audioBitsPerSecond:128_000});
   const chunks=[];
   recorder.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data)};
   /* 進捗 UI */
@@ -11876,13 +11878,19 @@ async function exportAnnotated(clipList,exportOpts){
   let elapsedBefore=0;/* 過去クリップの合計秒 */
   const totalDur=clips.reduce((a,c)=>a+((c.v.dur||(c.v.duration))||0),0)||null;
   /* 実 duration は video.duration で補正するので totalDur が無くても動く */
-  const draw=()=>{
+  /* mediaTime = 実際にビデオが表示したフレームのタイムスタンプ（rvfc metadata）。
+     currentTime ポーリングよりデコーダ内部と一致するので、アノテとのフレーム同期が正確になる。
+     rvfc 非対応環境（Firefox 古版など）は video.currentTime へフォールバック。 */
+  let _lastMediaTime=0;
+  const draw=(mediaTime)=>{
     if(cancelled)return;
     const clip=clips[curIdx];if(!clip)return;
     try{ctx.drawImage(video,0,0,W,H)}catch(_){}
     const notes=(clip.v.review&&clip.v.review.notes)||[];
     const fps=(clip.v.fps||24);
-    const f=Math.floor(video.currentTime*fps);
+    const t=(mediaTime!=null)?mediaTime:(video.currentTime||0);
+    _lastMediaTime=t;
+    const f=Math.round(t*fps);
     for(const n of notes){
       if(!n||!n.drawing||!n.drawing.length||n.frame==null)continue;
       const dur=parseInt(n.dur)||1;
@@ -11893,16 +11901,30 @@ async function exportAnnotated(clipList,exportOpts){
     /* 進捗表示 */
     const curDur=video.duration||1;
     let pct=0;
-    if(clips.length===1){pct=curDur?(video.currentTime/curDur):0}
+    if(clips.length===1){pct=curDur?(t/curDur):0}
     else{
-      /* 概算：現在クリップの経過を全体クリップ数で按分 */
-      pct=(curIdx+(curDur?video.currentTime/curDur:0))/clips.length;
+      pct=(curIdx+(curDur?t/curDur:0))/clips.length;
     }
     pct=Math.max(0,Math.min(1,pct));
     bi.style.width=(pct*100).toFixed(1)+'%';
     status.textContent='書き出し中 '+(curIdx+1)+' / '+clips.length+'  ('+Math.round(pct*100)+'%)';
   };
-  const tick=()=>{if(cancelled)return;draw();rafId=requestAnimationFrame(tick)};
+  /* rvfc（requestVideoFrameCallback）ドライブ：ビデオが実際に新しいフレームを表示した瞬間に発火。
+     デコーダーとの完全同期＝アノテのタイミングがフレーム精度で一致。
+     rvfc 内で ctx.drawImage → captureStream(60Hz) が拾う。 */
+  const useRvfc=typeof video.requestVideoFrameCallback==='function';
+  const scheduleRvfc=()=>{
+    if(cancelled)return;
+    try{
+      video.requestVideoFrameCallback((now,meta)=>{
+        if(cancelled)return;
+        draw(meta&&meta.mediaTime!=null?meta.mediaTime:null);
+        scheduleRvfc();
+      });
+    }catch(_){/* rvfc が例外 → rAF フォールバックへ */rafId=requestAnimationFrame(fallbackTick)}
+  };
+  const fallbackTick=()=>{if(cancelled)return;draw(null);rafId=requestAnimationFrame(fallbackTick)};
+  const tick=()=>{if(useRvfc)scheduleRvfc();else fallbackTick()};
   const nextClip=async()=>{
     if(cancelled)return;
     curIdx++;

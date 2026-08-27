@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.029) 書き出しのカクつき／アノテ同期ズレを改善
+  - **アノテ同期の精度向上**：`video.currentTime` の polling から **`requestVideoFrameCallback`（rvfc）** に切替。rvfc は「実際に表示された動画フレーム」で発火し `metadata.mediaTime` を返すため、デコーダ内部と完全一致 → アノテのタイミングがフレーム精度で合う（Firefox など非対応時は rAF フォールバック）
+  - **カクつき軽減**：`canvas.captureStream(FPS)` → **`captureStream(60)`** に。ソースが 24/30fps でも 60Hz でオーバーサンプル → コマ落ち感が減少
+  - **ビットレート増**：`videoBitsPerSecond` を 8Mbps → **12Mbps** に（動画の細かい動きの潰れを軽減）
+  - **f 計算**：`Math.floor` → `Math.round`（半端フレームでのアノテ切替を自然に）
+
 - (dev v2026.08.07.028) アノテ焼き込み動画書き出し機能（単一版＋REEL 両対応・MP4／音声込み）
   - **共通関数** `exportAnnotated(clipList, opts)`：Canvas + MediaRecorder API
   - **単一版**：動画タイルヘッダに「⬇ アノテ込み書出」ボタン追加（比較・REEL 送る・リタイムの隣）
