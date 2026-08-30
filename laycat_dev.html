@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.036';
+const APP_VERSION='2026.08.07.037';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6958,7 +6958,7 @@ function logItem(node,v){
     const exrGridBtn=el('button','btn btn-ghost btn-sm','🎨 全レイヤー');exrGridBtn.title='EXR に含まれる全レイヤーをタイル一覧で表示';
     exrGridBtn.onclick=e=>{e.stopPropagation();openExrLayerGrid(node,v)};head.appendChild(exrGridBtn);
   }
-  if(v.type==='video'){const cmp=el('button','btn btn-ghost btn-sm','⇄ 比較');cmp.title='別の版・ショットと横並びで比較再生';cmp.onclick=()=>openComparePicker(node,v);head.appendChild(cmp);const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);head.appendChild(rb);const rt=el('button','btn btn-ghost btn-sm','⧗ リタイム');rt.title='AE 互換タイムリマップ・ビューアを開く（タメツメ指示用）';rt.onclick=()=>openRetimer(node,v);head.appendChild(rt);const ex=el('button','btn btn-ghost btn-sm','⬇ アノテ込み書出');ex.title='アノテーションを焼き込んだ動画を書き出す（MP4／音声込み・実時間録画）';ex.onclick=()=>exportAnnotatedVersion(node,v);head.appendChild(ex)}
+  if(v.type==='video'){const cmp=el('button','btn btn-ghost btn-sm','⇄ 比較');cmp.title='別の版・ショットと横並びで比較再生';cmp.onclick=()=>openComparePicker(node,v);head.appendChild(cmp);const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);head.appendChild(rb);const rt=el('button','btn btn-ghost btn-sm',(v.timeRemap&&v.timeRemap.enabled)?'⧗ リタイム ●':'⧗ リタイム');rt.title=(v.timeRemap&&v.timeRemap.enabled)?'AE 互換タイムリマップ・ビューアを開く（この版はリタイム ON／ただしビューア内プレビュー専用・REEL・書き出しには反映されません）':'AE 互換タイムリマップ・ビューアを開く（タメツメ指示用・ビューア内プレビュー専用）';rt.onclick=()=>openRetimer(node,v);head.appendChild(rt);const ex=el('button','btn btn-ghost btn-sm','⬇ アノテ込み書出');ex.title='アノテーションを焼き込んだ動画を書き出す（MP4／音声込み・実時間録画。※リタイム ON の版でもリタイムは反映されません）';ex.onclick=()=>exportAnnotatedVersion(node,v);head.appendChild(ex)}
   /* この動画が含まれる保存済みリール */
   for(const r of (DB.reels||[]).filter(r=>r.clips.some(c=>c.vId===v.id)).slice(0,2)){
     const lb=elIco('button','btn btn-ghost btn-sm','reel',' '+r.name);lb.title='保存済みリールを開く';
@@ -9122,7 +9122,7 @@ function openReview(nodeId,versionId,opts){
     stSel.onchange=async()=>{if(stSel.value==='empty')delete node.status;else node.status=stSel.value;await persist();stSelStyle();try{render();resolveThumbs()}catch(_){}};
     clipInfo.appendChild(stSel);
   }
-  if(isVideo){const rt=el('button','btn btn-ghost btn-sm','⧗ リタイム');rt.title='AE 互換タイムリマップ・ビューアを開く（タメツメ指示用）';rt.onclick=()=>openRetimer(node,v);actions.appendChild(rt)}
+  if(isVideo){const rt=el('button','btn btn-ghost btn-sm',(v.timeRemap&&v.timeRemap.enabled)?'⧗ リタイム ●':'⧗ リタイム');rt.title=(v.timeRemap&&v.timeRemap.enabled)?'AE 互換タイムリマップ・ビューアを開く（この版はリタイム ON／ただしビューア内プレビュー専用・REEL・書き出しには反映されません）':'AE 互換タイムリマップ・ビューアを開く（タメツメ指示用・ビューア内プレビュー専用）';rt.onclick=()=>openRetimer(node,v);actions.appendChild(rt)}
   if(isVideo){cmpBtn=el('button','btn btn-ghost btn-sm','⇄ 比較');cmpBtn.title='別の版・ショットと横並びで比較（アノテーション可）';cmpBtn.onclick=()=>{if(cmpOn)exitCompare();else openComparePicker(node,v,(bN,bV)=>enterCompare(bN,bV))};actions.appendChild(cmpBtn)}
   if(isVideo){const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);actions.appendChild(rb)}
   /* EXR：トップバーにレイヤー切替＋露出/ガンマ、Depth 選択時は黒白点/反転を追加。
@@ -12026,9 +12026,13 @@ async function openRetimer(node,v){
   ttl.innerHTML='<span style="opacity:.6;margin-right:6px">⧗</span>タイムリマップ — '+((v.name||'')+'  '+(node&&node.name?('（'+node.name+'）'):''));
   head.appendChild(ttl);
   const remapWrap=el('label');remapWrap.style.cssText='display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-size:12px';
-  const remapCb=el('input');remapCb.type='checkbox';remapCb.checked=!!v.timeRemap.enabled;remapCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
+  const remapCb=el('input');remapCb.type='checkbox';remapCb.checked=!!(v.timeRemap&&v.timeRemap.enabled);remapCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
   remapWrap.appendChild(remapCb);remapWrap.appendChild(document.createTextNode('リタイム ON'));
   head.appendChild(remapWrap);
+  /* v.037 B-1/C-1 明示バッジ：現状はビューア内プレビュー専用。REEL 再生・書き出しには反映されない旨を UI で告知 */
+  const previewNote=el('span');previewNote.style.cssText='font-size:11px;color:#e08a4a;background:rgba(224,138,74,.12);border:1px solid rgba(224,138,74,.4);border-radius:4px;padding:3px 8px;letter-spacing:.2px';
+  previewNote.textContent='※ ビューア内プレビュー専用（REEL・書き出しには反映されません）';
+  head.appendChild(previewNote);
   const closeBtn=el('button','btn btn-ghost btn-sm','✕ 閉じる');
   head.appendChild(closeBtn);
   ov.appendChild(head);
