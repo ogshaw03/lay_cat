@@ -14,6 +14,15 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.036) タイムリマップ副作用の安全網修正（A-1／A-2／F-1・I-1／F-3／H-1・H-3／H-5）
+  - **A-1（重大・データロス防止）**：`_mergeNodeInto` の版マージに `timeRemap` の fill-only マージを追加（laycat_dev.html:8412 付近）。これが無いと、B がリタイム編集して保存 → A が同ショットの別項目を編集して保存する時、A の JSON に timeRemap が無いまま remote へ書き戻されて B のリタイム作業が消失していた。
+  - **A-2（中・無音の書き込み防止）**：`openRetimer` 冒頭の eager 初期化を廃止。`_ensureTR()` を通じてユーザーが実際に操作した瞬間だけ `v.timeRemap` を構築。cleanup の `persist()` も `_dirty` フラグで条件化（覗いただけでは書き込みが走らない）。
+  - **F-1／I-1（中・autoRefresh 割り込み防止）**：`_editingNow()` に `_retimerActive` チェックを追加。リタイム編集中の autoRefresh を停止。
+  - **F-3（中・裏画面誤操作防止）**：retimer の `onKey` が `document.elementFromPoint(中央)` で自身が最前面かを判定。上に書き出しモーダル等が乗っていたら Space / Escape 等を処理しない。
+  - **H-1（中・破綻キー防止）**：`remapCb.onchange` は videoReady 前の init をスキップ。loadedmetadata 側の新設サニタイザが後で補正する。
+  - **H-3（中・範囲外化防止）**：loadedmetadata で既存 `keyframes` を新 srcTotal に合わせて clamp／2 点未満・全キー同 t の破綻状態を検知して再初期化（silent in-memory 修正のみ）。
+  - **H-5（軽微）**：`deleteSelectedKF` に範囲外 index の防御チェックを追加。
+
 - (dev v2026.08.07.035) タイムリマップ：グラフエディタでもタイムスライダと同じスクラブ（ドラッグ追従）に対応
   - キーフレーム外をクリック → 単発 seek だけだったのを mousemove/mouseup にフックしてドラッグ追従に
   - 整数フレームスナップ・再生中は自動停止（タイムライン側と同挙動）

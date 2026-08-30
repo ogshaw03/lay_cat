@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.035';
+const APP_VERSION='2026.08.07.036';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3657,6 +3657,9 @@ function _editingNow(){
   if(state.reviewOpen)return true;
   if($('#fbOverlay')||$('#submitOverlay'))return true;
   const m=$('#modal');if(m&&!m.classList.contains('hidden'))return true;
+  /* v.035 F-1/I-1 修正：タイムリマップ・ビューア中も編集中扱いにする。
+     これが無いと autoRefresh が割り込んで、リマップ編集中に他ユーザーの更新が in-place で流れ込む。 */
+  if(typeof _retimerActive!=='undefined'&&_retimerActive)return true;
   const a=document.activeElement;if(a&&/^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName)&&a.type!=='checkbox'&&a.type!=='button')return true;
   return false;
 }
@@ -8410,6 +8413,13 @@ function _mergeNodeInto(a,b,opts){
       for(const nt of v.review.notes){const k=nk(nt);if(tombNks.has(k))continue;if(!seen.has(k)){av.review.notes.push(nt);seen.add(k)}}
     }
     if(av&&(av.thumb==null||av.thumb==='')&&v.thumb)av.thumb=v.thumb;
+    /* v.035 A-1 修正：既存 version の `timeRemap` を fill-only でマージ。
+       これが無いと、B がリタイム編集して保存 → A が同ショットの別項目を編集して保存する時、
+       A の JSON に timeRemap が無いまま remote へ書き戻されて B のリタイム作業が消失する。
+       fill-only：local(av) に timeRemap が無ければ remote(v) から採用。local に既にあれば触らない。
+       ※ 「local が明示的にリタイムを削除した」意図と区別するには baseline 情報が必要だが、
+          shot 単位ロックで守るなら 3-way マージの粒度としては fill-only で十分安全側に倒す。 */
+    if(av&&v.timeRemap&&!av.timeRemap)av.timeRemap=v.timeRemap;
   }
   /* comment tombstone (_ctomb): 削除されたコメントIDを記録。union で復活しないよう先にマージし、
      DB側(a) にも remote(b) にも tombstone に載るコメントがあれば取り除く。 */
@@ -11991,8 +12001,20 @@ async function exportAnnotatedReelClips(reelClips){
 async function openRetimer(node,v){
   if(!v||v.type!=='video'){toast('リタイムは動画のみ対応です');return}
   closeRetimer();
-  /* データ初期化：初回は必ず 2 キーフレーム（始点・終点で等倍） */
-  v.timeRemap=v.timeRemap||{enabled:false,keyframes:[]};
+  /* v.035 A-2 修正：ここでの eager 初期化を廃止。
+     以前は `v.timeRemap=v.timeRemap||{...}` を無条件に付与していたが、
+     ユーザーが「覗いただけ」で version が dirty 化し cleanup の persist で書き込みが走っていた。
+     さらに A-1 のマージ欠落と組み合わさると、覗いた瞬間に他人の timeRemap を上書きするリスクがあった。
+     以降は _ensureTR() を通じて「ユーザーが実際に何か操作した瞬間だけ」オブジェクトを作る。 */
+  const _ensureTR=()=>{
+    if(!v.timeRemap)v.timeRemap={enabled:false,keyframes:[]};
+    if(!Array.isArray(v.timeRemap.keyframes))v.timeRemap.keyframes=[];
+    return v.timeRemap;
+  };
+  /* cleanup 時の persist を必要な時だけに絞るための dirty フラグ。
+     mutation 経路（remapCb / addKF / delete / reset / commitKfEdit / drag）で立てる。 */
+  let _dirty=false;
+  const _markDirty=()=>{_dirty=true};
   const FPS=v.fps||24;
   const url=await storage.getURL(v.file);if(!url){toast('動画ファイルが読み込めません');return}
   const ov=el('div');
@@ -12089,7 +12111,7 @@ async function openRetimer(node,v){
   let pendingPlay=false;/* 読込前に再生ボタンを押した場合、ready で自動再生 */
 
   const totalDisp=()=>_rmDisplayTotal(v,srcTotal);
-  const isRemap=()=>!!(v.timeRemap.enabled&&v.timeRemap.keyframes.length>=2);
+  const isRemap=()=>!!(v.timeRemap&&v.timeRemap.enabled&&Array.isArray(v.timeRemap.keyframes)&&v.timeRemap.keyframes.length>=2);
   const seekSourceFrame=(sf)=>{try{video.currentTime=Math.max(0,Math.min(srcTotal-1,sf))/FPS}catch(_){}};
   const drawTL=()=>{
     const ctx=tlCanvas.getContext('2d');
@@ -12259,7 +12281,7 @@ async function openRetimer(node,v){
       else nt=Math.max(prevT+0.5,Math.min(nextT-0.5,nt));
       target.t=Math.round(nt);
       target.s=Math.round(ns);
-      drawGraph();drawTL();updInfo();syncKfEdit();
+      _markDirty();drawGraph();drawTL();updInfo();syncKfEdit();
     };
     const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);persist()};
     document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
@@ -12307,7 +12329,7 @@ async function openRetimer(node,v){
       ns=Math.max(0,Math.min(srcTotal-1,Math.round(ns)));
       k.s=ns;kfS.inp.value=ns;
     }
-    drawTL();drawGraph();updInfo();persist();
+    _markDirty();drawTL();drawGraph();updInfo();persist();
   };
   kfT.inp.onchange=()=>commitKfEdit('t');
   kfS.inp.onchange=()=>commitKfEdit('s');
@@ -12372,10 +12394,21 @@ async function openRetimer(node,v){
   btnNext.onclick=()=>{stopPlay();displayF=Math.min(totalDisp()-1,Math.round(displayF)+1);applyFrame()};
   btnKF.onclick=()=>{addKFAtCurrent();};
   btnDel.onclick=()=>{deleteSelectedKF()};
-  btnReset.onclick=()=>{if(!confirm('全キーフレームを削除して初期化しますか？'))return;v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];selectedKF=-1;applyFrame();persist()};
-  remapCb.onchange=()=>{v.timeRemap.enabled=remapCb.checked;/* リタイム ON にした瞬間、キーフレームが無ければ初期化 */if(v.timeRemap.enabled&&v.timeRemap.keyframes.length<2){v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}]}displayF=Math.min(displayF,totalDisp()-1);applyFrame();persist()};
+  btnReset.onclick=()=>{if(!confirm('全キーフレームを削除して初期化しますか？'))return;_ensureTR();const _sm=Math.max(1,srcTotal-1);v.timeRemap.keyframes=[{t:0,s:0},{t:_sm,s:_sm}];selectedKF=-1;_markDirty();applyFrame();persist()};
+  remapCb.onchange=()=>{
+    _ensureTR();
+    v.timeRemap.enabled=remapCb.checked;
+    /* リタイム ON にした瞬間、キーフレームが無ければ初期化。
+       v.035 H-1 修正：videoReady 前は srcTotal=1 なので、init を loadedmetadata まで遅延させる。
+       loadedmetadata 側のサニタイザが 2 点未満の状態を検知して補正する。 */
+    if(v.timeRemap.enabled&&v.timeRemap.keyframes.length<2&&videoReady&&srcTotal>=2){
+      v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];
+    }
+    displayF=Math.min(displayF,totalDisp()-1);
+    _markDirty();applyFrame();persist();
+  };
   const addKFAtCurrent=()=>{
-    if(!v.timeRemap.keyframes)v.timeRemap.keyframes=[];
+    _ensureTR();
     const D=Math.round(displayF);
     const S=Math.round(isRemap()?_rmDisplayToSource(v,D):D);
     /* 同じ t のキーフレームがあれば置換、無ければ追加 */
@@ -12385,13 +12418,14 @@ async function openRetimer(node,v){
     kf.sort((a,b)=>a.t-b.t);
     /* 自動で ON に */
     if(!v.timeRemap.enabled&&kf.length>=2){v.timeRemap.enabled=true;remapCb.checked=true}
-    applyFrame();persist();
+    _markDirty();applyFrame();persist();
   };
   const deleteSelectedKF=()=>{
-    if(selectedKF<0)return;
+    if(!v.timeRemap||!Array.isArray(v.timeRemap.keyframes))return;
     const kf=v.timeRemap.keyframes;
+    if(selectedKF<0||selectedKF>=kf.length)return; /* v.035 H-5 修正：範囲外は no-op */
     if(kf.length<=2){toast('最低 2 つのキーフレームが必要です（リセットで初期化）');return}
-    kf.splice(selectedKF,1);selectedKF=-1;applyFrame();persist();
+    kf.splice(selectedKF,1);selectedKF=-1;_markDirty();applyFrame();persist();
   };
   /* タイムラインクリック：キーフレーム選択 or スクラブ */
   tlCanvas.onmousedown=(e)=>{
@@ -12420,7 +12454,7 @@ async function openRetimer(node,v){
         let nt=nx/fw;
         nt=Math.max(prevT+1,Math.min(nextT-1,Math.round(nt)));
         target.t=nt;
-        drawTL();drawGraph();updInfo();syncKfEdit();
+        _markDirty();drawTL();drawGraph();updInfo();syncKfEdit();
       };
       const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);persist()};
       document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
@@ -12437,6 +12471,13 @@ async function openRetimer(node,v){
   /* キーボード */
   const onKey=(e)=>{
     if(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
+    /* v.035 F-3 修正：retimer の上に別モーダル（書き出しオーバーレイ等）が乗っている場合はキー処理をスキップ。
+       画面中央の elementFromPoint が ov 内でなければ「retimer は最前面ではない」と判断する。 */
+    try{
+      const cx=Math.floor(window.innerWidth/2),cy=Math.floor(window.innerHeight/2);
+      const topEl=document.elementFromPoint(cx,cy);
+      if(topEl&&!ov.contains(topEl))return;
+    }catch(_){}
     if(e.key==='Escape'){e.preventDefault();closeRetimer();return}
     if(e.key===' '||e.code==='Space'){e.preventDefault();if(playing)stopPlay();else startPlay();return}
     if(e.key==='ArrowLeft'){e.preventDefault();stopPlay();displayF=Math.max(0,Math.round(displayF)-1);applyFrame();return}
@@ -12453,7 +12494,26 @@ async function openRetimer(node,v){
   video.addEventListener('loadedmetadata',()=>{
     const dur=(isFinite(video.duration)&&video.duration>0)?video.duration:1;
     srcTotal=Math.max(1,Math.round(dur*FPS));
-    if(v.timeRemap.keyframes.length===0){v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}]}
+    /* v.035 H-1/H-3 修正：既存 v.timeRemap を新しい srcTotal に合わせてサニタイズ。
+       - videoReady 前にトグル ON された場合の [{0,0},{0,0}] のような破綻状態を検知して再初期化
+       - 動画差し替え・fps 変更で範囲外化したキーは clamp
+       ここでは silent in-memory 修正のみ（persist は呼ばない・_markDirty も立てない）。
+       ユーザーが次に何か操作したときに一緒にディスクへ書き戻る。 */
+    if(v.timeRemap&&Array.isArray(v.timeRemap.keyframes)&&v.timeRemap.keyframes.length){
+      const smax=Math.max(0,srcTotal-1);
+      for(const k of v.timeRemap.keyframes){
+        k.t=Math.max(0,Math.round(k.t));
+        k.s=Math.max(0,Math.min(smax,Math.round(k.s)));
+      }
+      /* 破綻検知：2 点未満 or 全キー同 t（＝表示長 0）→ 再初期化 */
+      const kf=v.timeRemap.keyframes;
+      const bad=kf.length<2||kf[0].t===kf[kf.length-1].t;
+      if(bad&&srcTotal>=2){
+        v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];
+      }
+    }
+    /* v.035 A-2 修正：ここでの新規初期化（keyframes=[] を [{0,0},{srcTotal-1,srcTotal-1}] にする）は廃止。
+       「開いただけ」で dirty 化しないよう、ユーザーが実際にリタイム ON にした瞬間に構築する。 */
     videoReady=true;
     displayF=0;applyFrame();
     /* 読込前に押されていた再生ボタンをここで発火 */
@@ -12467,7 +12527,10 @@ async function openRetimer(node,v){
     try{window.removeEventListener('resize',onResize)}catch(_){}
     try{video.pause()}catch(_){}
     try{video.removeAttribute('src');video.load()}catch(_){}
-    try{persist()}catch(_){}
+    /* v.035 A-2 修正：ユーザーが実際にリマップを触った場合だけ persist。
+       各 mutation 経路が個別に persist() を呼んでいるので通常はここは redundant だが、
+       drag-mv 中に何かがコケた最後の書き込み保険として残す。 */
+    if(_dirty)try{persist()}catch(_){}
   };
   _retimerActive={overlay:ov,cleanup};
   updInfo();drawTL();drawGraph();
