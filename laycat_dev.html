@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.034';
+const APP_VERSION='2026.08.07.035';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12226,10 +12226,19 @@ async function openRetimer(node,v){
     const px=e.clientX-r.left,py=e.clientY-r.top;
     const hit=gHitKF(px,py);
     if(hit<0){
-      /* キーフレーム以外をクリック：選択解除＋スクラブ */
+      /* キーフレーム以外をクリック：選択解除＋スクラブ（ドラッグ追従・整数フレームスナップ） */
+      stopPlay();
       selectedKF=-1;
-      const newT=Math.round(gToT(px));
-      displayF=newT;applyFrame();
+      const scrub=(cx)=>{
+        const r2=gCanvas.getBoundingClientRect();
+        const nx=cx-r2.left;
+        const D=Math.round(gToT(nx));
+        displayF=D;applyFrame();
+      };
+      scrub(e.clientX);
+      const mv=(ev)=>scrub(ev.clientX);
+      const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};
+      document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
       return;
     }
     /* ソート後の配列 kf の hit と、実配列 v.timeRemap.keyframes の index を対応させる */
