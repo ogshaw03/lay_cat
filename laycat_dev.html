@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.031';
+const APP_VERSION='2026.08.07.032';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12044,6 +12044,26 @@ async function openRetimer(node,v){
   const gCanvas=el('canvas');gCanvas.style.cssText='width:100%;height:200px;display:block;touch-action:none;background:#0b0b0e;border-radius:4px;cursor:crosshair';
   gWrap.appendChild(gCanvas);
   ov.appendChild(gWrap);
+  /* 選択キーフレームの数値編集行（selectedKF>=0 の時だけ表示）
+     t（表示F）と s（ソースF）を直接入力／±1F ボタンでも微調整。整数フレームで正規化＋隣接クランプ。 */
+  const kfEdit=el('div');kfEdit.style.cssText='display:none;align-items:center;gap:10px;font-size:12px;color:var(--text2);font-family:var(--font-code);font-variant-numeric:tabular-nums;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 10px';
+  const kfLabel=el('span');kfLabel.style.cssText='font-weight:700;color:var(--text)';kfLabel.textContent='選択キー';
+  kfEdit.appendChild(kfLabel);
+  const kfIdxLabel=el('span');kfIdxLabel.style.color='var(--text3)';kfEdit.appendChild(kfIdxLabel);
+  const mkNum=(label)=>{
+    const wrap=el('span');wrap.style.cssText='display:inline-flex;align-items:center;gap:4px';
+    const lb=el('span');lb.textContent=label;lb.style.color='var(--text3)';wrap.appendChild(lb);
+    const inp=el('input');inp.type='number';inp.step='1';
+    inp.style.cssText='width:76px;padding:3px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font:inherit;text-align:right';
+    wrap.appendChild(inp);
+    return{wrap,inp};
+  };
+  const kfT=mkNum('t（表示F）');kfEdit.appendChild(kfT.wrap);
+  const kfS=mkNum('s（元F）');kfEdit.appendChild(kfS.wrap);
+  const kfHint=el('span');kfHint.style.cssText='color:var(--text3);font-size:11px;margin-left:auto';
+  kfHint.textContent='端点は t 固定 / 中間は隣接キーを越えない';
+  kfEdit.appendChild(kfHint);
+  ov.appendChild(kfEdit);
   /* 再生コントロール */
   const ctrls=el('div');ctrls.style.cssText='display:flex;align-items:center;gap:8px';
   const btnPrev=el('button','btn btn-ghost btn-sm','◀ 1F');
@@ -12214,7 +12234,7 @@ async function openRetimer(node,v){
     /* ソート後の配列 kf の hit と、実配列 v.timeRemap.keyframes の index を対応させる */
     const kf=_rmKeyframes(v);const target=kf[hit];
     selectedKF=v.timeRemap.keyframes.indexOf(target);
-    drawGraph();drawTL();
+    drawGraph();drawTL();syncKfEdit();
     /* ドラッグ準備：隣接キーの t で制約 */
     const prevT=hit>0?kf[hit-1].t:0;
     const nextT=hit<kf.length-1?kf[hit+1].t:1e9;
@@ -12229,15 +12249,57 @@ async function openRetimer(node,v){
       else nt=Math.max(prevT+0.5,Math.min(nextT-0.5,nt));
       target.t=Math.round(nt);
       target.s=Math.round(ns);
-      drawGraph();drawTL();updInfo();
+      drawGraph();drawTL();updInfo();syncKfEdit();
     };
     const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);persist()};
     document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
   };
+  /* 選択キーフレーム編集行の同期：selectedKF>=0 の時だけ表示。
+     入力中（focus 中）のフィールドは上書きしない（typing を邪魔しないため）。 */
+  const syncKfEdit=()=>{
+    const kfAll=v.timeRemap&&Array.isArray(v.timeRemap.keyframes)?v.timeRemap.keyframes:[];
+    if(selectedKF<0||selectedKF>=kfAll.length){kfEdit.style.display='none';return}
+    kfEdit.style.display='flex';
+    const k=kfAll[selectedKF];
+    const sortedIdx=_rmKeyframes(v).indexOf(k);
+    kfIdxLabel.textContent='#'+(sortedIdx+1);
+    if(document.activeElement!==kfT.inp)kfT.inp.value=Math.round(k.t);
+    if(document.activeElement!==kfS.inp)kfS.inp.value=Math.round(k.s);
+    /* 端点は t 変更不可 */
+    const kfSorted=_rmKeyframes(v);
+    const isEndpoint=(k===kfSorted[0]||k===kfSorted[kfSorted.length-1]);
+    kfT.inp.disabled=isEndpoint;kfT.inp.style.opacity=isEndpoint?'.5':'';
+  };
+  /* 入力コミット：整数化＋隣接キー間クランプ（t のみ）／s は [0, srcTotal-1] にクランプ */
+  const commitKfEdit=(which)=>{
+    if(selectedKF<0)return;
+    const kfAll=v.timeRemap.keyframes;
+    const k=kfAll[selectedKF];if(!k)return;
+    const kfSorted=_rmKeyframes(v);
+    const sortedIdx=kfSorted.indexOf(k);
+    if(which==='t'){
+      const isEndpoint=(sortedIdx===0||sortedIdx===kfSorted.length-1);
+      if(isEndpoint){kfT.inp.value=Math.round(k.t);return}
+      const prevT=kfSorted[sortedIdx-1].t;
+      const nextT=kfSorted[sortedIdx+1].t;
+      let nt=parseFloat(kfT.inp.value);if(!isFinite(nt))nt=k.t;
+      nt=Math.max(prevT+1,Math.min(nextT-1,Math.round(nt)));
+      k.t=nt;kfT.inp.value=nt;
+    }else{
+      let ns=parseFloat(kfS.inp.value);if(!isFinite(ns))ns=k.s;
+      ns=Math.max(0,Math.min(srcTotal-1,Math.round(ns)));
+      k.s=ns;kfS.inp.value=ns;
+    }
+    drawTL();drawGraph();updInfo();persist();
+  };
+  kfT.inp.onchange=()=>commitKfEdit('t');
+  kfS.inp.onchange=()=>commitKfEdit('s');
+  kfT.inp.onkeydown=(e)=>{if(e.key==='Enter'){e.preventDefault();kfT.inp.blur()}};
+  kfS.inp.onkeydown=(e)=>{if(e.key==='Enter'){e.preventDefault();kfS.inp.blur()}};
   const applyFrame=()=>{
     const src=isRemap()?_rmDisplayToSource(v,displayF):displayF;
     seekSourceFrame(src);
-    updInfo();drawTL();drawGraph();
+    updInfo();drawTL();drawGraph();syncKfEdit();
   };
   /* 再生ループ（等倍再生：1s で FPS 表示フレーム進行）
      パフォーマンス方針：ネイティブ video.play + playbackRate で再生し、rAF は「表示F 追跡＋ドリフト補正」に徹する。
@@ -12328,7 +12390,7 @@ async function openRetimer(node,v){
       /* v.timeRemap.keyframes は sort されているので index 一致でよい */
       const target=kf[hit];
       selectedKF=v.timeRemap.keyframes.indexOf(target);
-      drawTL();drawGraph();
+      drawTL();drawGraph();syncKfEdit();
       /* タイムライン上でも t（タイミング）をドラッグで編集できる。s（ソースF）は変えない。
          端点（先頭・末尾）は t 固定（グラフエディタと同じ AE ライクな挙動）。
          中間キーは隣接キーの t を越えないようクランプ＋整数フレームスナップ。 */
@@ -12341,13 +12403,13 @@ async function openRetimer(node,v){
         let nt=nx/fw;
         nt=Math.max(prevT+1,Math.min(nextT-1,Math.round(nt)));
         target.t=nt;
-        drawTL();drawGraph();updInfo();
+        drawTL();drawGraph();updInfo();syncKfEdit();
       };
       const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);persist()};
       document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
       return;
     }
-    selectedKF=-1;
+    selectedKF=-1;syncKfEdit();
     /* スクラブ */
     const scrub=(cx)=>{const D=Math.max(0,Math.min(tot-1,Math.round((cx-r.left)/fw)));displayF=D;applyFrame()};
     scrub(e.clientX);
