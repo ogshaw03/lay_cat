@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.033';
+const APP_VERSION='2026.08.07.034';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -9112,6 +9112,7 @@ function openReview(nodeId,versionId,opts){
     stSel.onchange=async()=>{if(stSel.value==='empty')delete node.status;else node.status=stSel.value;await persist();stSelStyle();try{render();resolveThumbs()}catch(_){}};
     clipInfo.appendChild(stSel);
   }
+  if(isVideo){const rt=el('button','btn btn-ghost btn-sm','⧗ リタイム');rt.title='AE 互換タイムリマップ・ビューアを開く（タメツメ指示用）';rt.onclick=()=>openRetimer(node,v);actions.appendChild(rt)}
   if(isVideo){cmpBtn=el('button','btn btn-ghost btn-sm','⇄ 比較');cmpBtn.title='別の版・ショットと横並びで比較（アノテーション可）';cmpBtn.onclick=()=>{if(cmpOn)exitCompare();else openComparePicker(node,v,(bN,bV)=>enterCompare(bN,bV))};actions.appendChild(cmpBtn)}
   if(isVideo){const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);actions.appendChild(rb)}
   /* EXR：トップバーにレイヤー切替＋露出/ガンマ、Depth 選択時は黒白点/反転を追加。
