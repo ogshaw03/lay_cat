@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.032';
+const APP_VERSION='2026.08.07.033';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12046,15 +12046,15 @@ async function openRetimer(node,v){
   ov.appendChild(gWrap);
   /* 選択キーフレームの数値編集行（selectedKF>=0 の時だけ表示）
      t（表示F）と s（ソースF）を直接入力／±1F ボタンでも微調整。整数フレームで正規化＋隣接クランプ。 */
-  const kfEdit=el('div');kfEdit.style.cssText='display:none;align-items:center;gap:10px;font-size:12px;color:var(--text2);font-family:var(--font-code);font-variant-numeric:tabular-nums;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 10px';
+  const kfEdit=el('div');kfEdit.style.cssText='display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text2);font-family:var(--font-code);font-variant-numeric:tabular-nums;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 10px';
   const kfLabel=el('span');kfLabel.style.cssText='font-weight:700;color:var(--text)';kfLabel.textContent='選択キー';
   kfEdit.appendChild(kfLabel);
-  const kfIdxLabel=el('span');kfIdxLabel.style.color='var(--text3)';kfEdit.appendChild(kfIdxLabel);
+  const kfIdxLabel=el('span');kfIdxLabel.style.color='var(--text3)';kfIdxLabel.textContent='（未選択）';kfEdit.appendChild(kfIdxLabel);
   const mkNum=(label)=>{
     const wrap=el('span');wrap.style.cssText='display:inline-flex;align-items:center;gap:4px';
     const lb=el('span');lb.textContent=label;lb.style.color='var(--text3)';wrap.appendChild(lb);
-    const inp=el('input');inp.type='number';inp.step='1';
-    inp.style.cssText='width:76px;padding:3px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font:inherit;text-align:right';
+    const inp=el('input');inp.type='number';inp.step='1';inp.disabled=true;
+    inp.style.cssText='width:76px;padding:3px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font:inherit;text-align:right;opacity:.5';
     wrap.appendChild(inp);
     return{wrap,inp};
   };
@@ -12254,21 +12254,28 @@ async function openRetimer(node,v){
     const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);persist()};
     document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
   };
-  /* 選択キーフレーム編集行の同期：selectedKF>=0 の時だけ表示。
+  /* 選択キーフレーム編集行の同期：バーは常時表示。未選択時は入力欄を空＋disabled にする（画面が動かないよう UX 一定）。
      入力中（focus 中）のフィールドは上書きしない（typing を邪魔しないため）。 */
   const syncKfEdit=()=>{
     const kfAll=v.timeRemap&&Array.isArray(v.timeRemap.keyframes)?v.timeRemap.keyframes:[];
-    if(selectedKF<0||selectedKF>=kfAll.length){kfEdit.style.display='none';return}
-    kfEdit.style.display='flex';
+    if(selectedKF<0||selectedKF>=kfAll.length){
+      kfIdxLabel.textContent='（未選択）';
+      if(document.activeElement!==kfT.inp)kfT.inp.value='';
+      if(document.activeElement!==kfS.inp)kfS.inp.value='';
+      kfT.inp.disabled=true;kfT.inp.style.opacity='.5';
+      kfS.inp.disabled=true;kfS.inp.style.opacity='.5';
+      return;
+    }
     const k=kfAll[selectedKF];
-    const sortedIdx=_rmKeyframes(v).indexOf(k);
+    const kfSorted=_rmKeyframes(v);
+    const sortedIdx=kfSorted.indexOf(k);
     kfIdxLabel.textContent='#'+(sortedIdx+1);
     if(document.activeElement!==kfT.inp)kfT.inp.value=Math.round(k.t);
     if(document.activeElement!==kfS.inp)kfS.inp.value=Math.round(k.s);
-    /* 端点は t 変更不可 */
-    const kfSorted=_rmKeyframes(v);
-    const isEndpoint=(k===kfSorted[0]||k===kfSorted[kfSorted.length-1]);
+    /* 端点は t 変更不可（s は編集可） */
+    const isEndpoint=(sortedIdx===0||sortedIdx===kfSorted.length-1);
     kfT.inp.disabled=isEndpoint;kfT.inp.style.opacity=isEndpoint?'.5':'';
+    kfS.inp.disabled=false;kfS.inp.style.opacity='';
   };
   /* 入力コミット：整数化＋隣接キー間クランプ（t のみ）／s は [0, srcTotal-1] にクランプ */
   const commitKfEdit=(which)=>{
