@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.030';
+const APP_VERSION='2026.08.07.031';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12326,8 +12326,25 @@ async function openRetimer(node,v){
     let hit=-1;for(let i=0;i<kf.length;i++){if(Math.abs(kf[i].t*fw-x)<=7){hit=i;break}}
     if(hit>=0){
       /* v.timeRemap.keyframes は sort されているので index 一致でよい */
-      selectedKF=v.timeRemap.keyframes.findIndex(k=>k===kf[hit])||v.timeRemap.keyframes.indexOf(kf[hit]);
+      const target=kf[hit];
+      selectedKF=v.timeRemap.keyframes.indexOf(target);
       drawTL();drawGraph();
+      /* タイムライン上でも t（タイミング）をドラッグで編集できる。s（ソースF）は変えない。
+         端点（先頭・末尾）は t 固定（グラフエディタと同じ AE ライクな挙動）。
+         中間キーは隣接キーの t を越えないようクランプ＋整数フレームスナップ。 */
+      if(hit===0||hit===kf.length-1)return;
+      const prevT=kf[hit-1].t;
+      const nextT=kf[hit+1].t;
+      const mv=(ev)=>{
+        const r2=tlCanvas.getBoundingClientRect();
+        const nx=ev.clientX-r2.left;
+        let nt=nx/fw;
+        nt=Math.max(prevT+1,Math.min(nextT-1,Math.round(nt)));
+        target.t=nt;
+        drawTL();drawGraph();updInfo();
+      };
+      const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);persist()};
+      document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
       return;
     }
     selectedKF=-1;
