@@ -14,6 +14,13 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.038) タイムリマップ M1 修正：`timeRemap` の 3-way マージ強化（残穴を塞ぐ）
+  - **背景**：v.036 で入れた fill-only は「local 未設定＋ remote あり」しか救えず、「local に旧値／remote に新値」ケースでは owner が更新したタメを別ユーザーの save で消してしまう残穴があった（再解析 M1）。
+  - **修正 1**（`_mergeNodeInto`）：refresh 経路（`preferRemote && remoteAuthoritative`）では timeRemap を無条件で remote 採用。fill-only は従来通り残す。
+  - **修正 2**（`_mergeNode3`）：既存の node レベル 3-way スカラーループの後ろに、version 単位の scalar 3-way ループを追加。id で base / ours / theirs を突き合わせ、`timeRemap` について同じ 3-way 判定（ours == base && theirs != base なら theirs 採用）。save 経路でも remote の新しい timeRemap が local の旧値で上書きされない。
+  - **今後の拡張**：`_vScalarKeys` 配列に `exrView` 等を追加すれば同じ保護が版レベルで拡張可能。
+  - ※ Beta（laycat.html）側の同種欠落（M2）は明示指示があるまで反映しない。
+
 - (dev v2026.08.07.037) タイムリマップ B-1／C-1 明示バッジ対応（案 B：本実装せず・現状仕様の告知に留める）
   - **リタイマー本体**：ヘッダに「※ ビューア内プレビュー専用（REEL・書き出しには反映されません）」の告知バッジ（オレンジ色）
   - **版タイルの「⧗ リタイム」ボタン**：`v.timeRemap.enabled=true` の版は `⧗ リタイム ●` 表示＋ツールチップにプレビュー専用を明記

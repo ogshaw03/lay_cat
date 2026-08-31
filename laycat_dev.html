@@ -3043,7 +3043,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.037';
+const APP_VERSION='2026.08.07.038';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8306,6 +8306,40 @@ function _mergeNode3(base,ours,theirs){
         m[k]=_empty(theirs[k])?null:theirs[k];
       }
     }
+    /* v.038 M1 修正：version 単位の scalar 3-way マージ（timeRemap 等の版レベル字段の巻き戻り防止）。
+       上のスカラー 3-way は node（ショット）レベルの `status`/`assignee` 等が対象で、版レベルの `timeRemap` はスコープ外だった。
+       ここでは各 version.id を base / ours / theirs で突き合わせて、`timeRemap` に同じ判定を適用：
+       - ours == base && theirs != base → theirs 採用（B が更新した最新値を A が別項目編集で消さない）
+       - ours != base → ours 採用（local 編集を守る、conflict 時は local 優先）
+       - どちらも変更なし → mv[k] は clone(ours) 起点のまま
+       今後同種の版レベル字段（exrView 等）を守る場合はここのキー配列に追加する。 */
+    if(Array.isArray(m.versions)){
+      const _bvMap=new Map((base.versions||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+      const _ovMap=new Map((ours.versions||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+      const _tvMap=new Map(((theirs&&theirs.versions)||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+      const _vScalarKeys=['timeRemap'];
+      for(const mv of m.versions){
+        if(!mv||!mv.id)continue;
+        const bv=_bvMap.get(mv.id);
+        const ov=_ovMap.get(mv.id);
+        const tv=_tvMap.get(mv.id);
+        if(!bv&&!tv)continue; /* base にも theirs にも無い新規版：clone(ours) のまま */
+        for(const k of _vScalarKeys){
+          const bk=bv?bv[k]:undefined;
+          const ok=ov?ov[k]:undefined;
+          const tk=tv?tv[k]:undefined;
+          const oursChanged=js(ok)!==js(bk);
+          const theirsChanged=_has(tv||{},k)&&js(tk)!==js(bk);
+          if(oursChanged){
+            /* clone(ours) 起点なので mv[k] は既に ours 値。_empty 時のみ削除意図として null に */
+            if(_empty(ok))mv[k]=null;
+          }else if(theirsChanged){
+            if(_empty(tk))delete mv[k];
+            else mv[k]=tk;
+          }
+        }
+      }
+    }
   }
   return m;
 }
@@ -8413,13 +8447,19 @@ function _mergeNodeInto(a,b,opts){
       for(const nt of v.review.notes){const k=nk(nt);if(tombNks.has(k))continue;if(!seen.has(k)){av.review.notes.push(nt);seen.add(k)}}
     }
     if(av&&(av.thumb==null||av.thumb==='')&&v.thumb)av.thumb=v.thumb;
-    /* v.035 A-1 修正：既存 version の `timeRemap` を fill-only でマージ。
-       これが無いと、B がリタイム編集して保存 → A が同ショットの別項目を編集して保存する時、
-       A の JSON に timeRemap が無いまま remote へ書き戻されて B のリタイム作業が消失する。
-       fill-only：local(av) に timeRemap が無ければ remote(v) から採用。local に既にあれば触らない。
-       ※ 「local が明示的にリタイムを削除した」意図と区別するには baseline 情報が必要だが、
-          shot 単位ロックで守るなら 3-way マージの粒度としては fill-only で十分安全側に倒す。 */
-    if(av&&v.timeRemap&&!av.timeRemap)av.timeRemap=v.timeRemap;
+    /* v.038 M1 修正：既存 version の `timeRemap` マージ強化。
+       v.035 の fill-only（local 未設定時のみ theirs 採用）では、local に旧値・remote に新値がある場合を救えなかった。
+       - preferRemote && remoteAuthoritative：refresh 経路で remote が rev で新しいと判っている場合は上書き
+       - fill-only：local に無ければ theirs 採用（従来通り）
+       - save 経路の「両方あるが remote が新しい」は _mergeNode3 側の版レベル 3-way で救う（下記） */
+    if(av){
+      const _auth=!!(opts&&opts.remoteAuthoritative);
+      if(preferB&&_auth&&v.timeRemap){
+        av.timeRemap=v.timeRemap;
+      }else if(v.timeRemap&&!av.timeRemap){
+        av.timeRemap=v.timeRemap;
+      }
+    }
   }
   /* comment tombstone (_ctomb): 削除されたコメントIDを記録。union で復活しないよう先にマージし、
      DB側(a) にも remote(b) にも tombstone に載るコメントがあれば取り除く。 */
