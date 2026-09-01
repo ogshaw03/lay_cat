@@ -2233,6 +2233,20 @@ const storage={
       if(!shot||!Array.isArray(shot.nodes))continue;
       /* Phase 3：ショットファイル毎の _rev（読込時点）を保持。recordRev=false なら再読時に上書きしない。 */
       if(bucket&&shot.shotId)bucket[shot.shotId]=(shot._rev|0);
+      /* v.039 修正：初回ロード時に `_saveCache.shot[pid][sid]` を seed する（未 seed のときのみ）。
+         これが無いと、多重タブ環境で「別タブが submit で status を更新 → 本タブが submit と無関係な別操作で
+         persist」した際に baseline=null で `_saveShotWithLock` の 3-way マージが fill-only 化 → local 優先で
+         相手（別タブ）が書き込んだ status='pending'／新版 timeRemap 等が上書き消失していた。
+         seed 内容は saveProjectSplit が期待する `{v:1,shotId,nodes}` 形式（`_rev` 除く）と一致させる。
+         既にキャッシュがある場合は触らない：ローカル未保存編集の baseline を書き潰さないため。 */
+      if(shot.shotId){
+        try{
+          const _sc=(_saveCache.shot[pid]=_saveCache.shot[pid]||{});
+          if(_sc[shot.shotId]==null){
+            _sc[shot.shotId]=JSON.stringify({v:1,shotId:shot.shotId,nodes:shot.nodes});
+          }
+        }catch(_){}
+      }
       for(const n of shot.nodes){
         if(!n||!n.id)continue;
         const existing=nodeMap.get(n.id);
@@ -3043,7 +3057,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.038';
+const APP_VERSION='2026.08.07.039';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */

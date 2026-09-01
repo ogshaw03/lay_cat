@@ -14,6 +14,18 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.039) 提出直後のステータス巻き戻りバグ修正（多重タブ＋フォルダ運用で発生）
+  - **症状**：タブ A で submit → status が「チェック待ち」に変わる → しばらくして気づくと submit 前の任意ステータスに戻っていることがある
+  - **根本原因**：`_saveCache.shot[pid][sid]` が「自分がこの shot を save したとき」（[laycat_dev.html:2762](laycat_dev.html:2762)）にしか設定されず、**初回ロード時に seed されない**構造だった。
+    - タブ A で submit → remote が新 status で更新
+    - タブ B が **submit と無関係な別操作**（他ショットのコメント追加、子タスク編集等）で persist → saveProjectSplit → 該当ショットの `_saveShotWithLock` 発火
+    - baseline = `_saveCache.shot[pid][sid]` = undefined → `_mergeShotFile3(null, ours, theirs)` → `_mergeNode3` の `if(base){...}` スキップ → スカラー 3-way ループ非発火 → `_mergeNodeInto` の fill-only のみ動作
+    - fill-only は「local に値があれば remote を無視」 → タブ B の古い status='作業中' が勝つ → **remote が '作業中' に巻き戻る**
+    - タブ A の autoRefresh → remote='作業中' を preferRemote+auth で採用 → 画面上でも巻き戻り
+  - **修正**：`storage._hydrateShots`（[laycat_dev.html:2224](laycat_dev.html:2224)）内で、各 shot ファイル読込時に `_saveCache.shot[pid][sid]` を seed（未 seed のときのみ）。seed 内容は saveProjectSplit が期待する `{v:1,shotId,nodes}` 形式（`_rev` 除く）と一致させる。既存キャッシュは触らない（未保存編集の baseline 保護）。
+  - **副次効果**：v.038 で追加した version レベル 3-way（timeRemap 対象）も同じ `if(base){...}` 内なので、この修正で初回ロード後の 3-way マージが確実に動くようになり、M1 の実効性が上がる。
+  - **影響**：v.036〜v.038 の変更とは無関係の構造的問題。以前から潜在していたが多重タブ環境で顕在化。status だけでなく assignee / reviewer / timeRemap 等の全 3-way 対象字段が救われる。
+
 - (dev v2026.08.07.038) タイムリマップ M1 修正：`timeRemap` の 3-way マージ強化（残穴を塞ぐ）
   - **背景**：v.036 で入れた fill-only は「local 未設定＋ remote あり」しか救えず、「local に旧値／remote に新値」ケースでは owner が更新したタメを別ユーザーの save で消してしまう残穴があった（再解析 M1）。
   - **修正 1**（`_mergeNodeInto`）：refresh 経路（`preferRemote && remoteAuthoritative`）では timeRemap を無条件で remote 採用。fill-only は従来通り残す。
