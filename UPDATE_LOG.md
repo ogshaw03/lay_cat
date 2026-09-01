@@ -14,95 +14,7 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-- (dev v2026.08.07.039) 提出直後のステータス巻き戻りバグ修正（多重タブ＋フォルダ運用で発生）
-  - **症状**：タブ A で submit → status が「チェック待ち」に変わる → しばらくして気づくと submit 前の任意ステータスに戻っていることがある
-  - **根本原因**：`_saveCache.shot[pid][sid]` が「自分がこの shot を save したとき」（[laycat_dev.html:2762](laycat_dev.html:2762)）にしか設定されず、**初回ロード時に seed されない**構造だった。
-    - タブ A で submit → remote が新 status で更新
-    - タブ B が **submit と無関係な別操作**（他ショットのコメント追加、子タスク編集等）で persist → saveProjectSplit → 該当ショットの `_saveShotWithLock` 発火
-    - baseline = `_saveCache.shot[pid][sid]` = undefined → `_mergeShotFile3(null, ours, theirs)` → `_mergeNode3` の `if(base){...}` スキップ → スカラー 3-way ループ非発火 → `_mergeNodeInto` の fill-only のみ動作
-    - fill-only は「local に値があれば remote を無視」 → タブ B の古い status='作業中' が勝つ → **remote が '作業中' に巻き戻る**
-    - タブ A の autoRefresh → remote='作業中' を preferRemote+auth で採用 → 画面上でも巻き戻り
-  - **修正**：`storage._hydrateShots`（[laycat_dev.html:2224](laycat_dev.html:2224)）内で、各 shot ファイル読込時に `_saveCache.shot[pid][sid]` を seed（未 seed のときのみ）。seed 内容は saveProjectSplit が期待する `{v:1,shotId,nodes}` 形式（`_rev` 除く）と一致させる。既存キャッシュは触らない（未保存編集の baseline 保護）。
-  - **副次効果**：v.038 で追加した version レベル 3-way（timeRemap 対象）も同じ `if(base){...}` 内なので、この修正で初回ロード後の 3-way マージが確実に動くようになり、M1 の実効性が上がる。
-  - **影響**：v.036〜v.038 の変更とは無関係の構造的問題。以前から潜在していたが多重タブ環境で顕在化。status だけでなく assignee / reviewer / timeRemap 等の全 3-way 対象字段が救われる。
-
-- (dev v2026.08.07.038) タイムリマップ M1 修正：`timeRemap` の 3-way マージ強化（残穴を塞ぐ）
-  - **背景**：v.036 で入れた fill-only は「local 未設定＋ remote あり」しか救えず、「local に旧値／remote に新値」ケースでは owner が更新したタメを別ユーザーの save で消してしまう残穴があった（再解析 M1）。
-  - **修正 1**（`_mergeNodeInto`）：refresh 経路（`preferRemote && remoteAuthoritative`）では timeRemap を無条件で remote 採用。fill-only は従来通り残す。
-  - **修正 2**（`_mergeNode3`）：既存の node レベル 3-way スカラーループの後ろに、version 単位の scalar 3-way ループを追加。id で base / ours / theirs を突き合わせ、`timeRemap` について同じ 3-way 判定（ours == base && theirs != base なら theirs 採用）。save 経路でも remote の新しい timeRemap が local の旧値で上書きされない。
-  - **今後の拡張**：`_vScalarKeys` 配列に `exrView` 等を追加すれば同じ保護が版レベルで拡張可能。
-  - ※ Beta（laycat.html）側の同種欠落（M2）は明示指示があるまで反映しない。
-
-- (dev v2026.08.07.037) タイムリマップ B-1／C-1 明示バッジ対応（案 B：本実装せず・現状仕様の告知に留める）
-  - **リタイマー本体**：ヘッダに「※ ビューア内プレビュー専用（REEL・書き出しには反映されません）」の告知バッジ（オレンジ色）
-  - **版タイルの「⧗ リタイム」ボタン**：`v.timeRemap.enabled=true` の版は `⧗ リタイム ●` 表示＋ツールチップにプレビュー専用を明記
-  - **アノテ窓の「⧗ リタイム」ボタン**：同上
-  - **書き出しボタン**：ツールチップに「※リタイム ON の版でもリタイムは反映されません」を追記
-  - ※ REEL 再生／書き出しへの本実装は将来対応。まずはユーザー混乱を防ぐ告知だけ入れる。
-
-- (dev v2026.08.07.036) タイムリマップ副作用の安全網修正（A-1／A-2／F-1・I-1／F-3／H-1・H-3／H-5）
-  - **A-1（重大・データロス防止）**：`_mergeNodeInto` の版マージに `timeRemap` の fill-only マージを追加（laycat_dev.html:8412 付近）。これが無いと、B がリタイム編集して保存 → A が同ショットの別項目を編集して保存する時、A の JSON に timeRemap が無いまま remote へ書き戻されて B のリタイム作業が消失していた。
-  - **A-2（中・無音の書き込み防止）**：`openRetimer` 冒頭の eager 初期化を廃止。`_ensureTR()` を通じてユーザーが実際に操作した瞬間だけ `v.timeRemap` を構築。cleanup の `persist()` も `_dirty` フラグで条件化（覗いただけでは書き込みが走らない）。
-  - **F-1／I-1（中・autoRefresh 割り込み防止）**：`_editingNow()` に `_retimerActive` チェックを追加。リタイム編集中の autoRefresh を停止。
-  - **F-3（中・裏画面誤操作防止）**：retimer の `onKey` が `document.elementFromPoint(中央)` で自身が最前面かを判定。上に書き出しモーダル等が乗っていたら Space / Escape 等を処理しない。
-  - **H-1（中・破綻キー防止）**：`remapCb.onchange` は videoReady 前の init をスキップ。loadedmetadata 側の新設サニタイザが後で補正する。
-  - **H-3（中・範囲外化防止）**：loadedmetadata で既存 `keyframes` を新 srcTotal に合わせて clamp／2 点未満・全キー同 t の破綻状態を検知して再初期化（silent in-memory 修正のみ）。
-  - **H-5（軽微）**：`deleteSelectedKF` に範囲外 index の防御チェックを追加。
-
-- (dev v2026.08.07.035) タイムリマップ：グラフエディタでもタイムスライダと同じスクラブ（ドラッグ追従）に対応
-  - キーフレーム外をクリック → 単発 seek だけだったのを mousemove/mouseup にフックしてドラッグ追従に
-  - 整数フレームスナップ・再生中は自動停止（タイムライン側と同挙動）
-
-- (dev v2026.08.07.034) アノテ窓トップバーに「⧗ リタイム」ボタン追加（⇄ 比較の左隣）
-  - 動画版のみ表示。クリックで `openRetimer(node,v)` を起動
-  - 動画タイル側の同ボタンはそのまま（重複配置）
-
-- (dev v2026.08.07.033) タイムリマップ：キーフレーム数値入力バーを常時表示に変更（選択時だけ現れると画面がガタつく問題を解消）
-  - 未選択時はラベル「（未選択）」＋入力欄 disabled（空値・opacity .5）でレイアウトは保持
-  - キー選択で自動的に値が入り編集可能に
-
-- (dev v2026.08.07.032) タイムリマップ：選択キーフレームの t / s を数値入力で直接編集可能に
-  - グラフ／タイムライン下に「選択キー #N  t（表示F）□ s（元F）□」の編集行を新設。selectedKF>=0 の時だけ表示
-  - 入力コミットは Enter / blur / change の 3 経路。整数化＋隣接キー間クランプ（t）／[0, srcTotal-1] クランプ（s）
-  - 端点（先頭・末尾）は t 入力を disabled（AE ライク）
-  - ドラッグ／選択変更時にも入力欄が自動同期。ただし focus 中の入力欄は上書きしない（typing を邪魔しない）
-
-- (dev v2026.08.07.031) タイムリマップ：タイムスライダ上でもキーフレームの t（タイミング）をドラッグ編集可能に
-  - グラフエディタと同じ挙動をタイムライン側にも実装。キーフレームダイヤをクリック＆ドラッグで t のみ移動（s は不変）
-  - 端点（先頭・末尾）は t 固定（AE ライク）／中間キーは隣接キー間にクランプ＋整数フレームスナップ
-  - mouseup で `persist()`。単発クリックのみのときは選択だけで従来通り
-
-- (dev v2026.08.07.030) タイムリマップ：タイムスライダをスクラブ時に整数フレームでスナップ＋カーソルを default（矢印）に
-  - **整数フレームスナップ**：スクラブ関数の `D` を `Math.round((cx-r.left)/fw)` に。フレーム間の小数位置に張り付かず、常に F 単位に丸まる（キーボード左右送り・キーフレーム打ちと完全に一致）
-  - **カーソル**：`tlCanvas` の `cursor:pointer` → `cursor:default`（人差し指ではなく矢印）。スクラブは "掴む" 操作ではなくクリック位置指定なので矢印が自然
-
-- (dev v2026.08.07.029) 書き出しのカクつき／アノテ同期ズレを改善
-  - **アノテ同期の精度向上**：`video.currentTime` の polling から **`requestVideoFrameCallback`（rvfc）** に切替。rvfc は「実際に表示された動画フレーム」で発火し `metadata.mediaTime` を返すため、デコーダ内部と完全一致 → アノテのタイミングがフレーム精度で合う（Firefox など非対応時は rAF フォールバック）
-  - **カクつき軽減**：`canvas.captureStream(FPS)` → **`captureStream(60)`** に。ソースが 24/30fps でも 60Hz でオーバーサンプル → コマ落ち感が減少
-  - **ビットレート増**：`videoBitsPerSecond` を 8Mbps → **12Mbps** に（動画の細かい動きの潰れを軽減）
-  - **f 計算**：`Math.floor` → `Math.round`（半端フレームでのアノテ切替を自然に）
-
-- (dev v2026.08.07.028) アノテ焼き込み動画書き出し機能（単一版＋REEL 両対応・MP4／音声込み）
-  - **共通関数** `exportAnnotated(clipList, opts)`：Canvas + MediaRecorder API
-  - **単一版**：動画タイルヘッダに「⬇ アノテ込み書出」ボタン追加（比較・REEL 送る・リタイムの隣）
-  - **REEL 全体**：File メニューに「⬇ アノテ込みで書き出し」追加。全クリップを連続録画
-  - **合成対象**：ペン描画・図形・投げ縄・head ガイド・3D マネキン（既存の `paintStrokeList` を再利用）
-  - **音声**：`AudioContext + MediaStreamDestination` で video 音声を録音ストリームへ経路化。REEL は 1 系統の MediaElementSource で video.src 差替に追従
-  - **形式選定**：MP4（`avc1+mp4a` → `avc1` → `mp4`）→ WebM（`vp9+opus` → `vp8+opus` → `webm`）の順に `MediaRecorder.isTypeSupported` で自動選択。Chromium 系ならほぼ MP4 で出力
-  - **UI**：フルスクリーン進捗オーバーレイ（クリップ N/M・パーセント・グラデバー）＋ 中断ボタン＋「実時間録画・タブをフォアグラウンドに」の注意書き
-  - **フレーム精度**：Canvas を FPS で `captureStream(FPS)`、rAF ループで video.currentTime に紐付いたアノテを描画
-  - **制約**：実時間書き出し（5 分の動画は 5 分かかる）／タブ非フォアグラウンドで rAF スロットル → タブ前面推奨
-
-- (dev v2026.08.07.027) ステータス勝手切替バグの対策：`_mergeNode3` の 3-way 判定を厳格化＋ EXR 連番のサイレント対応
-  - **原因1（B1・主因候補）**：v.010 の 3-way マージ判定 `theirsChanged=js(theirs[k])!==js(base[k])` が、theirs にキーそのものが無いだけで「削除意図」と誤認し `m[k]=null` を焼き付けていた。
-    - 旧バージョンや外部ツールで作られた status キー無しのショット JSON を読み込んだり、他クライアントが `delete` した副作用で status キーが消えたショットを受け取ると、local の status が null に上書きされ UI 上「未着手」に転落する事故が起きうる。
-    - `normalizeNodes` は `n.status==null` かつ `lv.review.status!=='pending'` のとき node.status を legacy 値で復元するため、レガシー review.status が残っていると「元のステータスに戻る」現象として顕在化する。
-    - 修正：`_has(theirs,k)=Object.prototype.hasOwnProperty.call(theirs,k)` を追加し、`theirsChanged=_has(theirs,k)&&js(theirs[k])!==js(base[k])`。キーが無い＝言及なし＝維持、と扱う。削除意図は「明示的な null」だけに限定。
-    - assignee/reviewer/name/description/thumbnail/thumbCrop も同ループなので同じ効果で救済される。
-  - **原因2（B3・確定）**：EXR 連番アップロード（`uploadExrSequence`）で `notify` ガードが抜けており、`opts.notify===false` の指定に関わらず必ず先頭ステータスに戻していた。
-    - 修正：通常動画版と同じく `if(opts.notify!==false){...}` でガード。`version.noNotify=true` も焼くように統一。
-  - **副次**：担当・レビュー・サムネイル・名前・説明の「勝手切替／消失」現象も同じ原因なので同時解決見込み。
-  - スカウトエージェント（session: laycat-status-flip）による徹底解析結果に基づく。
+（現在なし。直近の変更は 2026-09-02 に Beta v0.1.0 へサイレント反映済み → 下部の「反映済み・パッチノート記載なし」参照）
 
 ---
 
@@ -1281,6 +1193,21 @@ GLB モデル差し替え／Maya 準拠カメラ／複数選択マニピュレ�
 ---
 
 ## 反映済み・パッチノート記載なし（Beta 反映済み・PATCH_NOTES.md 未記載）
+
+- **【2026-09-02 Beta v0.1.0 追加サイレント反映】** 以下の 13 件を dev → beta にサイレント反映（バージョン据え置き・パッチノート記載なし・次以降のパッチノートで拾う候補）：
+  - (dev v2026.08.07.039) 提出直後のステータス巻き戻りバグ修正（多重タブ＋フォルダ運用で発生）— `_hydrateShots` で `_saveCache.shot[pid][sid]` を初回 seed し 3-way マージの fill-only 化を防止
+  - (dev v2026.08.07.038) タイムリマップ M1 修正：`timeRemap` の 3-way マージ強化（fill-only 残穴を塞ぐ・`_mergeNodeInto` に preferRemote 上書き＋`_mergeNode3` に版レベル 3-way 追加）
+  - (dev v2026.08.07.037) タイムリマップ B-1／C-1 明示バッジ対応（案 B：本実装せず・現状仕様の告知に留める）— リタイマー本体／版タイル／アノテ窓／書き出しボタンに「※ ビューア内プレビュー専用」を明記
+  - (dev v2026.08.07.036) タイムリマップ副作用の安全網修正（A-1／A-2／F-1・I-1／F-3／H-1・H-3／H-5）
+  - (dev v2026.08.07.035) タイムリマップ：グラフエディタでもタイムスライダと同じスクラブ（ドラッグ追従・整数スナップ・再生自動停止）
+  - (dev v2026.08.07.034) アノテ窓トップバーに「⧗ リタイム」ボタン追加（⇄ 比較の左隣・動画版のみ）
+  - (dev v2026.08.07.033) タイムリマップ：キーフレーム数値入力バーを常時表示に変更（選択時のガタつき解消）
+  - (dev v2026.08.07.032) タイムリマップ：選択キーフレームの t / s を数値入力で直接編集可能に
+  - (dev v2026.08.07.031) タイムリマップ：タイムスライダ上でもキーフレームの t（タイミング）をドラッグ編集可能に
+  - (dev v2026.08.07.030) タイムリマップ：タイムスライダをスクラブ時に整数フレームでスナップ＋カーソルを default（矢印）に
+  - (dev v2026.08.07.029) 書き出しのカクつき／アノテ同期ズレ改善（rvfc / captureStream 60Hz / ビットレート 12Mbps）
+  - (dev v2026.08.07.028) アノテ焼き込み動画書き出し機能を実装（単一版＋REEL 両対応・MP4／音声込み・Canvas + MediaRecorder）
+  - (dev v2026.08.07.027) ステータス勝手切替バグの対策：`_mergeNode3` の 3-way 判定を厳格化＋ EXR 連番のサイレント対応
 
 - **【2026-08-07 Beta v0.1.0 追加反映】** 以下の 43 件は dev → beta にサイレント反映（v0.1.0 パッチノートには載せず、UI 微調整・バグ修正・階層モデル整備・機能追加は次以降のパッチノートで拾う候補）：
   - (dev v2026.08.07.023) ノート・コメント内の URL を自動リンク化（クリックで新規タブで開く）

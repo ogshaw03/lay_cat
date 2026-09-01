@@ -2233,6 +2233,20 @@ const storage={
       if(!shot||!Array.isArray(shot.nodes))continue;
       /* Phase 3：ショットファイル毎の _rev（読込時点）を保持。recordRev=false なら再読時に上書きしない。 */
       if(bucket&&shot.shotId)bucket[shot.shotId]=(shot._rev|0);
+      /* v.039 修正：初回ロード時に `_saveCache.shot[pid][sid]` を seed する（未 seed のときのみ）。
+         これが無いと、多重タブ環境で「別タブが submit で status を更新 → 本タブが submit と無関係な別操作で
+         persist」した際に baseline=null で `_saveShotWithLock` の 3-way マージが fill-only 化 → local 優先で
+         相手（別タブ）が書き込んだ status='pending'／新版 timeRemap 等が上書き消失していた。
+         seed 内容は saveProjectSplit が期待する `{v:1,shotId,nodes}` 形式（`_rev` 除く）と一致させる。
+         既にキャッシュがある場合は触らない：ローカル未保存編集の baseline を書き潰さないため。 */
+      if(shot.shotId){
+        try{
+          const _sc=(_saveCache.shot[pid]=_saveCache.shot[pid]||{});
+          if(_sc[shot.shotId]==null){
+            _sc[shot.shotId]=JSON.stringify({v:1,shotId:shot.shotId,nodes:shot.nodes});
+          }
+        }catch(_){}
+      }
       for(const n of shot.nodes){
         if(!n||!n.id)continue;
         const existing=nodeMap.get(n.id);
@@ -3657,6 +3671,9 @@ function _editingNow(){
   if(state.reviewOpen)return true;
   if($('#fbOverlay')||$('#submitOverlay'))return true;
   const m=$('#modal');if(m&&!m.classList.contains('hidden'))return true;
+  /* v.035 F-1/I-1 修正：タイムリマップ・ビューア中も編集中扱いにする。
+     これが無いと autoRefresh が割り込んで、リマップ編集中に他ユーザーの更新が in-place で流れ込む。 */
+  if(typeof _retimerActive!=='undefined'&&_retimerActive)return true;
   const a=document.activeElement;if(a&&/^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName)&&a.type!=='checkbox'&&a.type!=='button')return true;
   return false;
 }
@@ -6955,7 +6972,7 @@ function logItem(node,v){
     const exrGridBtn=el('button','btn btn-ghost btn-sm','🎨 全レイヤー');exrGridBtn.title='EXR に含まれる全レイヤーをタイル一覧で表示';
     exrGridBtn.onclick=e=>{e.stopPropagation();openExrLayerGrid(node,v)};head.appendChild(exrGridBtn);
   }
-  if(v.type==='video'){const cmp=el('button','btn btn-ghost btn-sm','⇄ 比較');cmp.title='別の版・ショットと横並びで比較再生';cmp.onclick=()=>openComparePicker(node,v);head.appendChild(cmp);const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);head.appendChild(rb);const rt=el('button','btn btn-ghost btn-sm','⧗ リタイム');rt.title='AE 互換タイムリマップ・ビューアを開く（タメツメ指示用）';rt.onclick=()=>openRetimer(node,v);head.appendChild(rt)}
+  if(v.type==='video'){const cmp=el('button','btn btn-ghost btn-sm','⇄ 比較');cmp.title='別の版・ショットと横並びで比較再生';cmp.onclick=()=>openComparePicker(node,v);head.appendChild(cmp);const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);head.appendChild(rb);const rt=el('button','btn btn-ghost btn-sm',(v.timeRemap&&v.timeRemap.enabled)?'⧗ リタイム ●':'⧗ リタイム');rt.title=(v.timeRemap&&v.timeRemap.enabled)?'AE 互換タイムリマップ・ビューアを開く（この版はリタイム ON／ただしビューア内プレビュー専用・REEL・書き出しには反映されません）':'AE 互換タイムリマップ・ビューアを開く（タメツメ指示用・ビューア内プレビュー専用）';rt.onclick=()=>openRetimer(node,v);head.appendChild(rt);const ex=el('button','btn btn-ghost btn-sm','⬇ アノテ込み書出');ex.title='アノテーションを焼き込んだ動画を書き出す（MP4／音声込み・実時間録画。※リタイム ON の版でもリタイムは反映されません）';ex.onclick=()=>exportAnnotatedVersion(node,v);head.appendChild(ex)}
   /* この動画が含まれる保存済みリール */
   for(const r of (DB.reels||[]).filter(r=>r.clips.some(c=>c.vId===v.id)).slice(0,2)){
     const lb=elIco('button','btn btn-ghost btn-sm','reel',' '+r.name);lb.title='保存済みリールを開く';
@@ -8289,13 +8306,52 @@ function _mergeNode3(base,ours,theirs){
   if(base){
     const js=x=>JSON.stringify(x);
     const _empty=v=>(v==null||v==='');
+    const _has=(o,k)=>o&&Object.prototype.hasOwnProperty.call(o,k);
     for(const k of ['status','assignee','reviewer','name','description','thumbnail','thumbCrop']){
+      /* v.027 修正：theirs は「そのキーに明示的に言及したか」で変更検知する。
+         キー自体が無い場合は「言及なし＝維持」であり、削除意図（null）とは区別する。
+         これをしないと、旧バージョンや外部ツールで作られた status キー無しのショット JSON を
+         読み込んだだけで local の status が null に上書きされ、UI 上「未着手」に転落する事故が起きる。 */
       const oursChanged=js(ours[k])!==js(base[k]);
-      const theirsChanged=js(theirs[k])!==js(base[k]);
+      const theirsChanged=_has(theirs,k)&&js(theirs[k])!==js(base[k]);
       if(oursChanged){
         m[k]=_empty(ours[k])?null:ours[k];
       }else if(theirsChanged){
         m[k]=_empty(theirs[k])?null:theirs[k];
+      }
+    }
+    /* v.038 M1 修正：version 単位の scalar 3-way マージ（timeRemap 等の版レベル字段の巻き戻り防止）。
+       上のスカラー 3-way は node（ショット）レベルの `status`/`assignee` 等が対象で、版レベルの `timeRemap` はスコープ外だった。
+       ここでは各 version.id を base / ours / theirs で突き合わせて、`timeRemap` に同じ判定を適用：
+       - ours == base && theirs != base → theirs 採用（B が更新した最新値を A が別項目編集で消さない）
+       - ours != base → ours 採用（local 編集を守る、conflict 時は local 優先）
+       - どちらも変更なし → mv[k] は clone(ours) 起点のまま
+       今後同種の版レベル字段（exrView 等）を守る場合はここのキー配列に追加する。 */
+    if(Array.isArray(m.versions)){
+      const _bvMap=new Map((base.versions||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+      const _ovMap=new Map((ours.versions||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+      const _tvMap=new Map(((theirs&&theirs.versions)||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+      const _vScalarKeys=['timeRemap'];
+      for(const mv of m.versions){
+        if(!mv||!mv.id)continue;
+        const bv=_bvMap.get(mv.id);
+        const ov=_ovMap.get(mv.id);
+        const tv=_tvMap.get(mv.id);
+        if(!bv&&!tv)continue; /* base にも theirs にも無い新規版：clone(ours) のまま */
+        for(const k of _vScalarKeys){
+          const bk=bv?bv[k]:undefined;
+          const ok=ov?ov[k]:undefined;
+          const tk=tv?tv[k]:undefined;
+          const oursChanged=js(ok)!==js(bk);
+          const theirsChanged=_has(tv||{},k)&&js(tk)!==js(bk);
+          if(oursChanged){
+            /* clone(ours) 起点なので mv[k] は既に ours 値。_empty 時のみ削除意図として null に */
+            if(_empty(ok))mv[k]=null;
+          }else if(theirsChanged){
+            if(_empty(tk))delete mv[k];
+            else mv[k]=tk;
+          }
+        }
       }
     }
   }
@@ -8405,6 +8461,19 @@ function _mergeNodeInto(a,b,opts){
       for(const nt of v.review.notes){const k=nk(nt);if(tombNks.has(k))continue;if(!seen.has(k)){av.review.notes.push(nt);seen.add(k)}}
     }
     if(av&&(av.thumb==null||av.thumb==='')&&v.thumb)av.thumb=v.thumb;
+    /* v.038 M1 修正：既存 version の `timeRemap` マージ強化。
+       v.035 の fill-only（local 未設定時のみ theirs 採用）では、local に旧値・remote に新値がある場合を救えなかった。
+       - preferRemote && remoteAuthoritative：refresh 経路で remote が rev で新しいと判っている場合は上書き
+       - fill-only：local に無ければ theirs 採用（従来通り）
+       - save 経路の「両方あるが remote が新しい」は _mergeNode3 側の版レベル 3-way で救う（下記） */
+    if(av){
+      const _auth=!!(opts&&opts.remoteAuthoritative);
+      if(preferB&&_auth&&v.timeRemap){
+        av.timeRemap=v.timeRemap;
+      }else if(v.timeRemap&&!av.timeRemap){
+        av.timeRemap=v.timeRemap;
+      }
+    }
   }
   /* comment tombstone (_ctomb): 削除されたコメントIDを記録。union で復活しないよう先にマージし、
      DB側(a) にも remote(b) にも tombstone に載るコメントがあれば取り除く。 */
@@ -8835,8 +8904,10 @@ async function uploadExrSequence(node,seq,ui,opts){
       review:{status:'pending',notes:[]}
     };
     if(opts.comment&&opts.comment.trim())(node.comments=node.comments||[]).push({id:newId('sc'),author:currentUser(),text:opts.comment.trim(),time:nowIso(),kind:'upload'});
+    if(opts.notify===false)version.noNotify=true;
     node.versions.push(version);if(thumbRef)node.thumbnail=thumbRef;
-    {const sts=projStatuses(node);if(sts&&sts.length)node.status=sts[0].id}
+    /* v.027 修正：通常動画版と同じく notify ガードを追加（サイレント時はステータス自動変更しない） */
+    if(opts.notify!==false){const sts=projStatuses(node);if(sts&&sts.length)node.status=sts[0].id}
     await persist();ui.bi.style.width='100%';ui.pct.textContent='完了 '+total+' / '+total;render();resolveThumbs();
     toast('EXR 連番アップロード完了: '+version.name+'（'+total+' フレーム）');
   }catch(e){ui.prog.classList.add('hidden');toast('EXR 連番アップロード失敗: '+(e&&e.message||''))}
@@ -9105,6 +9176,7 @@ function openReview(nodeId,versionId,opts){
     stSel.onchange=async()=>{if(stSel.value==='empty')delete node.status;else node.status=stSel.value;await persist();stSelStyle();try{render();resolveThumbs()}catch(_){}};
     clipInfo.appendChild(stSel);
   }
+  if(isVideo){const rt=el('button','btn btn-ghost btn-sm',(v.timeRemap&&v.timeRemap.enabled)?'⧗ リタイム ●':'⧗ リタイム');rt.title=(v.timeRemap&&v.timeRemap.enabled)?'AE 互換タイムリマップ・ビューアを開く（この版はリタイム ON／ただしビューア内プレビュー専用・REEL・書き出しには反映されません）':'AE 互換タイムリマップ・ビューアを開く（タメツメ指示用・ビューア内プレビュー専用）';rt.onclick=()=>openRetimer(node,v);actions.appendChild(rt)}
   if(isVideo){cmpBtn=el('button','btn btn-ghost btn-sm','⇄ 比較');cmpBtn.title='別の版・ショットと横並びで比較（アノテーション可）';cmpBtn.onclick=()=>{if(cmpOn)exitCompare();else openComparePicker(node,v,(bN,bV)=>enterCompare(bN,bV))};actions.appendChild(cmpBtn)}
   if(isVideo){const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);actions.appendChild(rb)}
   /* EXR：トップバーにレイヤー切替＋露出/ガンマ、Depth 選択時は黒白点/反転を追加。
@@ -11791,11 +11863,212 @@ function closeRetimer(){
   try{_retimerActive.overlay.remove()}catch(_){}
   _retimerActive=null;
 }
+/* ============================================================
+   アノテ焼き込み書き出し（Canvas + MediaRecorder）
+   単一版・REEL 全体の両方で共通利用。音声・アノテ（描画・図形・head・mannequin）込み。
+   MP4 対応ブラウザなら MP4、それ以外は WebM フォールバック。
+   ============================================================ */
+async function exportAnnotated(clipList,exportOpts){
+  exportOpts=exportOpts||{};
+  if(!clipList||!clipList.length){toast('書き出し対象がありません');return}
+  /* MIME 選定：MP4 優先、ダメなら WebM */
+  const mimeCandidates=[
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=avc1',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm'
+  ];
+  let mimeType=mimeCandidates.find(m=>{try{return MediaRecorder.isTypeSupported(m)}catch(_){return false}});
+  if(!mimeType){toast('このブラウザは MediaRecorder に対応していません');return}
+  const isMp4=mimeType.indexOf('mp4')===0||mimeType.indexOf('/mp4')>=0;
+  const ext=isMp4?'mp4':'webm';
+  /* 各クリップの URL を先に解決 */
+  const clips=[];
+  for(const c of clipList){
+    if(!c||!c.v||c.v.type!=='video')continue;
+    const url=await storage.getURL(c.v.file);
+    if(url)clips.push({node:c.node,v:c.v,url});
+  }
+  if(!clips.length){toast('書き出せる動画がありません');return}
+  /* 最初の動画で解像度・音声トラックを取得 */
+  const video=document.createElement('video');
+  video.playsInline=true;video.muted=false;video.preload='auto';video.crossOrigin='anonymous';
+  video.src=clips[0].url;
+  await new Promise((res,rej)=>{video.onloadedmetadata=res;video.onerror=()=>rej(new Error('load failed'));setTimeout(()=>rej(new Error('timeout')),15000)}).catch(e=>{toast('動画の読み込みに失敗しました');throw e});
+  const W=video.videoWidth||1280,H=video.videoHeight||720;
+  const FPS=(clips[0].v.fps||24);
+  /* Canvas + Stream
+     captureStream(60) で高頻度サンプリング（source が 24/30 でもオーバーサンプル）。
+     実表示フレームは下の requestVideoFrameCallback で駆動するので、captureStream は「その時の canvas 内容」を 60Hz で拾う。 */
+  const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  const canvasStream=canvas.captureStream(60);
+  /* Audio：AudioContext + MediaStreamDestination で video 音声を録音ストリームへ経路化。
+     video の src を差し替えても MediaElementSource は追従するので、REEL でも 1 系統で通せる。 */
+  let audioCtx=null,audioSrcNode=null,audioDest=null;
+  try{
+    audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    audioDest=audioCtx.createMediaStreamDestination();
+    audioSrcNode=audioCtx.createMediaElementSource(video);
+    audioSrcNode.connect(audioDest);
+    /* スピーカーにも流す（ユーザーが進捗確認できるように） */
+    audioSrcNode.connect(audioCtx.destination);
+    for(const t of audioDest.stream.getAudioTracks())canvasStream.addTrack(t);
+  }catch(e){try{console.warn('audio setup failed',e)}catch(_){}}
+  /* Recorder */
+  const recorder=new MediaRecorder(canvasStream,{mimeType,videoBitsPerSecond:12_000_000,audioBitsPerSecond:128_000});
+  const chunks=[];
+  recorder.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data)};
+  /* 進捗 UI */
+  const ov=el('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9600;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;gap:16px;padding:24px';
+  const title=el('div');title.style.cssText='font-size:16px;font-weight:700';
+  title.textContent='⬇ アノテ込み書き出し中 — '+(exportOpts.title||'');
+  const status=el('div');status.style.cssText='font-size:13px;color:#aaa;font-family:var(--font-code)';
+  status.textContent='準備中...';
+  const bar=el('div');bar.style.cssText='width:min(480px,80vw);height:8px;background:#222;border-radius:4px;overflow:hidden';
+  const bi=el('div');bi.style.cssText='width:0;height:100%;background:linear-gradient(90deg,#5cc7ef,#7a5cff);transition:width .2s';
+  bar.appendChild(bi);
+  const hint=el('div');hint.style.cssText='font-size:11px;color:#666';
+  hint.textContent='※ 実時間で録画します。タブをフォアグラウンドに保ってください。形式: '+ext.toUpperCase();
+  const cancelBtn=el('button','btn btn-danger btn-sm','✕ 中断');
+  ov.appendChild(title);ov.appendChild(bar);ov.appendChild(status);ov.appendChild(hint);ov.appendChild(cancelBtn);
+  document.body.appendChild(ov);
+  /* 状態 */
+  let cancelled=false;
+  let curIdx=0;
+  let rafId=0;
+  let elapsedBefore=0;/* 過去クリップの合計秒 */
+  const totalDur=clips.reduce((a,c)=>a+((c.v.dur||(c.v.duration))||0),0)||null;
+  /* 実 duration は video.duration で補正するので totalDur が無くても動く */
+  /* mediaTime = 実際にビデオが表示したフレームのタイムスタンプ（rvfc metadata）。
+     currentTime ポーリングよりデコーダ内部と一致するので、アノテとのフレーム同期が正確になる。
+     rvfc 非対応環境（Firefox 古版など）は video.currentTime へフォールバック。 */
+  let _lastMediaTime=0;
+  const draw=(mediaTime)=>{
+    if(cancelled)return;
+    const clip=clips[curIdx];if(!clip)return;
+    try{ctx.drawImage(video,0,0,W,H)}catch(_){}
+    const notes=(clip.v.review&&clip.v.review.notes)||[];
+    const fps=(clip.v.fps||24);
+    const t=(mediaTime!=null)?mediaTime:(video.currentTime||0);
+    _lastMediaTime=t;
+    const f=Math.round(t*fps);
+    for(const n of notes){
+      if(!n||!n.drawing||!n.drawing.length||n.frame==null)continue;
+      const dur=parseInt(n.dur)||1;
+      if(f>=n.frame&&f<n.frame+dur){
+        try{paintStrokeList(ctx,W,H,n.drawing,1)}catch(_){}
+      }
+    }
+    /* 進捗表示 */
+    const curDur=video.duration||1;
+    let pct=0;
+    if(clips.length===1){pct=curDur?(t/curDur):0}
+    else{
+      pct=(curIdx+(curDur?t/curDur:0))/clips.length;
+    }
+    pct=Math.max(0,Math.min(1,pct));
+    bi.style.width=(pct*100).toFixed(1)+'%';
+    status.textContent='書き出し中 '+(curIdx+1)+' / '+clips.length+'  ('+Math.round(pct*100)+'%)';
+  };
+  /* rvfc（requestVideoFrameCallback）ドライブ：ビデオが実際に新しいフレームを表示した瞬間に発火。
+     デコーダーとの完全同期＝アノテのタイミングがフレーム精度で一致。
+     rvfc 内で ctx.drawImage → captureStream(60Hz) が拾う。 */
+  const useRvfc=typeof video.requestVideoFrameCallback==='function';
+  const scheduleRvfc=()=>{
+    if(cancelled)return;
+    try{
+      video.requestVideoFrameCallback((now,meta)=>{
+        if(cancelled)return;
+        draw(meta&&meta.mediaTime!=null?meta.mediaTime:null);
+        scheduleRvfc();
+      });
+    }catch(_){/* rvfc が例外 → rAF フォールバックへ */rafId=requestAnimationFrame(fallbackTick)}
+  };
+  const fallbackTick=()=>{if(cancelled)return;draw(null);rafId=requestAnimationFrame(fallbackTick)};
+  const tick=()=>{if(useRvfc)scheduleRvfc();else fallbackTick()};
+  const nextClip=async()=>{
+    if(cancelled)return;
+    curIdx++;
+    if(curIdx>=clips.length){try{recorder.stop()}catch(_){}return}
+    const next=clips[curIdx];
+    try{video.pause()}catch(_){}
+    video.src=next.url;
+    await new Promise((res)=>{video.onloadeddata=res;video.onerror=res});
+    try{video.currentTime=0}catch(_){}
+    try{await video.play()}catch(_){}
+  };
+  video.onended=()=>{if(!cancelled)nextClip()};
+  cancelBtn.onclick=()=>{
+    cancelled=true;
+    try{recorder.stop()}catch(_){}
+    try{video.pause()}catch(_){}
+    if(rafId)cancelAnimationFrame(rafId);
+    try{if(audioCtx)audioCtx.close()}catch(_){}
+    try{ov.remove()}catch(_){}
+    toast('書き出しを中断しました');
+  };
+  recorder.onstop=()=>{
+    if(cancelled)return;
+    if(rafId)cancelAnimationFrame(rafId);
+    try{if(audioCtx)audioCtx.close()}catch(_){}
+    try{video.pause()}catch(_){}
+    if(!chunks.length){try{ov.remove()}catch(_){}toast('書き出しデータがありません（録画失敗）');return}
+    const blob=new Blob(chunks,{type:mimeType});
+    const dlUrl=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=dlUrl;
+    a.download=(exportOpts.filename||'annotated')+'_'+Date.now()+'.'+ext;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(dlUrl),8000);
+    try{ov.remove()}catch(_){}
+    toast('書き出し完了: '+a.download+'（'+(Math.round(blob.size/1024/1024*10)/10)+' MB）');
+  };
+  recorder.onerror=(e)=>{
+    try{console.warn('MediaRecorder error',e)}catch(_){}
+    toast('録画エラーが発生しました');
+    cancelled=true;try{ov.remove()}catch(_){}
+  };
+  /* 開始 */
+  try{recorder.start(1000);}catch(e){toast('録画開始に失敗しました：'+(e&&e.message||''));try{ov.remove()}catch(_){}return}
+  try{video.currentTime=0}catch(_){}
+  try{await video.play()}catch(e){toast('再生開始に失敗しました：'+(e&&e.message||''));cancelled=true;try{ov.remove()}catch(_){}return}
+  tick();
+}
+async function exportAnnotatedVersion(node,v){
+  return exportAnnotated([{node,v}],{title:(v&&v.name)||'',filename:((v&&v.name)||'video').replace(/[^\w\-.]/g,'_')+'_annotated'});
+}
+async function exportAnnotatedReelClips(reelClips){
+  const list=[];
+  for(const c of (reelClips||[])){
+    const n=c&&c.nodeId?getNode(c.nodeId):null;if(!n)continue;
+    const v=n.versions&&n.versions.find(x=>x.id===c.vId);if(!v||v.type!=='video')continue;
+    list.push({node:n,v});
+  }
+  if(!list.length){toast('REEL に書き出せる動画クリップがありません');return}
+  return exportAnnotated(list,{title:'REEL 全体（'+list.length+' クリップ）',filename:'reel_annotated'});
+}
+
 async function openRetimer(node,v){
   if(!v||v.type!=='video'){toast('リタイムは動画のみ対応です');return}
   closeRetimer();
-  /* データ初期化：初回は必ず 2 キーフレーム（始点・終点で等倍） */
-  v.timeRemap=v.timeRemap||{enabled:false,keyframes:[]};
+  /* v.035 A-2 修正：ここでの eager 初期化を廃止。
+     以前は `v.timeRemap=v.timeRemap||{...}` を無条件に付与していたが、
+     ユーザーが「覗いただけ」で version が dirty 化し cleanup の persist で書き込みが走っていた。
+     さらに A-1 のマージ欠落と組み合わさると、覗いた瞬間に他人の timeRemap を上書きするリスクがあった。
+     以降は _ensureTR() を通じて「ユーザーが実際に何か操作した瞬間だけ」オブジェクトを作る。 */
+  const _ensureTR=()=>{
+    if(!v.timeRemap)v.timeRemap={enabled:false,keyframes:[]};
+    if(!Array.isArray(v.timeRemap.keyframes))v.timeRemap.keyframes=[];
+    return v.timeRemap;
+  };
+  /* cleanup 時の persist を必要な時だけに絞るための dirty フラグ。
+     mutation 経路（remapCb / addKF / delete / reset / commitKfEdit / drag）で立てる。 */
+  let _dirty=false;
+  const _markDirty=()=>{_dirty=true};
   const FPS=v.fps||24;
   const url=await storage.getURL(v.file);if(!url){toast('動画ファイルが読み込めません');return}
   const ov=el('div');
@@ -11807,9 +12080,13 @@ async function openRetimer(node,v){
   ttl.innerHTML='<span style="opacity:.6;margin-right:6px">⧗</span>タイムリマップ — '+((v.name||'')+'  '+(node&&node.name?('（'+node.name+'）'):''));
   head.appendChild(ttl);
   const remapWrap=el('label');remapWrap.style.cssText='display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-size:12px';
-  const remapCb=el('input');remapCb.type='checkbox';remapCb.checked=!!v.timeRemap.enabled;remapCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
+  const remapCb=el('input');remapCb.type='checkbox';remapCb.checked=!!(v.timeRemap&&v.timeRemap.enabled);remapCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
   remapWrap.appendChild(remapCb);remapWrap.appendChild(document.createTextNode('リタイム ON'));
   head.appendChild(remapWrap);
+  /* v.037 B-1/C-1 明示バッジ：現状はビューア内プレビュー専用。REEL 再生・書き出しには反映されない旨を UI で告知 */
+  const previewNote=el('span');previewNote.style.cssText='font-size:11px;color:#e08a4a;background:rgba(224,138,74,.12);border:1px solid rgba(224,138,74,.4);border-radius:4px;padding:3px 8px;letter-spacing:.2px';
+  previewNote.textContent='※ ビューア内プレビュー専用（REEL・書き出しには反映されません）';
+  head.appendChild(previewNote);
   const closeBtn=el('button','btn btn-ghost btn-sm','✕ 閉じる');
   head.appendChild(closeBtn);
   ov.appendChild(head);
@@ -11832,7 +12109,7 @@ async function openRetimer(node,v){
   ov.appendChild(info);
   /* タイムライン（上：スクラブ、下：キーフレーム） */
   const tlWrap=el('div');tlWrap.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;gap:2px';
-  const tlCanvas=el('canvas');tlCanvas.style.cssText='width:100%;height:44px;display:block;cursor:pointer;touch-action:none';
+  const tlCanvas=el('canvas');tlCanvas.style.cssText='width:100%;height:44px;display:block;cursor:default;touch-action:none';
   tlWrap.appendChild(tlCanvas);
   ov.appendChild(tlWrap);
   /* グラフエディタ（AE 相当のバリューグラフ・リニアのみ）
@@ -11848,6 +12125,26 @@ async function openRetimer(node,v){
   const gCanvas=el('canvas');gCanvas.style.cssText='width:100%;height:200px;display:block;touch-action:none;background:#0b0b0e;border-radius:4px;cursor:crosshair';
   gWrap.appendChild(gCanvas);
   ov.appendChild(gWrap);
+  /* 選択キーフレームの数値編集行（selectedKF>=0 の時だけ表示）
+     t（表示F）と s（ソースF）を直接入力／±1F ボタンでも微調整。整数フレームで正規化＋隣接クランプ。 */
+  const kfEdit=el('div');kfEdit.style.cssText='display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text2);font-family:var(--font-code);font-variant-numeric:tabular-nums;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 10px';
+  const kfLabel=el('span');kfLabel.style.cssText='font-weight:700;color:var(--text)';kfLabel.textContent='選択キー';
+  kfEdit.appendChild(kfLabel);
+  const kfIdxLabel=el('span');kfIdxLabel.style.color='var(--text3)';kfIdxLabel.textContent='（未選択）';kfEdit.appendChild(kfIdxLabel);
+  const mkNum=(label)=>{
+    const wrap=el('span');wrap.style.cssText='display:inline-flex;align-items:center;gap:4px';
+    const lb=el('span');lb.textContent=label;lb.style.color='var(--text3)';wrap.appendChild(lb);
+    const inp=el('input');inp.type='number';inp.step='1';inp.disabled=true;
+    inp.style.cssText='width:76px;padding:3px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);font:inherit;text-align:right;opacity:.5';
+    wrap.appendChild(inp);
+    return{wrap,inp};
+  };
+  const kfT=mkNum('t（表示F）');kfEdit.appendChild(kfT.wrap);
+  const kfS=mkNum('s（元F）');kfEdit.appendChild(kfS.wrap);
+  const kfHint=el('span');kfHint.style.cssText='color:var(--text3);font-size:11px;margin-left:auto';
+  kfHint.textContent='端点は t 固定 / 中間は隣接キーを越えない';
+  kfEdit.appendChild(kfHint);
+  ov.appendChild(kfEdit);
   /* 再生コントロール */
   const ctrls=el('div');ctrls.style.cssText='display:flex;align-items:center;gap:8px';
   const btnPrev=el('button','btn btn-ghost btn-sm','◀ 1F');
@@ -11872,7 +12169,7 @@ async function openRetimer(node,v){
   let pendingPlay=false;/* 読込前に再生ボタンを押した場合、ready で自動再生 */
 
   const totalDisp=()=>_rmDisplayTotal(v,srcTotal);
-  const isRemap=()=>!!(v.timeRemap.enabled&&v.timeRemap.keyframes.length>=2);
+  const isRemap=()=>!!(v.timeRemap&&v.timeRemap.enabled&&Array.isArray(v.timeRemap.keyframes)&&v.timeRemap.keyframes.length>=2);
   const seekSourceFrame=(sf)=>{try{video.currentTime=Math.max(0,Math.min(srcTotal-1,sf))/FPS}catch(_){}};
   const drawTL=()=>{
     const ctx=tlCanvas.getContext('2d');
@@ -12009,16 +12306,25 @@ async function openRetimer(node,v){
     const px=e.clientX-r.left,py=e.clientY-r.top;
     const hit=gHitKF(px,py);
     if(hit<0){
-      /* キーフレーム以外をクリック：選択解除＋スクラブ */
+      /* キーフレーム以外をクリック：選択解除＋スクラブ（ドラッグ追従・整数フレームスナップ） */
+      stopPlay();
       selectedKF=-1;
-      const newT=Math.round(gToT(px));
-      displayF=newT;applyFrame();
+      const scrub=(cx)=>{
+        const r2=gCanvas.getBoundingClientRect();
+        const nx=cx-r2.left;
+        const D=Math.round(gToT(nx));
+        displayF=D;applyFrame();
+      };
+      scrub(e.clientX);
+      const mv=(ev)=>scrub(ev.clientX);
+      const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};
+      document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
       return;
     }
     /* ソート後の配列 kf の hit と、実配列 v.timeRemap.keyframes の index を対応させる */
     const kf=_rmKeyframes(v);const target=kf[hit];
     selectedKF=v.timeRemap.keyframes.indexOf(target);
-    drawGraph();drawTL();
+    drawGraph();drawTL();syncKfEdit();
     /* ドラッグ準備：隣接キーの t で制約 */
     const prevT=hit>0?kf[hit-1].t:0;
     const nextT=hit<kf.length-1?kf[hit+1].t:1e9;
@@ -12033,15 +12339,64 @@ async function openRetimer(node,v){
       else nt=Math.max(prevT+0.5,Math.min(nextT-0.5,nt));
       target.t=Math.round(nt);
       target.s=Math.round(ns);
-      drawGraph();drawTL();updInfo();
+      _markDirty();drawGraph();drawTL();updInfo();syncKfEdit();
     };
     const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);persist()};
     document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
   };
+  /* 選択キーフレーム編集行の同期：バーは常時表示。未選択時は入力欄を空＋disabled にする（画面が動かないよう UX 一定）。
+     入力中（focus 中）のフィールドは上書きしない（typing を邪魔しないため）。 */
+  const syncKfEdit=()=>{
+    const kfAll=v.timeRemap&&Array.isArray(v.timeRemap.keyframes)?v.timeRemap.keyframes:[];
+    if(selectedKF<0||selectedKF>=kfAll.length){
+      kfIdxLabel.textContent='（未選択）';
+      if(document.activeElement!==kfT.inp)kfT.inp.value='';
+      if(document.activeElement!==kfS.inp)kfS.inp.value='';
+      kfT.inp.disabled=true;kfT.inp.style.opacity='.5';
+      kfS.inp.disabled=true;kfS.inp.style.opacity='.5';
+      return;
+    }
+    const k=kfAll[selectedKF];
+    const kfSorted=_rmKeyframes(v);
+    const sortedIdx=kfSorted.indexOf(k);
+    kfIdxLabel.textContent='#'+(sortedIdx+1);
+    if(document.activeElement!==kfT.inp)kfT.inp.value=Math.round(k.t);
+    if(document.activeElement!==kfS.inp)kfS.inp.value=Math.round(k.s);
+    /* 端点は t 変更不可（s は編集可） */
+    const isEndpoint=(sortedIdx===0||sortedIdx===kfSorted.length-1);
+    kfT.inp.disabled=isEndpoint;kfT.inp.style.opacity=isEndpoint?'.5':'';
+    kfS.inp.disabled=false;kfS.inp.style.opacity='';
+  };
+  /* 入力コミット：整数化＋隣接キー間クランプ（t のみ）／s は [0, srcTotal-1] にクランプ */
+  const commitKfEdit=(which)=>{
+    if(selectedKF<0)return;
+    const kfAll=v.timeRemap.keyframes;
+    const k=kfAll[selectedKF];if(!k)return;
+    const kfSorted=_rmKeyframes(v);
+    const sortedIdx=kfSorted.indexOf(k);
+    if(which==='t'){
+      const isEndpoint=(sortedIdx===0||sortedIdx===kfSorted.length-1);
+      if(isEndpoint){kfT.inp.value=Math.round(k.t);return}
+      const prevT=kfSorted[sortedIdx-1].t;
+      const nextT=kfSorted[sortedIdx+1].t;
+      let nt=parseFloat(kfT.inp.value);if(!isFinite(nt))nt=k.t;
+      nt=Math.max(prevT+1,Math.min(nextT-1,Math.round(nt)));
+      k.t=nt;kfT.inp.value=nt;
+    }else{
+      let ns=parseFloat(kfS.inp.value);if(!isFinite(ns))ns=k.s;
+      ns=Math.max(0,Math.min(srcTotal-1,Math.round(ns)));
+      k.s=ns;kfS.inp.value=ns;
+    }
+    _markDirty();drawTL();drawGraph();updInfo();persist();
+  };
+  kfT.inp.onchange=()=>commitKfEdit('t');
+  kfS.inp.onchange=()=>commitKfEdit('s');
+  kfT.inp.onkeydown=(e)=>{if(e.key==='Enter'){e.preventDefault();kfT.inp.blur()}};
+  kfS.inp.onkeydown=(e)=>{if(e.key==='Enter'){e.preventDefault();kfS.inp.blur()}};
   const applyFrame=()=>{
     const src=isRemap()?_rmDisplayToSource(v,displayF):displayF;
     seekSourceFrame(src);
-    updInfo();drawTL();drawGraph();
+    updInfo();drawTL();drawGraph();syncKfEdit();
   };
   /* 再生ループ（等倍再生：1s で FPS 表示フレーム進行）
      パフォーマンス方針：ネイティブ video.play + playbackRate で再生し、rAF は「表示F 追跡＋ドリフト補正」に徹する。
@@ -12097,10 +12452,21 @@ async function openRetimer(node,v){
   btnNext.onclick=()=>{stopPlay();displayF=Math.min(totalDisp()-1,Math.round(displayF)+1);applyFrame()};
   btnKF.onclick=()=>{addKFAtCurrent();};
   btnDel.onclick=()=>{deleteSelectedKF()};
-  btnReset.onclick=()=>{if(!confirm('全キーフレームを削除して初期化しますか？'))return;v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];selectedKF=-1;applyFrame();persist()};
-  remapCb.onchange=()=>{v.timeRemap.enabled=remapCb.checked;/* リタイム ON にした瞬間、キーフレームが無ければ初期化 */if(v.timeRemap.enabled&&v.timeRemap.keyframes.length<2){v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}]}displayF=Math.min(displayF,totalDisp()-1);applyFrame();persist()};
+  btnReset.onclick=()=>{if(!confirm('全キーフレームを削除して初期化しますか？'))return;_ensureTR();const _sm=Math.max(1,srcTotal-1);v.timeRemap.keyframes=[{t:0,s:0},{t:_sm,s:_sm}];selectedKF=-1;_markDirty();applyFrame();persist()};
+  remapCb.onchange=()=>{
+    _ensureTR();
+    v.timeRemap.enabled=remapCb.checked;
+    /* リタイム ON にした瞬間、キーフレームが無ければ初期化。
+       v.035 H-1 修正：videoReady 前は srcTotal=1 なので、init を loadedmetadata まで遅延させる。
+       loadedmetadata 側のサニタイザが 2 点未満の状態を検知して補正する。 */
+    if(v.timeRemap.enabled&&v.timeRemap.keyframes.length<2&&videoReady&&srcTotal>=2){
+      v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];
+    }
+    displayF=Math.min(displayF,totalDisp()-1);
+    _markDirty();applyFrame();persist();
+  };
   const addKFAtCurrent=()=>{
-    if(!v.timeRemap.keyframes)v.timeRemap.keyframes=[];
+    _ensureTR();
     const D=Math.round(displayF);
     const S=Math.round(isRemap()?_rmDisplayToSource(v,D):D);
     /* 同じ t のキーフレームがあれば置換、無ければ追加 */
@@ -12110,13 +12476,14 @@ async function openRetimer(node,v){
     kf.sort((a,b)=>a.t-b.t);
     /* 自動で ON に */
     if(!v.timeRemap.enabled&&kf.length>=2){v.timeRemap.enabled=true;remapCb.checked=true}
-    applyFrame();persist();
+    _markDirty();applyFrame();persist();
   };
   const deleteSelectedKF=()=>{
-    if(selectedKF<0)return;
+    if(!v.timeRemap||!Array.isArray(v.timeRemap.keyframes))return;
     const kf=v.timeRemap.keyframes;
+    if(selectedKF<0||selectedKF>=kf.length)return; /* v.035 H-5 修正：範囲外は no-op */
     if(kf.length<=2){toast('最低 2 つのキーフレームが必要です（リセットで初期化）');return}
-    kf.splice(selectedKF,1);selectedKF=-1;applyFrame();persist();
+    kf.splice(selectedKF,1);selectedKF=-1;_markDirty();applyFrame();persist();
   };
   /* タイムラインクリック：キーフレーム選択 or スクラブ */
   tlCanvas.onmousedown=(e)=>{
@@ -12130,13 +12497,30 @@ async function openRetimer(node,v){
     let hit=-1;for(let i=0;i<kf.length;i++){if(Math.abs(kf[i].t*fw-x)<=7){hit=i;break}}
     if(hit>=0){
       /* v.timeRemap.keyframes は sort されているので index 一致でよい */
-      selectedKF=v.timeRemap.keyframes.findIndex(k=>k===kf[hit])||v.timeRemap.keyframes.indexOf(kf[hit]);
-      drawTL();drawGraph();
+      const target=kf[hit];
+      selectedKF=v.timeRemap.keyframes.indexOf(target);
+      drawTL();drawGraph();syncKfEdit();
+      /* タイムライン上でも t（タイミング）をドラッグで編集できる。s（ソースF）は変えない。
+         端点（先頭・末尾）は t 固定（グラフエディタと同じ AE ライクな挙動）。
+         中間キーは隣接キーの t を越えないようクランプ＋整数フレームスナップ。 */
+      if(hit===0||hit===kf.length-1)return;
+      const prevT=kf[hit-1].t;
+      const nextT=kf[hit+1].t;
+      const mv=(ev)=>{
+        const r2=tlCanvas.getBoundingClientRect();
+        const nx=ev.clientX-r2.left;
+        let nt=nx/fw;
+        nt=Math.max(prevT+1,Math.min(nextT-1,Math.round(nt)));
+        target.t=nt;
+        _markDirty();drawTL();drawGraph();updInfo();syncKfEdit();
+      };
+      const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);persist()};
+      document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
       return;
     }
-    selectedKF=-1;
+    selectedKF=-1;syncKfEdit();
     /* スクラブ */
-    const scrub=(cx)=>{const D=Math.max(0,Math.min(tot-1,(cx-r.left)/fw));displayF=D;applyFrame()};
+    const scrub=(cx)=>{const D=Math.max(0,Math.min(tot-1,Math.round((cx-r.left)/fw)));displayF=D;applyFrame()};
     scrub(e.clientX);
     const mv=(ev)=>scrub(ev.clientX);
     const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};
@@ -12145,6 +12529,13 @@ async function openRetimer(node,v){
   /* キーボード */
   const onKey=(e)=>{
     if(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;
+    /* v.035 F-3 修正：retimer の上に別モーダル（書き出しオーバーレイ等）が乗っている場合はキー処理をスキップ。
+       画面中央の elementFromPoint が ov 内でなければ「retimer は最前面ではない」と判断する。 */
+    try{
+      const cx=Math.floor(window.innerWidth/2),cy=Math.floor(window.innerHeight/2);
+      const topEl=document.elementFromPoint(cx,cy);
+      if(topEl&&!ov.contains(topEl))return;
+    }catch(_){}
     if(e.key==='Escape'){e.preventDefault();closeRetimer();return}
     if(e.key===' '||e.code==='Space'){e.preventDefault();if(playing)stopPlay();else startPlay();return}
     if(e.key==='ArrowLeft'){e.preventDefault();stopPlay();displayF=Math.max(0,Math.round(displayF)-1);applyFrame();return}
@@ -12161,7 +12552,26 @@ async function openRetimer(node,v){
   video.addEventListener('loadedmetadata',()=>{
     const dur=(isFinite(video.duration)&&video.duration>0)?video.duration:1;
     srcTotal=Math.max(1,Math.round(dur*FPS));
-    if(v.timeRemap.keyframes.length===0){v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}]}
+    /* v.035 H-1/H-3 修正：既存 v.timeRemap を新しい srcTotal に合わせてサニタイズ。
+       - videoReady 前にトグル ON された場合の [{0,0},{0,0}] のような破綻状態を検知して再初期化
+       - 動画差し替え・fps 変更で範囲外化したキーは clamp
+       ここでは silent in-memory 修正のみ（persist は呼ばない・_markDirty も立てない）。
+       ユーザーが次に何か操作したときに一緒にディスクへ書き戻る。 */
+    if(v.timeRemap&&Array.isArray(v.timeRemap.keyframes)&&v.timeRemap.keyframes.length){
+      const smax=Math.max(0,srcTotal-1);
+      for(const k of v.timeRemap.keyframes){
+        k.t=Math.max(0,Math.round(k.t));
+        k.s=Math.max(0,Math.min(smax,Math.round(k.s)));
+      }
+      /* 破綻検知：2 点未満 or 全キー同 t（＝表示長 0）→ 再初期化 */
+      const kf=v.timeRemap.keyframes;
+      const bad=kf.length<2||kf[0].t===kf[kf.length-1].t;
+      if(bad&&srcTotal>=2){
+        v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];
+      }
+    }
+    /* v.035 A-2 修正：ここでの新規初期化（keyframes=[] を [{0,0},{srcTotal-1,srcTotal-1}] にする）は廃止。
+       「開いただけ」で dirty 化しないよう、ユーザーが実際にリタイム ON にした瞬間に構築する。 */
     videoReady=true;
     displayF=0;applyFrame();
     /* 読込前に押されていた再生ボタンをここで発火 */
@@ -12175,7 +12585,10 @@ async function openRetimer(node,v){
     try{window.removeEventListener('resize',onResize)}catch(_){}
     try{video.pause()}catch(_){}
     try{video.removeAttribute('src');video.load()}catch(_){}
-    try{persist()}catch(_){}
+    /* v.035 A-2 修正：ユーザーが実際にリマップを触った場合だけ persist。
+       各 mutation 経路が個別に persist() を呼んでいるので通常はここは redundant だが、
+       drag-mv 中に何かがコケた最後の書き込み保険として残す。 */
+    if(_dirty)try{persist()}catch(_){}
   };
   _retimerActive={overlay:ov,cleanup};
   updInfo();drawTL();drawGraph();
@@ -14251,6 +14664,13 @@ function openReel(){
   fileDD.appendChild(ce(d,'div','sep'));
   mkMenuItem('保存','Ctrl+S',()=>doSave(false));
   mkMenuItem('名前を付けて保存…','Ctrl+Shift+S',()=>doSave(true));
+  fileDD.appendChild(ce(d,'div','sep'));
+  mkMenuItem('⬇ アノテ込みで書き出し','',()=>{
+    const cs=(reelUI&&reelUI.clips)||[];
+    if(!cs.length){toast('REEL にクリップがありません');return}
+    /* REEL の書き出しは親 window の関数を呼ぶ（storage / paintStrokeList 等は親側にある） */
+    try{exportAnnotatedReelClips(cs)}catch(e){toast('書き出しに失敗しました：'+(e&&e.message||''))}
+  });
   fileMi.onclick=e=>{e.stopPropagation();const willOpen=!fileDD.classList.contains('show');closeMenu();if(willOpen){fileMi.classList.add('open');fileDD.classList.add('show')}};
   d.addEventListener('click',()=>closeMenu());
   d.addEventListener('keydown',e=>{
