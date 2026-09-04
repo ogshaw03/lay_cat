@@ -505,7 +505,7 @@ function render(){
 }
 
 function paint(){
-  const {operators,admins,members,domains}=tiers(cfg);
+  const {operators,members,domains}=tiers(cfg);
   // authRequired
   const on=cfg.authRequired!==false;
   $('authRequired').checked=on;
@@ -554,7 +554,7 @@ function paint(){
   // ドメイン許可で実際にログインしたアカウント（明示登録されていない人）を名前つきで表示
   const dul=$('domUserList');
   if(dul){
-    const explicit=new Set([...operators,...admins,...members].map(lc));
+    const explicit=new Set([...operators,...members].map(lc));
     let dusers=Object.values(luUsers||{}).filter(u=>u&&u.email&&!explicit.has(lc(u.email))&&domains.some(d=>lc(u.email).endsWith('@'+lc(d))));
     if(q)dusers=dusers.filter(u=>lc(u.email).includes(q)||lc(u.displayName||'').includes(q));
     dusers.sort((a,b)=>lc(a.displayName||a.email).localeCompare(lc(b.displayName||b.email)));
@@ -688,8 +688,8 @@ function renderInvites(){
   // 招待リンクから参加したメンバー（明示的な運営/メンバー登録済みの人は除く）
   const ilist=$('invitedList');
   if(ilist){
-    const {operators,admins,members}=tiers(cfg||{});
-    const explicit=new Set([...operators,...admins,...members].map(lc));
+    const {operators,members}=tiers(cfg||{});
+    const explicit=new Set([...operators,...members].map(lc));
     let arrv=Object.entries(invitedEmails||{}).map(([k,v])=>({key:k,...(v||{})})).filter(v=>v.email&&!explicit.has(lc(v.email)));
     const q=lc(query.trim());
     if(q)arrv=arrv.filter(v=>lc(v.email).includes(q)||lc(nameOf(v.email)||v.name||'').includes(q));
@@ -785,8 +785,8 @@ async function addUser(){
   if(!email)return awNotify('メールアドレスを入力してください');
   const role=(rEl&&rEl.value)||'member';
   const data=await readConfig();
-  const {operators,admins,members}=tiers(data);
-  if(operators.includes(email)||admins.includes(email)||members.includes(email))return awNotify('既に追加されています（権限変更は一覧のボタンから）');
+  const {operators,members}=tiers(data);
+  if(operators.includes(email)||members.includes(email))return awNotify('既に追加されています（権限変更は一覧のボタンから）');
   await setRole(email,role);
   if(eEl)eEl.value=''; if(rEl)rEl.value='member';
 }
