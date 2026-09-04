@@ -3064,7 +3064,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.043';
+const APP_VERSION='2026.08.07.044';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5297,6 +5297,18 @@ function renderProjShots(main,cur){
     }else th.appendChild(thumbPh());
     /* オミット：サムネはそのまま（グレーアウトはCSS）、オミット猫をオーバーレイ */
     if(isOmit){const ov=el('div','omit-ov');const cat=el('img','omit-cat');cat.src=OMIT_CAT_IMG;cat.alt='オミット';ov.appendChild(cat);th.appendChild(ov);}
+    /* 動画・サムネ部分（th）のクリック：縦並び行と同じで、作業ページ（タブ）追加＝go に振る。
+       選択モード中／Ctrl・Meta クリックは通常のタイル onclick（下）と同じ選択トグルを通す。
+       これによりタイル枠クリック＝右スライド、動画部クリック＝タブ追加、の 2 挙動が両立する。 */
+    if(lv){
+      th.title='クリックで作業ページ（タブ）に追加';
+      th.onclick=(ev)=>{
+        const inSel=(state.shotSel&&state.shotSel.size>0);
+        if(inSel||ev.ctrlKey||ev.metaKey)return; /* 選択モード時はタイル本体の onclick に委譲（stopPropagation しない） */
+        ev.stopPropagation();
+        go(lv.node.id);
+      };
+    }
     tile.appendChild(th);
     const bd=el('div','bd');bd.appendChild(el('div','nm',sh.name));
     /* 工程バッジ＋ステータスバッジ（動画の有無に関わらず表示）。
