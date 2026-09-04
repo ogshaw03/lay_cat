@@ -224,13 +224,6 @@
         <div class="u-list" id="domList" style="margin-top:12px"></div>
       </div>
 
-      <!-- ドメイン許可でログイン中のアカウント -->
-      <div class="card">
-        <div class="card-title">🪪 ドメイン許可でログイン中のアカウント</div>
-        <div class="card-desc">許可ドメインのメールで実際に LayCAT にログインしたアカウントです（明示的に追加されていない人も表示）。名前つきで確認でき、「→メンバーに固定」で個別メンバーに変換できます。</div>
-        <div class="u-list" id="domUserList"></div>
-      </div>
-
       <!-- セットアップ（ルール） -->
       <div class="card">
         <div class="card-title">⚙ セットアップ（Firebase コンソール・初回のみ）</div>
@@ -551,30 +544,8 @@ function paint(){
   });
   if(!fd.length)dL.innerHTML='<div class="empty">'+(q?'該当なし':'許可ドメインはありません')+'</div>';
 
-  // ドメイン許可で実際にログインしたアカウント（明示登録されていない人）を名前つきで表示
-  const dul=$('domUserList');
-  if(dul){
-    const explicit=new Set([...operators,...members].map(lc));
-    let dusers=Object.values(luUsers||{}).filter(u=>u&&u.email&&!explicit.has(lc(u.email))&&domains.some(d=>lc(u.email).endsWith('@'+lc(d))));
-    if(q)dusers=dusers.filter(u=>lc(u.email).includes(q)||lc(u.displayName||'').includes(q));
-    dusers.sort((a,b)=>lc(a.displayName||a.email).localeCompare(lc(b.displayName||b.email)));
-    dul.innerHTML='';
-    dusers.forEach(u=>{
-      const self=(me&&lc(u.email)===lc(me.email))?'（あなた）':'';
-      const row=document.createElement('div');row.className='u-row';
-      row.innerHTML=`<span class="u-email">${idHtml(u.email,self)}</span><span class="role dom">ドメイン</span>`;
-      const b=document.createElement('button');b.className='btn btn-sm';b.textContent='→メンバーに固定';b.disabled=!editor;b.onclick=()=>setRole(u.email,'member');row.appendChild(b);
-      dul.appendChild(row);
-    });
-    if(!dusers.length){
-      let msg;
-      if(luErr)msg='loggedUsers を読み込めません（'+escH(luErr)+'）。Firestore ルールに laynaAccess/loggedUsers の read/write 許可を追加してください（下部「セットアップ」参照）。';
-      else if(q)msg='該当なし';
-      else if(!domains.length)msg='許可ドメインが未設定です。上の「許可ドメイン」で追加してください。';
-      else msg='ドメイン許可のアカウントは、その人が LayCAT にログインすると表示されます（ログイン時に自動記録）。まだ誰もログインしていないか、ルール未設定の可能性があります。';
-      dul.innerHTML='<div class="empty">'+msg+'</div>';
-    }
-  }
+  /* ドメイン許可でログイン中のアカウント一覧はメイン画面から削除。
+     権限付与ウィンドウ（openAccessWindow → awDomUserList）に集約済み。 */
   renderInvites();
 }
 
@@ -657,7 +628,7 @@ function paintAccessWin(){
   fm.forEach(e=>meL.appendChild(mkRow(e,{cls:'member',label:'メンバー'},[['→運営',()=>setRole(e,'operator')],['削除',()=>setRole(e,'remove'),true]])));
   if(!fm.length)meL.innerHTML='<div class="empty">'+(q?'該当なし':'メンバーはいません')+'</div>';
   /* ドメイン許可で実際にログイン中のアカウント：明示登録（運営／メンバー）に含まれていないユーザーで、
-     許可ドメインに一致するメールを持つ人を表示。inline 側の domUserList と同じロジック。 */
+     許可ドメインに一致するメールを持つ人を表示。「→メンバーに固定」で明示メンバーへ昇格できる。 */
   const duL=d.getElementById('awDomUserList');
   if(duL){
     const explicit=new Set([...operators,...members].map(lc));
