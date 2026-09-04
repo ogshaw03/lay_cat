@@ -619,6 +619,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 <div class="counts" id="awCounts"></div>
 <div class="sub-label">運営（この設定を編集可・監査ログ閲覧可）</div><div class="u-list" id="awOpList"></div>
 <div class="sub-label">メンバー（ログインのみ）</div><div class="u-list" id="awMemberList"></div>
+<div class="sub-label">ドメイン許可でログイン中（明示登録なし・許可ドメインに一致するアカウント）</div><div class="u-list" id="awDomUserList"></div>
 </body></html>`;
 function openAccessWindow(){
   if(!cfg||!isEditor()){ notify('運営のみ操作できます'); return; }
@@ -636,7 +637,7 @@ function openAccessWindow(){
 function paintAccessWin(){
   if(!accessWin||accessWin.closed||!cfg)return;
   const d=accessWin.document;
-  const {operators,members}=tiers(cfg);
+  const {operators,members,domains}=tiers(cfg);
   const q=lc((accessQuery||'').trim());
   const flt=a=>q?a.filter(e=>lc(e).includes(q)):a;
   const editor=isEditor();
@@ -655,7 +656,28 @@ function paintAccessWin(){
   if(!fo.length)opL.innerHTML='<div class="empty">'+(q?'該当なし':'運営はいません')+'</div>';
   fm.forEach(e=>meL.appendChild(mkRow(e,{cls:'member',label:'メンバー'},[['→運営',()=>setRole(e,'operator')],['削除',()=>setRole(e,'remove'),true]])));
   if(!fm.length)meL.innerHTML='<div class="empty">'+(q?'該当なし':'メンバーはいません')+'</div>';
-  d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ メンバー ${members.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fm.length}件`:'');
+  /* ドメイン許可で実際にログイン中のアカウント：明示登録（運営／メンバー）に含まれていないユーザーで、
+     許可ドメインに一致するメールを持つ人を表示。inline 側の domUserList と同じロジック。 */
+  const duL=d.getElementById('awDomUserList');
+  if(duL){
+    const explicit=new Set([...operators,...members].map(lc));
+    let dusers=Object.values(luUsers||{}).filter(u=>u&&u.email&&!explicit.has(lc(u.email))&&(domains||[]).some(dom=>lc(u.email).endsWith('@'+lc(dom))));
+    if(q)dusers=dusers.filter(u=>lc(u.email).includes(q)||lc(u.displayName||'').includes(q));
+    dusers.sort((a,b)=>lc(a.displayName||a.email).localeCompare(lc(b.displayName||b.email)));
+    duL.innerHTML='';
+    dusers.forEach(u=>duL.appendChild(mkRow(u.email,{cls:'admin',label:'ドメイン'},[['→メンバーに固定',()=>setRole(u.email,'member')]])));
+    if(!dusers.length){
+      let msg;
+      if(luErr)msg='loggedUsers を読み込めません（'+escH(luErr)+'）';
+      else if(q)msg='該当なし';
+      else if(!(domains||[]).length)msg='許可ドメインが未設定です';
+      else msg='ドメイン許可でログインしたアカウントはまだありません';
+      duL.innerHTML='<div class="empty">'+msg+'</div>';
+    }
+    d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ メンバー ${members.length} ・ ドメインログイン ${dusers.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fm.length+dusers.length}件`:'');
+  }else{
+    d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ メンバー ${members.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fm.length}件`:'');
+  }
 }
 
 /* ---- 招待リンク（承認不要URL） ---- */
