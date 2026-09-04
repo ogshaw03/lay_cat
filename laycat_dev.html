@@ -253,12 +253,12 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .task-tab:hover .tt-close,.task-tab.on .tt-close{opacity:1}
 .task-tab .tt-close:hover{background:rgba(255,255,255,.14);color:var(--text)}
 /* タブロック（🔒/🔓）：ロック中は常時表示・強調、未ロックは薄めでホバー時にはっきり表示。
-   「✕ すべて閉じる」で閉じないことを表す固定表示。 */
-.task-tab .tt-lock{border:none;background:none;color:var(--text3);font-size:11px;padding:0 3px;line-height:1;border-radius:4px;flex-shrink:0;opacity:.25;cursor:pointer}
+   「✕ すべて閉じる」で閉じないことを表す固定表示。
+   絵文字は grayscale フィルタで無彩色化（テーマに馴染ませる）。 */
+.task-tab .tt-lock{border:none;background:none;color:var(--text3);font-size:11px;padding:0 3px;line-height:1;border-radius:4px;flex-shrink:0;opacity:.25;cursor:pointer;filter:grayscale(1)}
 .task-tab:hover .tt-lock,.task-tab.on .tt-lock{opacity:.7}
-.task-tab .tt-lock.on{opacity:1;color:#f2c86b}
-.task-tab .tt-lock:hover{background:rgba(255,255,255,.14);color:var(--text)}
-.task-tab .tt-lock.on:hover{color:#f2c86b}
+.task-tab .tt-lock.on{opacity:1}
+.task-tab .tt-lock:hover{background:rgba(255,255,255,.14)}
 /* タブの並べ替え pointer events 中のビジュアルフィードバック。
    .dragging-collapse：dragged タブの幅を 0 に潰して DOM 上から実質除去。
      flexbox が自然に他タブを詰め、その上に applyShift の transform を重ねて
@@ -3064,7 +3064,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.042';
+const APP_VERSION='2026.08.07.043';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
