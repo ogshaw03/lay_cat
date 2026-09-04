@@ -357,10 +357,7 @@
 <section class="features" id="features">
   <div class="container">
     <span class="label">できること（詳しく）</span>
-    <h2 class="section-title">機能ひとつずつ、じっくり。</h2>
-    <p class="section-lead">
-      各機能を実際の画面付きで紹介します。
-    </p>
+    <h2 class="section-title">機能</h2>
 
     <div class="feature-row">
       <div class="feature-text">
@@ -404,7 +401,7 @@
     <div class="feature-row">
       <div class="feature-text">
         <span class="label-sm">Time Remap · NEW</span>
-        <h3>タメツメの指示は、映像で。</h3>
+        <h3>タイムリマップ</h3>
         <p>
           「このポーズをあと 2F 長く」「この 3F を詰めて 1F に」を <b>そのまま映像で見せる</b> AE 互換のタイムリマップ機能。任意のフレームにキーフレームを打って、詰めたり伸ばしたりでタイミング調整。修正後の映像を再生ボタンで確認できるので、アニメーターへの指示が言葉ではなく尺で伝わります。
         </p>
@@ -557,7 +554,74 @@
       </div>
     </div>
 
-    <div class="feature-row" id="cloud">
+    <div class="feature-row" id="folder-usage">
+      <div class="feature-text">
+        <span class="label-sm">Folder</span>
+        <h3>フォルダ運用で、サーバーもアカウントも不要。</h3>
+        <p>
+          プロジェクトデータをローカルフォルダや Google Drive / NAS の共有フォルダに丸ごと置くだけで、
+          それがそのままチームの「1 つの正」になります。<b>サーバー構築・月額課金・運営者経由のデータ流出、すべて不要。</b>
+          他のツールはクラウドや自社サーバーへの接続が前提ですが、
+          LayCAT では<b>ネット接続なしのフォルダ運用も、クラウド運用と同格の正式な使い方</b>として扱われます。
+        </p>
+        <ul>
+          <li>プロジェクトフォルダに <code>laycat.project.json</code> と <code>media/</code> が置かれるだけの素直な構造</li>
+          <li>Google Drive / Dropbox / OneDrive / NAS など任意の同期フォルダで OK</li>
+          <li>オフラインでも作業可能、同期が復活すれば自動で反映</li>
+          <li>Chrome / Edge の File System Access API で、ブラウザから直接フォルダを読み書き</li>
+          <li>クラウド運用（R2）とプロジェクト単位で共存させられる</li>
+        </ul>
+      </div>
+      <div class="feature-media" style="display:flex;align-items:center;justify-content:center;background:var(--bg3);aspect-ratio:16/9;">
+        <div style="text-align:center;color:var(--text2);padding:32px">
+          <div style="font-size:64px;line-height:1;margin-bottom:14px">📁</div>
+          <div style="font-family:'Inter',monospace;font-size:12px;color:var(--text);text-align:left;line-height:1.9;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px 18px;display:inline-block">
+            <div>📁 <b>MyProject/</b></div>
+            <div style="padding-left:20px">├── laycat.project.json</div>
+            <div style="padding-left:20px">├── 📁 media/</div>
+            <div style="padding-left:20px">├── 📁 shots/</div>
+            <div style="padding-left:20px">└── 📁 submits/</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="feature-row reverse">
+      <div class="feature-text">
+        <span class="label-sm">Review Queue</span>
+        <h3>チェック担当者ごとに一覧表示</h3>
+        <p>
+          チェック担当者ごとにタブが分かれ、自分の担当分だけを表示できます。
+          残り件数はバッジで見えて、見落としを防止。
+        </p>
+        <ul>
+          <li>担当者タブで自分のチェック分だけ表示</li>
+          <li>一覧のままステータスを変更可能</li>
+        </ul>
+      </div>
+      <div class="feature-media">
+        <img src="slides_assets/check.png" alt="チェック待ち一覧">
+      </div>
+    </div>
+
+    <div class="feature-row">
+      <div class="feature-text">
+        <span class="label-sm">Reel</span>
+        <h3>カットをつなげてまとめてチェック</h3>
+        <p>
+          複数のカットを並べて連続再生。並び替えて通しのテンポを確認したり、REEL 上で書いたコメントは各カットのタスクページに反映されます。
+        </p>
+        <ul>
+          <li>試写や繋ぎ確認にそのまま使える</li>
+          <li>REEL 内でもアノテーション・ステータス切替可能</li>
+        </ul>
+      </div>
+      <div class="feature-media">
+        <img src="slides_assets/pre_reel.png" alt="REEL 連続再生">
+      </div>
+    </div>
+
+    <div class="feature-row reverse" id="cloud">
       <div class="feature-text">
         <span class="label-sm">Cloud</span>
         <h3>クラウド保存で、場所を選ばず共有。</h3>
@@ -578,41 +642,6 @@
           <button id="r2simple" class="active" onclick="switchR2('simple')">シンプル版</button>
           <button id="r2dev" onclick="switchR2('dev')">開発者向け詳細</button>
         </div>
-      </div>
-    </div>
-
-    <div class="feature-row reverse">
-      <div class="feature-text">
-        <span class="label-sm">Review Queue</span>
-        <h3>自分が見る番のカットだけを、一覧に。</h3>
-        <p>
-          チェック担当者ごとにタブが分かれ、自分の担当分だけを表示できます。
-          残り件数はバッジで見えて、見落としを防止。
-        </p>
-        <ul>
-          <li>担当者タブで自分のチェック分だけ表示</li>
-          <li>一覧のままステータスを変更可能</li>
-        </ul>
-      </div>
-      <div class="feature-media">
-        <img src="slides_assets/check.png" alt="チェック待ち一覧">
-      </div>
-    </div>
-
-    <div class="feature-row">
-      <div class="feature-text">
-        <span class="label-sm">Reel</span>
-        <h3>カットをつなげて、通しで確認。</h3>
-        <p>
-          複数のカットを並べて連続再生。並び替えて通しのテンポを確認したり、REEL 上で書いたコメントは各カットのタスクページに反映されます。
-        </p>
-        <ul>
-          <li>試写や繋ぎ確認にそのまま使える</li>
-          <li>REEL 内でもアノテーション・ステータス切替可能</li>
-        </ul>
-      </div>
-      <div class="feature-media">
-        <img src="slides_assets/pre_reel.png" alt="REEL 連続再生">
       </div>
     </div>
   </div>
