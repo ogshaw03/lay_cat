@@ -2928,7 +2928,18 @@ async function _persistNow(){
           }
         }
       }
-      if(!_skipSave){const ok=await saveProjectSplit(e.id,data);if(ok!==false)_saveCache.proj[e.id]=ps;}
+      if(!_skipSave){
+        const ok=await saveProjectSplit(e.id,data);
+        if(ok!==false){
+          /* v.045 #2 修正：`saveProjectSplit` 内で `_saveShotWithLock` → `_applyShotFileIntoDB` により
+             DB が書き換わっている可能性があるため、凍結した `ps` ではなく、保存完了時点の DB から
+             再ストリンガイズして baseline を更新する。
+             これにより次の autoRefresh の clean 判定（`baseline===before`）が正しく動作し、
+             v.074 の「clean 時は remote 採用」経路が復活する（他ユーザーの status 更新が反映される）。
+             失敗時は従来通り凍結 ps を使う（安全側フォールバック）。 */
+          try{_saveCache.proj[e.id]=JSON.stringify(projectData(e.id))}catch(_){_saveCache.proj[e.id]=ps}
+        }
+      }
     }
     const rls=reelsByProj[e.id]||[];const rk=JSON.stringify(rls);
     if(_saveCache.reels[e.id]!==rk){
@@ -3064,7 +3075,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.044';
+const APP_VERSION='2026.08.07.045';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3688,6 +3699,12 @@ function _editingNow(){
 }
 async function autoRefresh(force){
   if(!DB||!REG.length||_autoRefreshBusy)return;
+  /* v.045 #3/#13 修正：persist 実行中は force でも割り込まない。
+     persist 中に autoRefresh が動くと、`_saveCache.proj` がまだ凍結値のままの状態で
+     `_unionRemoteIntoDB` の union-fill が発火し、「ステータス未着手に戻した」意図（`delete node.status`）が
+     remote の古い status で埋め戻される事故が起きる（Alt-Tab／focus/visibilitychange 経由で頻発）。
+     persist が終わってから改めて refresh すれば十分。 */
+  if(typeof _persistBusy!=='undefined'&&_persistBusy>0)return;
   if(!force&&_editingNow())return;
   let now=0;try{now=Date.now()}catch(_){}
   if(!force&&now-_autoRefreshAt<5000)return;
@@ -8553,11 +8570,17 @@ function _mergeNodeInto(a,b,opts){
        → 「正常時は他ユーザー status 変更を即時反映、rollback 時のみ守る」の両立。 */
   const _authoritative=!!(opts&&opts.remoteAuthoritative);
   const _stateKeys=new Set(['status','assignee','reviewer']);
+  const _bHas=k=>b&&Object.prototype.hasOwnProperty.call(b,k);
   for(const k of ['thumbnail','status','assignee','reviewer','description','folderName','thumbCrop','type','name']){
     /* preferB=true && (authoritative || 非 state 系) → 従来の preferB（remote 採用）
        それ以外（preferB=false、または preferB=true && authoritative=false && state 系）→ fill-only */
     if(preferB&&(_authoritative||!_stateKeys.has(k))){
       if(b[k]!=null&&b[k]!=='')a[k]=b[k];
+      /* v.045 #10 修正：state 系＋authoritative 経路では、remote が明示的に clear した null/'' も
+         「未着手に戻された」意図として尊重する。従来は `b[k]!=null` フィルタで null が捨てられ、
+         local の古い値が残っていた（他ユーザーが「未着手に戻す」操作を行っても A のブラウザには反映されない）。
+         `_bHas(k)` で「remote がキーとして明示的に持っている」ことを確認して assign する。 */
+      else if(_authoritative&&_stateKeys.has(k)&&_bHas(k))a[k]=b[k];
     }else{
       if((a[k]==null||a[k]==='')&&b[k]!=null&&b[k]!=='')a[k]=b[k];
     }

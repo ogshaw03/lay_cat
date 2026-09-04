@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.045) ステータス巻き戻り問題の恒久対策（scout 徹底解析による重大 4 件のうち 3 件＋関連 #13 を一括修正）
+  - **#2（重大）**：`_persistNow` の baseline 更新を修正。従来は保存前に凍結した `ps=JSON.stringify(data)` を `_saveCache.proj[e.id]` にセットしていたが、`saveProjectSplit` 内で `_applyShotFileIntoDB` により DB が書き換わるケースで baseline が乖離。**保存完了時点の `projectData(e.id)` から再ストリンガイズ**して baseline を確保する。これで autoRefresh の `baseline===before` 判定が正しく動作し、**v.074 の「clean 時のみ state 系も remote 採用」経路が復活**。他ユーザーの status 更新が本人にも反映されるようになる。
+  - **#3 / #13（重大）**：`autoRefresh` の先頭で `_persistBusy>0` の間は即 return するガードを追加（force=true 経路にも適用）。従来は Alt-Tab／`visibilitychange` で `autoRefresh(true)` が persist 中に割り込み、union-fill が「未着手に戻した」意図を古い remote 値で埋め戻していた。
+  - **#10（中）**：`_mergeNodeInto` の preferB+authoritative 分岐で **remote が明示的に clear した null/''** を state 系（`status`/`assignee`/`reviewer`）でも尊重するようにした。`_bHas(k)`（`Object.prototype.hasOwnProperty.call(b,k)`）で「remote がキーを明示的に持っている」ことを確認して assign。従来は `b[k]!=null` フィルタで null が捨てられ、他ユーザーが「未着手に戻す」操作を行っても他の閲覧者の画面に反映されなかった。
+  - **未対応**：#1（`_saveShotWithLock` の CAS 不在／R2 Worker 改修が必要）／#4（v<4 プロジェクト専用）／#5〜#9 の中〜軽微は次段で対応検討。
+
 - (dev v2026.08.07.044) ショットタブ・グリッド表示のタイル動画部クリックを「作業ページ（タブ）追加」に変更（縦並び行のサムネと挙動統一）
   - **動画・サムネ部（`th`）クリック**：`go(lv.node.id)` でタブ追加＋ `stopPropagation`
   - **タイル枠（`tile` 本体）クリック**：従来通り右スライド（`openReviewDrawer`）
