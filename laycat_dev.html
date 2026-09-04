@@ -3057,7 +3057,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.040';
+const APP_VERSION='2026.08.07.041';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5287,9 +5287,7 @@ function renderProjShots(main,cur){
     /* タイルクリック：
        - 選択モード中（state.shotSel が非空）は選択トグル（追加／解除）
        - Ctrl/Meta クリックは常に選択トグル（選択開始）
-       - それ以外は通常動作＝作業ページ（タブ）を開く（＝go）
-         ※ 以前は右スライド（openReviewDrawer）を開いていたが、
-           ユーザー要望により直接タブに追加する動作に変更（右スライドはドラッグ範囲選択の解除経路等から到達可能） */
+       - それ以外は通常動作＝右スライドで開く */
     tile.onclick=(ev)=>{
       const inSel=(state.shotSel&&state.shotSel.size>0);
       if(inSel||ev.ctrlKey||ev.metaKey){
@@ -5298,7 +5296,7 @@ function renderProjShots(main,cur){
         if(state.shotSel.size===0)state.shotSel=null;
         renderBody();resolveThumbs();return;
       }
-      if(lv)go(lv.node.id);else if(rep)go(rep.id);else go(sh.id);
+      if(lv)openReviewDrawer(lv.node.id,sh.id);else if(rep)openReviewDrawer(rep.id,sh.id);else go(sh.id);
     };
     return tile;
   };
@@ -5321,7 +5319,9 @@ function renderProjShots(main,cur){
       if(lv)openReviewDrawer(lv.node.id,sh.id);else if(rep)openReviewDrawer(rep.id,sh.id);else go(sh.id);
     };
     const th=el('img','shot-row-th');if(lv&&lv.v.thumb)th.dataset.ref=lv.v.thumb;
-    if(lv){th.title='クリックでアノテーションを開く';th.onclick=ev=>{ev.stopPropagation();openReview(lv.node.id,lv.v.id,{modal:true})}}
+    /* 縦並び表示のサムネクリック：以前はアノテ窓（openReview modal）を開いていたが、
+       ユーザー要望により作業ページ（タブ）追加＝go に変更。行本体クリックの右スライドはそのまま。 */
+    if(lv){th.title='クリックで作業ページ（タブ）に追加';th.onclick=ev=>{ev.stopPropagation();go(lv.node.id)}}
     it.appendChild(th);
     it.appendChild(el('span','shot-row-nm',sh.name)); /* ショット名 */
     if(rep){const stg=el('span','tl-stage',rep.name);stg.style.background=lv?stageBadgeColor(rep):hexA(stageBadgeColor(rep),.45);it.appendChild(stg);} /* 工程（全工程未着手なら先頭工程を控えめ色で表示） */
