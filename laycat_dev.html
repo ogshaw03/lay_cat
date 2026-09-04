@@ -252,6 +252,13 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .task-tab .tt-close{border:none;background:none;color:var(--text3);font-size:10px;padding:0 3px;line-height:1;border-radius:4px;flex-shrink:0;opacity:.5}
 .task-tab:hover .tt-close,.task-tab.on .tt-close{opacity:1}
 .task-tab .tt-close:hover{background:rgba(255,255,255,.14);color:var(--text)}
+/* タブロック（🔒/🔓）：ロック中は常時表示・強調、未ロックは薄めでホバー時にはっきり表示。
+   「✕ すべて閉じる」で閉じないことを表す固定表示。 */
+.task-tab .tt-lock{border:none;background:none;color:var(--text3);font-size:11px;padding:0 3px;line-height:1;border-radius:4px;flex-shrink:0;opacity:.25;cursor:pointer}
+.task-tab:hover .tt-lock,.task-tab.on .tt-lock{opacity:.7}
+.task-tab .tt-lock.on{opacity:1;color:#f2c86b}
+.task-tab .tt-lock:hover{background:rgba(255,255,255,.14);color:var(--text)}
+.task-tab .tt-lock.on:hover{color:#f2c86b}
 /* タブの並べ替え pointer events 中のビジュアルフィードバック。
    .dragging-collapse：dragged タブの幅を 0 に潰して DOM 上から実質除去。
      flexbox が自然に他タブを詰め、その上に applyShift の transform を重ねて
@@ -2498,7 +2505,7 @@ const storage={
 /* ---------- 状態 / DB ---------- */
 let DB=null;let curUploadUI=null;
 let REG=[]; /* 接続プロジェクト一覧（このユーザーが使うプロジェクト）: [{id,name,folderName}] */
-const state={currentId:null,search:'',expanded:new Set(),tabDrawers:{},openTasks:[]};
+const state={currentId:null,search:'',expanded:new Set(),tabDrawers:{},openTasks:[],tabLocks:new Set()};
 function defaultDb(){return{version:3,nodes:[],reels:[],notifications:[],submits:[]}}
 /* プロジェクト（ルート）ID を求める */
 function projectIdOf(nodeId){const n=getNode(nodeId);return n?rootOf(n).id:null}
@@ -3057,7 +3064,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.041';
+const APP_VERSION='2026.08.07.042';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3221,6 +3228,8 @@ async function boot(){
        ここでは中身検証せず生値を復元する。表示側（renderTabs）が解決できた ID だけを描画する。 */
     if(Array.isArray(_loc.openTasks))state.openTasks=_loc.openTasks.slice(0,40);
     if(Array.isArray(_loc.expanded))for(const id of _loc.expanded)state.expanded.add(id);
+    /* タブロック復元：ロックされたタブは「✕ すべて閉じる」で閉じない（個別 ✕ は従来通り閉じられる） */
+    if(Array.isArray(_loc.tabLocks))state.tabLocks=new Set(_loc.tabLocks.slice(0,40));
   }
   if(!applyHash(true)){
     let restored=false;
@@ -4245,7 +4254,7 @@ function updateHeaderForContext(){
 }
 /* saveLoc は render 毎に呼ばれるため同期書き込みをデバウンスし、タブ復元用に openTasks/expanded も保存する（#13a 復元とセット） */
 let _saveLocTimer=null;
-function _saveLocNow(){try{localStorage.setItem('layna_loc',JSON.stringify({id:state.currentId||null,tab:state.projTab||'timeline',lastPageId:state.lastPageId||null,openTasks:(state.openTasks||[]).slice(0,40),expanded:[...(state.expanded||[])].slice(0,400)}))}catch(_){}}
+function _saveLocNow(){try{localStorage.setItem('layna_loc',JSON.stringify({id:state.currentId||null,tab:state.projTab||'timeline',lastPageId:state.lastPageId||null,openTasks:(state.openTasks||[]).slice(0,40),expanded:[...(state.expanded||[])].slice(0,400),tabLocks:[...(state.tabLocks||[])].slice(0,40)}))}catch(_){}}
 function saveLoc(){if(_saveLocTimer)return;try{_saveLocTimer=setTimeout(()=>{_saveLocTimer=null;_saveLocNow()},400)}catch(_){_saveLocNow()}}
 function render(){invalidateStageColors();invalidateRoleMemo();renderSidebar();renderBreadcrumb();renderMainHead();renderBody();updateHeaderForContext();resolveThumbs();saveLoc();maybeScanMentions();scheduleBackfillThumbs();try{if(pgWin&&!pgWin.closed)pgBuild()}catch(_){}try{if(slWin&&!slWin.closed)slBuild()}catch(_){}}
 /* 表示のたびに（スロットル付きで）自分宛メンションを走査 */
@@ -4665,11 +4674,24 @@ function buildTaskTabs(root){
       /* タブ切替：フォルダから最新を取り込み（fire-and-forget）。補正 render は入れない */
       setTimeout(()=>{autoRefresh(true).catch(()=>{})},0);
     };
-    const x=el('button','tt-close','✕');x.title='タブを閉じる';
+    /* ロックボタン：「✕ すべて閉じる」で閉じないようにする（個別 ✕ は従来通り閉じる）。
+       ロック中は南京錠を強調表示、未ロック時は控えめに表示。 */
+    const isLocked=!!(state.tabLocks&&state.tabLocks.has(id));
+    const lk=el('button','tt-lock'+(isLocked?' on':''),isLocked?'🔒':'🔓');
+    lk.title=isLocked?'ロック中（一括閉じで閉じない）／クリックで解除':'ロックする（一括閉じで閉じないようにする）';
+    lk.onclick=e=>{e.stopPropagation();
+      if(!state.tabLocks)state.tabLocks=new Set();
+      if(state.tabLocks.has(id))state.tabLocks.delete(id);else state.tabLocks.add(id);
+      render();syncHash();
+    };
+    tab.appendChild(lk);
+    const x=el('button','tt-close','✕');x.title='タブを閉じる（個別 ✕ はロック中でも閉じられる）';
     x.onclick=e=>{e.stopPropagation();
       const wasCur=state.currentId===id;
       const vidx=visible.indexOf(id); /* 「次のタブ」は表示中リスト（visible）で選ぶ ─ 別プロジェクト保持分に飛ばないように */
       state.openTasks=(state.openTasks||[]).filter(t=>t!==id);
+      /* 閉じたタブがロックされていた場合はロック情報も掃除（残ってても実害ないが state を整理） */
+      if(state.tabLocks&&state.tabLocks.has(id))state.tabLocks.delete(id);
       if(wasCur){
         const nextVisible=visible.filter(t=>t!==id);
         const next=nextVisible[vidx]||nextVisible[vidx-1]||null;
@@ -4682,14 +4704,23 @@ function buildTaskTabs(root){
     strip.appendChild(tab);
   }
   /* 列の最右：タブを一括で閉じるボタン（開いているタブがある時のみ）。
-     現プロジェクトの表示中タブだけを対象にし、別プロジェクトで温存している openTasks は残す */
-  const clr=el('button','tt-clear','✕ すべて閉じる');
-  clr.title='開いているタブをすべて閉じる';
+     現プロジェクトの表示中タブだけを対象にし、別プロジェクトで温存している openTasks は残す。
+     ロックされたタブは除外（🔒 ボタンで意図的に固定されたもの）。 */
+  const locks=state.tabLocks||new Set();
+  const lockedInView=visible.filter(t=>locks.has(t)).length;
+  const clr=el('button','tt-clear',lockedInView?('✕ すべて閉じる（ロック '+lockedInView+' 件除く）'):'✕ すべて閉じる');
+  clr.title=lockedInView?('ロック中の '+lockedInView+' 件は残して、それ以外の開いているタブを閉じる'):'開いているタブをすべて閉じる';
   clr.onclick=e=>{e.stopPropagation();
     const vs=new Set(visible);
-    state.openTasks=(state.openTasks||[]).filter(t=>!vs.has(t));
+    /* 表示中かつロック無しのタブだけ閉じる */
+    state.openTasks=(state.openTasks||[]).filter(t=>!vs.has(t)||locks.has(t));
     const cur=state.currentId?getNode(state.currentId):null;
-    if(cur&&cur.type==='review'&&vs.has(state.currentId)){state.currentId=root.id;state.projTab='timeline';}
+    if(cur&&cur.type==='review'&&vs.has(state.currentId)&&!locks.has(state.currentId)){
+      /* 閉じられる予定の現在タブなら、残っているロック済みタブへ、無ければトップへ */
+      const nextLocked=visible.find(t=>locks.has(t));
+      if(nextLocked){state.currentId=nextLocked;state.projTab='browse';for(const y of pathOf(nextLocked))state.expanded.add(y.id);}
+      else{state.currentId=root.id;state.projTab='timeline';}
+    }
     render();syncHash();
   };
   strip.appendChild(clr);
