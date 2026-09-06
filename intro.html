@@ -285,16 +285,13 @@
   .comingsoon.big{padding:12px 22px;font-size:14px}
   .comingsoon .badge{display:inline-block;padding:1px 8px;font-size:10px;font-weight:800;letter-spacing:.5px;border-radius:8px;background:var(--purple);color:#fff;margin-right:2px}
 
-  /* ========== SIDE TOC（左固定の目次） ========== */
+  /* ========== SIDE TOC（左固定の目次・枠なし） ========== */
   /* 画面幅が広い時のみ表示（1280px 以上）。狭い画面ではメイン導線を妨げないよう非表示。 */
   .toc-nav{
-    position:fixed;left:20px;top:110px;z-index:60;
-    width:196px;max-height:calc(100vh - 140px);
-    background:rgba(20,20,26,.78);backdrop-filter:blur(14px);
-    border:1px solid var(--border);border-radius:12px;
-    padding:14px 12px 14px 14px;
+    position:fixed;left:24px;top:118px;z-index:60;
+    width:200px;max-height:calc(100vh - 150px);
+    padding:0;
     font-size:12px;overflow-y:auto;
-    box-shadow:0 12px 40px rgba(0,0,0,.35);
     scrollbar-width:thin;scrollbar-color:var(--border2) transparent;
     opacity:0;transform:translateX(-8px);pointer-events:none;
     transition:opacity .3s ease,transform .3s ease;
