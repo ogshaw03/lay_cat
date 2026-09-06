@@ -3075,7 +3075,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.046';
+const APP_VERSION='2026.08.07.047';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6390,7 +6390,6 @@ function paintStrokeList(ctx,W,H,list,alpha){
   ctx.globalAlpha=alpha;
   for(const st of list){
     if(st.kind==='head'){paintHead(ctx,W,H,st,alpha);ctx.globalAlpha=alpha;continue}
-    if(st.kind==='head3d'){paintHead3D(ctx,W,H,st,alpha);ctx.globalAlpha=alpha;continue}
     if(st.kind==='mannequin'){paintMannequin(ctx,W,H,st,alpha);ctx.globalAlpha=alpha;continue}
     if(st.kind==='rect'||st.kind==='ellipse'||st.kind==='arrow'){paintShape(ctx,W,H,st,alpha);ctx.globalAlpha=alpha;continue}
     if(!st.points||st.points.length<2)continue;
@@ -6462,70 +6461,6 @@ function paintHead(ctx,W,H,s,alpha){
   const nose=rotv(0,0,1);
   if(nose[2]>=0){const nx=cx+R*nose[0],ny=cy-R*nose[1];ctx.beginPath();ctx.arc(nx,ny,Math.max(1.6,R*0.05),0,2*Math.PI);ctx.fillStyle=col;ctx.globalAlpha=alpha;ctx.fill();}
   /* ※移動ハンドルは編集UIのため paintHead では描かない（アノテ本体には出さない）。ホバー時に別途描画 */
-  ctx.restore();
-}
-/* 顔の向きガイド 3D 版（`kind:'head3d'`）：ellipsoid 頭部＋顎テーパ＋目・鼻・口・耳の特徴点を持つ
-   3D 頭部モデルを yaw/pitch/roll で回転し、正射影で描画。前面は実線＋濃色、背面は破線＋薄色で立体感。
-   状態：`{kind:'head3d', cx, cy, r, yaw, pitch, roll, color, f, layer}`（既存 head と同形式＋顔特徴付き）
-   Three.js を積まずに Canvas 2D の 3D 数学のみで実現し、laycat_dev.html の自己完結性を保つ。 */
-function paintHead3D(ctx,W,H,s,alpha){
-  const cx=(s.cx||0)*W, cy=(s.cy||0)*H, R=Math.max(6,(s.r||0.12)*W);
-  const yaw=s.yaw||0, pitch=s.pitch||0, roll=s.roll||0, col=s.color||'#ff4d4d';
-  /* 頭部形状：縦長 ellipsoid（人間の頭比率に近い） */
-  const RX=0.90, RY=1.10, RZ=0.92;
-  function rotv(x,y,z){
-    let c=Math.cos(roll),n=Math.sin(roll);let x1=c*x-n*y,y1=n*x+c*y,z1=z;
-    c=Math.cos(pitch);n=Math.sin(pitch);let y2=c*y1-n*z1,z2=n*y1+c*z1,x2=x1;
-    c=Math.cos(yaw);n=Math.sin(yaw);let x3=c*x2+n*z2,z3=-n*x2+c*z2,y3=y2;
-    return [x3,y3,z3];
-  }
-  const proj=p=>{const r=rotv(p[0]*RX,p[1]*RY,p[2]*RZ);return [cx+R*r[0],cy-R*r[1],r[2]];};
-  ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
-  /* 外周シルエット（薄い） */
-  ctx.setLineDash([]);
-  ctx.beginPath();ctx.ellipse(cx,cy,R*RX,R*RY,0,0,2*Math.PI);ctx.strokeStyle='rgba(255,255,255,.18)';ctx.globalAlpha=alpha;ctx.lineWidth=Math.max(1,R*0.02);ctx.stroke();
-  /* 前面／背面を区別しつつ線を引くヘルパー */
-  const drawSeg=(a,b,wf,frontStyle,backStyle)=>{
-    const zavg=(a[2]+b[2])/2;
-    const front=zavg>=-0.02;
-    if(front){ctx.setLineDash([]);ctx.strokeStyle=frontStyle;}
-    else{ctx.setLineDash([4,4]);ctx.strokeStyle=backStyle;}
-    ctx.lineWidth=Math.max(1,R*wf);
-    ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
-  };
-  const drawRing=(pts,wf,frontStyle,backStyle)=>{
-    for(let i=0;i<pts.length-1;i++)drawSeg(pts[i],pts[i+1],wf,frontStyle,backStyle);
-  };
-  const ring=fn=>{const a=[];for(let i=0;i<=48;i++){const t=i/48*2*Math.PI;a.push(proj(fn(t)));}return a;};
-  /* 水平リング 5 本（頭を輪切りにした感じ）— 色は色設定に応じて濃淡 */
-  const bkA=`rgba(${(255)>>1},${(255)>>1},${(255)>>1},.15)`;
-  const bkB='rgba(255,255,255,.35)';
-  for(const yLevel of [0.75,0.35,0.0,-0.35,-0.75]){
-    const rr=Math.sqrt(Math.max(0,1-yLevel*yLevel));
-    drawRing(ring(t=>[rr*Math.sin(t),yLevel,rr*Math.cos(t)]),0.018,bkB,bkA);
-  }
-  /* 垂直リング 4 本（縦方向に 45 度刻みで巻いた輪郭線） */
-  for(const rot of [0,Math.PI/4,Math.PI/2,3*Math.PI/4]){
-    drawRing(ring(t=>{const x=Math.sin(t)*Math.cos(rot),z=Math.sin(t)*Math.sin(rot);return [x,Math.cos(t),z];}),0.018,bkB,bkA);
-  }
-  /* 正中線（強調・色付き） */
-  drawRing(ring(t=>[0,Math.sin(t),Math.cos(t)]),0.03,col,`${col}55`);
-  /* アイライン（薄めに強調） */
-  drawRing(ring(t=>[Math.sin(t),0,Math.cos(t)]),0.026,col,`${col}44`);
-  /* 顔の特徴：目・鼻・口。前を向いた時のみ強調 */
-  const eyeL=proj([-0.35,0.15,0.75]);const eyeR=proj([0.35,0.15,0.75]);
-  const nose=proj([0,-0.05,0.92]);
-  const mouthA=proj([-0.22,-0.42,0.78]);const mouthB=proj([0.22,-0.42,0.78]);
-  ctx.setLineDash([]);
-  if(eyeL[2]>=0){ctx.fillStyle=col;ctx.globalAlpha=alpha;ctx.beginPath();ctx.arc(eyeL[0],eyeL[1],Math.max(1.5,R*0.045),0,2*Math.PI);ctx.fill();}
-  if(eyeR[2]>=0){ctx.fillStyle=col;ctx.globalAlpha=alpha;ctx.beginPath();ctx.arc(eyeR[0],eyeR[1],Math.max(1.5,R*0.045),0,2*Math.PI);ctx.fill();}
-  if(nose[2]>=0){ctx.fillStyle=col;ctx.globalAlpha=alpha;ctx.beginPath();ctx.arc(nose[0],nose[1],Math.max(1.8,R*0.055),0,2*Math.PI);ctx.fill();}
-  if(mouthA[2]>=0&&mouthB[2]>=0){ctx.strokeStyle=col;ctx.globalAlpha=alpha;ctx.lineWidth=Math.max(1.4,R*0.03);ctx.beginPath();ctx.moveTo(mouthA[0],mouthA[1]);ctx.lineTo(mouthB[0],mouthB[1]);ctx.stroke();}
-  /* 耳：頭部の側面（±X）に小さな凸点。片側だけ前を向くケースが多いので個別判定 */
-  const earL=proj([-0.98,-0.05,0]);const earR=proj([0.98,-0.05,0]);
-  ctx.fillStyle=`${col}88`;
-  if(earL[2]>=-0.2){ctx.beginPath();ctx.arc(earL[0],earL[1],Math.max(1.4,R*0.045),0,2*Math.PI);ctx.fill();}
-  if(earR[2]>=-0.2){ctx.beginPath();ctx.arc(earR[0],earR[1],Math.max(1.4,R*0.045),0,2*Math.PI);ctx.fill();}
   ctx.restore();
 }
 /* 図形注釈：四角 / 楕円 / 矢印。正規化座標の 2 頂点 (x0,y0)-(x1,y1) と線幅 w（正規化 x）／色を持つ。 */
@@ -9774,7 +9709,6 @@ function openReview(nodeId,versionId,opts){
   shapeWrap.addEventListener('mouseenter',()=>{clearTimeout(_shapeDDTimer);_shapeDDTimer=setTimeout(()=>{shapeDD.style.display='flex'},250)});
   shapeWrap.addEventListener('mouseleave',()=>{clearTimeout(_shapeDDTimer);_shapeDDTimer=setTimeout(()=>{shapeDD.style.display='none'},180)});
   const headBtn=el('button','btn btn-ghost btn-sm tool','◑ 顔の向き');headBtn.title='顔の向きガイド（正中線）を3D的に配置。ドラッグ=回転／Shift+ドラッグ=傾き（ロール）／Ctrl+ドラッグ=大きさ／中心をドラッグ=移動。消しゴムで削除。';
-  const head3dBtn=el('button','btn btn-ghost btn-sm tool','👤 頭3D');head3dBtn.title='3D 頭部モデル（目・鼻・口・耳付き）で顔の向きを指示。ドラッグ=回転／Shift+ドラッグ=傾き／Ctrl+ドラッグ or ホイール=大きさ／中心をドラッグ=移動。消しゴムで削除。';
   const mannBtn=el('button','btn btn-ghost btn-sm tool');mannBtn.title='3D マネキン：クリックで 3D エディタを開いてポーズを作成。既存マネキンがあれば再編集モード。反映後はアノテ内で移動／四隅＝拡縮／緑リング＝左右回転／赤リング＝俯仰回転／ダブルクリック＝ポーズ再編集。';
   /* 3D は絵文字ではなく無彩色の立方体 SVG アイコン＋テキスト */
   mannBtn.innerHTML='<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M8 2 L14 5 L14 11 L8 14 L2 11 L2 5 Z"/><path d="M8 2 L8 8 L14 5 M8 8 L2 5 M8 8 L8 14"/></svg>3D';
@@ -9790,7 +9724,7 @@ function openReview(nodeId,versionId,opts){
   /* ブラシ・消しゴム等の描画ツールは動画の上側に */
   const tbTop=el('div','fb-controls');
   tbTop.style.borderTop='none';tbTop.style.borderBottom='1px solid var(--edge)';
-  tbTop.appendChild(penBtn);tbTop.appendChild(eraserBtn);tbTop.appendChild(sizeSel);tbTop.appendChild(presBtn);tbTop.appendChild(shapeWrap);tbTop.appendChild(lassoWrap);tbTop.appendChild(headBtn);tbTop.appendChild(head3dBtn);tbTop.appendChild(mannBtn);tbTop.appendChild(clrRow);tbTop.appendChild(colorIn);
+  tbTop.appendChild(penBtn);tbTop.appendChild(eraserBtn);tbTop.appendChild(sizeSel);tbTop.appendChild(presBtn);tbTop.appendChild(shapeWrap);tbTop.appendChild(lassoWrap);tbTop.appendChild(headBtn);tbTop.appendChild(mannBtn);tbTop.appendChild(clrRow);tbTop.appendChild(colorIn);
   if(isVideo){tbTop.appendChild(durSel);tbTop.appendChild(ghostBtn)}
   tbTop.appendChild(eyeBtn);tbTop.appendChild(traceBtn);tbTop.appendChild(layBtn);tbTop.appendChild(undoBtn);tbTop.appendChild(redoBtn);tbTop.appendChild(clearBtn);
   stage.insertBefore(tbTop,mediaRow);
@@ -9818,29 +9752,7 @@ function openReview(nodeId,versionId,opts){
   zrBtn.onclick=()=>{Zm.rot=0;Zm.flip=1;flipBtn.classList.remove('active');zoomTo(1);applyZoom()}; /* 等倍：ズーム・パン・回転・反転をリセット */
   handBtn.onclick=()=>{Zm.hand=!Zm.hand;handBtn.classList.toggle('active',Zm.hand);if(Zm.hand)setTool(null);wrap.style.cursor=Zm.hand?'grab':''};
   flipBtn.onclick=()=>{Zm.flip=-Zm.flip;flipBtn.classList.toggle('active',Zm.flip<0);applyZoom()}; /* 左右反転（鏡像）トグル */
-  wrap.addEventListener('wheel',e=>{
-    e.preventDefault();
-    /* 顔ガイド／頭 3D ツール中はホイールでスケール調整（ポインタ下に該当ガイドがあれば）。
-       無ければキャンバスズームにフォールバック（既存挙動）。 */
-    if((tool==='head'||tool==='head3d')&&!e.ctrlKey&&!e.metaKey&&!e.shiftKey&&!e.altKey){
-      try{
-        const targetKind=(tool==='head3d')?'head3d':'head';
-        const f=isVideo?dispFrame():null;
-        const [nx,ny]=pt(e);
-        const aspect=canvas.height/canvas.width;
-        let hit=null;
-        for(let i=pending.length-1;i>=0;i--){const p=pending[i];if(p.kind!==targetKind||(p.layer||1)!==activeLayer)continue;if(isVideo&&p.f!==f)continue;if(Math.hypot(p.cx-nx,(p.cy-ny)*aspect)<=(p.r||0.12)*1.3){hit=p;break}}
-        if(hit){
-          const factor=(e.deltaY<0?1.1:1/1.1);
-          hit.r=Math.max(0.03,Math.min(0.6,(hit.r||0.12)*factor));
-          drawAll();drawTimeline();updSubmit();
-          _pushHist();
-          return;
-        }
-      }catch(_){}
-    }
-    const r=wrap.getBoundingClientRect();zoomTo(Zm.s*(e.deltaY<0?1.15:1/1.15),e.clientX-r.left,e.clientY-r.top);
-  },{passive:false});
+  wrap.addEventListener('wheel',e=>{e.preventDefault();const r=wrap.getBoundingClientRect();zoomTo(Zm.s*(e.deltaY<0?1.15:1/1.15),e.clientX-r.left,e.clientY-r.top)},{passive:false});
   /* クリスタ風：Space+ドラッグ=パン、Shift+Space+ドラッグ=回転、Ctrl+Space+ドラッグ=ズーム */
   let spaceDown=false,spaceDrag=false;
   const fbCur=e=>e&&e.shiftKey?'alias':(e&&(e.ctrlKey||e.metaKey)?'zoom-in':'grab');
@@ -10313,7 +10225,7 @@ function openReview(nodeId,versionId,opts){
     if(stroke&&inWin(stroke)&&layerOn(stroke))pend.push(stroke);
     paintStrokes(ctx,pend,1);
     /* 移動ハンドルは、顔の向きツール選択中にカーソルが球体内に入ったときだけ表示 */
-    if((tool==='head'||tool==='head3d')&&hoverPt){const asp=canvas.height/canvas.width;const _tk=(tool==='head3d')?'head3d':'head';for(const p of pending){if(p.kind!==_tk||(p.layer||1)!==activeLayer)continue;if(isVideo&&!inWin(p))continue;if(Math.hypot(p.cx-hoverPt[0],(p.cy-hoverPt[1])*asp)<=(p.r||0.12)*1.15)drawMoveHandle(ctx,p)}}
+    if(tool==='head'&&hoverPt){const asp=canvas.height/canvas.width;for(const p of pending){if(p.kind!=='head'||(p.layer||1)!==activeLayer)continue;if(isVideo&&!inWin(p))continue;if(Math.hypot(p.cx-hoverPt[0],(p.cy-hoverPt[1])*asp)<=(p.r||0.12)*1.15)drawMoveHandle(ctx,p)}}
     /* 3D マネキンツール中：選択枠・4 隅・投影済みジンバル 3 リング・中央ハンドルを描画。
        リングは iframe から返された character-local 軸の投影 polyline（緑=Y ヨー／赤=X ピッチ／青=Z ロール）。 */
     if(tool==='mann'){
@@ -10482,7 +10394,6 @@ function openReview(nodeId,versionId,opts){
   lassoBtn.onclick=()=>setTool(tool==='lasso'?null:'lasso');
   shapeBtn.onclick=()=>setTool(tool==='shape'?null:'shape');
   headBtn.onclick=()=>setTool(tool==='head'?null:'head');
-  head3dBtn.onclick=()=>setTool(tool==='head3d'?null:'head3d');
   /* 3D マネキン：ボタンクリックで即エディタを開く。同フレーム＋同レイヤーに既存があれば再編集モード、無ければ新規作成。
      反映後は自動で `tool='mann'` に切替えてアノテ内で操作可能に。 */
   mannBtn.onclick=()=>{
@@ -10867,7 +10778,7 @@ function openReview(nodeId,versionId,opts){
     const inWin=p=>!isVideo||(p.f!=null&&f>=p.f&&f<p.f+pdur);
     let best=null;
     const test=(st,src,noteRef)=>{
-      if(st.kind==='head'||st.kind==='head3d'||st.kind==='mannequin')return;
+      if(st.kind==='head'||st.kind==='mannequin')return;
       if(!st.points||st.points.length<2)return;
       if((st.layer||1)!==activeLayer)return;
       let minD=Infinity;
@@ -11070,7 +10981,7 @@ function openReview(nodeId,versionId,opts){
     const inWin=p=>!isVideo||(p.f!=null&&f>=p.f&&f<p.f+pdur);
     const items=[];
     for(const p of pending){
-      if(p.kind==='head'||p.kind==='head3d'||p.kind==='mannequin')continue;
+      if(p.kind==='head'||p.kind==='mannequin')continue;
       if(!p.points||p.points.length<2)continue;
       if((p.layer||1)!==activeLayer)continue;
       if(!inWin(p))continue;
@@ -11080,7 +10991,7 @@ function openReview(nodeId,versionId,opts){
       if(!n.drawing||!n.drawing.length)continue;
       if(isVideo&&!(n.frame!=null&&f>=n.frame&&f<n.frame+durOf(n)))continue;
       for(const p of n.drawing){
-        if(p.kind==='head'||p.kind==='head3d'||p.kind==='mannequin')continue;
+        if(p.kind==='head'||p.kind==='mannequin')continue;
         if(!p.points||p.points.length<2)continue;
         if((p.layer||1)!==activeLayer)continue;
         if(_strokeInLasso(p,polygon)) items.push({stroke:p, base:p.points.map(pt=>pt.slice()), src:'committed', noteRef:n});
@@ -11135,17 +11046,15 @@ function openReview(nodeId,versionId,opts){
     if(committedDirty)v.review.notes=v.review.notes.filter(n=>n.kind||(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length));
     if(any){drawAll();drawTimeline();_eraseChanged=true}
   }
-  /* 顔の向きガイド：ドラッグ操作。既存ガイドの本体をヒットすれば編集、無ければ新規配置。
-     tool='head'（2D 球体ガイド）と tool='head3d'（3D 頭部モデル）で共通処理・kind だけ切替。 */
+  /* 顔の向きガイド：ドラッグ操作。既存ガイドの本体をヒットすれば編集、無ければ新規配置 */
   function headPointerDown(e){
     canvas.setPointerCapture(e.pointerId);
     const [x,y]=pt(e);const f=dispFrame();const aspect=canvas.height/canvas.width;
-    const targetKind=(tool==='head3d')?'head3d':'head';
     let hit=null;
-    for(let i=pending.length-1;i>=0;i--){const p=pending[i];if(p.kind!==targetKind||(p.layer||1)!==activeLayer)continue;if(isVideo&&p.f!==f)continue;if(Math.hypot(p.cx-x,(p.cy-y)*aspect)<=(p.r||0.12)*1.3){hit=p;break}}
+    for(let i=pending.length-1;i>=0;i--){const p=pending[i];if(p.kind!=='head'||(p.layer||1)!==activeLayer)continue;if(isVideo&&p.f!==f)continue;if(Math.hypot(p.cx-x,(p.cy-y)*aspect)<=(p.r||0.12)*1.3){hit=p;break}}
     let s;
     if(hit)s=hit;
-    else{s={kind:targetKind,cx:x,cy:y,r:0.12,yaw:0,pitch:0,roll:0,color:colorIn.value,f:isVideo?f:null,layer:activeLayer};pending.push(s);redoStack=[]}
+    else{s={kind:'head',cx:x,cy:y,r:0.12,yaw:0,pitch:0,roll:0,color:colorIn.value,f:isVideo?f:null,layer:activeLayer};pending.push(s);redoStack=[]}
     const d=Math.hypot(s.cx-x,(s.cy-y)*aspect);
     let mode='rotate';
     if(e.shiftKey)mode='roll';else if(e.ctrlKey||e.metaKey)mode='size';
@@ -11169,12 +11078,12 @@ function openReview(nodeId,versionId,opts){
     if(e.button!==0||spaceDown)return; // 中/右ボタン・画面操作(Space系)中は描画せず、パン/ズーム/回転に譲る
     if(tool==='draw'){canvas.setPointerCapture(e.pointerId);const p0=pt(e);{const pr=samplePressure(e);if(pr!=null)p0.push(pr)}stroke={color:colorIn.value,points:[p0],f:dispFrame(),layer:activeLayer,w:brushW/canvas.width}}
     else if(tool==='erase'){canvas.setPointerCapture(e.pointerId);erasing=true;eraseAt(e)}
-    else if(tool==='head'||tool==='head3d'){headPointerDown(e)}
+    else if(tool==='head'){headPointerDown(e)}
     else if(tool==='mann'){mannPointerDown(e)}
     else if(tool==='lasso'){lassoPointerDown(e)}
     else if(tool==='shape'){shapePointerDown(e)}
   };
-  canvas.onpointermove=e=>{if(stroke){const evs=e.getCoalescedEvents?e.getCoalescedEvents():null;if(evs&&evs.length){for(const ce of evs){const p=pt(ce);const pr=samplePressure(ce);if(pr!=null)p.push(pr);stroke.points.push(p)}}else{const p=pt(e);const pr=samplePressure(e);if(pr!=null)p.push(pr);stroke.points.push(p)}drawAll()}else if(erasing)eraseAt(e);else if(headDrag)headPointerMove(e);else if(mannDrag||tool==='mann')mannPointerMove(e);else if(tool==='lasso')lassoPointerMove(e);else if(tool==='shape'&&shapeDraft)shapePointerMove(e);else if(tool==='head'||tool==='head3d'){hoverPt=pt(e);drawAll()} if((tool==='draw'||tool==='erase')&&!szAdj)moveHoverRing(e)}; /* mann は drag 中でなくてもホバーでリングをハイライトするので tool==='mann' で分岐 */
+  canvas.onpointermove=e=>{if(stroke){const evs=e.getCoalescedEvents?e.getCoalescedEvents():null;if(evs&&evs.length){for(const ce of evs){const p=pt(ce);const pr=samplePressure(ce);if(pr!=null)p.push(pr);stroke.points.push(p)}}else{const p=pt(e);const pr=samplePressure(e);if(pr!=null)p.push(pr);stroke.points.push(p)}drawAll()}else if(erasing)eraseAt(e);else if(headDrag)headPointerMove(e);else if(mannDrag||tool==='mann')mannPointerMove(e);else if(tool==='lasso')lassoPointerMove(e);else if(tool==='shape'&&shapeDraft)shapePointerMove(e);else if(tool==='head'){hoverPt=pt(e);drawAll()} if((tool==='draw'||tool==='erase')&&!szAdj)moveHoverRing(e)}; /* mann は drag 中でなくてもホバーでリングをハイライトするので tool==='mann' で分岐 */
   canvas.addEventListener('pointerleave',()=>{if(hoverPt){hoverPt=null;drawAll()}try{sizeRing.style.display='none'}catch(_){}});
   canvas.onpointerup=()=>{
     let changed=false;
@@ -14066,7 +13975,7 @@ function openReel(){
     const inWin=p=>p.f!=null&&f>=p.f&&f<p.f+pdur;
     let best=null;
     const test=(st,src,noteRef)=>{
-      if(st.kind==='head'||st.kind==='head3d'||st.kind==='mannequin')return;
+      if(st.kind==='head'||st.kind==='mannequin')return;
       if(!st.points||st.points.length<2)return;
       if((st.layer||1)!==RV.activeLayer)return;
       let minD=Infinity;
@@ -14184,7 +14093,7 @@ function openReel(){
     const f=dispF();const pdur=parseInt(durS.value)||1;const inWin=p=>p.f!=null&&f>=p.f&&f<p.f+pdur;
     const items=[];
     for(const p of RV.pending){
-      if(p.kind==='head'||p.kind==='head3d'||p.kind==='mannequin')continue;
+      if(p.kind==='head'||p.kind==='mannequin')continue;
       if(!p.points||p.points.length<2)continue;
       if((p.layer||1)!==RV.activeLayer)continue;
       if(!inWin(p))continue;
