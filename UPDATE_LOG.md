@@ -14,6 +14,15 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.08.07.046) 顔の向きガイド 3D 版（`kind:'head3d'`）を追加：目・鼻・口・耳付きの ellipsoid 頭部モデルをアノテ窓に配置可能に
+  - **新機能**：アノテ窓トップバーに `👤 頭3D` ボタン追加（既存 `◑ 顔の向き` は据え置き・併存）
+  - **モデル**：Three.js を使わず Canvas 2D + 独自 3D 数学で描画（`paintHead3D`）。頭部は縦長 ellipsoid（RX=0.90, RY=1.10, RZ=0.92）、水平リング 5 本＋垂直リング 4 本＋正中線・アイライン強調線＋前面の目・鼻・口の特徴点＋側面の耳
+  - **操作**：ドラッグ=回転（yaw/pitch）／Shift+ドラッグ=傾き（roll）／Ctrl+ドラッグ=大きさ／中心をドラッグ=移動／**ホイール=大きさ**（新規追加、ポインタ下のガイドを縮尺）
+  - **保存**：既存 head と同形式（`{kind:'head3d', cx, cy, r, yaw, pitch, roll, color, f, layer}`）で永続化
+  - **書き出し**：`paintStrokeList` に `head3d` ディスパッチ追加。REEL・書き出し MP4 でも自動描画
+  - **消しゴム**：既存 head と同様に反応（`kind` チェックに `head3d` 追加）
+  - **Three.js 未同梱の理由**：ライブラリ ~600KB 増を避けるため、Canvas 2D + 3D 数学で自己完結。将来 Three.js 実装が必要なら別途検討
+
 - (dev v2026.08.07.045) ステータス巻き戻り問題の恒久対策（scout 徹底解析による重大 4 件のうち 3 件＋関連 #13 を一括修正）
   - **#2（重大）**：`_persistNow` の baseline 更新を修正。従来は保存前に凍結した `ps=JSON.stringify(data)` を `_saveCache.proj[e.id]` にセットしていたが、`saveProjectSplit` 内で `_applyShotFileIntoDB` により DB が書き換わるケースで baseline が乖離。**保存完了時点の `projectData(e.id)` から再ストリンガイズ**して baseline を確保する。これで autoRefresh の `baseline===before` 判定が正しく動作し、**v.074 の「clean 時のみ state 系も remote 採用」経路が復活**。他ユーザーの status 更新が本人にも反映されるようになる。
   - **#3 / #13（重大）**：`autoRefresh` の先頭で `_persistBusy>0` の間は即 return するガードを追加（force=true 経路にも適用）。従来は Alt-Tab／`visibilitychange` で `autoRefresh(true)` が persist 中に割り込み、union-fill が「未着手に戻した」意図を古い remote 値で埋め戻していた。
