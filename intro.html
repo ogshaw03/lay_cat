@@ -284,9 +284,84 @@
   .comingsoon{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px dashed var(--border2);color:var(--text3);border-radius:999px;font-size:13px;cursor:not-allowed;user-select:none;background:transparent;font-family:inherit}
   .comingsoon.big{padding:12px 22px;font-size:14px}
   .comingsoon .badge{display:inline-block;padding:1px 8px;font-size:10px;font-weight:800;letter-spacing:.5px;border-radius:8px;background:var(--purple);color:#fff;margin-right:2px}
+
+  /* ========== SIDE TOC（左固定の目次） ========== */
+  /* 画面幅が広い時のみ表示（1280px 以上）。狭い画面ではメイン導線を妨げないよう非表示。 */
+  .toc-nav{
+    position:fixed;left:20px;top:110px;z-index:60;
+    width:196px;max-height:calc(100vh - 140px);
+    background:rgba(20,20,26,.78);backdrop-filter:blur(14px);
+    border:1px solid var(--border);border-radius:12px;
+    padding:14px 12px 14px 14px;
+    font-size:12px;overflow-y:auto;
+    box-shadow:0 12px 40px rgba(0,0,0,.35);
+    scrollbar-width:thin;scrollbar-color:var(--border2) transparent;
+    opacity:0;transform:translateX(-8px);pointer-events:none;
+    transition:opacity .3s ease,transform .3s ease;
+  }
+  .toc-nav.on{opacity:1;transform:none;pointer-events:auto}
+  .toc-nav::-webkit-scrollbar{width:6px}
+  .toc-nav::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+  .toc-nav .toc-title{
+    font-size:10px;font-weight:800;letter-spacing:1.8px;
+    color:var(--text3);text-transform:uppercase;
+    margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:6px;
+  }
+  .toc-nav .toc-title::before{
+    content:'';display:inline-block;width:12px;height:2px;background:var(--gradPurple);border-radius:2px;
+  }
+  .toc-nav ul{list-style:none;padding:0;margin:0}
+  .toc-nav li.toc-group{
+    font-weight:700;color:var(--text2);font-size:10.5px;letter-spacing:.5px;
+    padding:12px 0 4px;border-top:1px solid var(--border);margin-top:6px;
+    text-transform:uppercase;
+  }
+  .toc-nav li.toc-group:first-child{border-top:none;margin-top:0;padding-top:2px}
+  .toc-nav a{
+    display:block;padding:5px 6px 5px 10px;
+    color:var(--text2);text-decoration:none;
+    border-left:2px solid transparent;
+    line-height:1.4;font-size:12px;
+    border-radius:0 4px 4px 0;
+    transition:color .15s,border-left-color .15s,background .15s;
+  }
+  .toc-nav a:hover{color:var(--text);border-left-color:var(--border2);background:rgba(255,255,255,.03)}
+  .toc-nav a.active{
+    color:var(--text);border-left-color:var(--purple);
+    background:linear-gradient(90deg,rgba(165,107,240,.10),transparent 90%);
+    font-weight:600;
+  }
+  @media(max-width:1280px){.toc-nav{display:none}}
 </style>
 </head>
 <body>
+
+<!-- ============ 左サイド：目次（TOC） ============ -->
+<aside class="toc-nav" id="tocNav" aria-label="ページ目次">
+  <div class="toc-title">目次 / TOC</div>
+  <ul>
+    <li class="toc-group">機能</li>
+    <li><a href="#task-page">タスクページ</a></li>
+    <li><a href="#annotation">アノテーション</a></li>
+    <li><a href="#time-remap">タイムリマップ</a></li>
+    <li><a href="#face-guide">顔の向きガイド</a></li>
+    <li><a href="#mannequin-feat">3D マネキン</a></li>
+    <li><a href="#shots-view">ショット一覧</a></li>
+    <li><a href="#progress">進捗管理</a></li>
+    <li><a href="#folder-usage">フォルダ運用</a></li>
+    <li><a href="#review-queue">チェック待ち</a></li>
+    <li><a href="#reel-feat">REEL</a></li>
+    <li><a href="#export">動画書き出し</a></li>
+    <li><a href="#cloud">クラウド保存</a></li>
+    <li class="toc-group">独自機能</li>
+    <li><a href="#exr">EXR プレビュー</a></li>
+    <li><a href="#reel-sync">REEL 連携</a></li>
+    <li><a href="#mannequin">3D ポーズ指示</a></li>
+    <li class="toc-group">はじめ方</li>
+    <li><a href="#start">30 秒で使い始める</a></li>
+  </ul>
+</aside>
 
 <!-- ============ 最上部：はじめ方ガイドへの誘導帯 ============ -->
 <a href="guide.html" class="guide-strip">
@@ -359,7 +434,7 @@
     <span class="label">できること（詳しく）</span>
     <h2 class="section-title">機能</h2>
 
-    <div class="feature-row">
+    <div class="feature-row" id="task-page">
       <div class="feature-text">
         <span class="label-sm">Task Page</span>
         <h3>1 カットの作業を、1 画面に。</h3>
@@ -379,7 +454,7 @@
       </div>
     </div>
 
-    <div class="feature-row reverse">
+    <div class="feature-row reverse" id="annotation">
       <div class="feature-text">
         <span class="label-sm">Annotation</span>
         <h3>動画のコマに、直接「絵」で指示。</h3>
@@ -398,7 +473,7 @@
       </div>
     </div>
 
-    <div class="feature-row">
+    <div class="feature-row" id="time-remap">
       <div class="feature-text">
         <span class="label-sm">Time Remap · NEW</span>
         <h3>タイムリマップ</h3>
@@ -478,7 +553,7 @@
       </div>
     </div>
 
-    <div class="feature-row">
+    <div class="feature-row" id="face-guide">
       <div class="feature-text">
         <span class="label-sm">Face Guide</span>
         <h3>顔の向きは、立体的に指定。</h3>
@@ -496,7 +571,7 @@
       </div>
     </div>
 
-    <div class="feature-row reverse">
+    <div class="feature-row reverse" id="mannequin-feat">
       <div class="feature-text">
         <span class="label-sm">3D Mannequin</span>
         <h3>ポーズは、3D マネキンで指示。</h3>
@@ -517,7 +592,7 @@
       </div>
     </div>
 
-    <div class="feature-row">
+    <div class="feature-row" id="shots-view">
       <div class="feature-text">
         <span class="label-sm">Shots View</span>
         <h3>ショットを一覧で表示。</h3>
@@ -537,7 +612,7 @@
       </div>
     </div>
 
-    <div class="feature-row reverse">
+    <div class="feature-row reverse" id="progress">
       <div class="feature-text">
         <span class="label-sm">Progress</span>
         <h3>進捗は、グラフでまとめて管理。</h3>
@@ -587,7 +662,7 @@
       </div>
     </div>
 
-    <div class="feature-row reverse">
+    <div class="feature-row reverse" id="review-queue">
       <div class="feature-text">
         <span class="label-sm">Review Queue</span>
         <h3>チェック担当者ごとに一覧表示</h3>
@@ -605,7 +680,7 @@
       </div>
     </div>
 
-    <div class="feature-row">
+    <div class="feature-row" id="reel-feat">
       <div class="feature-text">
         <span class="label-sm">Reel</span>
         <h3>カットをつなげてまとめてチェック</h3>
@@ -622,7 +697,7 @@
       </div>
     </div>
 
-    <div class="feature-row reverse">
+    <div class="feature-row reverse" id="export">
       <div class="feature-text">
         <span class="label-sm">Export</span>
         <h3>アノテを焼き付けたまま動画で書き出し。</h3>
@@ -821,6 +896,73 @@
       b2.classList.remove('active'); b1.classList.add('active');
     }
   }
+
+  /* ========== SIDE TOC：表示制御＋アクティブハイライト ========== */
+  (function(){
+    var toc = document.getElementById('tocNav');
+    if(!toc)return;
+
+    /* Hero を過ぎたら TOC をフェードインで表示 */
+    function updateVisibility(){
+      var hero = document.querySelector('.hero');
+      var threshold = hero ? hero.offsetHeight * 0.55 : 300;
+      if(window.scrollY > threshold){toc.classList.add('on')}
+      else{toc.classList.remove('on')}
+    }
+    updateVisibility();
+    window.addEventListener('scroll', updateVisibility, {passive:true});
+
+    /* IntersectionObserver でアクティブセクションをハイライト。
+       Viewport 上部 30%〜下部 60% の間にある要素を「今表示中」と扱う。 */
+    var links = toc.querySelectorAll('a[href^="#"]');
+    var linkMap = {};
+    links.forEach(function(a){linkMap[a.getAttribute('href').slice(1)] = a});
+    var ids = Object.keys(linkMap);
+    var targets = ids.map(function(id){return document.getElementById(id)}).filter(Boolean);
+
+    function setActive(id){
+      links.forEach(function(a){a.classList.remove('active')});
+      var a = linkMap[id];
+      if(a){
+        a.classList.add('active');
+        /* 現在項目を目次内でスクロール可視化 */
+        try{
+          var tocRect = toc.getBoundingClientRect();
+          var aRect = a.getBoundingClientRect();
+          if(aRect.top < tocRect.top + 40 || aRect.bottom > tocRect.bottom - 40){
+            a.scrollIntoView({block:'nearest', behavior:'smooth'});
+          }
+        }catch(_){}
+      }
+    }
+
+    if('IntersectionObserver' in window){
+      var observed = new Map();
+      var observer = new IntersectionObserver(function(entries){
+        entries.forEach(function(e){
+          observed.set(e.target.id, e.intersectionRatio > 0 ? e.boundingClientRect.top : Infinity);
+        });
+        /* 「上に一番近くて既に通り過ぎていない」要素をアクティブに */
+        var best = null, bestTop = Infinity;
+        ids.forEach(function(id){
+          var t = observed.get(id);
+          if(t == null || t === Infinity) return;
+          if(t < window.innerHeight * 0.5 && t > -100 && Math.abs(t) < bestTop){
+            best = id; bestTop = Math.abs(t);
+          }
+        });
+        if(best) setActive(best);
+      }, {rootMargin:'-20% 0px -55% 0px', threshold:[0, .01, .5, 1]});
+      targets.forEach(function(el){observer.observe(el)});
+    }
+
+    /* リンククリック時に active を即反映 */
+    links.forEach(function(a){
+      a.addEventListener('click', function(){
+        setTimeout(function(){setActive(a.getAttribute('href').slice(1))}, 100);
+      });
+    });
+  })();
 </script>
 
 </body>
