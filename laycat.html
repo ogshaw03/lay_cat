@@ -252,6 +252,13 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .task-tab .tt-close{border:none;background:none;color:var(--text3);font-size:10px;padding:0 3px;line-height:1;border-radius:4px;flex-shrink:0;opacity:.5}
 .task-tab:hover .tt-close,.task-tab.on .tt-close{opacity:1}
 .task-tab .tt-close:hover{background:rgba(255,255,255,.14);color:var(--text)}
+/* タブロック（🔒/🔓）：ロック中は常時表示・強調、未ロックは薄めでホバー時にはっきり表示。
+   「✕ すべて閉じる」で閉じないことを表す固定表示。
+   絵文字は grayscale フィルタで無彩色化（テーマに馴染ませる）。 */
+.task-tab .tt-lock{border:none;background:none;color:var(--text3);font-size:11px;padding:0 3px;line-height:1;border-radius:4px;flex-shrink:0;opacity:.25;cursor:pointer;filter:grayscale(1)}
+.task-tab:hover .tt-lock,.task-tab.on .tt-lock{opacity:.7}
+.task-tab .tt-lock.on{opacity:1}
+.task-tab .tt-lock:hover{background:rgba(255,255,255,.14)}
 /* タブの並べ替え pointer events 中のビジュアルフィードバック。
    .dragging-collapse：dragged タブの幅を 0 に潰して DOM 上から実質除去。
      flexbox が自然に他タブを詰め、その上に applyShift の transform を重ねて
@@ -2498,7 +2505,7 @@ const storage={
 /* ---------- 状態 / DB ---------- */
 let DB=null;let curUploadUI=null;
 let REG=[]; /* 接続プロジェクト一覧（このユーザーが使うプロジェクト）: [{id,name,folderName}] */
-const state={currentId:null,search:'',expanded:new Set(),tabDrawers:{},openTasks:[]};
+const state={currentId:null,search:'',expanded:new Set(),tabDrawers:{},openTasks:[],tabLocks:new Set()};
 function defaultDb(){return{version:3,nodes:[],reels:[],notifications:[],submits:[]}}
 /* プロジェクト（ルート）ID を求める */
 function projectIdOf(nodeId){const n=getNode(nodeId);return n?rootOf(n).id:null}
@@ -2921,7 +2928,18 @@ async function _persistNow(){
           }
         }
       }
-      if(!_skipSave){const ok=await saveProjectSplit(e.id,data);if(ok!==false)_saveCache.proj[e.id]=ps;}
+      if(!_skipSave){
+        const ok=await saveProjectSplit(e.id,data);
+        if(ok!==false){
+          /* v.045 #2 修正：`saveProjectSplit` 内で `_saveShotWithLock` → `_applyShotFileIntoDB` により
+             DB が書き換わっている可能性があるため、凍結した `ps` ではなく、保存完了時点の DB から
+             再ストリンガイズして baseline を更新する。
+             これにより次の autoRefresh の clean 判定（`baseline===before`）が正しく動作し、
+             v.074 の「clean 時は remote 採用」経路が復活する（他ユーザーの status 更新が反映される）。
+             失敗時は従来通り凍結 ps を使う（安全側フォールバック）。 */
+          try{_saveCache.proj[e.id]=JSON.stringify(projectData(e.id))}catch(_){_saveCache.proj[e.id]=ps}
+        }
+      }
     }
     const rls=reelsByProj[e.id]||[];const rk=JSON.stringify(rls);
     if(_saveCache.reels[e.id]!==rk){
@@ -3057,7 +3075,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='beta v0.1.0';
+const APP_VERSION='beta v0.2.0';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3221,6 +3239,8 @@ async function boot(){
        ここでは中身検証せず生値を復元する。表示側（renderTabs）が解決できた ID だけを描画する。 */
     if(Array.isArray(_loc.openTasks))state.openTasks=_loc.openTasks.slice(0,40);
     if(Array.isArray(_loc.expanded))for(const id of _loc.expanded)state.expanded.add(id);
+    /* タブロック復元：ロックされたタブは「✕ すべて閉じる」で閉じない（個別 ✕ は従来通り閉じられる） */
+    if(Array.isArray(_loc.tabLocks))state.tabLocks=new Set(_loc.tabLocks.slice(0,40));
   }
   if(!applyHash(true)){
     let restored=false;
@@ -3679,6 +3699,12 @@ function _editingNow(){
 }
 async function autoRefresh(force){
   if(!DB||!REG.length||_autoRefreshBusy)return;
+  /* v.045 #3/#13 修正：persist 実行中は force でも割り込まない。
+     persist 中に autoRefresh が動くと、`_saveCache.proj` がまだ凍結値のままの状態で
+     `_unionRemoteIntoDB` の union-fill が発火し、「ステータス未着手に戻した」意図（`delete node.status`）が
+     remote の古い status で埋め戻される事故が起きる（Alt-Tab／focus/visibilitychange 経由で頻発）。
+     persist が終わってから改めて refresh すれば十分。 */
+  if(typeof _persistBusy!=='undefined'&&_persistBusy>0)return;
   if(!force&&_editingNow())return;
   let now=0;try{now=Date.now()}catch(_){}
   if(!force&&now-_autoRefreshAt<5000)return;
@@ -4245,7 +4271,7 @@ function updateHeaderForContext(){
 }
 /* saveLoc は render 毎に呼ばれるため同期書き込みをデバウンスし、タブ復元用に openTasks/expanded も保存する（#13a 復元とセット） */
 let _saveLocTimer=null;
-function _saveLocNow(){try{localStorage.setItem('layna_loc',JSON.stringify({id:state.currentId||null,tab:state.projTab||'timeline',lastPageId:state.lastPageId||null,openTasks:(state.openTasks||[]).slice(0,40),expanded:[...(state.expanded||[])].slice(0,400)}))}catch(_){}}
+function _saveLocNow(){try{localStorage.setItem('layna_loc',JSON.stringify({id:state.currentId||null,tab:state.projTab||'timeline',lastPageId:state.lastPageId||null,openTasks:(state.openTasks||[]).slice(0,40),expanded:[...(state.expanded||[])].slice(0,400),tabLocks:[...(state.tabLocks||[])].slice(0,40)}))}catch(_){}}
 function saveLoc(){if(_saveLocTimer)return;try{_saveLocTimer=setTimeout(()=>{_saveLocTimer=null;_saveLocNow()},400)}catch(_){_saveLocNow()}}
 function render(){invalidateStageColors();invalidateRoleMemo();renderSidebar();renderBreadcrumb();renderMainHead();renderBody();updateHeaderForContext();resolveThumbs();saveLoc();maybeScanMentions();scheduleBackfillThumbs();try{if(pgWin&&!pgWin.closed)pgBuild()}catch(_){}try{if(slWin&&!slWin.closed)slBuild()}catch(_){}}
 /* 表示のたびに（スロットル付きで）自分宛メンションを走査 */
@@ -4665,11 +4691,24 @@ function buildTaskTabs(root){
       /* タブ切替：フォルダから最新を取り込み（fire-and-forget）。補正 render は入れない */
       setTimeout(()=>{autoRefresh(true).catch(()=>{})},0);
     };
-    const x=el('button','tt-close','✕');x.title='タブを閉じる';
+    /* ロックボタン：「✕ すべて閉じる」で閉じないようにする（個別 ✕ は従来通り閉じる）。
+       ロック中は南京錠を強調表示、未ロック時は控えめに表示。 */
+    const isLocked=!!(state.tabLocks&&state.tabLocks.has(id));
+    const lk=el('button','tt-lock'+(isLocked?' on':''),isLocked?'🔒':'🔓');
+    lk.title=isLocked?'ロック中（一括閉じで閉じない）／クリックで解除':'ロックする（一括閉じで閉じないようにする）';
+    lk.onclick=e=>{e.stopPropagation();
+      if(!state.tabLocks)state.tabLocks=new Set();
+      if(state.tabLocks.has(id))state.tabLocks.delete(id);else state.tabLocks.add(id);
+      render();syncHash();
+    };
+    tab.appendChild(lk);
+    const x=el('button','tt-close','✕');x.title='タブを閉じる（個別 ✕ はロック中でも閉じられる）';
     x.onclick=e=>{e.stopPropagation();
       const wasCur=state.currentId===id;
       const vidx=visible.indexOf(id); /* 「次のタブ」は表示中リスト（visible）で選ぶ ─ 別プロジェクト保持分に飛ばないように */
       state.openTasks=(state.openTasks||[]).filter(t=>t!==id);
+      /* 閉じたタブがロックされていた場合はロック情報も掃除（残ってても実害ないが state を整理） */
+      if(state.tabLocks&&state.tabLocks.has(id))state.tabLocks.delete(id);
       if(wasCur){
         const nextVisible=visible.filter(t=>t!==id);
         const next=nextVisible[vidx]||nextVisible[vidx-1]||null;
@@ -4682,14 +4721,23 @@ function buildTaskTabs(root){
     strip.appendChild(tab);
   }
   /* 列の最右：タブを一括で閉じるボタン（開いているタブがある時のみ）。
-     現プロジェクトの表示中タブだけを対象にし、別プロジェクトで温存している openTasks は残す */
-  const clr=el('button','tt-clear','✕ すべて閉じる');
-  clr.title='開いているタブをすべて閉じる';
+     現プロジェクトの表示中タブだけを対象にし、別プロジェクトで温存している openTasks は残す。
+     ロックされたタブは除外（🔒 ボタンで意図的に固定されたもの）。 */
+  const locks=state.tabLocks||new Set();
+  const lockedInView=visible.filter(t=>locks.has(t)).length;
+  const clr=el('button','tt-clear',lockedInView?('✕ すべて閉じる（ロック '+lockedInView+' 件除く）'):'✕ すべて閉じる');
+  clr.title=lockedInView?('ロック中の '+lockedInView+' 件は残して、それ以外の開いているタブを閉じる'):'開いているタブをすべて閉じる';
   clr.onclick=e=>{e.stopPropagation();
     const vs=new Set(visible);
-    state.openTasks=(state.openTasks||[]).filter(t=>!vs.has(t));
+    /* 表示中かつロック無しのタブだけ閉じる */
+    state.openTasks=(state.openTasks||[]).filter(t=>!vs.has(t)||locks.has(t));
     const cur=state.currentId?getNode(state.currentId):null;
-    if(cur&&cur.type==='review'&&vs.has(state.currentId)){state.currentId=root.id;state.projTab='timeline';}
+    if(cur&&cur.type==='review'&&vs.has(state.currentId)&&!locks.has(state.currentId)){
+      /* 閉じられる予定の現在タブなら、残っているロック済みタブへ、無ければトップへ */
+      const nextLocked=visible.find(t=>locks.has(t));
+      if(nextLocked){state.currentId=nextLocked;state.projTab='browse';for(const y of pathOf(nextLocked))state.expanded.add(y.id);}
+      else{state.currentId=root.id;state.projTab='timeline';}
+    }
     render();syncHash();
   };
   strip.appendChild(clr);
@@ -5266,6 +5314,18 @@ function renderProjShots(main,cur){
     }else th.appendChild(thumbPh());
     /* オミット：サムネはそのまま（グレーアウトはCSS）、オミット猫をオーバーレイ */
     if(isOmit){const ov=el('div','omit-ov');const cat=el('img','omit-cat');cat.src=OMIT_CAT_IMG;cat.alt='オミット';ov.appendChild(cat);th.appendChild(ov);}
+    /* 動画・サムネ部分（th）のクリック：縦並び行と同じで、作業ページ（タブ）追加＝go に振る。
+       選択モード中／Ctrl・Meta クリックは通常のタイル onclick（下）と同じ選択トグルを通す。
+       これによりタイル枠クリック＝右スライド、動画部クリック＝タブ追加、の 2 挙動が両立する。 */
+    if(lv){
+      th.title='クリックで作業ページ（タブ）に追加';
+      th.onclick=(ev)=>{
+        const inSel=(state.shotSel&&state.shotSel.size>0);
+        if(inSel||ev.ctrlKey||ev.metaKey)return; /* 選択モード時はタイル本体の onclick に委譲（stopPropagation しない） */
+        ev.stopPropagation();
+        go(lv.node.id);
+      };
+    }
     tile.appendChild(th);
     const bd=el('div','bd');bd.appendChild(el('div','nm',sh.name));
     /* 工程バッジ＋ステータスバッジ（動画の有無に関わらず表示）。
@@ -5319,7 +5379,9 @@ function renderProjShots(main,cur){
       if(lv)openReviewDrawer(lv.node.id,sh.id);else if(rep)openReviewDrawer(rep.id,sh.id);else go(sh.id);
     };
     const th=el('img','shot-row-th');if(lv&&lv.v.thumb)th.dataset.ref=lv.v.thumb;
-    if(lv){th.title='クリックでアノテーションを開く';th.onclick=ev=>{ev.stopPropagation();openReview(lv.node.id,lv.v.id,{modal:true})}}
+    /* 縦並び表示のサムネクリック：以前はアノテ窓（openReview modal）を開いていたが、
+       ユーザー要望により作業ページ（タブ）追加＝go に変更。行本体クリックの右スライドはそのまま。 */
+    if(lv){th.title='クリックで作業ページ（タブ）に追加';th.onclick=ev=>{ev.stopPropagation();go(lv.node.id)}}
     it.appendChild(th);
     it.appendChild(el('span','shot-row-nm',sh.name)); /* ショット名 */
     if(rep){const stg=el('span','tl-stage',rep.name);stg.style.background=lv?stageBadgeColor(rep):hexA(stageBadgeColor(rep),.45);it.appendChild(stg);} /* 工程（全工程未着手なら先頭工程を控えめ色で表示） */
@@ -8508,11 +8570,17 @@ function _mergeNodeInto(a,b,opts){
        → 「正常時は他ユーザー status 変更を即時反映、rollback 時のみ守る」の両立。 */
   const _authoritative=!!(opts&&opts.remoteAuthoritative);
   const _stateKeys=new Set(['status','assignee','reviewer']);
+  const _bHas=k=>b&&Object.prototype.hasOwnProperty.call(b,k);
   for(const k of ['thumbnail','status','assignee','reviewer','description','folderName','thumbCrop','type','name']){
     /* preferB=true && (authoritative || 非 state 系) → 従来の preferB（remote 採用）
        それ以外（preferB=false、または preferB=true && authoritative=false && state 系）→ fill-only */
     if(preferB&&(_authoritative||!_stateKeys.has(k))){
       if(b[k]!=null&&b[k]!=='')a[k]=b[k];
+      /* v.045 #10 修正：state 系＋authoritative 経路では、remote が明示的に clear した null/'' も
+         「未着手に戻された」意図として尊重する。従来は `b[k]!=null` フィルタで null が捨てられ、
+         local の古い値が残っていた（他ユーザーが「未着手に戻す」操作を行っても A のブラウザには反映されない）。
+         `_bHas(k)` で「remote がキーとして明示的に持っている」ことを確認して assign する。 */
+      else if(_authoritative&&_stateKeys.has(k)&&_bHas(k))a[k]=b[k];
     }else{
       if((a[k]==null||a[k]==='')&&b[k]!=null&&b[k]!=='')a[k]=b[k];
     }
