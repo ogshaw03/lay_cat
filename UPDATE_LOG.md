@@ -14,7 +14,7 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-（現在なし。直近の変更は 2026-09-08 に Beta v0.2.0 として反映済み → 下部の「反映済み beta v0.2.0」参照）
+（現在なし。直近のサイレント反映は下部の「反映済み・パッチノート記載なし」参照）
 
 ---
 
@@ -1238,6 +1238,13 @@ GLB モデル差し替え／Maya 準拠カメラ／複数選択マニピュレ�
 ---
 
 ## 反映済み・パッチノート記載なし（Beta 反映済み・PATCH_NOTES.md 未記載）
+
+- **【2026-09-09 Beta v0.2.0 追加サイレント反映】** ステータス巻き戻り 第 2 弾恒久対策を Beta へサイレント反映（バージョン据え置き・パッチノート記載なし）：
+  - (dev v2026.09.09.001) shot1/2 に DD アップロード後に shot3 の「個別工程」を変更すると shot1/2 の status が旧値へ巻き戻る変種を修正（v.045 の 3-way マージ調整で顕在化した副作用パス）
+    - **Fix ①（per-shot baseline 同期漏れの解消）**：`_saveCache.shot[pid][sid]` を「保存応答の凍結 JSON」から、`DB.nodes` を `saveProjectSplit` と同じ形で再ストリンガイズする共通ヘルパ `_shotFileJsonForBaseline(pid,sid)` 経由に置換。`_hydrateShots` の初回 seed も `Object.assign` による骨格併合後の `parsed.nodes` から作るように変更。これで「baseline と次回 persist が生成する fingerprint」の JSON 表現ズレが原理的に発生しなくなり、shot3 変更で shot1/2 が false-dirty 判定に落ちる主経路を閉塞。
+    - **Fix ②（`_saveShotWithLock` rev 逆行ガード）**：`remoteRev < knownRev` の remote 読み結果を `null` 扱いにして 3-way マージを回避、自分の状態を `nextRev` で forward-correct 書き。他タブの部分失敗・R2 eventual consistency・FS 同期遅延でも rollback ベクターに落ちない。console.warn で診断可能。
+    - **Fix ③（`_syncShotRevAndCacheFromRemote` bucket 上書きガード）**：`raw._rev` を無条件で `shotBucket[sid]` に書いていたのを `nr > cur` の時だけ更新するようガード。rolled-back な内容を新 baseline として固定してしまう二次事故を防ぐ。
+    - 3 段防御構成：主経路（①）＋ 3-way 発火時の rollback フェイルセーフ（②）＋ 状態を汚染しないための書き込み側ガード（③）。v.045 の proj 側修正と設計思想を揃え、shot 側にも同等の耐久性を持たせた。
 
 - **【2026-09-08 Beta v0.2.0 追加サイレント反映】** 以下の項目を dev → beta v0.2.0 と同時にサイレント反映（パッチノート未記載・運営限定変更・実装未完成の revert 等）：
   - (dev v2026.08.07.047) v.046 の顔の向きガイド 3D 版（head3d）を revert：開発時間の兼ね合いで一旦削除。将来再開する場合は git 履歴（コミット 74e44fd）を参照。

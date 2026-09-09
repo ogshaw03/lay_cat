@@ -2236,24 +2236,12 @@ const storage={
     for(const n of (parsed.nodes||[]))if(n&&n.id)nodeMap.set(n.id,n);
     const recordRev=!(opts&&opts.recordRev===false);
     const bucket=recordRev?_revBucket(pid).shots:null;
+    const _seedIds=[];
     for(const shot of shots){
       if(!shot||!Array.isArray(shot.nodes))continue;
       /* Phase 3：ショットファイル毎の _rev（読込時点）を保持。recordRev=false なら再読時に上書きしない。 */
       if(bucket&&shot.shotId)bucket[shot.shotId]=(shot._rev|0);
-      /* v.039 修正：初回ロード時に `_saveCache.shot[pid][sid]` を seed する（未 seed のときのみ）。
-         これが無いと、多重タブ環境で「別タブが submit で status を更新 → 本タブが submit と無関係な別操作で
-         persist」した際に baseline=null で `_saveShotWithLock` の 3-way マージが fill-only 化 → local 優先で
-         相手（別タブ）が書き込んだ status='pending'／新版 timeRemap 等が上書き消失していた。
-         seed 内容は saveProjectSplit が期待する `{v:1,shotId,nodes}` 形式（`_rev` 除く）と一致させる。
-         既にキャッシュがある場合は触らない：ローカル未保存編集の baseline を書き潰さないため。 */
-      if(shot.shotId){
-        try{
-          const _sc=(_saveCache.shot[pid]=_saveCache.shot[pid]||{});
-          if(_sc[shot.shotId]==null){
-            _sc[shot.shotId]=JSON.stringify({v:1,shotId:shot.shotId,nodes:shot.nodes});
-          }
-        }catch(_){}
-      }
+      if(shot.shotId)_seedIds.push(shot.shotId);
       for(const n of shot.nodes){
         if(!n||!n.id)continue;
         const existing=nodeMap.get(n.id);
@@ -2268,6 +2256,20 @@ const storage={
           parsed.nodes.push(n);
         }
       }
+    }
+    /* 【v.048 恒久対策】baseline seed は Object.assign 後の合成後 nodeMap から作る。
+       従来は disk 素値の `shot.nodes` を stringify していたが、その後の骨格併合で
+       `saveProjectSplit` が生成する fingerprint と JSON 表現が乖離 → shot が false-dirty →
+       誤って 3-way マージが走り旧 status への巻き戻り事故に発展していた（v.045 で顕在化）。
+       ここで合成後の `parsed.nodes` から `saveProjectSplit` と同じ形で作れば乖離は消える。
+       ローカル未保存編集の baseline を書き潰さないため、既に値がある場合は触らない（v.039 の意図）。 */
+    const _sc=(_saveCache.shot[pid]=_saveCache.shot[pid]||{});
+    for(const sid of _seedIds){
+      if(_sc[sid]!=null)continue;
+      const shotNode=nodeMap.get(sid);
+      if(!shotNode)continue;
+      const kids=parsed.nodes.filter(x=>x&&x.parentId===sid);
+      try{_sc[sid]=JSON.stringify({v:1,shotId:sid,nodes:[shotNode,...kids]});}catch(_){}
     }
   },
   /* 現在フォルダ（またはlocalStorage）に保存されている実データを読む（暗号化なら復号）。
@@ -2529,6 +2531,21 @@ function syncRegistryFromDb(){
 }
 /* 変更検知用キャッシュ（未変更のファイル書き込みを省略） */
 const _saveCache={local:'',reg:'',proj:{},reels:{},access:{},submit:{},shot:{}};
+/* 【v.048 恒久対策】ショット baseline を「現在の DB.nodes」から `saveProjectSplit` と同じ形で
+   生成する共通ヘルパ。従来は `JSON.stringify(r.body)`（保存応答の凍結値）を baseline にしていたが、
+   その後の refresh 経由の `Object.assign(existing,n)` で骨格側にキーが追加されたり順序が変わったりして
+   baseline と実 DB の JSON 表現が乖離 → shot が false-dirty 判定 → 誤って 3-way マージが走り
+   旧 status への巻き戻りが発生していた（v.045 の 3-way 調整で顕在化）。
+   baseline も次回 persist が作るファイルも、同じヘルパを通せば表現ズレは原理的に起きない。 */
+function _shotFileJsonForBaseline(pid,sid){
+  try{
+    if(!DB||!Array.isArray(DB.nodes))return null;
+    const shotNode=DB.nodes.find(n=>n&&n.id===sid);
+    if(!shotNode)return null;
+    const kids=DB.nodes.filter(n=>n&&n.parentId===sid);
+    return JSON.stringify({v:1,shotId:sid,nodes:[shotNode,...kids]});
+  }catch(_){return null;}
+}
 /* Phase 2：旧形式（v<4）のプロジェクトを検知するセット。boot で埋めて開始時にモーダル提示。 */
 let _migrationNeeded=new Set();
 /* Phase 3：楽観ロック用に「読み込み時点の _rev」をファイル毎に記録。
@@ -2709,7 +2726,16 @@ async function _saveShotWithLock(pid,sid,fileBody){
   const bucket=_revBucket(pid).shots;
   const knownRev=bucket[sid]|0;
   let remote=null;try{remote=await storage.loadShot(pid,sid)}catch(_){}
-  const remoteRev=(remote&&remote._rev)|0;
+  let remoteRev=(remote&&remote._rev)|0;
+  /* 【v.048 恒久対策】rev 逆行ガード。remote の _rev が既知 rev より小さい場合、disk 側が
+     何らかの理由で古い状態に戻っている（他タブの部分失敗・R2 eventual consistency・FS 同期遅延 等）。
+     この remote を「相手の新しい編集」として 3-way マージに投入すると、theirs に旧 status が入って
+     ours（新 status）を差し戻す rollback ベクターになる。remote を null 扱いにして 3-way を回避し、
+     自分の状態をそのまま nextRev で前進書きする（disk は forward-correct される）。 */
+  if(remote&&remoteRev<knownRev){
+    try{console.warn('[laycat] _saveShotWithLock: remote _rev regression, ignoring remote',{pid,sid,remoteRev,knownRev});}catch(_){}
+    remote=null;remoteRev=0;
+  }
   let outNodes=fileBody.nodes;let merged=false;
   if(remote&&remoteRev>knownRev){
     /* Phase 3+：proper 3-way マージ。baseline は最後に自分が観測した shot ファイル JSON。
@@ -2780,7 +2806,14 @@ async function saveProjectSplit(pid,data){
     const j=JSON.stringify(file); /* _rev を含まない中身部分の指紋 */
     if(shotCache[sid]!==j){
       const r=await _saveShotWithLock(pid,sid,file);
-      if(r&&r.ok){shotCache[sid]=JSON.stringify(r.body);if(r.merged)anyShotMerged=true}
+      if(r&&r.ok){
+        /* 【v.048 修正】保存応答の `r.body` ではなく、現在の DB から `_shotFileJsonForBaseline` で
+           作り直す。次回 persist が生成する fingerprint と同じ関数を通すので原理的に乖離しない。
+           取得失敗時のみ従来の `JSON.stringify(r.body)` にフォールバック。 */
+        const b=_shotFileJsonForBaseline(pid,sid);
+        shotCache[sid]=b||JSON.stringify(r.body);
+        if(r.merged)anyShotMerged=true;
+      }
       else{shotFailed++;try{console.warn('saveProjectSplit: shot save failed',{pid,sid})}catch(_){}}
     }
   }
@@ -3075,7 +3108,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.08.07.047';
+const APP_VERSION='2026.09.09.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3663,11 +3696,21 @@ async function _syncShotRevAndCacheFromRemote(pid){
     try{
       const raw=await storage.loadShot(pid, sid);
       if(raw&&raw._rev!=null){
-        shotBucket[sid]=(raw._rev|0);
-        const shotNode=allNodes.find(n=>n.id===sid);
-        if(shotNode){
-          const kids=allNodes.filter(n=>n.parentId===sid);
-          _saveCache.shot[pid][sid]=JSON.stringify({v:1,shotId:sid,nodes:[shotNode,...kids]});
+        /* 【v.048 恒久対策】rev 逆行ガード。remote の _rev が既知 rev より小さい／同値のときは
+           bucket と baseline を書き換えない。書き換えると次回 `_saveShotWithLock` の `remoteRev>knownRev`
+           判定が false になったり、baseline が「rolled-back な内容」に固定されたりして、
+           以降の persist で 3-way マージが誤発火する。remote が本当に進んでいる時だけ引き取る。 */
+        const nr=raw._rev|0;
+        const cur=shotBucket[sid]|0;
+        if(nr>cur){
+          shotBucket[sid]=nr;
+          const shotNode=allNodes.find(n=>n.id===sid);
+          if(shotNode){
+            const kids=allNodes.filter(n=>n.parentId===sid);
+            _saveCache.shot[pid][sid]=JSON.stringify({v:1,shotId:sid,nodes:[shotNode,...kids]});
+          }
+        }else if(nr<cur){
+          try{console.warn('[laycat] _syncShotRev: skip rev regression',{pid,sid,remote:nr,local:cur});}catch(_){}
         }
       }
     }catch(_){}
