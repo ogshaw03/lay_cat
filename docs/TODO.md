@@ -255,4 +255,123 @@ projects/{pid}/_audit/
 
 ---
 
+## ステータス JSON 分離（v:5 化）— 巻き戻り事故の根本解決（優先度：高）
+
+### 概要
+`shots/{sid}.json` に混在している `status`（および任意で `assignee`/`reviewer`）を、`status/{sid}.json` という別ファイルに物理的に分離する。3-way マージ経路から `status` を **原理的に外す** ことで、巻き戻り事故の再発余地を絶つ。
+
+### 動機
+- **巻き戻り事故の恒久解決**：v.027／v.039／v.045→v.048 と、3-way マージ調整のたびに新変種が出続けている歴史がある。「マージが status を触れる限り、抜け穴を塞ぐ戦いは終わらない」ため、マージ経路から物理的に外す。
+- **監査ログ・工数集計と設計が完全一致**：3 機能が 1 つの土台に乗せられる（下記「依存関係」参照）。
+- **コード保守性の向上**：`_mergeNode3` から status ブロック（16 行）＋関連 200〜300 行のマージロジックが削除可能。v.048 の 3 段防御コードも撤去できる。
+
+### なぜファイル分離か（代替案との比較）
+
+過去に検討した 2 案との比較：
+
+| 案 | 事故排除の強度 | 実装コスト | 監査ログとの親和性 | 汎用性 |
+|---|---|---|---|---|
+| narrow-writer（書き込み経路を絞る） | ⚠ コードミスに弱い | ~2.5 日 | ○ | ○ |
+| updatedAt 比較（値ごとにタイムスタンプ） | ⚠ 時計ズレに依存 | ~3〜4 日 | ○ | ✅ |
+| **ファイル分離（本案）** | ✅ 物理的に無理 | ~4〜5 日 | ✅✅ | ○ |
+
+**結論**：多少コスト高でもファイル分離が最強かつ副産物（監査ログ・工数集計との統合）が大きい。
+
+### ストレージ構造変更
+
+**現状 v:4**
+```
+projects/{pid}/laycat.project.json     ← 骨格 nodes + shotIds
+projects/{pid}/shots/{sid}.json        ← shot ノード + kids + status 全部
+projects/{pid}/submits/{sid}.json
+```
+
+**提案 v:5**
+```
+projects/{pid}/laycat.project.json     ← 変更なし
+projects/{pid}/shots/{sid}.json        ← status キーを除去（それ以外は現状通り）
+projects/{pid}/status/{sid}.json       ← ★NEW｜status + updatedAt + updatedBy + history
+projects/{pid}/submits/{sid}.json      ← 変更なし
+```
+
+### `status/{sid}.json` のスキーマ
+```json
+{
+  "v": 1,
+  "shotId": "nd_xxx",
+  "status": "pending",
+  "updatedAt": "2026-09-11T14:23:45Z",
+  "updatedBy": "tanaka@studio.jp",
+  "source": "ui",
+  "history": [
+    {"ts":"2026-09-10T09:00:00Z","by":"tanaka@studio.jp","from":null,"to":"in_progress","source":"ui"},
+    {"ts":"2026-09-11T14:23:45Z","by":"tanaka@studio.jp","from":"in_progress","to":"pending","source":"upload"}
+  ],
+  "_rev": 5
+}
+```
+
+`source` は `"ui"` / `"upload"` / `"submit"` / `"migrate"` のいずれか。マージ経路や自動整合ロジックからの書き込みは物理的に発生させない（＝存在しない）。
+
+### 事故が発生し得ない理由
+- **shot3 の工程変更 → `shots/{s3}.json` のみ書き換え**。`status/{s1}.json`, `status/{s2}.json` は物理的に触らない → shot1/2 の status が変わる余地が存在しない。
+- **3-way マージから status が完全に外れる**：`_mergeNode3` の status ブロックは削除。
+- **baseline 乖離が status に影響しない**：shot ファイルの baseline がズレて false-dirty 判定に落ちても、書き込まれるのは shots/{sid}.json だけで、そこには status が入っていない。
+
+### 実装フェーズ
+
+| Phase | 内容 | 見積 |
+|---|---|---|
+| 1 | v:5 スキーマ定義・status/{sid}.json 形式決定 | 0.5 日 |
+| 2 | storage 層に `loadStatus/saveStatus/loadAllStatuses/delStatus` 追加（フォルダ運用） | 0.5 日 |
+| 3 | R2 Worker に status オブジェクトの CRUD 追加＋クライアント側の同 API | 1 日 |
+| 4 | 起動時ロード：`loadProject` で shot と status を並行取得 → `node.status` に注入 | 0.5 日 |
+| 5 | 保存フロー：status 変更は `saveStatus()` 経由に集約、`saveProjectSplit` からは status 除外 | 0.5 日 |
+| 6 | v:4 → v:5 migrate：起動時に既存 shot.status を status/{sid}.json へ書き出し（1 回だけ） | 0.5 日 |
+| 7 | `_mergeNode3` から status を除去、v.048 の 3 段防御コード撤去 | 0.25 日 |
+| 8 | 動作検証・多人数運用テスト | 0.5 日 |
+
+**合計 ~4.25 日**（監査ログ・工数集計と統合実装すればさらに短縮可能）
+
+### 依存関係マップ
+
+```
+ユーザー基盤（laycatUsers/{emailKey}）
+    │  updatedBy に使うため
+    ▼
+ステータス JSON 分離 ◀────┐
+    │                      │  history 配列が生データ
+    │ 変更履歴を提供         │
+    ▼                      │
+監査ログ ─────────────────┘（相互参照）
+    │
+    │ 集計対象データ
+    ▼
+稼働期間・工数集計
+```
+
+**推奨着手順序**：
+1. ユーザー基盤（Phase 1〜2） → `updatedBy` の基盤
+2. ステータス JSON 分離（Phase 1〜7） → 巻き戻り根絶＋履歴データ源
+3. 監査ログ（他イベントの記録） → status 以外のイベントも記録
+4. 稼働期間・工数集計 → 上記データを集計
+
+### 課題・論点
+- **v:4 → v:5 マイグレーション**：起動時に 1 回だけ shot.status を抜き出して status/{sid}.json を作成。冪等性を担保（既に status ファイルがあれば skip）。
+- **後方互換**：旧 laycat.html（v:4 のみ理解）で開くと status が消えて見える。**Beta を先に v:5 対応してから広く公開**する順序が必要。
+- **R2 Worker 拡張**：既存の shots/submits と同パターンで API 追加。認可は同じ owner/members ベース。
+- **ファイル数増加**：ショット数 × 1 ファイル増える（100 ショット → 100 ファイル）。フォルダ運用では気にならない。R2 では 1 プロジェクト数千オブジェクトになる可能性 → list 系 API に注意。
+- **assignee/reviewer も同様に分離するか**：初版は status のみ、必要に応じて後続で `assignee/{sid}.json` を追加（本案の設計を踏襲）。
+
+### v.048（現状の 3 段防御）との関係
+- 現在の 3 段防御（`_shotFileJsonForBaseline` ヘルパ／rev 逆行ガード ×2）は **暫定対策**。
+- 本 TODO 実装時に **Phase 7 で全撤去**し、コードを大幅に簡素化できる。
+- それまでは 3 段防御で当面回す（ユーザー報告の再現路は塞げているため実用上問題なし）。
+
+### 実装トリガー
+- 会社側の実運用準備が整い、監査ログ・工数集計の設計フェーズに入るタイミングで着手。
+- 単独で着手する優先度は現時点では低いが、他 3 機能と統合すれば実装コスト対効果が最大化する。
+
+---
+
 ## （今後の TODO 追加はここに）
