@@ -14,16 +14,7 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-- (dev v2026.09.12.002) **既存プロジェクトの v:5 一括マイグレ**：現場で巻き戻り事故が進行中のため、lazy 方式から一括マイグレ方式に変更。起動時に `normalizeNodes` 実行後、全プロジェクトの全ショットに対して `status/{sid}.json` を自動作成（`_migrateV5Statuses(pid)`）。バックグラウンド実行（400ms setTimeout）で boot を止めない。0 件時は無音、1 件以上でトースト通知。既に status.json がある shot は skip（idempotent・複数回実行しても副作用なし）。R2 プロジェクトは saveStatus が false を返して自動 skip。`normalizeNodes` の review.status フォールバックで復元された値もこのマイグレで正しく永続化される。
-
-- (dev v2026.09.12.001) **ステータス JSON 分離（v:5 MVP・フォルダ運用のみ）**：巻き戻り事故の根本解決に向けた第 1 弾。docs/TODO.md の設計に沿って、ステータスを `projects/{pid}/status/{sid}.json` に物理分離し、3-way マージ経路から外す。**マージロジック側はまだ status を触るが、読み込み時に status.json で override するため事実上事故は起きなくなる**。R2 プロジェクトは本 MVP で対象外（引き続き v:4 inline 動作・saveStatus は no-op を返して自動フォールバック）。
-  - **storage 層に 4 API 追加**：`loadStatus / saveStatus / delStatus / loadAllStatuses`。R2 backend は null/false/[] を返して安全にフォールバック。ファイル形式：`{v:1, shotId, status, updatedAt, updatedBy, source, history:[{ts,by,from,to,source}], _rev}`
-  - **`setStatus(node, newStatus, source)` ヘルパを新設**：ステータス変更の唯一の入り口。memory の `node.status` 更新＋`status/{sid}.json` の作成/更新＋history の append を一括処理。既存の 5 サイトを差し替え（UI onchange × 3・uploadVersion × 2・提出フロー × 1・REEL ドロップダウン × 1）。
-  - **`_hydrateStatuses(pid, parsed)` を `readProjectData` に組み込み**：`_hydrateShots` の直後に status/*.json を並行読み込みし、shot ファイル inline の `node.status` を上書き（status.json が権威源）。
-  - **v:4 → v:5 自動マイグレは lazy 方式**：起動時の一括変換ではなく、`setStatus()` 初回呼び出し時に status/{sid}.json を自動作成。触られない v:4 データはそのまま残り、後方互換が保たれる。
-  - **`normalizeNodes` の `review.status` フォールバックに v:5 除外**：`_v5StatusShots` Set で v:5 status を持つショットを追跡し、明示クリア意図が旧版 review の `approved` 等で復元される事故を防止。
-  - **削除経路の同期**：`saveProjectSplit` の消えたショット削除ループに `delStatus` と `_v5StatusShots.delete` を追加。ショット削除時に status/*.json も残さない。
-  - **v.048 の 3 段防御は現状維持**：本 MVP はステータス保存経路の分離のみで、3-way マージから status を除去する Phase 7 は今後実装。それまでは 3 段防御と共存（多重防御）。
+（現在なし。直近のサイレント反映は下部の「反映済み・パッチノート記載なし」参照）
 
 ---
 
@@ -1247,6 +1238,16 @@ GLB モデル差し替え／Maya 準拠カメラ／複数選択マニピュレ�
 ---
 
 ## 反映済み・パッチノート記載なし（Beta 反映済み・PATCH_NOTES.md 未記載）
+
+- **【2026-09-12 Beta v0.2.0 追加サイレント反映】** ステータス JSON 分離（v:5 MVP）＋既存プロジェクト一括マイグレを Beta へサイレント反映（バージョン据え置き・パッチノート記載なし・現場の巻き戻り被害を即座に止めるため）：
+  - (dev v2026.09.12.002) **既存プロジェクトの v:5 一括マイグレ**：現場で巻き戻り事故が進行中のため、lazy 方式から一括マイグレ方式に変更。起動時に `normalizeNodes` 実行後、全プロジェクトの全ショットに対して `status/{sid}.json` を自動作成（`_migrateV5Statuses(pid)`）。バックグラウンド実行（400ms setTimeout）で boot を止めない。0 件時は無音、1 件以上でトースト通知。既に status.json がある shot は skip（idempotent・複数回実行しても副作用なし）。R2 プロジェクトは saveStatus が false を返して自動 skip。`normalizeNodes` の review.status フォールバックで復元された値もこのマイグレで正しく永続化される。
+  - (dev v2026.09.12.001) **ステータス JSON 分離（v:5 MVP・フォルダ運用のみ）**：巻き戻り事故の根本解決に向けた第 1 弾。docs/TODO.md の設計に沿って、ステータスを `projects/{pid}/status/{sid}.json` に物理分離し、3-way マージ経路から外す。**マージロジック側はまだ status を触るが、読み込み時に status.json で override するため事実上事故は起きなくなる**。R2 プロジェクトは本 MVP で対象外（引き続き v:4 inline 動作・saveStatus は no-op を返して自動フォールバック）。
+    - **storage 層に 4 API 追加**：`loadStatus / saveStatus / delStatus / loadAllStatuses`。R2 backend は null/false/[] を返して安全にフォールバック。ファイル形式：`{v:1, shotId, status, updatedAt, updatedBy, source, history:[{ts,by,from,to,source}], _rev}`
+    - **`setStatus(node, newStatus, source)` ヘルパを新設**：ステータス変更の唯一の入り口。memory の `node.status` 更新＋`status/{sid}.json` の作成/更新＋history の append を一括処理。既存の 5 サイトを差し替え（UI onchange × 3・uploadVersion × 2・提出フロー × 1・REEL ドロップダウン × 1）。
+    - **`_hydrateStatuses(pid, parsed)` を `readProjectData` に組み込み**：`_hydrateShots` の直後に status/*.json を並行読み込みし、shot ファイル inline の `node.status` を上書き（status.json が権威源）。
+    - **`normalizeNodes` の `review.status` フォールバックに v:5 除外**：`_v5StatusShots` Set で v:5 status を持つショットを追跡し、明示クリア意図が旧版 review の `approved` 等で復元される事故を防止。
+    - **削除経路の同期**：`saveProjectSplit` の消えたショット削除ループに `delStatus` と `_v5StatusShots.delete` を追加。ショット削除時に status/*.json も残さない。
+    - **v.048 の 3 段防御は現状維持**：本 MVP はステータス保存経路の分離のみで、3-way マージから status を除去する Phase 7 は今後実装。それまでは 3 段防御と共存（多重防御）。
 
 - **【2026-09-09 Beta v0.2.0 追加サイレント反映】** ステータス巻き戻り 第 2 弾恒久対策を Beta へサイレント反映（バージョン据え置き・パッチノート記載なし）：
   - (dev v2026.09.09.001) shot1/2 に DD アップロード後に shot3 の「個別工程」を変更すると shot1/2 の status が旧値へ巻き戻る変種を修正（v.045 の 3-way マージ調整で顕在化した副作用パス）
