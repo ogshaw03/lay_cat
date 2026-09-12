@@ -14,6 +14,8 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.12.002) **既存プロジェクトの v:5 一括マイグレ**：現場で巻き戻り事故が進行中のため、lazy 方式から一括マイグレ方式に変更。起動時に `normalizeNodes` 実行後、全プロジェクトの全ショットに対して `status/{sid}.json` を自動作成（`_migrateV5Statuses(pid)`）。バックグラウンド実行（400ms setTimeout）で boot を止めない。0 件時は無音、1 件以上でトースト通知。既に status.json がある shot は skip（idempotent・複数回実行しても副作用なし）。R2 プロジェクトは saveStatus が false を返して自動 skip。`normalizeNodes` の review.status フォールバックで復元された値もこのマイグレで正しく永続化される。
+
 - (dev v2026.09.12.001) **ステータス JSON 分離（v:5 MVP・フォルダ運用のみ）**：巻き戻り事故の根本解決に向けた第 1 弾。docs/TODO.md の設計に沿って、ステータスを `projects/{pid}/status/{sid}.json` に物理分離し、3-way マージ経路から外す。**マージロジック側はまだ status を触るが、読み込み時に status.json で override するため事実上事故は起きなくなる**。R2 プロジェクトは本 MVP で対象外（引き続き v:4 inline 動作・saveStatus は no-op を返して自動フォールバック）。
   - **storage 層に 4 API 追加**：`loadStatus / saveStatus / delStatus / loadAllStatuses`。R2 backend は null/false/[] を返して安全にフォールバック。ファイル形式：`{v:1, shotId, status, updatedAt, updatedBy, source, history:[{ts,by,from,to,source}], _rev}`
   - **`setStatus(node, newStatus, source)` ヘルパを新設**：ステータス変更の唯一の入り口。memory の `node.status` 更新＋`status/{sid}.json` の作成/更新＋history の append を一括処理。既存の 5 サイトを差し替え（UI onchange × 3・uploadVersion × 2・提出フロー × 1・REEL ドロップダウン × 1）。

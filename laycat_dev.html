@@ -2644,6 +2644,37 @@ async function setStatus(node,newStatus,source){
   }catch(e){try{console.warn('[laycat] setStatus: saveStatus failed',{pid,sid,e})}catch(_){}}
   return true;
 }
+/* 【v:5 一括マイグレ】既存プロジェクトの全ショットに status/{sid}.json を作成する。
+   起動時に 1 回だけ呼ぶ想定。normalizeNodes 後に実行することで、review.status からの
+   フォールバック復元値も v:5 に取り込まれる（旧データでも正しい "見えている値" が保存される）。
+   R2 プロジェクトは対象外（saveStatus が false を返してスキップ）。
+   既に status.json がある shot は skip（idempotent・複数回実行しても副作用なし）。 */
+async function _migrateV5Statuses(pid){
+  try{
+    if(storage._backend(pid)==='r2')return 0;
+    if(!DB||!Array.isArray(DB.nodes))return 0;
+    const allNodes=DB.nodes;
+    const shotIds=allNodes.filter(n=>_isShotNodeForSave(n,allNodes)&&rootOfId(n)===pid).map(n=>n.id);
+    if(!shotIds.length)return 0;
+    const nowTs=nowIso();
+    const me=((authUser&&authUser.email)||'')||null;
+    let migrated=0;
+    await Promise.all(shotIds.map(async sid=>{
+      if(_v5StatusShots.has(pid+':'+sid))return; /* _hydrateStatuses が既に登録済み → skip */
+      const existing=await storage.loadStatus(pid,sid); /* 保険：ファイル実在チェック */
+      if(existing){_v5StatusShots.add(pid+':'+sid);return}
+      const n=allNodes.find(x=>x.id===sid);
+      if(!n)return;
+      const cur=(n.status==null||n.status==='')?null:n.status;
+      const history=[{ts:nowTs,by:me,from:null,to:cur,source:'migrate'}];
+      const file={v:1,shotId:sid,status:cur,updatedAt:nowTs,updatedBy:me,source:'migrate',history,_rev:1};
+      const ok=await storage.saveStatus(pid,sid,file);
+      if(ok!==false){_v5StatusShots.add(pid+':'+sid);migrated++;}
+    }));
+    if(migrated>0)try{console.log('[laycat v:5 migrate]',pid,'migrated',migrated,'shots')}catch(_){}
+    return migrated;
+  }catch(e){try{console.warn('[laycat v:5 migrate] failed',pid,e)}catch(_){}return 0;}
+}
 /* Phase 2：旧形式（v<4）のプロジェクトを検知するセット。boot で埋めて開始時にモーダル提示。 */
 let _migrationNeeded=new Set();
 /* Phase 3：楽観ロック用に「読み込み時点の _rev」をファイル毎に記録。
@@ -3208,7 +3239,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.12.001';
+const APP_VERSION='2026.09.12.002';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3356,6 +3387,20 @@ async function boot(){
     if(local&&Array.isArray(local.reels))for(const r of local.reels)if(!DB.reels.some(x=>x.id===r.id))DB.reels.push(r);
     normalizeNodes();
     for(const e of REG)seedProjBaseline(e.id); /* 初回保存で丸ごと上書きしないよう baseline を種付け */
+    /* 【v:5 status 分離】既存プロジェクトの一括マイグレ（バックグラウンド実行）。
+       normalizeNodes 後に走らせることで、review.status からのフォールバック復元値も
+       正しく status/{sid}.json に取り込まれる。boot を止めないため setTimeout で非同期。
+       R2 プロジェクトは saveStatus が false を返して自動 skip。
+       完了トーストで移行件数を通知（0 件時は無音）。 */
+    setTimeout(async()=>{
+      try{
+        let total=0;
+        for(const e of REG){
+          try{total+=await _migrateV5Statuses(e.id)}catch(_){}
+        }
+        if(total>0){try{toast('既存プロジェクトのステータスを v:5 形式に移行しました（'+total+' 件）')}catch(_){}}
+      }catch(_){}
+    },400);
   }
   updateFolderStatus();initSizeBtns();updateNotifBadge();
   try{scanMentionsForMe()}catch(_){} /* 自分宛メンションを走査して通知（読込時） */
