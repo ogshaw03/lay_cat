@@ -2042,6 +2042,11 @@ async function idbPut(s,k,v){const d=await idbOpen();return new Promise((res,rej
 async function idbGet(s,k){const d=await idbOpen();return new Promise((res,rej)=>{const t=d.transaction(s,'readonly');const q=t.objectStore(s).get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}
 async function idbDel(s,k){const d=await idbOpen();return new Promise((res,rej)=>{const t=d.transaction(s,'readwrite');t.objectStore(s).delete(k);t.oncomplete=()=>res();t.onerror=()=>rej(t.error)})}
 
+/* 【v:5 status 分離】status/{sid}.json を読み込んだショットの追跡セット。
+   normalizeNodes の review.status フォールバックを無効化して「明示クリア」意図を守るために使う。
+   キー形式：`${pid}:${sid}`。プロジェクト再読込・削除時に該当エントリをクリアする（実装は setStatus/hydrate 側）。 */
+const _v5StatusShots=new Set();
+
 /* ---------- ストレージ抽象化（folder / idb） ---------- */
 const storage={
   /* DB（layna_db.json 相当）は常にブラウザ内保存(IndexedDB)。
@@ -2294,12 +2299,36 @@ const storage={
        他の readProjectData 呼び出し口（_persistNow 等）は opts.recordShotRev を指定しないので
        従来通り false のまま bucket を触らない（副作用なし）。 */
     const recShotRev=!!(opts&&opts.recordShotRev);
-    if(parsed.enc){const key=projKey(id);if(!key)return null;try{const iv=_unhex(parsed.iv);const buf=await self.crypto.subtle.decrypt({name:'AES-GCM',iv},key,_unb64(parsed.ct));const decrypted=JSON.parse(new TextDecoder().decode(buf));if(!skelOnly){await this._hydrateShots(id,decrypted,{recordRev:recShotRev});await this._hydrateSubmits(id,decrypted,{recordRev:false});}return decrypted}catch(e){return null}}
+    if(parsed.enc){const key=projKey(id);if(!key)return null;try{const iv=_unhex(parsed.iv);const buf=await self.crypto.subtle.decrypt({name:'AES-GCM',iv},key,_unb64(parsed.ct));const decrypted=JSON.parse(new TextDecoder().decode(buf));if(!skelOnly){await this._hydrateShots(id,decrypted,{recordRev:recShotRev});await this._hydrateSubmits(id,decrypted,{recordRev:false});await this._hydrateStatuses(id,decrypted);}return decrypted}catch(e){return null}}
     if(!skelOnly){
       await this._hydrateShots(id,parsed,{recordRev:recShotRev});
       await this._hydrateSubmits(id,parsed,{recordRev:false});
+      await this._hydrateStatuses(id,parsed);
     }
     return parsed;
+  },
+  /* 【v:5 status 分離】ショット毎の status/{sid}.json を並行読み込みし、
+     shot ファイル inline の `node.status` を上書きする（status.json が権威源）。
+     status.json が無いショットは inline のまま（v:4 後方互換）。
+     マイグレは setStatus() 側の lazy-write に任せる（触られない v:4 データはそのまま）。
+     v:5 で status を持つショットは `_v5StatusShots` に登録し、normalizeNodes の
+     review.status フォールバックを無効化する（明示クリアが version 側から復元される事故を防ぐ）。 */
+  async _hydrateStatuses(pid,parsed){
+    if(!parsed||typeof parsed!=='object')return;
+    if(!Array.isArray(parsed.shotIds)||!parsed.shotIds.length)return;
+    const files=await this.loadAllStatuses(pid,parsed.shotIds);
+    if(!files.length)return;
+    const nodeMap=new Map();
+    for(const n of (parsed.nodes||[]))if(n&&n.id)nodeMap.set(n.id,n);
+    for(const f of files){
+      if(!f||!f.shotId)continue;
+      const n=nodeMap.get(f.shotId);
+      if(!n)continue;
+      _v5StatusShots.add(pid+':'+f.shotId);
+      /* status.json の値で override（null/undefined なら未着手＝キー削除） */
+      if(f.status==null||f.status==='')delete n.status;
+      else n.status=f.status;
+    }
   },
   /* 競合時：現在フォルダにある内容（他者の版）をそのままバックアップファイルに退避（消失防止）。
      退避後に古いバックアップを間引き、フォルダが conflict ファイルで溢れないようにする。 */
@@ -2476,6 +2505,41 @@ const storage={
     const list=await Promise.all(ids.map(id=>this.loadShot(pid,id)));
     return list.filter(x=>x);
   },
+
+  /* ==== v:5 ステータス分離：`status/{sid}.json` =========================
+     【設計意図】ステータスは shot ファイルから物理的に切り出し、3-way マージ経路の外で
+     管理する。書き込みは `setStatus()` ヘルパ経由のみ、読み込みは load 時に override。
+     マージロジックが status を触れない構造にすることで巻き戻り事故の再発余地を絶つ。
+     R2 は本 MVP では未対応（null/false を返して呼び出し側で v:4 inline にフォールバック）。
+     ファイル形式：{v:1, shotId, status, updatedAt, updatedBy, source, history:[], _rev} */
+  async loadStatus(pid,sid){
+    if(this._backend(pid)==='r2')return null; /* R2 未対応：inline status（v:4）にフォールバック */
+    const ph=await this.projRoot(pid);if(!ph)return null;
+    try{
+      const dir=await ph.getDirectoryHandle('status');
+      const fh=await dir.getFileHandle(sid+'.json');
+      return JSON.parse(await (await fh.getFile()).text());
+    }catch(_){return null}
+  },
+  async saveStatus(pid,sid,data){
+    if(this._backend(pid)==='r2')return false; /* R2 未対応 */
+    const ph=await this.projRoot(pid);if(!ph)return false;
+    try{
+      await this._write(()=>this._subdir('status',ph,true),sid+'.json',JSON.stringify(data,null,2));
+      return true;
+    }catch(_){return false}
+  },
+  async delStatus(pid,sid){
+    if(this._backend(pid)==='r2')return;
+    const ph=await this.projRoot(pid);if(!ph)return;
+    try{const dir=await ph.getDirectoryHandle('status');await dir.removeEntry(sid+'.json')}catch(_){}
+  },
+  async loadAllStatuses(pid,ids){
+    if(!Array.isArray(ids)||!ids.length)return [];
+    if(this._backend(pid)==='r2')return [];
+    const list=await Promise.all(ids.map(id=>this.loadStatus(pid,id)));
+    return list.filter(x=>x&&x.shotId);
+  },
   /* 動画・画像はプロジェクトフォルダへ保存（ref は p:<id>|<path>）。
      フォルダ未設定なら保存できないため null を返す（呼び出し側で警告）。 */
   async putMedia(sub,fn,blob,opts){
@@ -2545,6 +2609,40 @@ function _shotFileJsonForBaseline(pid,sid){
     const kids=DB.nodes.filter(n=>n&&n.parentId===sid);
     return JSON.stringify({v:1,shotId:sid,nodes:[shotNode,...kids]});
   }catch(_){return null;}
+}
+/* 【v:5 status 分離】ステータス変更の唯一の入り口。
+   ・memory の node.status を更新（従来の直接代入と等価）
+   ・`status/{sid}.json` を作成 or 追記（history に append・_rev をインクリメント）
+   ・auto-migrate：既存 v:4 データで status.json が存在しなくても、初回呼び出しで自動作成される
+   引数：
+     node: 対象ショットノード
+     newStatus: 新しい status ID（null/undefined/'' で未着手＝キー削除）
+     source: 'ui' | 'upload' | 'submit' | 'migrate'（既定は 'ui'）
+   R2 プロジェクトでは saveStatus が false を返し、node.status inline のみ更新される（v:4 互換）。 */
+async function setStatus(node,newStatus,source){
+  if(!node||!node.id)return false;
+  const pid=rootOfId(node);
+  if(!pid)return false;
+  const sid=node.id;
+  const prev=(node.status==null||node.status==='')?null:node.status;
+  const nxt=(newStatus==null||newStatus==='')?null:newStatus;
+  /* memory 更新（既存コードとの互換のため node.status を直接触る） */
+  if(nxt==null)delete node.status;
+  else node.status=nxt;
+  /* status.json 更新（R2 では no-op） */
+  try{
+    const existing=await storage.loadStatus(pid,sid);
+    const nowTs=nowIso();
+    const me=((authUser&&authUser.email)||'')||null;
+    const history=Array.isArray(existing&&existing.history)?existing.history.slice():[];
+    /* 履歴は変化があった時だけ append（同値上書きは記録しない） */
+    if(prev!==nxt)history.push({ts:nowTs,by:me,from:prev,to:nxt,source:source||'ui'});
+    const _rev=((existing&&existing._rev)|0)+1;
+    const file={v:1,shotId:sid,status:nxt,updatedAt:nowTs,updatedBy:me,source:source||'ui',history,_rev};
+    const ok=await storage.saveStatus(pid,sid,file);
+    if(ok!==false)_v5StatusShots.add(pid+':'+sid);
+  }catch(e){try{console.warn('[laycat] setStatus: saveStatus failed',{pid,sid,e})}catch(_){}}
+  return true;
 }
 /* Phase 2：旧形式（v<4）のプロジェクトを検知するセット。boot で埋めて開始時にモーダル提示。 */
 let _migrationNeeded=new Set();
@@ -2817,10 +2915,12 @@ async function saveProjectSplit(pid,data){
       else{shotFailed++;try{console.warn('saveProjectSplit: shot save failed',{pid,sid})}catch(_){}}
     }
   }
-  /* メモリから消えたショットは個別ファイルも削除 */
+  /* メモリから消えたショットは個別ファイルも削除（v:5 では status/{sid}.json も削除） */
   for(const oldId of Object.keys(shotCache)){
     if(!seenShots.has(oldId)){
       try{await storage.delShot(pid,oldId)}catch(_){}
+      try{await storage.delStatus(pid,oldId)}catch(_){}
+      try{_v5StatusShots.delete(pid+':'+oldId)}catch(_){}
       delete shotCache[oldId];
       try{delete _revBucket(pid).shots[oldId]}catch(_){}
     }
@@ -3108,7 +3208,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.09.001';
+const APP_VERSION='2026.09.12.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3300,7 +3400,15 @@ function normalizeNodes(){
   for(const n of DB.nodes)if(!n.type)n.type=(n.versions&&n.versions.length)?'review':'section';
   /* 動画があっても未判定なら「未着手」のまま（アップロード＝自動でチェック待ちにしない）。
      過去に付いた判定（OK/リテイク/NG/オミット）だけをノードステータスへ引き継ぐ。 */
-  for(const n of DB.nodes)if(n.type==='review'&&n.status==null&&n.versions&&n.versions.length){const lv=n.versions[n.versions.length-1];const rs=lv.review&&lv.review.status;if(rs&&rs!=='pending')n.status=rs}
+  /* v:5 status 分離：status/{sid}.json が権威源のショットは、明示クリアも尊重するため
+     review.status フォールバックを無効化する（旧版 review の approved 等で復元される事故防止）。 */
+  for(const n of DB.nodes){
+    if(n.type!=='review'||n.status!=null||!n.versions||!n.versions.length)continue;
+    const _pid=rootOfId(n);
+    if(_pid&&_v5StatusShots.has(_pid+':'+n.id))continue;
+    const lv=n.versions[n.versions.length-1];const rs=lv.review&&lv.review.status;
+    if(rs&&rs!=='pending')n.status=rs;
+  }
 }
 function updateFolderStatus(){const cur=(DB&&state&&state.currentId)?getNode(state.currentId):null;const root=cur?rootOf(cur):null;const hasFolder=!!(root&&root.folderName);const needGrant=!!(root&&storage._pendingGrant&&storage._pendingGrant.has(root.id));const fs=$('#folderStatus');fs.classList.toggle('connected',hasFolder&&!needGrant);fs.classList.toggle('warn',(!!root&&!hasFolder)||needGrant);$('#folderName').textContent=needGrant?'⚠ フォルダ再接続が必要（クリック）':storage.folderLabel()}
 /* フォルダ handle はあるが権限未許可のプロジェクトを、ユーザー操作内で再接続してフォルダの最新データを読み直す */
@@ -4092,8 +4200,8 @@ async function createSubmitBlock(){
       (b.node.comments=b.node.comments||[]).push({id:newId('sc'),author:currentUser(),text:parts.join('\n\n'),time:nowIso(),kind:'submit',submitName:name});
     }
     items.push({nodeId:b.node.id,versionId:v.id,comment:b.comment||''});
-    /* このショット工程のステータスを反映 */
-    if(b.status)b.node.status=b.status;
+    /* このショット工程のステータスを反映（v:5：setStatus 経由で status/{sid}.json も更新） */
+    if(b.status)await setStatus(b.node,b.status,'submit');
   }
   /* by は表示名（従来）。byEmail に認証メール（あれば）を別途保存し、
      通知の「自分が提出したもの」判定を名前ではなくメールで厳密に行えるようにする
@@ -4454,7 +4562,7 @@ function buildStatusSelect(node){
   const cs=(cur==='empty')?{color:STAGE_GRAY}:(_ps.find(s=>s.id===cur)||{color:STAGE_GRAY});if(cs){sel.style.borderColor=cs.color;sel.style.color=cs.color}
   /* 「未着手」に戻したときは status を残さず削除（'empty' を値として残すと、動画が無くても
      「ステータス設定済みの工程」とみなされ、工程グラフ等で未着手扱いされなくなるため） */
-  sel.onchange=async()=>{if(sel.value==='empty')delete node.status;else node.status=sel.value;await persist();render();resolveThumbs()};
+  sel.onchange=async()=>{await setStatus(node,sel.value==='empty'?null:sel.value,'ui');await persist();render();resolveThumbs()};
   wrap.appendChild(sel);
   return wrap;
 }
@@ -8960,7 +9068,7 @@ async function uploadVersion(node,file,ui,opts){
        このあと呼び出し側で b.status によって上書きされる（ユーザー指定を優先）。
        サイレント・アップロード（opts.notify===false）ではステータスも触らない：
        「チェック依頼を出さない = 現状ステータスを維持したい」意図とセットで扱う。 */
-    if(opts.notify!==false){const sts=projStatuses(node);if(sts&&sts.length)node.status=sts[0].id}
+    if(opts.notify!==false){const sts=projStatuses(node);if(sts&&sts.length)await setStatus(node,sts[0].id,'upload')}
     await persist();ui.bi.style.width='100%';render();resolveThumbs();toast('アップロード完了: '+version.name);
   }catch(e){ui.prog.classList.add('hidden');toast('アップロード失敗: '+e.message)}
 }
@@ -9018,7 +9126,7 @@ async function uploadExrSequence(node,seq,ui,opts){
     if(opts.notify===false)version.noNotify=true;
     node.versions.push(version);if(thumbRef)node.thumbnail=thumbRef;
     /* v.027 修正：通常動画版と同じく notify ガードを追加（サイレント時はステータス自動変更しない） */
-    if(opts.notify!==false){const sts=projStatuses(node);if(sts&&sts.length)node.status=sts[0].id}
+    if(opts.notify!==false){const sts=projStatuses(node);if(sts&&sts.length)await setStatus(node,sts[0].id,'upload')}
     await persist();ui.bi.style.width='100%';ui.pct.textContent='完了 '+total+' / '+total;render();resolveThumbs();
     toast('EXR 連番アップロード完了: '+version.name+'（'+total+' フレーム）');
   }catch(e){ui.prog.classList.add('hidden');toast('EXR 連番アップロード失敗: '+(e&&e.message||''))}
@@ -9284,7 +9392,7 @@ function openReview(nodeId,versionId,opts){
     if(cur!=='empty'&&!_ps.some(s=>s.id===cur)){const o=el('option',null,'（不明: '+cur+'）');o.value=cur;o.selected=true;stSel.appendChild(o)} /* 未知IDでも消さず保持 */
     const stSelStyle=()=>{const c=(stSel.value==='empty')?STAGE_GRAY:((_ps.find(s=>s.id===stSel.value)||{}).color||STAGE_GRAY);stSel.style.borderColor=c;stSel.style.color=c};
     stSelStyle();
-    stSel.onchange=async()=>{if(stSel.value==='empty')delete node.status;else node.status=stSel.value;await persist();stSelStyle();try{render();resolveThumbs()}catch(_){}};
+    stSel.onchange=async()=>{await setStatus(node,stSel.value==='empty'?null:stSel.value,'ui');await persist();stSelStyle();try{render();resolveThumbs()}catch(_){}};
     clipInfo.appendChild(stSel);
   }
   if(isVideo){const rt=el('button','btn btn-ghost btn-sm',(v.timeRemap&&v.timeRemap.enabled)?'⧗ リタイム ●':'⧗ リタイム');rt.title=(v.timeRemap&&v.timeRemap.enabled)?'AE 互換タイムリマップ・ビューアを開く（この版はリタイム ON／ただしビューア内プレビュー専用・REEL・書き出しには反映されません）':'AE 互換タイムリマップ・ビューアを開く（タメツメ指示用・ビューア内プレビュー専用）';rt.onclick=()=>openRetimer(node,v);actions.appendChild(rt)}
@@ -13146,7 +13254,7 @@ function openReel(){
         it.onclick=async(e2)=>{
           e2.stopPropagation();closePop();
           if(o.id===cur)return;
-          if(o.id==='empty')delete n.status;else n.status=o.id;
+          await setStatus(n,o.id==='empty'?null:o.id,'ui');
           await persist();updReelHeaderInfo();try{render();resolveThumbs()}catch(_){}try{reelRender()}catch(_){}
         };
         pop.appendChild(it);
