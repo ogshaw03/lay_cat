@@ -3380,7 +3380,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.14.001';
+const APP_VERSION='2026.09.14.002';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7547,87 +7547,147 @@ function closeOnBackdrop(overlayEl,closeFn){
 function openModal(builder,big){const b=$('#modalBody');b.className='modal'+(big?' lg':'');b.innerHTML='';builder(b);$('#modal').classList.remove('hidden')}
 function closeModal(){$('#modal').classList.add('hidden')}
 
-/* 【監査ログ UI】ステータス変更の履歴を大きなモーダルで表示。
-   フィルタ・source ハイライト・時刻降順ソート付き。CSV エクスポートも提供。
-   コンソールから `openStatusAuditModal('<pid>')` で開くことも可能。 */
+/* 【監査ログ UI・v.050】ステータス変更の履歴を 2 タブ構成で大きなモーダル表示。
+   タブ 1「全経路（監査ログ）」= projects/{pid}/audit/YYYY-MM.jsonl の全記録（setStatus 以外の
+   merge/refresh/hydrate も含む）。source ラベルで巻き戻り疑いを赤ハイライト。
+   タブ 2「setStatus 履歴（分離データ）」= 各 status/{sid}.json の history[] を集約表示。
+   v:5 で分離したデータのタイムライン確認用（ユーザー明示操作のみ・きれいな narrative）。
+   両タブとも検索・source フィルタ・CSV 書き出し対応。 */
 async function openStatusAuditModal(pid){
   if(!pid){
     try{pid=state&&state.currentPage?rootOfId(getNode(state.currentPage)):null}catch(_){}
     if(!pid){const first=REG&&REG[0];if(first)pid=first.id}
   }
   if(!pid){toast('プロジェクトが特定できません');return}
-  const events=await storage.readAudit(pid);
+  /* 両タブのデータを並行取得 */
+  const auditEvents=(await storage.readAudit(pid))||[];
+  const shotNodes=DB.nodes.filter(n=>_isShotNodeForSave(n,DB.nodes)&&rootOfId(n)===pid);
+  const shotIds=shotNodes.map(n=>n.id);
+  const statusFiles=await storage.loadAllStatuses(pid,shotIds);
+  /* status.json.history[] を flatten して events 形式に揃える */
+  const historyEvents=[];
+  for(const f of (statusFiles||[])){
+    if(!f||!Array.isArray(f.history))continue;
+    for(const h of f.history){
+      historyEvents.push({
+        ts:h.ts,kind:'status_change',shotId:f.shotId,
+        from:h.from,to:h.to,by:h.by,
+        source:'setStatus:'+(h.source||'ui'),
+        _rev:f._rev,
+      });
+    }
+  }
+  historyEvents.sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
+
   const projName=(getNode(pid)&&getNode(pid).name)||pid;
   openModal(body=>{
-    const inner=mHead(body,'ステータス変更 監査ログ',projName+'（今月分）');
-    if(!events||!events.length){
-      const p=el('div','muted','監査ログはまだありません（v.049 以降のステータス変更のみ記録されます）。');
-      p.style.padding='20px 4px';inner.appendChild(p);
-      mFoot(body,[(()=>{const b=el('button','btn','閉じる');b.onclick=closeModal;return b})()]);
-      return;
+    const inner=mHead(body,'ステータス変更 監査ログ',projName);
+    /* タブバー */
+    const tabBar=el('div');tabBar.style.cssText='display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid var(--bd)';
+    function mkTab(label,cnt,active){
+      const t=el('button','btn btn-ghost');
+      t.type='button';
+      t.style.cssText='position:relative;padding:10px 16px;border-radius:0;border-bottom:2px solid '+(active?'var(--purple,#A56BF0)':'transparent')+';color:'+(active?'var(--fg,#eee)':'var(--muted,#888)')+';font-family:var(--font-head);font-size:12px;letter-spacing:1px;background:none';
+      t.innerHTML=`${label}<span style="margin-left:8px;background:var(--bg2);padding:1px 8px;border-radius:8px;font-size:10px;font-family:var(--font-code);color:${active?'#A56BF0':'var(--muted)'}">${cnt}</span>`;
+      return t;
     }
-    /* フィルタバー */
-    const bar=el('div');bar.style.cssText='display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap';
-    const info=el('div','muted');info.textContent=`全 ${events.length} 件 / 最新から表示`;info.style.cssText='font-size:12px;margin-right:auto';
-    const searchInp=el('input','form-input');searchInp.type='text';searchInp.placeholder='検索：shotId・source・user...';searchInp.style.cssText='flex:1;max-width:280px;padding:6px 10px;font-size:12px';
-    const sourceSel=el('select','form-input');sourceSel.style.cssText='padding:6px 10px;font-size:12px';
-    const sources=Array.from(new Set(events.map(e=>e.source).filter(Boolean))).sort();
-    const allOpt=el('option',null,'すべての source');allOpt.value='';sourceSel.appendChild(allOpt);
-    for(const s of sources){const o=el('option',null,s);o.value=s;sourceSel.appendChild(o)}
-    const csvBtn=el('button','btn btn-ghost','CSV 書き出し');csvBtn.style.cssText='font-size:12px;padding:6px 12px';
-    csvBtn.onclick=()=>{
-      const csv=['ts,shotId,from,to,source,by,trace,extra'].concat(events.map(e=>{
-        const extra=JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k])=>!['ts','shotId','from','to','source','by','trace','kind'].includes(k))));
-        return [e.ts,e.shotId,e.from||'',e.to||'',e.source,e.by||'',JSON.stringify(e.trace||''),JSON.stringify(extra)].join(',');
-      })).join('\n');
-      const blob=new Blob([csv],{type:'text/csv'});
-      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`status-audit-${pid}-${(new Date()).toISOString().slice(0,7)}.csv`;a.click();
-      setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    const tabAudit=mkTab('全経路（監査ログ）',auditEvents.length,true);
+    const tabHist=mkTab('setStatus 履歴（分離データ）',historyEvents.length,false);
+    tabBar.appendChild(tabAudit);tabBar.appendChild(tabHist);
+    inner.appendChild(tabBar);
+    /* 2 つの pane コンテナ */
+    const paneAudit=el('div');
+    const paneHist=el('div');paneHist.style.display='none';
+    inner.appendChild(paneAudit);inner.appendChild(paneHist);
+    /* タブ切替 */
+    tabAudit.onclick=()=>{
+      tabAudit.style.borderBottomColor='var(--purple,#A56BF0)';tabAudit.style.color='var(--fg,#eee)';
+      tabHist.style.borderBottomColor='transparent';tabHist.style.color='var(--muted,#888)';
+      paneAudit.style.display='';paneHist.style.display='none';
     };
-    bar.appendChild(info);bar.appendChild(searchInp);bar.appendChild(sourceSel);bar.appendChild(csvBtn);
-    inner.appendChild(bar);
-    /* テーブル */
-    const wrap=el('div');wrap.style.cssText='max-height:60vh;overflow:auto;border:1px solid var(--bd);border-radius:8px';
-    const tbl=el('table');tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px;font-family:var(--font-code)';
-    const thead=el('thead');thead.innerHTML='<tr style="background:var(--bg2);position:sticky;top:0;z-index:1"><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">時刻</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">shot</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">from → to</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">source</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">by</th></tr>';
-    tbl.appendChild(thead);
-    const tbody=el('tbody');tbl.appendChild(tbody);wrap.appendChild(tbl);inner.appendChild(wrap);
-    function renderRows(){
-      const q=searchInp.value.trim().toLowerCase();
-      const src=sourceSel.value;
-      const filtered=events.filter(e=>{
-        if(src&&e.source!==src)return false;
-        if(!q)return true;
-        const hay=`${e.shotId} ${e.source} ${e.by||''} ${e.from||''} ${e.to||''} ${e.trace||''}`.toLowerCase();
-        return hay.includes(q);
-      }).slice().reverse(); /* 最新順 */
-      tbody.innerHTML='';
-      for(const e of filtered.slice(0,500)){
-        const tr=el('tr');tr.style.cssText='border-bottom:1px solid rgba(255,255,255,.05)';
-        const isSuspicious=e.source&&(e.source.includes('merge3')||e.source.includes('unionRemote')||e.source.includes('review-fallback')||e.source.includes('applyMergedIntoDB'));
-        if(isSuspicious)tr.style.background='rgba(238,106,106,.06)';
-        const shortShot=(e.shotId||'').slice(-8);
-        const shotName=(getNode(e.shotId)&&getNode(e.shotId).name)||shortShot;
-        tr.innerHTML=`
-          <td style="padding:6px 10px;color:var(--muted);white-space:nowrap">${(e.ts||'').replace('T',' ').slice(0,19)}</td>
-          <td style="padding:6px 10px" title="${e.shotId}">${shotName}</td>
-          <td style="padding:6px 10px;white-space:nowrap"><span style="color:#888">${e.from||'(none)'}</span> → <b style="color:${isSuspicious?'#ee6a6a':'#a56bf0'}">${e.to||'(none)'}</b></td>
-          <td style="padding:6px 10px"><code style="font-size:10px;background:var(--bg2);padding:2px 6px;border-radius:4px;color:${isSuspicious?'#ee6a6a':'#5cc7ef'}">${e.source||'?'}</code></td>
-          <td style="padding:6px 10px;color:var(--muted)">${e.by||'(anon)'}</td>
-        `;
-        tr.title=`trace: ${e.trace||''}\n\n全データ:\n${JSON.stringify(e,null,2)}`;
-        tr.style.cursor='help';
-        tbody.appendChild(tr);
+    tabHist.onclick=()=>{
+      tabHist.style.borderBottomColor='var(--purple,#A56BF0)';tabHist.style.color='var(--fg,#eee)';
+      tabAudit.style.borderBottomColor='transparent';tabAudit.style.color='var(--muted,#888)';
+      paneHist.style.display='';paneAudit.style.display='none';
+    };
+    /* 共通レンダラ：events 配列を検索・source フィルタ・CSV 書き出しつきテーブルで表示 */
+    function renderEventsPane(pane,events,opts){
+      opts=opts||{};
+      if(!events||!events.length){
+        const p=el('div','muted',opts.emptyMsg||'該当データがありません。');
+        p.style.padding='20px 4px';pane.appendChild(p);return;
       }
-      info.textContent=`${filtered.length} 件表示 / 全 ${events.length} 件${filtered.length>500?'（上位 500 件のみ）':''}`;
+      const bar=el('div');bar.style.cssText='display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap';
+      const info=el('div','muted');info.textContent=`全 ${events.length} 件 / 最新から表示`;info.style.cssText='font-size:12px;margin-right:auto';
+      const searchInp=el('input','form-input');searchInp.type='text';searchInp.placeholder='検索：shotId・source・user...';searchInp.style.cssText='flex:1;max-width:280px;padding:6px 10px;font-size:12px';
+      const sourceSel=el('select','form-input');sourceSel.style.cssText='padding:6px 10px;font-size:12px';
+      const sources=Array.from(new Set(events.map(e=>e.source).filter(Boolean))).sort();
+      const allOpt=el('option',null,'すべての source');allOpt.value='';sourceSel.appendChild(allOpt);
+      for(const s of sources){const o=el('option',null,s);o.value=s;sourceSel.appendChild(o)}
+      const csvBtn=el('button','btn btn-ghost','CSV 書き出し');csvBtn.style.cssText='font-size:12px;padding:6px 12px';
+      csvBtn.onclick=()=>{
+        const csv=['ts,shotId,from,to,source,by,trace,extra'].concat(events.map(e=>{
+          const extra=JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k])=>!['ts','shotId','from','to','source','by','trace','kind'].includes(k))));
+          return [e.ts,e.shotId,e.from||'',e.to||'',e.source,e.by||'',JSON.stringify(e.trace||''),JSON.stringify(extra)].join(',');
+        })).join('\n');
+        const blob=new Blob([csv],{type:'text/csv'});
+        const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${opts.csvName||'status-audit'}-${pid}-${(new Date()).toISOString().slice(0,7)}.csv`;a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+      };
+      bar.appendChild(info);bar.appendChild(searchInp);bar.appendChild(sourceSel);bar.appendChild(csvBtn);
+      pane.appendChild(bar);
+      const wrap=el('div');wrap.style.cssText='max-height:60vh;overflow:auto;border:1px solid var(--bd);border-radius:8px';
+      const tbl=el('table');tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px;font-family:var(--font-code)';
+      const thead=el('thead');thead.innerHTML='<tr style="background:var(--bg2);position:sticky;top:0;z-index:1"><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">時刻</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">shot</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">from → to</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">source</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">by</th></tr>';
+      tbl.appendChild(thead);
+      const tbody=el('tbody');tbl.appendChild(tbody);wrap.appendChild(tbl);pane.appendChild(wrap);
+      function renderRows(){
+        const q=searchInp.value.trim().toLowerCase();
+        const src=sourceSel.value;
+        const filtered=events.filter(e=>{
+          if(src&&e.source!==src)return false;
+          if(!q)return true;
+          const hay=`${e.shotId} ${e.source} ${e.by||''} ${e.from||''} ${e.to||''} ${e.trace||''}`.toLowerCase();
+          return hay.includes(q);
+        }).slice().reverse();
+        tbody.innerHTML='';
+        for(const e of filtered.slice(0,500)){
+          const tr=el('tr');tr.style.cssText='border-bottom:1px solid rgba(255,255,255,.05)';
+          const isSuspicious=e.source&&(e.source.includes('merge3')||e.source.includes('unionRemote')||e.source.includes('review-fallback')||e.source.includes('applyMergedIntoDB'));
+          if(isSuspicious)tr.style.background='rgba(238,106,106,.06)';
+          const shortShot=(e.shotId||'').slice(-8);
+          const shotName=(getNode(e.shotId)&&getNode(e.shotId).name)||shortShot;
+          tr.innerHTML=`
+            <td style="padding:6px 10px;color:var(--muted);white-space:nowrap">${(e.ts||'').replace('T',' ').slice(0,19)}</td>
+            <td style="padding:6px 10px" title="${e.shotId}">${shotName}</td>
+            <td style="padding:6px 10px;white-space:nowrap"><span style="color:#888">${e.from||'(none)'}</span> → <b style="color:${isSuspicious?'#ee6a6a':'#a56bf0'}">${e.to||'(none)'}</b></td>
+            <td style="padding:6px 10px"><code style="font-size:10px;background:var(--bg2);padding:2px 6px;border-radius:4px;color:${isSuspicious?'#ee6a6a':'#5cc7ef'}">${e.source||'?'}</code></td>
+            <td style="padding:6px 10px;color:var(--muted)">${e.by||'(anon)'}</td>
+          `;
+          tr.title=`trace: ${e.trace||''}\n\n全データ:\n${JSON.stringify(e,null,2)}`;
+          tr.style.cursor='help';
+          tbody.appendChild(tr);
+        }
+        info.textContent=`${filtered.length} 件表示 / 全 ${events.length} 件${filtered.length>500?'（上位 500 件のみ）':''}`;
+      }
+      searchInp.oninput=renderRows;
+      sourceSel.onchange=renderRows;
+      renderRows();
+      /* 凡例（タブ別に文面変更） */
+      const legend=el('div','muted');legend.style.cssText='font-size:11px;margin-top:10px;padding:8px 12px;background:var(--bg2);border-radius:6px';
+      legend.innerHTML=opts.legend||'';
+      if(opts.legend)pane.appendChild(legend);
     }
-    searchInp.oninput=renderRows;
-    sourceSel.onchange=renderRows;
-    renderRows();
-    /* 凡例 */
-    const legend=el('div','muted');legend.style.cssText='font-size:11px;margin-top:10px;padding:8px 12px;background:var(--bg2);border-radius:6px';
-    legend.innerHTML='<b style="color:#ee6a6a">赤背景</b>：巻き戻りの疑いがある source（merge3・unionRemote・review-fallback・applyMergedIntoDB）。<b style="color:#a56bf0">setStatus:*</b>：ユーザー明示操作。行にマウスを合わせるとスタックトレース表示。';
-    inner.appendChild(legend);
+    renderEventsPane(paneAudit,auditEvents,{
+      csvName:'status-audit',
+      emptyMsg:'監査ログはまだありません（v.049 以降のステータス変更のみ記録されます）。',
+      legend:'<b style="color:#ee6a6a">赤背景</b>：巻き戻りの疑いがある source（merge3・unionRemote・review-fallback・applyMergedIntoDB）。<b style="color:#a56bf0">setStatus:*</b>：ユーザー明示操作。行にマウスを合わせるとスタックトレース表示。',
+    });
+    renderEventsPane(paneHist,historyEvents,{
+      csvName:'status-history',
+      emptyMsg:'まだ status/*.json の履歴がありません。setStatus 経由の変更（UI・upload・submit・migrate）が発生すると記録されます。',
+      legend:'各 <code>status/{sid}.json</code> の <code>history[]</code> をショット横断で集約表示。v:5 で分離した「権威源データ」の変遷を確認できます。<b style="color:#a56bf0">全て setStatus:* エントリ</b>（マージ・refresh 等の書き換えは含まれません）。',
+    });
     mFoot(body,[(()=>{const b=el('button','btn','閉じる');b.onclick=closeModal;return b})()]);
   },true);
 }

@@ -14,6 +14,12 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.14.002) **監査ログモーダルに「setStatus 履歴（分離データ）」タブを追加**：v:5 で分離した `status/{sid}.json` の `history[]` をショット横断で集約表示するタブを追加。既存の「全経路（監査ログ）」タブと 2 タブ構成にリファクタ。
+  - **タブ 1「全経路（監査ログ）」**：`audit/YYYY-MM.jsonl` の全記録（merge3・unionRemote・review-fallback・setStatus 全部）
+  - **タブ 2「setStatus 履歴（分離データ）」**：各 shot の `status/{sid}.json.history[]` を flatten して集約表示。**ユーザー明示操作のみのきれいな narrative**（マージ・refresh 系のノイズなし）。「そのショットが今の状態に至った経緯」を辿るのに最適。
+  - 共通実装 `renderEventsPane(pane, events, opts)` を導入して 2 タブで再利用。検索・source フィルタ・CSV 書き出し・巻き戻り疑い赤ハイライト・トレース tooltip も全部両タブで動作。
+  - APP_VERSION：2026.09.14.001 → 2026.09.14.002
+
 - (dev v2026.09.14.001) **ステータス変更専用の監査ログ機能**：v:5 導入後も現場で巻き戻り再発しているため、**あらゆる書き換え経路**を全部記録して原因追跡できるようにする。
   - **storage.appendAudit(pid, events) / readAudit(pid, yyyymm)** 追加：`projects/{pid}/audit/YYYY-MM.jsonl` に append-only 記録。R2 未対応（フォルダ運用のみ）。
   - **記録スキーマ**：`{ts, kind:'status_change', shotId, from, to, by, source, trace, ...extra}`
