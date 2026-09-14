@@ -3441,7 +3441,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.14.006';
+const APP_VERSION='2026.09.14.007';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7760,14 +7760,22 @@ async function openStatusAuditModal(pid){
       if(s)return{label:s.label||statusId,color:s.color||'#a56bf0'};
       return{label:statusId,color:'#a56bf0'};
     }
+    /* 【v.053】source ラベル・色分けの見直し。
+       フォルダ同期は「他ユーザーの正常な変更取込」であることが実運用で確認できたため、
+       赤（要確認）→ 青（通常同期）に降格。
+       赤（⚠ 要確認）は「巻き戻り主犯経路」の 3-way マージ・v<4 マージのみに限定。
+       黄（要確認）は「状況次第で危険」の復元処理・読込上書き。 */
     const _sourceLabels={
       'setStatus:ui':{label:'UI 操作',color:'#a56bf0',danger:false},
       'setStatus:upload':{label:'版アップロード',color:'#5cc7ef',danger:false},
       'setStatus:submit':{label:'提出',color:'#5cb878',danger:false},
       'setStatus:migrate':{label:'初回移行',color:'#888',danger:false},
+      /* フォルダ同期は多重ユーザー同期の正常経路：青（通常同期）に降格 */
+      'unionRemoteIntoDB:refresh':{label:'フォルダ同期',color:'#5cc7ef',danger:false},
+      /* 3-way マージは巻き戻り事故の主犯経路：赤（⚠ 要確認）維持 */
       'merge3:saveShotWithLock':{label:'3-way マージ',color:'#ee6a6a',danger:true},
       'applyMergedIntoDB:v<4':{label:'v<4 マージ',color:'#ee6a6a',danger:true},
-      'unionRemoteIntoDB:refresh':{label:'フォルダ同期',color:'#ee6a6a',danger:true},
+      /* 復元処理・読込上書きは状況次第で危険：黄（要確認）維持 */
       'normalizeNodes:review-fallback':{label:'復元処理',color:'#f2c86b',danger:true},
       'hydrateShots:Object.assign':{label:'読込上書き',color:'#f2c86b',danger:true},
     };
@@ -7817,7 +7825,22 @@ async function openStatusAuditModal(pid){
       }
       const bar=el('div');bar.style.cssText='display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap';
       const info=el('div','muted');info.textContent=`全 ${events.length} 件 / 最新から表示`;info.style.cssText='font-size:12px;margin-right:auto';
-      const searchInp=el('input','form-input');searchInp.type='text';searchInp.placeholder='検索：shotId・source・user...';searchInp.style.cssText='flex:1;max-width:220px;padding:6px 10px;font-size:12px';
+      const searchInp=el('input','form-input');searchInp.type='text';searchInp.placeholder='検索：ショット名・user...';searchInp.style.cssText='flex:1;max-width:200px;padding:6px 10px;font-size:12px';
+      /* 【v.053】ショット絞り込みセレクタ（events 中に登場する shotId を列挙・件数多い順） */
+      let shotSel=null;
+      {
+        const shotCounts=new Map();
+        for(const e of events){if(!e.shotId)continue;shotCounts.set(e.shotId,(shotCounts.get(e.shotId)|0)+1)}
+        const shotArr=Array.from(shotCounts.entries()).sort((a,b)=>b[1]-a[1]);
+        if(shotArr.length){
+          shotSel=el('select','form-input');shotSel.style.cssText='padding:6px 10px;font-size:12px;max-width:260px';
+          const allS=el('option',null,'すべてのショット');allS.value='';shotSel.appendChild(allS);
+          for(const [sid,cnt] of shotArr){
+            const nm=(getNode(sid)&&getNode(sid).name)||sid.slice(-8);
+            const o=el('option',null,`${nm} (${cnt})`);o.value=sid;shotSel.appendChild(o);
+          }
+        }
+      }
       /* 【v.050】月フィルタセレクタ（audit タブのみ・events から動的取得）。既存 month 情報がなければ表示しない。 */
       let monthSel=null;
       if(opts.showMonthFilter){
@@ -7830,8 +7853,11 @@ async function openStatusAuditModal(pid){
       }
       const sourceSel=el('select','form-input');sourceSel.style.cssText='padding:6px 10px;font-size:12px';
       const sources=Array.from(new Set(events.map(e=>e.source).filter(Boolean))).sort();
-      const allOpt=el('option',null,'すべての source');allOpt.value='';sourceSel.appendChild(allOpt);
-      for(const s of sources){const o=el('option',null,s);o.value=s;sourceSel.appendChild(o)}
+      const allOpt=el('option',null,'すべての操作');allOpt.value='';sourceSel.appendChild(allOpt);
+      for(const s of sources){
+        const lbl=_fmtSource(s);
+        const o=el('option',null,`${lbl.label}${lbl.danger?' ⚠':''}`);o.value=s;sourceSel.appendChild(o);
+      }
       const csvBtn=el('button','btn btn-ghost','CSV 書き出し');csvBtn.style.cssText='font-size:12px;padding:6px 12px';
       csvBtn.onclick=()=>{
         const csv=['ts,shotId,from,to,source,by,trace,extra'].concat(events.map(e=>{
@@ -7842,7 +7868,7 @@ async function openStatusAuditModal(pid){
         const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${opts.csvName||'status-audit'}-${pid}-${(new Date()).toISOString().slice(0,7)}.csv`;a.click();
         setTimeout(()=>URL.revokeObjectURL(a.href),1000);
       };
-      bar.appendChild(info);bar.appendChild(searchInp);if(monthSel)bar.appendChild(monthSel);bar.appendChild(sourceSel);bar.appendChild(csvBtn);
+      bar.appendChild(info);bar.appendChild(searchInp);if(shotSel)bar.appendChild(shotSel);if(monthSel)bar.appendChild(monthSel);bar.appendChild(sourceSel);bar.appendChild(csvBtn);
       pane.appendChild(bar);
       const wrap=el('div');wrap.style.cssText='max-height:60vh;overflow:auto;border:1px solid var(--bd);border-radius:8px';
       const tbl=el('table');tbl.style.cssText='width:100%;border-collapse:collapse;font-size:13px';
@@ -7859,11 +7885,14 @@ async function openStatusAuditModal(pid){
         const q=searchInp.value.trim().toLowerCase();
         const src=sourceSel.value;
         const mnth=monthSel?monthSel.value:'';
+        const shotId=shotSel?shotSel.value:'';
         const filtered=events.filter(e=>{
+          if(shotId&&e.shotId!==shotId)return false;
           if(src&&e.source!==src)return false;
           if(mnth&&(e.ts||'').slice(0,7)!==mnth)return false;
           if(!q)return true;
-          const hay=`${e.shotId} ${e.source} ${e.by||''} ${e.from||''} ${e.to||''} ${e.trace||''}`.toLowerCase();
+          const nm=(getNode(e.shotId)&&getNode(e.shotId).name)||'';
+          const hay=`${nm} ${e.shotId} ${e.source} ${e.by||''} ${e.from||''} ${e.to||''} ${e.trace||''}`.toLowerCase();
           return hay.includes(q);
         }).slice().reverse();
         tbody.innerHTML='';
@@ -7908,6 +7937,7 @@ async function openStatusAuditModal(pid){
       searchInp.oninput=renderRows;
       sourceSel.onchange=renderRows;
       if(monthSel)monthSel.onchange=renderRows;
+      if(shotSel)shotSel.onchange=renderRows;
       renderRows();
       /* 凡例（タブ別に文面変更） */
       const legend=el('div','muted');legend.style.cssText='font-size:11px;margin-top:10px;padding:8px 12px;background:var(--bg2);border-radius:6px';
@@ -7918,7 +7948,11 @@ async function openStatusAuditModal(pid){
       csvName:'status-audit',
       showMonthFilter:true,
       emptyMsg:'監査ログはまだありません（v.049 以降のステータス変更のみ記録されます）。',
-      legend:'ステータス変更を <b>「いつ・誰が・どの操作で」</b> 記録しています。<b style="color:#ee6a6a">⚠ 要確認</b> マークは自動処理（マージ・同期・復元）による変更 — ユーザー操作ではないので、意図しない変化ならこれが原因。行にマウスを合わせるとスタックトレース等の詳細情報が表示されます。',
+      legend:'ステータス変更を <b>「いつ・誰が・どの操作で」</b> 記録。'
+        +'<b style="color:#a56bf0">紫/緑/青</b>：ユーザー操作（UI・アップロード・提出）または他ユーザーからの通常同期。'
+        +' <b style="color:#5cc7ef">フォルダ同期</b> = 他メンバーの変更を取り込んだ痕跡（正常）。'
+        +'<b style="color:#ee6a6a"> ⚠ 3-way マージ</b>：巻き戻り事故の主犯経路（要確認）。'
+        +' 行ホバーで詳細情報表示。',
     });
     renderEventsPane(paneHist,historyEvents,{
       csvName:'status-history',
