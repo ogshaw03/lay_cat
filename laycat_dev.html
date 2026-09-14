@@ -3441,7 +3441,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.14.005';
+const APP_VERSION='2026.09.14.006';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7738,6 +7738,52 @@ async function openStatusAuditModal(pid){
     tabAudit.onclick=()=>activate(tabAudit,paneAudit);
     tabHist.onclick=()=>activate(tabHist,paneHist);
     tabRaw.onclick=()=>activate(tabRaw,paneRaw);
+    /* 【v.052】読みやすい表示にするためのフォーマッタ群。
+       ID を表示名に変換・タイムスタンプ短縮・source を日本語ラベル化する。 */
+    function _fmtTs(iso){
+      if(!iso)return'-';
+      const d=new Date(iso);
+      if(isNaN(d))return iso;
+      const M=d.getMonth()+1,D=d.getDate(),h=String(d.getHours()).padStart(2,'0'),m=String(d.getMinutes()).padStart(2,'0');
+      return `${M}/${D} ${h}:${m}`;
+    }
+    function _fmtShotPath(sid){
+      const n=getNode(sid);if(!n)return sid.slice(-8);
+      const p=pathOf(sid);
+      /* 先頭のプロジェクトルートを除く。中間は「/」で連結。 */
+      return p.slice(1).map(x=>x.name||x.id.slice(-6)).join(' / ');
+    }
+    function _fmtStatus(sid,statusId){
+      if(statusId==null||statusId===''||statusId==='empty')return{label:'未着手',color:'#888'};
+      const n=getNode(sid);const arr=n?projStatuses(n):null;
+      const s=arr&&arr.find(x=>x.id===statusId);
+      if(s)return{label:s.label||statusId,color:s.color||'#a56bf0'};
+      return{label:statusId,color:'#a56bf0'};
+    }
+    const _sourceLabels={
+      'setStatus:ui':{label:'UI 操作',color:'#a56bf0',danger:false},
+      'setStatus:upload':{label:'版アップロード',color:'#5cc7ef',danger:false},
+      'setStatus:submit':{label:'提出',color:'#5cb878',danger:false},
+      'setStatus:migrate':{label:'初回移行',color:'#888',danger:false},
+      'merge3:saveShotWithLock':{label:'3-way マージ',color:'#ee6a6a',danger:true},
+      'applyMergedIntoDB:v<4':{label:'v<4 マージ',color:'#ee6a6a',danger:true},
+      'unionRemoteIntoDB:refresh':{label:'フォルダ同期',color:'#ee6a6a',danger:true},
+      'normalizeNodes:review-fallback':{label:'復元処理',color:'#f2c86b',danger:true},
+      'hydrateShots:Object.assign':{label:'読込上書き',color:'#f2c86b',danger:true},
+    };
+    function _fmtSource(src){
+      if(!src)return{label:'不明',color:'#888',danger:false};
+      if(_sourceLabels[src])return _sourceLabels[src];
+      /* setStatus:xxx のプレフィックスマッチ */
+      if(src.startsWith('setStatus:'))return{label:'手動変更',color:'#a56bf0',danger:false};
+      if(src.startsWith('merge')||src.startsWith('apply')||src.startsWith('union'))return{label:'マージ処理',color:'#ee6a6a',danger:true};
+      return{label:src,color:'#888',danger:false};
+    }
+    function _fmtUser(by){
+      if(!by)return'(不明)';
+      const i=by.indexOf('@');
+      return i>0?by.slice(0,i):by;
+    }
     /* 共通レンダラ：events 配列を検索・source フィルタ・CSV 書き出しつきテーブルで表示 */
     function renderEventsPane(pane,events,opts){
       opts=opts||{};
@@ -7799,8 +7845,14 @@ async function openStatusAuditModal(pid){
       bar.appendChild(info);bar.appendChild(searchInp);if(monthSel)bar.appendChild(monthSel);bar.appendChild(sourceSel);bar.appendChild(csvBtn);
       pane.appendChild(bar);
       const wrap=el('div');wrap.style.cssText='max-height:60vh;overflow:auto;border:1px solid var(--bd);border-radius:8px';
-      const tbl=el('table');tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px;font-family:var(--font-code)';
-      const thead=el('thead');thead.innerHTML='<tr style="background:var(--bg2);position:sticky;top:0;z-index:1"><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">時刻</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">shot</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">from → to</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">source</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">by</th></tr>';
+      const tbl=el('table');tbl.style.cssText='width:100%;border-collapse:collapse;font-size:13px';
+      const thead=el('thead');thead.innerHTML='<tr style="background:var(--bg2);position:sticky;top:0;z-index:1">'
+        +'<th style="padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd);font-weight:600;color:var(--muted);font-size:11px;letter-spacing:1px">いつ</th>'
+        +'<th style="padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd);font-weight:600;color:var(--muted);font-size:11px;letter-spacing:1px">誰が</th>'
+        +'<th style="padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd);font-weight:600;color:var(--muted);font-size:11px;letter-spacing:1px">どの操作</th>'
+        +'<th style="padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd);font-weight:600;color:var(--muted);font-size:11px;letter-spacing:1px">対象ショット</th>'
+        +'<th style="padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd);font-weight:600;color:var(--muted);font-size:11px;letter-spacing:1px">変更内容</th>'
+        +'</tr>';
       tbl.appendChild(thead);
       const tbody=el('tbody');tbl.appendChild(tbody);wrap.appendChild(tbl);pane.appendChild(wrap);
       function renderRows(){
@@ -7817,18 +7869,37 @@ async function openStatusAuditModal(pid){
         tbody.innerHTML='';
         for(const e of filtered.slice(0,500)){
           const tr=el('tr');tr.style.cssText='border-bottom:1px solid rgba(255,255,255,.05)';
-          const isSuspicious=e.source&&(e.source.includes('merge3')||e.source.includes('unionRemote')||e.source.includes('review-fallback')||e.source.includes('applyMergedIntoDB'));
-          if(isSuspicious)tr.style.background='rgba(238,106,106,.06)';
-          const shortShot=(e.shotId||'').slice(-8);
-          const shotName=(getNode(e.shotId)&&getNode(e.shotId).name)||shortShot;
+          const src=_fmtSource(e.source);
+          if(src.danger)tr.style.background='rgba(238,106,106,.06)';
+          const fromS=_fmtStatus(e.shotId,e.from);
+          const toS=_fmtStatus(e.shotId,e.to);
+          const shotPath=_fmtShotPath(e.shotId);
+          const shotShort=(getNode(e.shotId)&&getNode(e.shotId).name)||e.shotId.slice(-8);
+          const fullTs=(e.ts||'').replace('T',' ').slice(0,19);
           tr.innerHTML=`
-            <td style="padding:6px 10px;color:var(--muted);white-space:nowrap">${(e.ts||'').replace('T',' ').slice(0,19)}</td>
-            <td style="padding:6px 10px" title="${e.shotId}">${shotName}</td>
-            <td style="padding:6px 10px;white-space:nowrap"><span style="color:#888">${e.from||'(none)'}</span> → <b style="color:${isSuspicious?'#ee6a6a':'#a56bf0'}">${e.to||'(none)'}</b></td>
-            <td style="padding:6px 10px"><code style="font-size:10px;background:var(--bg2);padding:2px 6px;border-radius:4px;color:${isSuspicious?'#ee6a6a':'#5cc7ef'}">${e.source||'?'}</code></td>
-            <td style="padding:6px 10px;color:var(--muted)">${e.by||'(anon)'}</td>
+            <td style="padding:10px 12px;color:var(--fg,#eee);white-space:nowrap;font-family:var(--font-code)">
+              <div style="font-size:13px;font-weight:600">${_fmtTs(e.ts)}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px">${fullTs}</div>
+            </td>
+            <td style="padding:10px 12px;white-space:nowrap">
+              <div style="font-size:13px;color:var(--fg,#eee)">${_fmtUser(e.by)}</div>
+              ${e.by&&e.by.includes('@')?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${e.by}</div>`:''}
+            </td>
+            <td style="padding:10px 12px">
+              <span style="display:inline-block;padding:3px 10px;border-radius:12px;background:${src.color}22;color:${src.color};font-size:11px;font-weight:600">${src.label}</span>
+              ${src.danger?'<span style="margin-left:6px;font-size:10px;color:#ee6a6a">⚠ 要確認</span>':''}
+            </td>
+            <td style="padding:10px 12px">
+              <div style="font-size:13px;color:var(--fg,#eee);font-weight:500">${shotShort}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px">${shotPath}</div>
+            </td>
+            <td style="padding:10px 12px;white-space:nowrap">
+              <span style="display:inline-block;padding:2px 10px;border-radius:4px;background:${fromS.color}22;color:${fromS.color};font-size:12px">${fromS.label}</span>
+              <span style="margin:0 6px;color:var(--muted)">→</span>
+              <span style="display:inline-block;padding:2px 10px;border-radius:4px;background:${toS.color}22;color:${toS.color};font-size:12px;font-weight:600">${toS.label}</span>
+            </td>
           `;
-          tr.title=`trace: ${e.trace||''}\n\n全データ:\n${JSON.stringify(e,null,2)}`;
+          tr.title=`ソース: ${e.source}\ntrace: ${e.trace||'(なし)'}\n\n全データ:\n${JSON.stringify(e,null,2)}`;
           tr.style.cursor='help';
           tbody.appendChild(tr);
         }
@@ -7847,13 +7918,13 @@ async function openStatusAuditModal(pid){
       csvName:'status-audit',
       showMonthFilter:true,
       emptyMsg:'監査ログはまだありません（v.049 以降のステータス変更のみ記録されます）。',
-      legend:'<b style="color:#ee6a6a">赤背景</b>：巻き戻りの疑いがある source（merge3・unionRemote・review-fallback・applyMergedIntoDB）。<b style="color:#a56bf0">setStatus:*</b>：ユーザー明示操作。行にマウスを合わせるとスタックトレース表示。上部のヒストグラムで日別の分布を確認できます。',
+      legend:'ステータス変更を <b>「いつ・誰が・どの操作で」</b> 記録しています。<b style="color:#ee6a6a">⚠ 要確認</b> マークは自動処理（マージ・同期・復元）による変更 — ユーザー操作ではないので、意図しない変化ならこれが原因。行にマウスを合わせるとスタックトレース等の詳細情報が表示されます。',
     });
     renderEventsPane(paneHist,historyEvents,{
       csvName:'status-history',
       showMonthFilter:true,
-      emptyMsg:'まだ status/*.json の履歴がありません。setStatus 経由の変更（UI・upload・submit・migrate）が発生すると記録されます。',
-      legend:'各 <code>status/{sid}.json</code> の <code>history[]</code> をショット横断で集約表示。v:5 で分離した「権威源データ」の変遷を確認できます。<b style="color:#a56bf0">全て setStatus:* エントリ</b>（マージ・refresh 等の書き換えは含まれません）。null→null エントリは自動フィルタで非表示。',
+      emptyMsg:'まだ status/*.json の履歴がありません。ステータス変更（UI・アップロード・提出）が発生すると記録されます。',
+      legend:'各ショット固有の <code>status</code> ファイル（v:5 分離データ）の変更履歴を集約。<b style="color:#a56bf0">ユーザー操作のみ</b> のきれいな narrative — 「そのショットがどう進んできたか」を辿るのに使ってください。',
     });
     /* 【v.051】「生データ」タブ：全ての status/{sid}.json の内容を UI 上で直接確認できる。
        ショット選択ドロップダウン＋整形 JSON 表示＋クリップボードコピー。F12 不要。 */
