@@ -2197,6 +2197,7 @@ const storage={
       _revBucket(id).project=(parsed._rev|0); /* Phase 3：project.json 骨格の _rev を記録 */
       await this._hydrateShots(id,parsed);
       await this._hydrateSubmits(id,parsed);
+      await this._hydrateStatuses(id,parsed); /* 【v.055 修正】v:5 status 分離：起動時にも status.json で override */
       return parsed;
     }
     const ph=await this.projRoot(id);
@@ -2208,6 +2209,11 @@ const storage={
     _revBucket(id).project=(parsed._rev|0); /* Phase 3：project.json 骨格の _rev を記録 */
     await this._hydrateShots(id,parsed);
     await this._hydrateSubmits(id,parsed);
+    /* 【v.055 修正・重大バグ】起動時・F5 リロード時のパス（loadProject）に _hydrateStatuses を追加。
+       従来これが呼ばれず、status.json 分離の効果が「autoRefresh 経由の同期時のみ」だった。
+       他タブが shot.json.status を古い値で上書きした後、こちら側で F5 すると shot.json inline の
+       古い値がそのまま反映されて UI 上のステータスが巻き戻る現象の恒久修正。 */
+    await this._hydrateStatuses(id,parsed);
     return parsed;
   },
   /* Phase 1 分割形式：project.json が submitIds を持っていれば、submits/ 個別ファイルを
@@ -3485,7 +3491,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.14.008';
+const APP_VERSION='2026.09.14.009';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */

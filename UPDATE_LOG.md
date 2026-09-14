@@ -14,6 +14,15 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.14.009) **【重大バグ修正】`loadProject` に `_hydrateStatuses` 呼び出しを追加**：v:5 status 分離の効果が起動時・F5 リロード時のパスで無効化されていた重大な抜け穴を修正。UI 巻き戻りの根本原因の一つ。
+  - **原因**：v:5 MVP 実装時、`readProjectData` にのみ `_hydrateStatuses` を追加し、`loadProject`（起動時・F5 リロード時のパス）に追加し忘れていた。
+  - **影響**：
+    - autoRefresh 経由の同期時：`readProjectData` → `_hydrateStatuses` → v:5 復元 ✅
+    - **F5 リロード・初回起動時：`loadProject` → `_hydrateStatuses` 未呼び出し** → shot.json inline の古い status がそのまま反映 ❌
+  - **具体的な再現手順**：同一ショットを複数タブで開く → タブ A で status 変更 → タブ B でリフレッシュより先に担当者変更（3-way マージで shot.json inline に古い status が書き込まれる）→ タブ A で F5 → shot.json inline の古い status が反映されて UI 上で巻き戻り発生
+  - **修正**：`loadProject` の両パス（R2 / フォルダ）に `await this._hydrateStatuses(id,parsed)` を追加。これで起動時・F5 リロード時にも status.json による権威源復元が働く。
+  - APP_VERSION：2026.09.14.008 → 2026.09.14.009
+
 - (dev v2026.09.14.008) **v:5 復元処理の可視化＋整合性チェックボタン追加**：現場で「読込上書きで status が巻き戻った」報告あり、v:5 の復元が本当に効いているかを実行時検証できるようにする。
   - **`_hydrateStatuses` に監査ログ記録追加**：`hydrateShots:Object.assign` の直後に走る v:5 復元処理を audit log に記録（source: `hydrateStatuses:v5restore`・緑・防御動作扱い）。これで「読込上書きで書き換わった直後に v:5 が正しい値に戻している」という一連の防御シーケンスが log 上で可視化される。
   - **`_verifyStatusIntegrity(pid)` 診断関数を追加**：全ショットについて memory の `node.status` と disk 上の `status/{sid}.json.status` を比較。不一致があれば v:5 分離の抜け穴と判定できる。コンソールから `_verifyStatusIntegrity()` で呼び出し可能。
