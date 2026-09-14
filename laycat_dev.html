@@ -2254,7 +2254,13 @@ const storage={
           /* 骨格に既にある shot ノード → shot ファイルの完全データで上書き
              （version / comments / _vtomb を注入。骨格側のメタは shot ファイルにも
              同じものが入っているので上書きしても情報は失われない） */
+          /* 【監査ログ】既存 status を上書きしたケースのみ記録（初回 null→X は初回ロードなのでノイズ・スキップ） */
+          const _prevStat=(existing.status==null||existing.status==='')?null:existing.status;
           Object.assign(existing,n);
+          const _nextStat=(existing.status==null||existing.status==='')?null:existing.status;
+          if(_prevStat!=null&&_prevStat!==_nextStat){
+            _logStatusChange(pid,n.id,_prevStat,_nextStat,'hydrateShots:Object.assign',{shotFile:shot.shotId||''});
+          }
         }else{
           /* 骨格に無いノード（＝shot 配下の task 系）は追加 */
           nodeMap.set(n.id,n);
@@ -2540,6 +2546,43 @@ const storage={
     const list=await Promise.all(ids.map(id=>this.loadStatus(pid,id)));
     return list.filter(x=>x&&x.shotId);
   },
+
+  /* ==== 監査ログ：`projects/{pid}/audit/YYYY-MM.jsonl`（append-only JSONL） ====
+     【設計意図】ステータス巻き戻りの再発追跡用。setStatus 以外の経路（3-way マージ・
+     hydrate・normalizeNodes フォールバック等）で status が書き換わったら全て記録し、
+     どのコード経路が犯人かを後追い可能にする。
+     R2 未対応（フォルダ運用のみ）。FSA API に append モードが無いため read-modify-write。 */
+  async appendAudit(pid,events){
+    if(this._backend(pid)==='r2')return false;
+    const arr=Array.isArray(events)?events:[events];
+    if(!arr.length)return true;
+    const ph=await this.projRoot(pid);if(!ph)return false;
+    const now=new Date();
+    const yyyy=now.getFullYear();
+    const mm=String(now.getMonth()+1).padStart(2,'0');
+    const fn=`${yyyy}-${mm}.jsonl`;
+    try{
+      const dir=await this._subdir('audit',ph,true);
+      let existing='';
+      try{const fh=await dir.getFileHandle(fn);existing=await (await fh.getFile()).text();}catch(_){}
+      const lines=arr.map(e=>JSON.stringify(e)).join('\n')+'\n';
+      const newText=existing+lines;
+      await this._write(()=>dir,fn,newText);
+      return true;
+    }catch(e){try{console.warn('[laycat] appendAudit failed',{pid,e})}catch(_){}return false;}
+  },
+  async readAudit(pid,yyyymm){
+    if(this._backend(pid)==='r2')return null;
+    const ph=await this.projRoot(pid);if(!ph)return null;
+    let ym=yyyymm;
+    if(!ym){const now=new Date();ym=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`}
+    try{
+      const dir=await ph.getDirectoryHandle('audit');
+      const fh=await dir.getFileHandle(ym+'.jsonl');
+      const txt=await (await fh.getFile()).text();
+      return txt.trim().split('\n').filter(Boolean).map(l=>{try{return JSON.parse(l)}catch(_){return null}}).filter(Boolean);
+    }catch(_){return []}
+  },
   /* 動画・画像はプロジェクトフォルダへ保存（ref は p:<id>|<path>）。
      フォルダ未設定なら保存できないため null を返す（呼び出し側で警告）。 */
   async putMedia(sub,fn,blob,opts){
@@ -2610,6 +2653,99 @@ function _shotFileJsonForBaseline(pid,sid){
     return JSON.stringify({v:1,shotId:sid,nodes:[shotNode,...kids]});
   }catch(_){return null;}
 }
+/* 【監査ログ・v.049】ステータス変更を全経路で記録するバッファ機構。
+   短時間に連続する変更を 200ms 単位でバッチ化し、1 プロジェクトごとに 1 回書き込む。
+   append-only JSONL の read-modify-write 回数を抑える狙い。 */
+const _statusAuditBuffer={}; /* {pid: [events...]} */
+let _statusAuditFlushTimer=null;
+function _queueStatusAudit(pid,event){
+  if(!pid||!event)return;
+  _statusAuditBuffer[pid]=_statusAuditBuffer[pid]||[];
+  _statusAuditBuffer[pid].push(event);
+  if(!_statusAuditFlushTimer){
+    _statusAuditFlushTimer=setTimeout(_flushStatusAuditBuffer,200);
+  }
+}
+async function _flushStatusAuditBuffer(){
+  _statusAuditFlushTimer=null;
+  const pids=Object.keys(_statusAuditBuffer);
+  for(const pid of pids){
+    const events=_statusAuditBuffer[pid];
+    if(!events||!events.length)continue;
+    _statusAuditBuffer[pid]=[];
+    try{await storage.appendAudit(pid,events)}catch(_){}
+  }
+}
+/* 短いスタックトレース（1〜4 段目）を返す。呼び出し元コード位置の判別用。 */
+function _shortTrace(skip){
+  try{
+    const s=(new Error()).stack||'';
+    const lines=s.split('\n').map(l=>l.trim()).filter(l=>l&&l!=='Error');
+    return lines.slice((skip||1),(skip||1)+4).join(' | ').slice(0,400);
+  }catch(_){return''}
+}
+/* status_change イベントを 1 件キュー。prev===next の場合は記録しない（ノイズ削減）。 */
+function _logStatusChange(pid,sid,prev,next,source,extra){
+  if(!pid||!sid)return;
+  const _prev=(prev==null||prev==='')?null:prev;
+  const _next=(next==null||next==='')?null:next;
+  if(_prev===_next)return; /* 変化なしは記録しない */
+  try{
+    const ev={
+      ts:nowIso(),
+      kind:'status_change',
+      shotId:sid,
+      from:_prev,
+      to:_next,
+      by:((authUser&&authUser.email)||'')||null,
+      source:source||'unknown',
+      trace:_shortTrace(3),
+    };
+    if(extra&&typeof extra==='object')Object.assign(ev,extra);
+    _queueStatusAudit(pid,ev);
+  }catch(_){}
+}
+/* 「現在のプロジェクトのショット別 status」のスナップショットを取る。
+   差分検出用：merge/refresh/hydrate 等の前後で呼び、差があれば _logStatusChange。 */
+function _snapshotShotStatuses(pid){
+  const snap={};
+  if(!DB||!Array.isArray(DB.nodes))return snap;
+  for(const n of DB.nodes){
+    if(!n||!n.id)continue;
+    if(rootOfId(n)!==pid)continue;
+    snap[n.id]=(n.status==null||n.status==='')?null:n.status;
+  }
+  return snap;
+}
+function _diffAndLogStatusChanges(pid,before,source,extra){
+  if(!DB||!Array.isArray(DB.nodes))return;
+  for(const n of DB.nodes){
+    if(!n||!n.id)continue;
+    if(rootOfId(n)!==pid)continue;
+    const now=(n.status==null||n.status==='')?null:n.status;
+    const was=Object.prototype.hasOwnProperty.call(before,n.id)?before[n.id]:undefined;
+    if(was===undefined)continue; /* 新規ノードは skip */
+    if(was!==now){
+      _logStatusChange(pid,n.id,was,now,source,extra);
+    }
+  }
+}
+/* コンソール用ビューア。 `_showStatusAudit('<pid>')` で直近ログを console.table 表示。
+   引数省略時は現在アクティブなプロジェクトを対象にする。 */
+window._showStatusAudit=async function(pid,limit){
+  limit=limit||100;
+  if(!pid){
+    try{pid=state&&state.currentPage?rootOfId(getNode(state.currentPage)):null}catch(_){}
+    if(!pid){const first=REG&&REG[0];if(first)pid=first.id}
+  }
+  if(!pid){console.log('[audit] プロジェクトが特定できません。第 1 引数に pid を渡してください');return}
+  const events=await storage.readAudit(pid);
+  if(!events||!events.length){console.log('[audit] 今月の監査ログはまだありません: '+pid);return}
+  const tail=events.slice(-limit);
+  console.log(`[audit] ${pid} 直近 ${tail.length} 件 / 全 ${events.length} 件`);
+  console.table(tail.map(e=>({ts:e.ts,shot:e.shotId,from:e.from,to:e.to,source:e.source,by:e.by,trace:(e.trace||'').slice(0,120)})));
+  return tail;
+};
 /* 【v:5 status 分離】ステータス変更の唯一の入り口。
    ・memory の node.status を更新（従来の直接代入と等価）
    ・`status/{sid}.json` を作成 or 追記（history に append・_rev をインクリメント）
@@ -2629,6 +2765,8 @@ async function setStatus(node,newStatus,source){
   /* memory 更新（既存コードとの互換のため node.status を直接触る） */
   if(nxt==null)delete node.status;
   else node.status=nxt;
+  /* 【監査ログ】setStatus 経由の変更は「source: ui/upload/submit/migrate」で記録 */
+  _logStatusChange(pid,sid,prev,nxt,'setStatus:'+(source||'ui'));
   /* status.json 更新（R2 では no-op） */
   try{
     const existing=await storage.loadStatus(pid,sid);
@@ -2871,9 +3009,12 @@ async function _saveShotWithLock(pid,sid,fileBody){
        これにより「自分は status を変え、相手は assignee を変えた」ケースで両方が保持される。 */
     const baselineJs=(_saveCache.shot[pid]||{})[sid];
     const baseline=baselineJs?JSON.parse(baselineJs):null;
+    /* 【監査ログ】3-way マージ前の status スナップショットを取り、_applyShotFileIntoDB 後に差分ログ */
+    const _snap=_snapshotShotStatuses(pid);
     const merged3=_mergeShotFile3(baseline, fileBody, remote);
     outNodes=merged3.nodes;
     _applyShotFileIntoDB(pid,merged3);
+    _diffAndLogStatusChanges(pid,_snap,'merge3:saveShotWithLock',{sid,knownRev,remoteRev});
     merged=true;
   }
   const nextRev=Math.max(knownRev,remoteRev)+1;
@@ -3239,7 +3380,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.12.002';
+const APP_VERSION='2026.09.14.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3452,7 +3593,11 @@ function normalizeNodes(){
     const _pid=rootOfId(n);
     if(_pid&&_v5StatusShots.has(_pid+':'+n.id))continue;
     const lv=n.versions[n.versions.length-1];const rs=lv.review&&lv.review.status;
-    if(rs&&rs!=='pending')n.status=rs;
+    if(rs&&rs!=='pending'){
+      n.status=rs;
+      /* 【監査ログ】review.status フォールバックによる復元を記録 */
+      if(_pid)_logStatusChange(_pid,n.id,null,rs,'normalizeNodes:review-fallback',{lastVer:lv.id||''});
+    }
   }
 }
 function updateFolderStatus(){const cur=(DB&&state&&state.currentId)?getNode(state.currentId):null;const root=cur?rootOf(cur):null;const hasFolder=!!(root&&root.folderName);const needGrant=!!(root&&storage._pendingGrant&&storage._pendingGrant.has(root.id));const fs=$('#folderStatus');fs.classList.toggle('connected',hasFolder&&!needGrant);fs.classList.toggle('warn',(!!root&&!hasFolder)||needGrant);$('#folderName').textContent=needGrant?'⚠ フォルダ再接続が必要（クリック）':storage.folderLabel()}
@@ -7401,6 +7546,92 @@ function closeOnBackdrop(overlayEl,closeFn){
 }
 function openModal(builder,big){const b=$('#modalBody');b.className='modal'+(big?' lg':'');b.innerHTML='';builder(b);$('#modal').classList.remove('hidden')}
 function closeModal(){$('#modal').classList.add('hidden')}
+
+/* 【監査ログ UI】ステータス変更の履歴を大きなモーダルで表示。
+   フィルタ・source ハイライト・時刻降順ソート付き。CSV エクスポートも提供。
+   コンソールから `openStatusAuditModal('<pid>')` で開くことも可能。 */
+async function openStatusAuditModal(pid){
+  if(!pid){
+    try{pid=state&&state.currentPage?rootOfId(getNode(state.currentPage)):null}catch(_){}
+    if(!pid){const first=REG&&REG[0];if(first)pid=first.id}
+  }
+  if(!pid){toast('プロジェクトが特定できません');return}
+  const events=await storage.readAudit(pid);
+  const projName=(getNode(pid)&&getNode(pid).name)||pid;
+  openModal(body=>{
+    const inner=mHead(body,'ステータス変更 監査ログ',projName+'（今月分）');
+    if(!events||!events.length){
+      const p=el('div','muted','監査ログはまだありません（v.049 以降のステータス変更のみ記録されます）。');
+      p.style.padding='20px 4px';inner.appendChild(p);
+      mFoot(body,[(()=>{const b=el('button','btn','閉じる');b.onclick=closeModal;return b})()]);
+      return;
+    }
+    /* フィルタバー */
+    const bar=el('div');bar.style.cssText='display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap';
+    const info=el('div','muted');info.textContent=`全 ${events.length} 件 / 最新から表示`;info.style.cssText='font-size:12px;margin-right:auto';
+    const searchInp=el('input','form-input');searchInp.type='text';searchInp.placeholder='検索：shotId・source・user...';searchInp.style.cssText='flex:1;max-width:280px;padding:6px 10px;font-size:12px';
+    const sourceSel=el('select','form-input');sourceSel.style.cssText='padding:6px 10px;font-size:12px';
+    const sources=Array.from(new Set(events.map(e=>e.source).filter(Boolean))).sort();
+    const allOpt=el('option',null,'すべての source');allOpt.value='';sourceSel.appendChild(allOpt);
+    for(const s of sources){const o=el('option',null,s);o.value=s;sourceSel.appendChild(o)}
+    const csvBtn=el('button','btn btn-ghost','CSV 書き出し');csvBtn.style.cssText='font-size:12px;padding:6px 12px';
+    csvBtn.onclick=()=>{
+      const csv=['ts,shotId,from,to,source,by,trace,extra'].concat(events.map(e=>{
+        const extra=JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k])=>!['ts','shotId','from','to','source','by','trace','kind'].includes(k))));
+        return [e.ts,e.shotId,e.from||'',e.to||'',e.source,e.by||'',JSON.stringify(e.trace||''),JSON.stringify(extra)].join(',');
+      })).join('\n');
+      const blob=new Blob([csv],{type:'text/csv'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`status-audit-${pid}-${(new Date()).toISOString().slice(0,7)}.csv`;a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    };
+    bar.appendChild(info);bar.appendChild(searchInp);bar.appendChild(sourceSel);bar.appendChild(csvBtn);
+    inner.appendChild(bar);
+    /* テーブル */
+    const wrap=el('div');wrap.style.cssText='max-height:60vh;overflow:auto;border:1px solid var(--bd);border-radius:8px';
+    const tbl=el('table');tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px;font-family:var(--font-code)';
+    const thead=el('thead');thead.innerHTML='<tr style="background:var(--bg2);position:sticky;top:0;z-index:1"><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">時刻</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">shot</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">from → to</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">source</th><th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd)">by</th></tr>';
+    tbl.appendChild(thead);
+    const tbody=el('tbody');tbl.appendChild(tbody);wrap.appendChild(tbl);inner.appendChild(wrap);
+    function renderRows(){
+      const q=searchInp.value.trim().toLowerCase();
+      const src=sourceSel.value;
+      const filtered=events.filter(e=>{
+        if(src&&e.source!==src)return false;
+        if(!q)return true;
+        const hay=`${e.shotId} ${e.source} ${e.by||''} ${e.from||''} ${e.to||''} ${e.trace||''}`.toLowerCase();
+        return hay.includes(q);
+      }).slice().reverse(); /* 最新順 */
+      tbody.innerHTML='';
+      for(const e of filtered.slice(0,500)){
+        const tr=el('tr');tr.style.cssText='border-bottom:1px solid rgba(255,255,255,.05)';
+        const isSuspicious=e.source&&(e.source.includes('merge3')||e.source.includes('unionRemote')||e.source.includes('review-fallback')||e.source.includes('applyMergedIntoDB'));
+        if(isSuspicious)tr.style.background='rgba(238,106,106,.06)';
+        const shortShot=(e.shotId||'').slice(-8);
+        const shotName=(getNode(e.shotId)&&getNode(e.shotId).name)||shortShot;
+        tr.innerHTML=`
+          <td style="padding:6px 10px;color:var(--muted);white-space:nowrap">${(e.ts||'').replace('T',' ').slice(0,19)}</td>
+          <td style="padding:6px 10px" title="${e.shotId}">${shotName}</td>
+          <td style="padding:6px 10px;white-space:nowrap"><span style="color:#888">${e.from||'(none)'}</span> → <b style="color:${isSuspicious?'#ee6a6a':'#a56bf0'}">${e.to||'(none)'}</b></td>
+          <td style="padding:6px 10px"><code style="font-size:10px;background:var(--bg2);padding:2px 6px;border-radius:4px;color:${isSuspicious?'#ee6a6a':'#5cc7ef'}">${e.source||'?'}</code></td>
+          <td style="padding:6px 10px;color:var(--muted)">${e.by||'(anon)'}</td>
+        `;
+        tr.title=`trace: ${e.trace||''}\n\n全データ:\n${JSON.stringify(e,null,2)}`;
+        tr.style.cursor='help';
+        tbody.appendChild(tr);
+      }
+      info.textContent=`${filtered.length} 件表示 / 全 ${events.length} 件${filtered.length>500?'（上位 500 件のみ）':''}`;
+    }
+    searchInp.oninput=renderRows;
+    sourceSel.onchange=renderRows;
+    renderRows();
+    /* 凡例 */
+    const legend=el('div','muted');legend.style.cssText='font-size:11px;margin-top:10px;padding:8px 12px;background:var(--bg2);border-radius:6px';
+    legend.innerHTML='<b style="color:#ee6a6a">赤背景</b>：巻き戻りの疑いがある source（merge3・unionRemote・review-fallback・applyMergedIntoDB）。<b style="color:#a56bf0">setStatus:*</b>：ユーザー明示操作。行にマウスを合わせるとスタックトレース表示。';
+    inner.appendChild(legend);
+    mFoot(body,[(()=>{const b=el('button','btn','閉じる');b.onclick=closeModal;return b})()]);
+  },true);
+}
+window.openStatusAuditModal=openStatusAuditModal;
 closeOnBackdrop($('#modal'),closeModal);
 function mHead(body,title,sub){const h=el('div','modal-header');const t=el('div','modal-title');t.appendChild(document.createTextNode(title));if(sub)t.appendChild(el('div','sub',sub));h.appendChild(t);const x=el('button','modal-close','×');x.onclick=closeModal;h.appendChild(x);body.appendChild(h);const inner=el('div','modal-body');body.appendChild(inner);return inner}
 function mFoot(body,btns){const f=el('div','modal-footer');for(const b of btns)f.appendChild(b);body.appendChild(f)}
@@ -8227,6 +8458,12 @@ function openRename(node){
       pwConf=frow('確認（再入力）','input');pwConf.f.type='password';inner.appendChild(pwConf.r);
       if(_pwSet){const rr=el('label','form-check');rr.style.cssText='display:flex;align-items:center;gap:8px;margin:6px 0';pwRemove=el('input');pwRemove.type='checkbox';rr.appendChild(pwRemove);rr.appendChild(el('span','form-label','パスワード保護を解除する（誰でも開けるようになります）'));rr.querySelector('.form-label').style.margin='0';inner.appendChild(rr)}
       inner.appendChild(el('div','form-label','※ パスワードを設定すると、プロジェクトデータ（コメント・ノート等のメタデータ）はパスワードから導出した鍵で暗号化して保存されます。パスワードが分からないと中身は復号できません。ただし動画・画像ファイル本体（media/ 配下）は暗号化対象外です。パスワードを紛失すると復号できなくなる点にご注意ください。'));
+      /* 監査ログビューア（現場の巻き戻り再発調査用） */
+      sec(secN++,'📜','ステータス変更 監査ログ','v.049 以降のすべてのステータス変更を記録しています。巻き戻り事故の原因調査に使えます。');
+      const auditWrap=el('div');auditWrap.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px';
+      auditWrap.appendChild(el('span','form-label','今月のステータス変更履歴を確認します（source ハイライト・CSV 書き出し対応）。'));
+      const auditBtn=el('button','btn btn-ghost btn-sm','📜 監査ログを見る');auditBtn.type='button';auditBtn.onclick=()=>{closeModal();openStatusAuditModal(node.id)};auditWrap.appendChild(auditBtn);
+      inner.appendChild(auditWrap);
       /* このユーザーの接続を解除・プロジェクトの削除 */
       sec(secN++,'⚠️','危険な操作','プロジェクトの接続を外す・削除するなど、取り消しにくい操作です。');
       const dcWrap=el('div');dcWrap.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px';
@@ -8617,12 +8854,15 @@ function _mergeNode3(base,ours,theirs){
 }
 /* マージ結果を DB に反映（当該プロジェクトのノード/サブミットを置換） */
 function applyMergedIntoDB(id,merged){
+  /* 【監査ログ】v<4 プロジェクトの 3-way マージ結果適用前後で status 差分を記録 */
+  const _snap=_snapshotShotStatuses(id);
   const ids=new Set([id,...DB.nodes.filter(n=>rootOfId(n)===id).map(n=>n.id)]);
   DB.nodes=DB.nodes.filter(n=>!ids.has(n.id));
   for(const n of (merged.nodes||[]))if(!DB.nodes.some(x=>x.id===n.id))DB.nodes.push(n);
   DB.submits=(DB.submits||[]).filter(s=>s.projectId!==id);
   for(const s of (merged.submits||[]))if(!DB.submits.some(x=>x.id===s.id))DB.submits.push(s);
   normalizeNodes();
+  _diffAndLogStatusChanges(id,_snap,'applyMergedIntoDB:v<4');
 }
 /* Phase 3 Issue C：v:4 プロジェクト用の「骨格 union」軽量版。
    ・remote は骨格のみ（shots/submits 未 hydrate）で読み込む前提
@@ -8647,6 +8887,9 @@ function _unionSkeletonIntoDB(pid,remote){
    baseline 不明時（読込直後の初回保存）の丸ごと上書きを避けるために使う。 */
 function _unionRemoteIntoDB(id,remote,opts){
   if(!remote)return;
+  /* 【監査ログ】refresh 経路の union-fill 前後で status 差分を記録
+     （preferRemote+authoritative で state 系が remote 値に置き換わる経路の可視化） */
+  const _snap=_snapshotShotStatuses(id);
   for(const rn of (remote.nodes||[])){
     const ex=DB.nodes.find(n=>n.id===rn.id);
     if(!ex)DB.nodes.push(rn);else _mergeNodeInto(ex,rn,opts);
@@ -8654,6 +8897,7 @@ function _unionRemoteIntoDB(id,remote,opts){
   DB.submits=DB.submits||[];
   for(const rs of (remote.submits||[]))if(!DB.submits.some(s=>s.id===rs.id))DB.submits.push(rs);
   normalizeNodes();
+  _diffAndLogStatusChanges(id,_snap,'unionRemoteIntoDB:refresh',{opts:JSON.stringify(opts||{}).slice(0,120)});
 }
 /* プロジェクト読込直後に保存baseline(_saveCache.proj)を種付けする。これが無いと初回保存で
    3-way マージがスキップされ、フォルダ側（他者の記入）を丸ごと上書きしてしまう。 */

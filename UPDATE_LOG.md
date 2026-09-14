@@ -14,7 +14,26 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-（現在なし。直近のサイレント反映は下部の「反映済み・パッチノート記載なし」参照）
+- (dev v2026.09.14.001) **ステータス変更専用の監査ログ機能**：v:5 導入後も現場で巻き戻り再発しているため、**あらゆる書き換え経路**を全部記録して原因追跡できるようにする。
+  - **storage.appendAudit(pid, events) / readAudit(pid, yyyymm)** 追加：`projects/{pid}/audit/YYYY-MM.jsonl` に append-only 記録。R2 未対応（フォルダ運用のみ）。
+  - **記録スキーマ**：`{ts, kind:'status_change', shotId, from, to, by, source, trace, ...extra}`
+  - **`_queueStatusAudit / _flushStatusAuditBuffer`**：200ms バッファで連続イベントをまとめて 1 回書き込み（read-modify-write 削減）。
+  - **`_snapshotShotStatuses(pid) / _diffAndLogStatusChanges(pid, before, source)`**：任意の書き換え経路の前後で status 差分を検出→ログ。
+  - **`_logStatusChange(pid, sid, prev, next, source, extra)`**：単発ログ（prev===next は自動 skip）。スタックトレースを短く付与。
+  - **記録対象の書き換え経路**（source ラベル）：
+    - `setStatus:ui / setStatus:upload / setStatus:submit / setStatus:migrate` … 正常な明示操作
+    - `merge3:saveShotWithLock` … 3-way マージ（knownRev/remoteRev/sid 付き）← 最有力容疑
+    - `applyMergedIntoDB:v<4` … v<4 プロジェクトの全体 3-way マージ結果
+    - `unionRemoteIntoDB:refresh` … refresh 経路の union-fill（opts 付き）
+    - `normalizeNodes:review-fallback` … review.status からの復元（lastVer 付き）
+    - `hydrateShots:Object.assign` … 既存値がある場合の disk 上書きのみ（初回 null→X はノイズ抑制）
+  - **UI ビューア（openStatusAuditModal(pid)）**：プロジェクト設定モーダルに「📜 監査ログを見る」ボタン追加。
+    - 検索・source フィルタ・巻き戻り疑い source を赤背景ハイライト（merge3・unionRemote・review-fallback・applyMergedIntoDB）
+    - 行ホバーでスタックトレース＋全データ表示
+    - CSV 書き出し対応
+    - 最新順表示・500 件で打ち止め
+  - **コンソール API**：`_showStatusAudit(pid, limit)`（console.table 表示）／`openStatusAuditModal(pid)`（モーダル）
+  - APP_VERSION：2026.09.12.002 → 2026.09.14.001
 
 ---
 
