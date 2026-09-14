@@ -2583,6 +2583,35 @@ const storage={
       return txt.trim().split('\n').filter(Boolean).map(l=>{try{return JSON.parse(l)}catch(_){return null}}).filter(Boolean);
     }catch(_){return []}
   },
+  /* 【v.050】audit ディレクトリ内に存在する全ての YYYY-MM.jsonl を列挙して降順ソート。
+     UI 側の月選択セレクタで使う。 */
+  async listAuditMonths(pid){
+    if(this._backend(pid)==='r2')return [];
+    const ph=await this.projRoot(pid);if(!ph)return [];
+    try{
+      const dir=await ph.getDirectoryHandle('audit');
+      if(typeof dir.keys!=='function')return [];
+      const names=[];
+      for await(const n of dir.keys()){
+        const m=/^(\d{4}-\d{2})\.jsonl$/.exec(n);
+        if(m)names.push(m[1]);
+      }
+      names.sort();names.reverse();
+      return names;
+    }catch(_){return []}
+  },
+  /* 【v.050】audit ディレクトリの全月分をまとめて読み込む（重い場合は月を指定）。
+     現場で「今月と先月両方見たい」ケースで使う。 */
+  async readAuditAll(pid){
+    const months=await this.listAuditMonths(pid);
+    if(!months.length)return [];
+    const all=[];
+    for(const ym of months){
+      const events=await this.readAudit(pid,ym);
+      if(events&&events.length)for(const e of events){e._month=ym;all.push(e)}
+    }
+    return all;
+  },
   /* 動画・画像はプロジェクトフォルダへ保存（ref は p:<id>|<path>）。
      フォルダ未設定なら保存できないため null を返す（呼び出し側で警告）。 */
   async putMedia(sub,fn,blob,opts){
@@ -2804,7 +2833,10 @@ async function _migrateV5Statuses(pid){
       const n=allNodes.find(x=>x.id===sid);
       if(!n)return;
       const cur=(n.status==null||n.status==='')?null:n.status;
-      const history=[{ts:nowTs,by:me,from:null,to:cur,source:'migrate'}];
+      /* 【v.050 修正】未着手（cur==null）の初期状態は「変化」ではないので history に含めない。
+         cur が非 null（マイグレ時点で既にステータスが設定されているケース）だけ「null → cur」を記録。
+         v.049 マイグレで大量に生まれた null→null エントリは、下記の追加クリーンアップで除去する。 */
+      const history=(cur!=null)?[{ts:nowTs,by:me,from:null,to:cur,source:'migrate'}]:[];
       const file={v:1,shotId:sid,status:cur,updatedAt:nowTs,updatedBy:me,source:'migrate',history,_rev:1};
       const ok=await storage.saveStatus(pid,sid,file);
       if(ok!==false){_v5StatusShots.add(pid+':'+sid);migrated++;}
@@ -2812,6 +2844,35 @@ async function _migrateV5Statuses(pid){
     if(migrated>0)try{console.log('[laycat v:5 migrate]',pid,'migrated',migrated,'shots')}catch(_){}
     return migrated;
   }catch(e){try{console.warn('[laycat v:5 migrate] failed',pid,e)}catch(_){}return 0;}
+}
+
+/* 【v.050】既存 status/{sid}.json 内の「from:null, to:null」ノイズエントリを除去する
+   後方互換クリーンアップ。v.049 の一括マイグレで生成された null→null 履歴を排除。
+   起動時にプロジェクトごとに 1 回だけ実行し、対象ゼロなら書き込みなし。 */
+async function _cleanupNullStatusHistories(pid){
+  try{
+    if(storage._backend(pid)==='r2')return 0;
+    if(!DB||!Array.isArray(DB.nodes))return 0;
+    const allNodes=DB.nodes;
+    const shotIds=allNodes.filter(n=>_isShotNodeForSave(n,allNodes)&&rootOfId(n)===pid).map(n=>n.id);
+    if(!shotIds.length)return 0;
+    let cleaned=0;
+    await Promise.all(shotIds.map(async sid=>{
+      const f=await storage.loadStatus(pid,sid);
+      if(!f||!Array.isArray(f.history)||!f.history.length)return;
+      const filtered=f.history.filter(h=>{
+        const from=(h.from==null||h.from==='')?null:h.from;
+        const to=(h.to==null||h.to==='')?null:h.to;
+        return from!==to; /* null→null または同値エントリは除去 */
+      });
+      if(filtered.length===f.history.length)return; /* 変化なし */
+      const clean=Object.assign({},f,{history:filtered});
+      const ok=await storage.saveStatus(pid,sid,clean);
+      if(ok!==false)cleaned+=(f.history.length-filtered.length);
+    }));
+    if(cleaned>0)try{console.log('[laycat v:5 history cleanup]',pid,'removed',cleaned,'null→null entries')}catch(_){}
+    return cleaned;
+  }catch(e){try{console.warn('[laycat v:5 history cleanup] failed',pid,e)}catch(_){}return 0;}
 }
 /* Phase 2：旧形式（v<4）のプロジェクトを検知するセット。boot で埋めて開始時にモーダル提示。 */
 let _migrationNeeded=new Set();
@@ -3380,7 +3441,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.14.002';
+const APP_VERSION='2026.09.14.003';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3532,7 +3593,8 @@ async function boot(){
        normalizeNodes 後に走らせることで、review.status からのフォールバック復元値も
        正しく status/{sid}.json に取り込まれる。boot を止めないため setTimeout で非同期。
        R2 プロジェクトは saveStatus が false を返して自動 skip。
-       完了トーストで移行件数を通知（0 件時は無音）。 */
+       完了トーストで移行件数を通知（0 件時は無音）。
+       【v.050】マイグレ後に null→null 履歴ノイズも一括クリーンアップ。 */
     setTimeout(async()=>{
       try{
         let total=0;
@@ -3540,6 +3602,13 @@ async function boot(){
           try{total+=await _migrateV5Statuses(e.id)}catch(_){}
         }
         if(total>0){try{toast('既存プロジェクトのステータスを v:5 形式に移行しました（'+total+' 件）')}catch(_){}}
+        /* null→null 履歴ノイズを除去（v.049 マイグレで大量生成された無効エントリ）。
+           クリーンアップ件数がある場合のみコンソールに出す（トーストは出さない・静かに動く）。 */
+        let cleaned=0;
+        for(const e of REG){
+          try{cleaned+=await _cleanupNullStatusHistories(e.id)}catch(_){}
+        }
+        if(cleaned>0)try{console.log('[laycat v:5] null→null 履歴を計 '+cleaned+' 件クリーンアップ')}catch(_){}
       }catch(_){}
     },400);
   }
@@ -7559,19 +7628,25 @@ async function openStatusAuditModal(pid){
     if(!pid){const first=REG&&REG[0];if(first)pid=first.id}
   }
   if(!pid){toast('プロジェクトが特定できません');return}
-  /* 両タブのデータを並行取得 */
-  const auditEvents=(await storage.readAudit(pid))||[];
+  /* 【v.050】利用可能な全月の一覧を取得し、その全てをまとめて読み込む
+     （旧実装は "今月" 固定で、他の月にログがあっても見えなかった）。 */
+  const auditMonths=await storage.listAuditMonths(pid);
+  const auditEvents=(await storage.readAuditAll(pid))||[];
   const shotNodes=DB.nodes.filter(n=>_isShotNodeForSave(n,DB.nodes)&&rootOfId(n)===pid);
   const shotIds=shotNodes.map(n=>n.id);
   const statusFiles=await storage.loadAllStatuses(pid,shotIds);
-  /* status.json.history[] を flatten して events 形式に揃える */
+  /* status.json.history[] を flatten して events 形式に揃える
+     【v.050】表示側でも null→null エントリはフィルタ（クリーンアップ未実行の環境向け安全網） */
   const historyEvents=[];
   for(const f of (statusFiles||[])){
     if(!f||!Array.isArray(f.history))continue;
     for(const h of f.history){
+      const _from=(h.from==null||h.from==='')?null:h.from;
+      const _to=(h.to==null||h.to==='')?null:h.to;
+      if(_from===_to)continue; /* null→null や同値エントリは表示しない */
       historyEvents.push({
         ts:h.ts,kind:'status_change',shotId:f.shotId,
-        from:h.from,to:h.to,by:h.by,
+        from:_from,to:_to,by:h.by,
         source:'setStatus:'+(h.source||'ui'),
         _rev:f._rev,
       });
@@ -7617,9 +7692,43 @@ async function openStatusAuditModal(pid){
         const p=el('div','muted',opts.emptyMsg||'該当データがありません。');
         p.style.padding='20px 4px';pane.appendChild(p);return;
       }
+      /* 【v.050】日付ヒストグラム（events を YYYY-MM-DD で集計）：どの日にどれだけログがあるか一目で把握 */
+      const dateHist={};
+      for(const e of events){
+        const d=(e.ts||'').slice(0,10);if(!d)continue;
+        dateHist[d]=(dateHist[d]||0)+1;
+      }
+      const dateKeys=Object.keys(dateHist).sort();
+      if(dateKeys.length){
+        const hist=el('div');hist.style.cssText='display:flex;gap:2px;align-items:flex-end;margin-bottom:10px;padding:8px 10px;background:var(--bg2);border:1px solid var(--bd);border-radius:8px;overflow-x:auto;height:64px';
+        const maxC=Math.max(...Object.values(dateHist));
+        for(const d of dateKeys){
+          const c=dateHist[d];
+          const bar=el('div');
+          const h=Math.max(4,Math.round((c/maxC)*40));
+          bar.style.cssText=`min-width:14px;height:${h}px;background:linear-gradient(180deg,#A56BF0,#5CC7EF);border-radius:2px;position:relative;cursor:pointer;flex:1`;
+          bar.title=`${d}：${c} 件`;
+          const lbl=el('div');lbl.textContent=d.slice(5);lbl.style.cssText='position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--muted);font-family:var(--font-code);white-space:nowrap';
+          if(dateKeys.length>10&&dateKeys.indexOf(d)%Math.ceil(dateKeys.length/10))lbl.style.display='none';
+          bar.appendChild(lbl);
+          hist.appendChild(bar);
+        }
+        pane.appendChild(hist);
+        const histLbl=el('div','muted');histLbl.style.cssText='font-size:10px;margin-bottom:12px;text-align:right';histLbl.textContent=`日別分布：${dateKeys.length} 日分 / 最古 ${dateKeys[0]} 〜 最新 ${dateKeys[dateKeys.length-1]}`;pane.appendChild(histLbl);
+      }
       const bar=el('div');bar.style.cssText='display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap';
       const info=el('div','muted');info.textContent=`全 ${events.length} 件 / 最新から表示`;info.style.cssText='font-size:12px;margin-right:auto';
-      const searchInp=el('input','form-input');searchInp.type='text';searchInp.placeholder='検索：shotId・source・user...';searchInp.style.cssText='flex:1;max-width:280px;padding:6px 10px;font-size:12px';
+      const searchInp=el('input','form-input');searchInp.type='text';searchInp.placeholder='検索：shotId・source・user...';searchInp.style.cssText='flex:1;max-width:220px;padding:6px 10px;font-size:12px';
+      /* 【v.050】月フィルタセレクタ（audit タブのみ・events から動的取得）。既存 month 情報がなければ表示しない。 */
+      let monthSel=null;
+      if(opts.showMonthFilter){
+        const months=Array.from(new Set(events.map(e=>(e.ts||'').slice(0,7)).filter(Boolean))).sort().reverse();
+        if(months.length){
+          monthSel=el('select','form-input');monthSel.style.cssText='padding:6px 10px;font-size:12px';
+          const allM=el('option',null,'全期間');allM.value='';monthSel.appendChild(allM);
+          for(const m of months){const o=el('option',null,m);o.value=m;monthSel.appendChild(o)}
+        }
+      }
       const sourceSel=el('select','form-input');sourceSel.style.cssText='padding:6px 10px;font-size:12px';
       const sources=Array.from(new Set(events.map(e=>e.source).filter(Boolean))).sort();
       const allOpt=el('option',null,'すべての source');allOpt.value='';sourceSel.appendChild(allOpt);
@@ -7634,7 +7743,7 @@ async function openStatusAuditModal(pid){
         const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${opts.csvName||'status-audit'}-${pid}-${(new Date()).toISOString().slice(0,7)}.csv`;a.click();
         setTimeout(()=>URL.revokeObjectURL(a.href),1000);
       };
-      bar.appendChild(info);bar.appendChild(searchInp);bar.appendChild(sourceSel);bar.appendChild(csvBtn);
+      bar.appendChild(info);bar.appendChild(searchInp);if(monthSel)bar.appendChild(monthSel);bar.appendChild(sourceSel);bar.appendChild(csvBtn);
       pane.appendChild(bar);
       const wrap=el('div');wrap.style.cssText='max-height:60vh;overflow:auto;border:1px solid var(--bd);border-radius:8px';
       const tbl=el('table');tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px;font-family:var(--font-code)';
@@ -7644,8 +7753,10 @@ async function openStatusAuditModal(pid){
       function renderRows(){
         const q=searchInp.value.trim().toLowerCase();
         const src=sourceSel.value;
+        const mnth=monthSel?monthSel.value:'';
         const filtered=events.filter(e=>{
           if(src&&e.source!==src)return false;
+          if(mnth&&(e.ts||'').slice(0,7)!==mnth)return false;
           if(!q)return true;
           const hay=`${e.shotId} ${e.source} ${e.by||''} ${e.from||''} ${e.to||''} ${e.trace||''}`.toLowerCase();
           return hay.includes(q);
@@ -7672,6 +7783,7 @@ async function openStatusAuditModal(pid){
       }
       searchInp.oninput=renderRows;
       sourceSel.onchange=renderRows;
+      if(monthSel)monthSel.onchange=renderRows;
       renderRows();
       /* 凡例（タブ別に文面変更） */
       const legend=el('div','muted');legend.style.cssText='font-size:11px;margin-top:10px;padding:8px 12px;background:var(--bg2);border-radius:6px';
@@ -7680,13 +7792,15 @@ async function openStatusAuditModal(pid){
     }
     renderEventsPane(paneAudit,auditEvents,{
       csvName:'status-audit',
+      showMonthFilter:true,
       emptyMsg:'監査ログはまだありません（v.049 以降のステータス変更のみ記録されます）。',
-      legend:'<b style="color:#ee6a6a">赤背景</b>：巻き戻りの疑いがある source（merge3・unionRemote・review-fallback・applyMergedIntoDB）。<b style="color:#a56bf0">setStatus:*</b>：ユーザー明示操作。行にマウスを合わせるとスタックトレース表示。',
+      legend:'<b style="color:#ee6a6a">赤背景</b>：巻き戻りの疑いがある source（merge3・unionRemote・review-fallback・applyMergedIntoDB）。<b style="color:#a56bf0">setStatus:*</b>：ユーザー明示操作。行にマウスを合わせるとスタックトレース表示。上部のヒストグラムで日別の分布を確認できます。',
     });
     renderEventsPane(paneHist,historyEvents,{
       csvName:'status-history',
+      showMonthFilter:true,
       emptyMsg:'まだ status/*.json の履歴がありません。setStatus 経由の変更（UI・upload・submit・migrate）が発生すると記録されます。',
-      legend:'各 <code>status/{sid}.json</code> の <code>history[]</code> をショット横断で集約表示。v:5 で分離した「権威源データ」の変遷を確認できます。<b style="color:#a56bf0">全て setStatus:* エントリ</b>（マージ・refresh 等の書き換えは含まれません）。',
+      legend:'各 <code>status/{sid}.json</code> の <code>history[]</code> をショット横断で集約表示。v:5 で分離した「権威源データ」の変遷を確認できます。<b style="color:#a56bf0">全て setStatus:* エントリ</b>（マージ・refresh 等の書き換えは含まれません）。null→null エントリは自動フィルタで非表示。',
     });
     mFoot(body,[(()=>{const b=el('button','btn','閉じる');b.onclick=closeModal;return b})()]);
   },true);
