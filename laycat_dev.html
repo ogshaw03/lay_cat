@@ -2331,9 +2331,17 @@ const storage={
       const n=nodeMap.get(f.shotId);
       if(!n)continue;
       _v5StatusShots.add(pid+':'+f.shotId);
+      /* 【v.054】status.json による復元処理を audit log に記録：
+         「読込上書き」で書き換わった直後に v:5 が正しい値に戻していることを可視化する。
+         復元前後で値が変わった時のみ記録（無変化ならスキップ）。 */
+      const _prevStat=(n.status==null||n.status==='')?null:n.status;
       /* status.json の値で override（null/undefined なら未着手＝キー削除） */
       if(f.status==null||f.status==='')delete n.status;
       else n.status=f.status;
+      const _nextStat=(n.status==null||n.status==='')?null:n.status;
+      if(_prevStat!==_nextStat){
+        _logStatusChange(pid,f.shotId,_prevStat,_nextStat,'hydrateStatuses:v5restore',{fromShotJson:_prevStat,fromStatusJson:_nextStat,statusJsonRev:f._rev});
+      }
     }
   },
   /* 競合時：現在フォルダにある内容（他者の版）をそのままバックアップファイルに退避（消失防止）。
@@ -2759,6 +2767,42 @@ function _diffAndLogStatusChanges(pid,before,source,extra){
     }
   }
 }
+/* 【v.054】ステータス整合性チェック：DB の各ショット node.status と、対応する
+   status/{sid}.json.status を比較して不一致を検出する。「読込上書きで書き換わった status が
+   v:5 で正しく復元されているか」を実行時に検証できる。 */
+window._verifyStatusIntegrity=async function(pid){
+  if(!pid){
+    try{pid=state&&state.currentPage?rootOfId(getNode(state.currentPage)):null}catch(_){}
+    if(!pid){const first=REG&&REG[0];if(first)pid=first.id}
+  }
+  if(!pid){console.log('[verify] プロジェクトが特定できません');return}
+  if(!DB||!Array.isArray(DB.nodes)){console.log('[verify] DB 未初期化');return}
+  const allNodes=DB.nodes;
+  const shotIds=allNodes.filter(n=>_isShotNodeForSave(n,allNodes)&&rootOfId(n)===pid).map(n=>n.id);
+  const files=await storage.loadAllStatuses(pid,shotIds);
+  const fileById={};for(const f of (files||[])){if(f&&f.shotId)fileById[f.shotId]=f}
+  const rows=[];
+  for(const sid of shotIds){
+    const n=allNodes.find(x=>x.id===sid);
+    const memStat=(n&&n.status!=null&&n.status!=='')?n.status:null;
+    const f=fileById[sid];
+    const jsonStat=(f&&f.status!=null&&f.status!=='')?f.status:null;
+    const match=memStat===jsonStat;
+    rows.push({shot:(n&&n.name)||sid.slice(-8),shotId:sid,mem:memStat,json:jsonStat,match,statusJsonExists:!!f});
+  }
+  const mismatches=rows.filter(r=>!r.match);
+  console.group('[verify status integrity] '+((getNode(pid)&&getNode(pid).name)||pid));
+  console.log('shots checked:',rows.length);
+  console.log('mismatches:',mismatches.length);
+  if(mismatches.length){
+    console.warn('⚠ 不一致あり（memory と status.json が食い違う）:');
+    console.table(mismatches);
+  }else{
+    console.log('✅ すべて一致（v:5 分離は正常に働いています）');
+  }
+  console.groupEnd();
+  return rows;
+};
 /* コンソール用ビューア。 `_showStatusAudit('<pid>')` で直近ログを console.table 表示。
    引数省略時は現在アクティブなプロジェクトを対象にする。 */
 window._showStatusAudit=async function(pid,limit){
@@ -3441,7 +3485,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.14.007';
+const APP_VERSION='2026.09.14.008';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7692,7 +7736,18 @@ async function openStatusAuditModal(pid){
       <span style="color:var(--bd)">·</span>
       <span>audit 総件数 <b style="color:var(--fg,#eee)">${auditEvents.length}</b></span>
     `;
-    const rawBtn=el('button','btn btn-ghost');rawBtn.type='button';rawBtn.textContent='🔍 生 JSON をコンソールに出力';rawBtn.style.cssText='padding:4px 10px;font-size:11px;margin-left:auto';
+    const verifyBtn=el('button','btn btn-ghost');verifyBtn.type='button';verifyBtn.textContent='🔬 整合性チェック';verifyBtn.style.cssText='padding:4px 10px;font-size:11px;margin-left:auto';
+    verifyBtn.title='memory の node.status と status/{sid}.json の中身を比較。不一致があれば v:5 分離の抜け穴です。';
+    verifyBtn.onclick=async()=>{
+      try{
+        const rows=await window._verifyStatusIntegrity(pid);
+        const mism=(rows||[]).filter(r=>!r.match);
+        if(!mism.length){toast('✅ すべて一致：v:5 分離は正常に働いています（'+rows.length+' ショット確認済）');return}
+        /* 不一致があればアラートモーダル的に表示（既存モーダル内なので簡易表示） */
+        alert('⚠ 不一致 '+mism.length+' 件\n'+mism.slice(0,10).map(r=>`${r.shot}: memory=${r.mem||'(未着手)'} vs json=${r.json||'(未着手)'}${r.statusJsonExists?'':' [status.json 無し]'}`).join('\n')+(mism.length>10?'\n...ほか '+(mism.length-10)+' 件':'')+'\n\n詳細はコンソール（F12）を確認してください');
+      }catch(e){toast('チェック失敗: '+e.message)}
+    };
+    const rawBtn=el('button','btn btn-ghost');rawBtn.type='button';rawBtn.textContent='🔍 生 JSON をコンソールに出力';rawBtn.style.cssText='padding:4px 10px;font-size:11px';
     rawBtn.onclick=()=>{
       try{
         console.group('[laycat audit modal] 生データ dump: '+projName);
@@ -7707,6 +7762,7 @@ async function openStatusAuditModal(pid){
         toast('生 JSON をコンソール（F12）に出力しました');
       }catch(e){toast('出力失敗: '+e.message)}
     };
+    dbg.appendChild(verifyBtn);
     dbg.appendChild(rawBtn);
     inner.appendChild(dbg);
     /* タブバー */
@@ -7772,6 +7828,8 @@ async function openStatusAuditModal(pid){
       'setStatus:migrate':{label:'初回移行',color:'#888',danger:false},
       /* フォルダ同期は多重ユーザー同期の正常経路：青（通常同期）に降格 */
       'unionRemoteIntoDB:refresh':{label:'フォルダ同期',color:'#5cc7ef',danger:false},
+      /* v:5 status.json による正しい値への復元処理（読込上書きの直後に走る）：緑（防御動作） */
+      'hydrateStatuses:v5restore':{label:'v:5 復元',color:'#5cb878',danger:false},
       /* 3-way マージは巻き戻り事故の主犯経路：赤（⚠ 要確認）維持 */
       'merge3:saveShotWithLock':{label:'3-way マージ',color:'#ee6a6a',danger:true},
       'applyMergedIntoDB:v<4':{label:'v<4 マージ',color:'#ee6a6a',danger:true},
