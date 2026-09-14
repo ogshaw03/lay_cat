@@ -2197,6 +2197,7 @@ const storage={
       _revBucket(id).project=(parsed._rev|0); /* Phase 3：project.json 骨格の _rev を記録 */
       await this._hydrateShots(id,parsed);
       await this._hydrateSubmits(id,parsed);
+      await this._hydrateStatuses(id,parsed); /* 【v.055 修正】v:5 status 分離：起動時にも status.json で override */
       return parsed;
     }
     const ph=await this.projRoot(id);
@@ -2208,6 +2209,11 @@ const storage={
     _revBucket(id).project=(parsed._rev|0); /* Phase 3：project.json 骨格の _rev を記録 */
     await this._hydrateShots(id,parsed);
     await this._hydrateSubmits(id,parsed);
+    /* 【v.055 修正・重大バグ】起動時・F5 リロード時のパス（loadProject）に _hydrateStatuses を追加。
+       従来これが呼ばれず、status.json 分離の効果が「autoRefresh 経由の同期時のみ」だった。
+       他タブが shot.json.status を古い値で上書きした後、こちら側で F5 すると shot.json inline の
+       古い値がそのまま反映されて UI 上のステータスが巻き戻る現象の恒久修正。 */
+    await this._hydrateStatuses(id,parsed);
     return parsed;
   },
   /* Phase 1 分割形式：project.json が submitIds を持っていれば、submits/ 個別ファイルを
@@ -2254,7 +2260,13 @@ const storage={
           /* 骨格に既にある shot ノード → shot ファイルの完全データで上書き
              （version / comments / _vtomb を注入。骨格側のメタは shot ファイルにも
              同じものが入っているので上書きしても情報は失われない） */
+          /* 【監査ログ】既存 status を上書きしたケースのみ記録（初回 null→X は初回ロードなのでノイズ・スキップ） */
+          const _prevStat=(existing.status==null||existing.status==='')?null:existing.status;
           Object.assign(existing,n);
+          const _nextStat=(existing.status==null||existing.status==='')?null:existing.status;
+          if(_prevStat!=null&&_prevStat!==_nextStat){
+            _logStatusChange(pid,n.id,_prevStat,_nextStat,'hydrateShots:Object.assign',{shotFile:shot.shotId||''});
+          }
         }else{
           /* 骨格に無いノード（＝shot 配下の task 系）は追加 */
           nodeMap.set(n.id,n);
@@ -2325,9 +2337,17 @@ const storage={
       const n=nodeMap.get(f.shotId);
       if(!n)continue;
       _v5StatusShots.add(pid+':'+f.shotId);
+      /* 【v.054】status.json による復元処理を audit log に記録：
+         「読込上書き」で書き換わった直後に v:5 が正しい値に戻していることを可視化する。
+         復元前後で値が変わった時のみ記録（無変化ならスキップ）。 */
+      const _prevStat=(n.status==null||n.status==='')?null:n.status;
       /* status.json の値で override（null/undefined なら未着手＝キー削除） */
       if(f.status==null||f.status==='')delete n.status;
       else n.status=f.status;
+      const _nextStat=(n.status==null||n.status==='')?null:n.status;
+      if(_prevStat!==_nextStat){
+        _logStatusChange(pid,f.shotId,_prevStat,_nextStat,'hydrateStatuses:v5restore',{fromShotJson:_prevStat,fromStatusJson:_nextStat,statusJsonRev:f._rev});
+      }
     }
   },
   /* 競合時：現在フォルダにある内容（他者の版）をそのままバックアップファイルに退避（消失防止）。
@@ -2540,6 +2560,72 @@ const storage={
     const list=await Promise.all(ids.map(id=>this.loadStatus(pid,id)));
     return list.filter(x=>x&&x.shotId);
   },
+
+  /* ==== 監査ログ：`projects/{pid}/audit/YYYY-MM.jsonl`（append-only JSONL） ====
+     【設計意図】ステータス巻き戻りの再発追跡用。setStatus 以外の経路（3-way マージ・
+     hydrate・normalizeNodes フォールバック等）で status が書き換わったら全て記録し、
+     どのコード経路が犯人かを後追い可能にする。
+     R2 未対応（フォルダ運用のみ）。FSA API に append モードが無いため read-modify-write。 */
+  async appendAudit(pid,events){
+    if(this._backend(pid)==='r2')return false;
+    const arr=Array.isArray(events)?events:[events];
+    if(!arr.length)return true;
+    const ph=await this.projRoot(pid);if(!ph)return false;
+    const now=new Date();
+    const yyyy=now.getFullYear();
+    const mm=String(now.getMonth()+1).padStart(2,'0');
+    const fn=`${yyyy}-${mm}.jsonl`;
+    try{
+      const dir=await this._subdir('audit',ph,true);
+      let existing='';
+      try{const fh=await dir.getFileHandle(fn);existing=await (await fh.getFile()).text();}catch(_){}
+      const lines=arr.map(e=>JSON.stringify(e)).join('\n')+'\n';
+      const newText=existing+lines;
+      await this._write(()=>dir,fn,newText);
+      return true;
+    }catch(e){try{console.warn('[laycat] appendAudit failed',{pid,e})}catch(_){}return false;}
+  },
+  async readAudit(pid,yyyymm){
+    if(this._backend(pid)==='r2')return null;
+    const ph=await this.projRoot(pid);if(!ph)return null;
+    let ym=yyyymm;
+    if(!ym){const now=new Date();ym=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`}
+    try{
+      const dir=await ph.getDirectoryHandle('audit');
+      const fh=await dir.getFileHandle(ym+'.jsonl');
+      const txt=await (await fh.getFile()).text();
+      return txt.trim().split('\n').filter(Boolean).map(l=>{try{return JSON.parse(l)}catch(_){return null}}).filter(Boolean);
+    }catch(_){return []}
+  },
+  /* 【v.050】audit ディレクトリ内に存在する全ての YYYY-MM.jsonl を列挙して降順ソート。
+     UI 側の月選択セレクタで使う。 */
+  async listAuditMonths(pid){
+    if(this._backend(pid)==='r2')return [];
+    const ph=await this.projRoot(pid);if(!ph)return [];
+    try{
+      const dir=await ph.getDirectoryHandle('audit');
+      if(typeof dir.keys!=='function')return [];
+      const names=[];
+      for await(const n of dir.keys()){
+        const m=/^(\d{4}-\d{2})\.jsonl$/.exec(n);
+        if(m)names.push(m[1]);
+      }
+      names.sort();names.reverse();
+      return names;
+    }catch(_){return []}
+  },
+  /* 【v.050】audit ディレクトリの全月分をまとめて読み込む（重い場合は月を指定）。
+     現場で「今月と先月両方見たい」ケースで使う。 */
+  async readAuditAll(pid){
+    const months=await this.listAuditMonths(pid);
+    if(!months.length)return [];
+    const all=[];
+    for(const ym of months){
+      const events=await this.readAudit(pid,ym);
+      if(events&&events.length)for(const e of events){e._month=ym;all.push(e)}
+    }
+    return all;
+  },
   /* 動画・画像はプロジェクトフォルダへ保存（ref は p:<id>|<path>）。
      フォルダ未設定なら保存できないため null を返す（呼び出し側で警告）。 */
   async putMedia(sub,fn,blob,opts){
@@ -2610,6 +2696,135 @@ function _shotFileJsonForBaseline(pid,sid){
     return JSON.stringify({v:1,shotId:sid,nodes:[shotNode,...kids]});
   }catch(_){return null;}
 }
+/* 【監査ログ・v.049】ステータス変更を全経路で記録するバッファ機構。
+   短時間に連続する変更を 200ms 単位でバッチ化し、1 プロジェクトごとに 1 回書き込む。
+   append-only JSONL の read-modify-write 回数を抑える狙い。 */
+const _statusAuditBuffer={}; /* {pid: [events...]} */
+let _statusAuditFlushTimer=null;
+function _queueStatusAudit(pid,event){
+  if(!pid||!event)return;
+  _statusAuditBuffer[pid]=_statusAuditBuffer[pid]||[];
+  _statusAuditBuffer[pid].push(event);
+  if(!_statusAuditFlushTimer){
+    _statusAuditFlushTimer=setTimeout(_flushStatusAuditBuffer,200);
+  }
+}
+async function _flushStatusAuditBuffer(){
+  _statusAuditFlushTimer=null;
+  const pids=Object.keys(_statusAuditBuffer);
+  for(const pid of pids){
+    const events=_statusAuditBuffer[pid];
+    if(!events||!events.length)continue;
+    _statusAuditBuffer[pid]=[];
+    try{await storage.appendAudit(pid,events)}catch(_){}
+  }
+}
+/* 短いスタックトレース（1〜4 段目）を返す。呼び出し元コード位置の判別用。 */
+function _shortTrace(skip){
+  try{
+    const s=(new Error()).stack||'';
+    const lines=s.split('\n').map(l=>l.trim()).filter(l=>l&&l!=='Error');
+    return lines.slice((skip||1),(skip||1)+4).join(' | ').slice(0,400);
+  }catch(_){return''}
+}
+/* status_change イベントを 1 件キュー。prev===next の場合は記録しない（ノイズ削減）。 */
+function _logStatusChange(pid,sid,prev,next,source,extra){
+  if(!pid||!sid)return;
+  const _prev=(prev==null||prev==='')?null:prev;
+  const _next=(next==null||next==='')?null:next;
+  if(_prev===_next)return; /* 変化なしは記録しない */
+  try{
+    const ev={
+      ts:nowIso(),
+      kind:'status_change',
+      shotId:sid,
+      from:_prev,
+      to:_next,
+      by:((authUser&&authUser.email)||'')||null,
+      source:source||'unknown',
+      trace:_shortTrace(3),
+    };
+    if(extra&&typeof extra==='object')Object.assign(ev,extra);
+    _queueStatusAudit(pid,ev);
+  }catch(_){}
+}
+/* 「現在のプロジェクトのショット別 status」のスナップショットを取る。
+   差分検出用：merge/refresh/hydrate 等の前後で呼び、差があれば _logStatusChange。 */
+function _snapshotShotStatuses(pid){
+  const snap={};
+  if(!DB||!Array.isArray(DB.nodes))return snap;
+  for(const n of DB.nodes){
+    if(!n||!n.id)continue;
+    if(rootOfId(n)!==pid)continue;
+    snap[n.id]=(n.status==null||n.status==='')?null:n.status;
+  }
+  return snap;
+}
+function _diffAndLogStatusChanges(pid,before,source,extra){
+  if(!DB||!Array.isArray(DB.nodes))return;
+  for(const n of DB.nodes){
+    if(!n||!n.id)continue;
+    if(rootOfId(n)!==pid)continue;
+    const now=(n.status==null||n.status==='')?null:n.status;
+    const was=Object.prototype.hasOwnProperty.call(before,n.id)?before[n.id]:undefined;
+    if(was===undefined)continue; /* 新規ノードは skip */
+    if(was!==now){
+      _logStatusChange(pid,n.id,was,now,source,extra);
+    }
+  }
+}
+/* 【v.054】ステータス整合性チェック：DB の各ショット node.status と、対応する
+   status/{sid}.json.status を比較して不一致を検出する。「読込上書きで書き換わった status が
+   v:5 で正しく復元されているか」を実行時に検証できる。 */
+window._verifyStatusIntegrity=async function(pid){
+  if(!pid){
+    try{pid=state&&state.currentPage?rootOfId(getNode(state.currentPage)):null}catch(_){}
+    if(!pid){const first=REG&&REG[0];if(first)pid=first.id}
+  }
+  if(!pid){console.log('[verify] プロジェクトが特定できません');return}
+  if(!DB||!Array.isArray(DB.nodes)){console.log('[verify] DB 未初期化');return}
+  const allNodes=DB.nodes;
+  const shotIds=allNodes.filter(n=>_isShotNodeForSave(n,allNodes)&&rootOfId(n)===pid).map(n=>n.id);
+  const files=await storage.loadAllStatuses(pid,shotIds);
+  const fileById={};for(const f of (files||[])){if(f&&f.shotId)fileById[f.shotId]=f}
+  const rows=[];
+  for(const sid of shotIds){
+    const n=allNodes.find(x=>x.id===sid);
+    const memStat=(n&&n.status!=null&&n.status!=='')?n.status:null;
+    const f=fileById[sid];
+    const jsonStat=(f&&f.status!=null&&f.status!=='')?f.status:null;
+    const match=memStat===jsonStat;
+    rows.push({shot:(n&&n.name)||sid.slice(-8),shotId:sid,mem:memStat,json:jsonStat,match,statusJsonExists:!!f});
+  }
+  const mismatches=rows.filter(r=>!r.match);
+  console.group('[verify status integrity] '+((getNode(pid)&&getNode(pid).name)||pid));
+  console.log('shots checked:',rows.length);
+  console.log('mismatches:',mismatches.length);
+  if(mismatches.length){
+    console.warn('⚠ 不一致あり（memory と status.json が食い違う）:');
+    console.table(mismatches);
+  }else{
+    console.log('✅ すべて一致（v:5 分離は正常に働いています）');
+  }
+  console.groupEnd();
+  return rows;
+};
+/* コンソール用ビューア。 `_showStatusAudit('<pid>')` で直近ログを console.table 表示。
+   引数省略時は現在アクティブなプロジェクトを対象にする。 */
+window._showStatusAudit=async function(pid,limit){
+  limit=limit||100;
+  if(!pid){
+    try{pid=state&&state.currentPage?rootOfId(getNode(state.currentPage)):null}catch(_){}
+    if(!pid){const first=REG&&REG[0];if(first)pid=first.id}
+  }
+  if(!pid){console.log('[audit] プロジェクトが特定できません。第 1 引数に pid を渡してください');return}
+  const events=await storage.readAudit(pid);
+  if(!events||!events.length){console.log('[audit] 今月の監査ログはまだありません: '+pid);return}
+  const tail=events.slice(-limit);
+  console.log(`[audit] ${pid} 直近 ${tail.length} 件 / 全 ${events.length} 件`);
+  console.table(tail.map(e=>({ts:e.ts,shot:e.shotId,from:e.from,to:e.to,source:e.source,by:e.by,trace:(e.trace||'').slice(0,120)})));
+  return tail;
+};
 /* 【v:5 status 分離】ステータス変更の唯一の入り口。
    ・memory の node.status を更新（従来の直接代入と等価）
    ・`status/{sid}.json` を作成 or 追記（history に append・_rev をインクリメント）
@@ -2629,6 +2844,8 @@ async function setStatus(node,newStatus,source){
   /* memory 更新（既存コードとの互換のため node.status を直接触る） */
   if(nxt==null)delete node.status;
   else node.status=nxt;
+  /* 【監査ログ】setStatus 経由の変更は「source: ui/upload/submit/migrate」で記録 */
+  _logStatusChange(pid,sid,prev,nxt,'setStatus:'+(source||'ui'));
   /* status.json 更新（R2 では no-op） */
   try{
     const existing=await storage.loadStatus(pid,sid);
@@ -2666,7 +2883,10 @@ async function _migrateV5Statuses(pid){
       const n=allNodes.find(x=>x.id===sid);
       if(!n)return;
       const cur=(n.status==null||n.status==='')?null:n.status;
-      const history=[{ts:nowTs,by:me,from:null,to:cur,source:'migrate'}];
+      /* 【v.050 修正】未着手（cur==null）の初期状態は「変化」ではないので history に含めない。
+         cur が非 null（マイグレ時点で既にステータスが設定されているケース）だけ「null → cur」を記録。
+         v.049 マイグレで大量に生まれた null→null エントリは、下記の追加クリーンアップで除去する。 */
+      const history=(cur!=null)?[{ts:nowTs,by:me,from:null,to:cur,source:'migrate'}]:[];
       const file={v:1,shotId:sid,status:cur,updatedAt:nowTs,updatedBy:me,source:'migrate',history,_rev:1};
       const ok=await storage.saveStatus(pid,sid,file);
       if(ok!==false){_v5StatusShots.add(pid+':'+sid);migrated++;}
@@ -2674,6 +2894,35 @@ async function _migrateV5Statuses(pid){
     if(migrated>0)try{console.log('[laycat v:5 migrate]',pid,'migrated',migrated,'shots')}catch(_){}
     return migrated;
   }catch(e){try{console.warn('[laycat v:5 migrate] failed',pid,e)}catch(_){}return 0;}
+}
+
+/* 【v.050】既存 status/{sid}.json 内の「from:null, to:null」ノイズエントリを除去する
+   後方互換クリーンアップ。v.049 の一括マイグレで生成された null→null 履歴を排除。
+   起動時にプロジェクトごとに 1 回だけ実行し、対象ゼロなら書き込みなし。 */
+async function _cleanupNullStatusHistories(pid){
+  try{
+    if(storage._backend(pid)==='r2')return 0;
+    if(!DB||!Array.isArray(DB.nodes))return 0;
+    const allNodes=DB.nodes;
+    const shotIds=allNodes.filter(n=>_isShotNodeForSave(n,allNodes)&&rootOfId(n)===pid).map(n=>n.id);
+    if(!shotIds.length)return 0;
+    let cleaned=0;
+    await Promise.all(shotIds.map(async sid=>{
+      const f=await storage.loadStatus(pid,sid);
+      if(!f||!Array.isArray(f.history)||!f.history.length)return;
+      const filtered=f.history.filter(h=>{
+        const from=(h.from==null||h.from==='')?null:h.from;
+        const to=(h.to==null||h.to==='')?null:h.to;
+        return from!==to; /* null→null または同値エントリは除去 */
+      });
+      if(filtered.length===f.history.length)return; /* 変化なし */
+      const clean=Object.assign({},f,{history:filtered});
+      const ok=await storage.saveStatus(pid,sid,clean);
+      if(ok!==false)cleaned+=(f.history.length-filtered.length);
+    }));
+    if(cleaned>0)try{console.log('[laycat v:5 history cleanup]',pid,'removed',cleaned,'null→null entries')}catch(_){}
+    return cleaned;
+  }catch(e){try{console.warn('[laycat v:5 history cleanup] failed',pid,e)}catch(_){}return 0;}
 }
 /* Phase 2：旧形式（v<4）のプロジェクトを検知するセット。boot で埋めて開始時にモーダル提示。 */
 let _migrationNeeded=new Set();
@@ -2871,9 +3120,12 @@ async function _saveShotWithLock(pid,sid,fileBody){
        これにより「自分は status を変え、相手は assignee を変えた」ケースで両方が保持される。 */
     const baselineJs=(_saveCache.shot[pid]||{})[sid];
     const baseline=baselineJs?JSON.parse(baselineJs):null;
+    /* 【監査ログ】3-way マージ前の status スナップショットを取り、_applyShotFileIntoDB 後に差分ログ */
+    const _snap=_snapshotShotStatuses(pid);
     const merged3=_mergeShotFile3(baseline, fileBody, remote);
     outNodes=merged3.nodes;
     _applyShotFileIntoDB(pid,merged3);
+    _diffAndLogStatusChanges(pid,_snap,'merge3:saveShotWithLock',{sid,knownRev,remoteRev});
     merged=true;
   }
   const nextRev=Math.max(knownRev,remoteRev)+1;
@@ -3391,7 +3643,8 @@ async function boot(){
        normalizeNodes 後に走らせることで、review.status からのフォールバック復元値も
        正しく status/{sid}.json に取り込まれる。boot を止めないため setTimeout で非同期。
        R2 プロジェクトは saveStatus が false を返して自動 skip。
-       完了トーストで移行件数を通知（0 件時は無音）。 */
+       完了トーストで移行件数を通知（0 件時は無音）。
+       【v.050】マイグレ後に null→null 履歴ノイズも一括クリーンアップ。 */
     setTimeout(async()=>{
       try{
         let total=0;
@@ -3399,6 +3652,13 @@ async function boot(){
           try{total+=await _migrateV5Statuses(e.id)}catch(_){}
         }
         if(total>0){try{toast('既存プロジェクトのステータスを v:5 形式に移行しました（'+total+' 件）')}catch(_){}}
+        /* null→null 履歴ノイズを除去（v.049 マイグレで大量生成された無効エントリ）。
+           クリーンアップ件数がある場合のみコンソールに出す（トーストは出さない・静かに動く）。 */
+        let cleaned=0;
+        for(const e of REG){
+          try{cleaned+=await _cleanupNullStatusHistories(e.id)}catch(_){}
+        }
+        if(cleaned>0)try{console.log('[laycat v:5] null→null 履歴を計 '+cleaned+' 件クリーンアップ')}catch(_){}
       }catch(_){}
     },400);
   }
@@ -3452,7 +3712,11 @@ function normalizeNodes(){
     const _pid=rootOfId(n);
     if(_pid&&_v5StatusShots.has(_pid+':'+n.id))continue;
     const lv=n.versions[n.versions.length-1];const rs=lv.review&&lv.review.status;
-    if(rs&&rs!=='pending')n.status=rs;
+    if(rs&&rs!=='pending'){
+      n.status=rs;
+      /* 【監査ログ】review.status フォールバックによる復元を記録 */
+      if(_pid)_logStatusChange(_pid,n.id,null,rs,'normalizeNodes:review-fallback',{lastVer:lv.id||''});
+    }
   }
 }
 function updateFolderStatus(){const cur=(DB&&state&&state.currentId)?getNode(state.currentId):null;const root=cur?rootOf(cur):null;const hasFolder=!!(root&&root.folderName);const needGrant=!!(root&&storage._pendingGrant&&storage._pendingGrant.has(root.id));const fs=$('#folderStatus');fs.classList.toggle('connected',hasFolder&&!needGrant);fs.classList.toggle('warn',(!!root&&!hasFolder)||needGrant);$('#folderName').textContent=needGrant?'⚠ フォルダ再接続が必要（クリック）':storage.folderLabel()}
@@ -7401,6 +7665,445 @@ function closeOnBackdrop(overlayEl,closeFn){
 }
 function openModal(builder,big){const b=$('#modalBody');b.className='modal'+(big?' lg':'');b.innerHTML='';builder(b);$('#modal').classList.remove('hidden')}
 function closeModal(){$('#modal').classList.add('hidden')}
+
+/* 【監査ログ UI・v.050】ステータス変更の履歴を 2 タブ構成で大きなモーダル表示。
+   タブ 1「全経路（監査ログ）」= projects/{pid}/audit/YYYY-MM.jsonl の全記録（setStatus 以外の
+   merge/refresh/hydrate も含む）。source ラベルで巻き戻り疑いを赤ハイライト。
+   タブ 2「setStatus 履歴（分離データ）」= 各 status/{sid}.json の history[] を集約表示。
+   v:5 で分離したデータのタイムライン確認用（ユーザー明示操作のみ・きれいな narrative）。
+   両タブとも検索・source フィルタ・CSV 書き出し対応。 */
+async function openStatusAuditModal(pid){
+  if(!pid){
+    try{pid=state&&state.currentPage?rootOfId(getNode(state.currentPage)):null}catch(_){}
+    if(!pid){const first=REG&&REG[0];if(first)pid=first.id}
+  }
+  if(!pid){toast('プロジェクトが特定できません');return}
+  /* 【v.050】利用可能な全月の一覧を取得し、その全てをまとめて読み込む
+     （旧実装は "今月" 固定で、他の月にログがあっても見えなかった）。 */
+  const auditMonths=await storage.listAuditMonths(pid);
+  const auditEvents=(await storage.readAuditAll(pid))||[];
+  const shotNodes=DB.nodes.filter(n=>_isShotNodeForSave(n,DB.nodes)&&rootOfId(n)===pid);
+  const shotIds=shotNodes.map(n=>n.id);
+  const statusFiles=await storage.loadAllStatuses(pid,shotIds);
+  /* 【v.051 修正】status.json.history[] を flatten して events 形式に揃える。
+     以前は「null→null と同値エントリを表示側で全部フィルタ」していたが、これが
+     正当なデータまで隠していた可能性があるため、**表示側フィルタは完全撤廃**。
+     クリーンアップは disk 側の _cleanupNullStatusHistories だけに任せる。 */
+  const historyEvents=[];
+  let _dbgFileCount=0,_dbgFilesWithHistory=0,_dbgTotalHistory=0;
+  for(const f of (statusFiles||[])){
+    if(!f)continue;
+    _dbgFileCount++;
+    if(!Array.isArray(f.history))continue;
+    _dbgFilesWithHistory++;
+    _dbgTotalHistory+=f.history.length;
+    for(const h of f.history){
+      historyEvents.push({
+        ts:h.ts,kind:'status_change',shotId:f.shotId,
+        from:(h.from==null||h.from==='')?null:h.from,
+        to:(h.to==null||h.to==='')?null:h.to,
+        by:h.by,
+        source:'setStatus:'+(h.source||'ui'),
+        _rev:f._rev,
+      });
+    }
+  }
+  historyEvents.sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
+  /* 診断情報をコンソールに出力（現場デバッグ用）。ユーザーは F12 で確認可能。 */
+  try{
+    console.group('[laycat audit modal] '+(getNode(pid)&&getNode(pid).name||pid));
+    console.log('shot count (DB):', shotIds.length);
+    console.log('status.json files loaded:', _dbgFileCount);
+    console.log('  with history[]:', _dbgFilesWithHistory);
+    console.log('  total history entries:', _dbgTotalHistory);
+    console.log('  after flatten (displayed):', historyEvents.length);
+    console.log('audit/*.jsonl months:', auditMonths);
+    console.log('audit events total:', auditEvents.length);
+    if(statusFiles && statusFiles.length){
+      console.log('sample status.json (first shot):', statusFiles[0]);
+    }
+    console.groupEnd();
+  }catch(_){}
+
+  const projName=(getNode(pid)&&getNode(pid).name)||pid;
+  openModal(body=>{
+    const inner=mHead(body,'ステータス変更 監査ログ',projName);
+    /* 【v.051】診断バーを追加：読み込み統計とコンソール出力ボタンで原因追跡を助ける */
+    const dbg=el('div');dbg.style.cssText='display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--bg2);border:1px solid var(--bd);border-radius:8px;margin-bottom:14px;font-size:11px;font-family:var(--font-code);color:var(--muted);flex-wrap:wrap';
+    dbg.innerHTML=`
+      <span>📊 診断：</span>
+      <span>DB ショット数 <b style="color:var(--fg,#eee)">${shotIds.length}</b></span>
+      <span style="color:var(--bd)">·</span>
+      <span>status.json 読込 <b style="color:var(--fg,#eee)">${_dbgFileCount}</b></span>
+      <span style="color:var(--bd)">·</span>
+      <span>履歴あり <b style="color:var(--fg,#eee)">${_dbgFilesWithHistory}</b></span>
+      <span style="color:var(--bd)">·</span>
+      <span>history 総エントリ <b style="color:${_dbgTotalHistory>0?'#5cc7ef':'#ee6a6a'}">${_dbgTotalHistory}</b></span>
+      <span style="color:var(--bd)">·</span>
+      <span>audit 総件数 <b style="color:var(--fg,#eee)">${auditEvents.length}</b></span>
+    `;
+    const verifyBtn=el('button','btn btn-ghost');verifyBtn.type='button';verifyBtn.textContent='🔬 整合性チェック';verifyBtn.style.cssText='padding:4px 10px;font-size:11px;margin-left:auto';
+    verifyBtn.title='memory の node.status と status/{sid}.json の中身を比較。不一致があれば v:5 分離の抜け穴です。';
+    verifyBtn.onclick=async()=>{
+      try{
+        const rows=await window._verifyStatusIntegrity(pid);
+        const mism=(rows||[]).filter(r=>!r.match);
+        if(!mism.length){toast('✅ すべて一致：v:5 分離は正常に働いています（'+rows.length+' ショット確認済）');return}
+        /* 不一致があればアラートモーダル的に表示（既存モーダル内なので簡易表示） */
+        alert('⚠ 不一致 '+mism.length+' 件\n'+mism.slice(0,10).map(r=>`${r.shot}: memory=${r.mem||'(未着手)'} vs json=${r.json||'(未着手)'}${r.statusJsonExists?'':' [status.json 無し]'}`).join('\n')+(mism.length>10?'\n...ほか '+(mism.length-10)+' 件':'')+'\n\n詳細はコンソール（F12）を確認してください');
+      }catch(e){toast('チェック失敗: '+e.message)}
+    };
+    const rawBtn=el('button','btn btn-ghost');rawBtn.type='button';rawBtn.textContent='🔍 生 JSON をコンソールに出力';rawBtn.style.cssText='padding:4px 10px;font-size:11px';
+    rawBtn.onclick=()=>{
+      try{
+        console.group('[laycat audit modal] 生データ dump: '+projName);
+        console.log('=== shotIds ===');console.log(shotIds);
+        console.log('=== status.json ファイル群（loadAllStatuses の返り値） ===');
+        for(const f of (statusFiles||[])){
+          console.log(f&&f.shotId?f.shotId+':':'(null)',f);
+        }
+        console.log('=== audit events (readAuditAll の返り値) ===');console.log(auditEvents);
+        console.log('=== historyEvents (flatten 後) ===');console.log(historyEvents);
+        console.groupEnd();
+        toast('生 JSON をコンソール（F12）に出力しました');
+      }catch(e){toast('出力失敗: '+e.message)}
+    };
+    dbg.appendChild(verifyBtn);
+    dbg.appendChild(rawBtn);
+    inner.appendChild(dbg);
+    /* タブバー */
+    const tabBar=el('div');tabBar.style.cssText='display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid var(--bd)';
+    function mkTab(label,cnt,active){
+      const t=el('button','btn btn-ghost');
+      t.type='button';
+      t.style.cssText='position:relative;padding:10px 16px;border-radius:0;border-bottom:2px solid '+(active?'var(--purple,#A56BF0)':'transparent')+';color:'+(active?'var(--fg,#eee)':'var(--muted,#888)')+';font-family:var(--font-head);font-size:12px;letter-spacing:1px;background:none';
+      t.innerHTML=`${label}<span style="margin-left:8px;background:var(--bg2);padding:1px 8px;border-radius:8px;font-size:10px;font-family:var(--font-code);color:${active?'#A56BF0':'var(--muted)'}">${cnt}</span>`;
+      return t;
+    }
+    const tabAudit=mkTab('全経路（監査ログ）',auditEvents.length,true);
+    const tabHist=mkTab('setStatus 履歴（分離データ）',historyEvents.length,false);
+    const tabRaw=mkTab('生データ（JSON）',_dbgFileCount,false);
+    tabBar.appendChild(tabAudit);tabBar.appendChild(tabHist);tabBar.appendChild(tabRaw);
+    inner.appendChild(tabBar);
+    /* 3 つの pane コンテナ */
+    const paneAudit=el('div');
+    const paneHist=el('div');paneHist.style.display='none';
+    const paneRaw=el('div');paneRaw.style.display='none';
+    inner.appendChild(paneAudit);inner.appendChild(paneHist);inner.appendChild(paneRaw);
+    /* タブ切替 */
+    function activate(a,b,c){
+      for(const t of [tabAudit,tabHist,tabRaw]){t.style.borderBottomColor='transparent';t.style.color='var(--muted,#888)'}
+      a.style.borderBottomColor='var(--purple,#A56BF0)';a.style.color='var(--fg,#eee)';
+      paneAudit.style.display='none';paneHist.style.display='none';paneRaw.style.display='none';
+      b.style.display='';
+    }
+    tabAudit.onclick=()=>activate(tabAudit,paneAudit);
+    tabHist.onclick=()=>activate(tabHist,paneHist);
+    tabRaw.onclick=()=>activate(tabRaw,paneRaw);
+    /* 【v.052】読みやすい表示にするためのフォーマッタ群。
+       ID を表示名に変換・タイムスタンプ短縮・source を日本語ラベル化する。 */
+    function _fmtTs(iso){
+      if(!iso)return'-';
+      const d=new Date(iso);
+      if(isNaN(d))return iso;
+      const M=d.getMonth()+1,D=d.getDate(),h=String(d.getHours()).padStart(2,'0'),m=String(d.getMinutes()).padStart(2,'0');
+      return `${M}/${D} ${h}:${m}`;
+    }
+    function _fmtShotPath(sid){
+      const n=getNode(sid);if(!n)return sid.slice(-8);
+      const p=pathOf(sid);
+      /* 先頭のプロジェクトルートを除く。中間は「/」で連結。 */
+      return p.slice(1).map(x=>x.name||x.id.slice(-6)).join(' / ');
+    }
+    function _fmtStatus(sid,statusId){
+      if(statusId==null||statusId===''||statusId==='empty')return{label:'未着手',color:'#888'};
+      const n=getNode(sid);const arr=n?projStatuses(n):null;
+      const s=arr&&arr.find(x=>x.id===statusId);
+      if(s)return{label:s.label||statusId,color:s.color||'#a56bf0'};
+      return{label:statusId,color:'#a56bf0'};
+    }
+    /* 【v.053】source ラベル・色分けの見直し。
+       フォルダ同期は「他ユーザーの正常な変更取込」であることが実運用で確認できたため、
+       赤（要確認）→ 青（通常同期）に降格。
+       赤（⚠ 要確認）は「巻き戻り主犯経路」の 3-way マージ・v<4 マージのみに限定。
+       黄（要確認）は「状況次第で危険」の復元処理・読込上書き。 */
+    const _sourceLabels={
+      'setStatus:ui':{label:'UI 操作',color:'#a56bf0',danger:false},
+      'setStatus:upload':{label:'版アップロード',color:'#5cc7ef',danger:false},
+      'setStatus:submit':{label:'提出',color:'#5cb878',danger:false},
+      'setStatus:migrate':{label:'初回移行',color:'#888',danger:false},
+      /* フォルダ同期は多重ユーザー同期の正常経路：青（通常同期）に降格 */
+      'unionRemoteIntoDB:refresh':{label:'フォルダ同期',color:'#5cc7ef',danger:false},
+      /* v:5 status.json による正しい値への復元処理（読込上書きの直後に走る）：緑（防御動作） */
+      'hydrateStatuses:v5restore':{label:'v:5 復元',color:'#5cb878',danger:false},
+      /* 3-way マージは巻き戻り事故の主犯経路：赤（⚠ 要確認）維持 */
+      'merge3:saveShotWithLock':{label:'3-way マージ',color:'#ee6a6a',danger:true},
+      'applyMergedIntoDB:v<4':{label:'v<4 マージ',color:'#ee6a6a',danger:true},
+      /* 復元処理・読込上書きは状況次第で危険：黄（要確認）維持 */
+      'normalizeNodes:review-fallback':{label:'復元処理',color:'#f2c86b',danger:true},
+      'hydrateShots:Object.assign':{label:'読込上書き',color:'#f2c86b',danger:true},
+    };
+    function _fmtSource(src){
+      if(!src)return{label:'不明',color:'#888',danger:false};
+      if(_sourceLabels[src])return _sourceLabels[src];
+      /* setStatus:xxx のプレフィックスマッチ */
+      if(src.startsWith('setStatus:'))return{label:'手動変更',color:'#a56bf0',danger:false};
+      if(src.startsWith('merge')||src.startsWith('apply')||src.startsWith('union'))return{label:'マージ処理',color:'#ee6a6a',danger:true};
+      return{label:src,color:'#888',danger:false};
+    }
+    function _fmtUser(by){
+      if(!by)return'(不明)';
+      const i=by.indexOf('@');
+      return i>0?by.slice(0,i):by;
+    }
+    /* 共通レンダラ：events 配列を検索・source フィルタ・CSV 書き出しつきテーブルで表示 */
+    function renderEventsPane(pane,events,opts){
+      opts=opts||{};
+      if(!events||!events.length){
+        const p=el('div','muted',opts.emptyMsg||'該当データがありません。');
+        p.style.padding='20px 4px';pane.appendChild(p);return;
+      }
+      /* 【v.050】日付ヒストグラム（events を YYYY-MM-DD で集計）：どの日にどれだけログがあるか一目で把握 */
+      const dateHist={};
+      for(const e of events){
+        const d=(e.ts||'').slice(0,10);if(!d)continue;
+        dateHist[d]=(dateHist[d]||0)+1;
+      }
+      const dateKeys=Object.keys(dateHist).sort();
+      if(dateKeys.length){
+        const hist=el('div');hist.style.cssText='display:flex;gap:2px;align-items:flex-end;margin-bottom:10px;padding:8px 10px;background:var(--bg2);border:1px solid var(--bd);border-radius:8px;overflow-x:auto;height:64px';
+        const maxC=Math.max(...Object.values(dateHist));
+        for(const d of dateKeys){
+          const c=dateHist[d];
+          const bar=el('div');
+          const h=Math.max(4,Math.round((c/maxC)*40));
+          bar.style.cssText=`min-width:14px;height:${h}px;background:linear-gradient(180deg,#A56BF0,#5CC7EF);border-radius:2px;position:relative;cursor:pointer;flex:1`;
+          bar.title=`${d}：${c} 件`;
+          const lbl=el('div');lbl.textContent=d.slice(5);lbl.style.cssText='position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--muted);font-family:var(--font-code);white-space:nowrap';
+          if(dateKeys.length>10&&dateKeys.indexOf(d)%Math.ceil(dateKeys.length/10))lbl.style.display='none';
+          bar.appendChild(lbl);
+          hist.appendChild(bar);
+        }
+        pane.appendChild(hist);
+        const histLbl=el('div','muted');histLbl.style.cssText='font-size:10px;margin-bottom:12px;text-align:right';histLbl.textContent=`日別分布：${dateKeys.length} 日分 / 最古 ${dateKeys[0]} 〜 最新 ${dateKeys[dateKeys.length-1]}`;pane.appendChild(histLbl);
+      }
+      const bar=el('div');bar.style.cssText='display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap';
+      const info=el('div','muted');info.textContent=`全 ${events.length} 件 / 最新から表示`;info.style.cssText='font-size:12px;margin-right:auto';
+      const searchInp=el('input','form-input');searchInp.type='text';searchInp.placeholder='検索：ショット名・user...';searchInp.style.cssText='flex:1;max-width:200px;padding:6px 10px;font-size:12px';
+      /* 【v.053】ショット絞り込みセレクタ（events 中に登場する shotId を列挙・件数多い順） */
+      let shotSel=null;
+      {
+        const shotCounts=new Map();
+        for(const e of events){if(!e.shotId)continue;shotCounts.set(e.shotId,(shotCounts.get(e.shotId)|0)+1)}
+        const shotArr=Array.from(shotCounts.entries()).sort((a,b)=>b[1]-a[1]);
+        if(shotArr.length){
+          shotSel=el('select','form-input');shotSel.style.cssText='padding:6px 10px;font-size:12px;max-width:260px';
+          const allS=el('option',null,'すべてのショット');allS.value='';shotSel.appendChild(allS);
+          for(const [sid,cnt] of shotArr){
+            const nm=(getNode(sid)&&getNode(sid).name)||sid.slice(-8);
+            const o=el('option',null,`${nm} (${cnt})`);o.value=sid;shotSel.appendChild(o);
+          }
+        }
+      }
+      /* 【v.050】月フィルタセレクタ（audit タブのみ・events から動的取得）。既存 month 情報がなければ表示しない。 */
+      let monthSel=null;
+      if(opts.showMonthFilter){
+        const months=Array.from(new Set(events.map(e=>(e.ts||'').slice(0,7)).filter(Boolean))).sort().reverse();
+        if(months.length){
+          monthSel=el('select','form-input');monthSel.style.cssText='padding:6px 10px;font-size:12px';
+          const allM=el('option',null,'全期間');allM.value='';monthSel.appendChild(allM);
+          for(const m of months){const o=el('option',null,m);o.value=m;monthSel.appendChild(o)}
+        }
+      }
+      const sourceSel=el('select','form-input');sourceSel.style.cssText='padding:6px 10px;font-size:12px';
+      const sources=Array.from(new Set(events.map(e=>e.source).filter(Boolean))).sort();
+      const allOpt=el('option',null,'すべての操作');allOpt.value='';sourceSel.appendChild(allOpt);
+      for(const s of sources){
+        const lbl=_fmtSource(s);
+        const o=el('option',null,`${lbl.label}${lbl.danger?' ⚠':''}`);o.value=s;sourceSel.appendChild(o);
+      }
+      const csvBtn=el('button','btn btn-ghost','CSV 書き出し');csvBtn.style.cssText='font-size:12px;padding:6px 12px';
+      csvBtn.onclick=()=>{
+        const csv=['ts,shotId,from,to,source,by,trace,extra'].concat(events.map(e=>{
+          const extra=JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k])=>!['ts','shotId','from','to','source','by','trace','kind'].includes(k))));
+          return [e.ts,e.shotId,e.from||'',e.to||'',e.source,e.by||'',JSON.stringify(e.trace||''),JSON.stringify(extra)].join(',');
+        })).join('\n');
+        const blob=new Blob([csv],{type:'text/csv'});
+        const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${opts.csvName||'status-audit'}-${pid}-${(new Date()).toISOString().slice(0,7)}.csv`;a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+      };
+      bar.appendChild(info);bar.appendChild(searchInp);if(shotSel)bar.appendChild(shotSel);if(monthSel)bar.appendChild(monthSel);bar.appendChild(sourceSel);bar.appendChild(csvBtn);
+      pane.appendChild(bar);
+      const wrap=el('div');wrap.style.cssText='max-height:60vh;overflow:auto;border:1px solid var(--bd);border-radius:8px';
+      const tbl=el('table');tbl.style.cssText='width:100%;border-collapse:collapse;font-size:13px';
+      const thead=el('thead');thead.innerHTML='<tr style="background:var(--bg2);position:sticky;top:0;z-index:1">'
+        +'<th style="padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd);font-weight:600;color:var(--muted);font-size:11px;letter-spacing:1px">いつ</th>'
+        +'<th style="padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd);font-weight:600;color:var(--muted);font-size:11px;letter-spacing:1px">誰が</th>'
+        +'<th style="padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd);font-weight:600;color:var(--muted);font-size:11px;letter-spacing:1px">どの操作</th>'
+        +'<th style="padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd);font-weight:600;color:var(--muted);font-size:11px;letter-spacing:1px">対象ショット</th>'
+        +'<th style="padding:10px 12px;text-align:left;border-bottom:1px solid var(--bd);font-weight:600;color:var(--muted);font-size:11px;letter-spacing:1px">変更内容</th>'
+        +'</tr>';
+      tbl.appendChild(thead);
+      const tbody=el('tbody');tbl.appendChild(tbody);wrap.appendChild(tbl);pane.appendChild(wrap);
+      function renderRows(){
+        const q=searchInp.value.trim().toLowerCase();
+        const src=sourceSel.value;
+        const mnth=monthSel?monthSel.value:'';
+        const shotId=shotSel?shotSel.value:'';
+        const filtered=events.filter(e=>{
+          if(shotId&&e.shotId!==shotId)return false;
+          if(src&&e.source!==src)return false;
+          if(mnth&&(e.ts||'').slice(0,7)!==mnth)return false;
+          if(!q)return true;
+          const nm=(getNode(e.shotId)&&getNode(e.shotId).name)||'';
+          const hay=`${nm} ${e.shotId} ${e.source} ${e.by||''} ${e.from||''} ${e.to||''} ${e.trace||''}`.toLowerCase();
+          return hay.includes(q);
+        }).slice().reverse();
+        tbody.innerHTML='';
+        for(const e of filtered.slice(0,500)){
+          const tr=el('tr');tr.style.cssText='border-bottom:1px solid rgba(255,255,255,.05)';
+          const src=_fmtSource(e.source);
+          if(src.danger)tr.style.background='rgba(238,106,106,.06)';
+          const fromS=_fmtStatus(e.shotId,e.from);
+          const toS=_fmtStatus(e.shotId,e.to);
+          const shotPath=_fmtShotPath(e.shotId);
+          const shotShort=(getNode(e.shotId)&&getNode(e.shotId).name)||e.shotId.slice(-8);
+          const fullTs=(e.ts||'').replace('T',' ').slice(0,19);
+          tr.innerHTML=`
+            <td style="padding:10px 12px;color:var(--fg,#eee);white-space:nowrap;font-family:var(--font-code)">
+              <div style="font-size:13px;font-weight:600">${_fmtTs(e.ts)}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px">${fullTs}</div>
+            </td>
+            <td style="padding:10px 12px;white-space:nowrap">
+              <div style="font-size:13px;color:var(--fg,#eee)">${_fmtUser(e.by)}</div>
+              ${e.by&&e.by.includes('@')?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${e.by}</div>`:''}
+            </td>
+            <td style="padding:10px 12px">
+              <span style="display:inline-block;padding:3px 10px;border-radius:12px;background:${src.color}22;color:${src.color};font-size:11px;font-weight:600">${src.label}</span>
+              ${src.danger?'<span style="margin-left:6px;font-size:10px;color:#ee6a6a">⚠ 要確認</span>':''}
+            </td>
+            <td style="padding:10px 12px">
+              <div style="font-size:13px;color:var(--fg,#eee);font-weight:500">${shotShort}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px">${shotPath}</div>
+            </td>
+            <td style="padding:10px 12px;white-space:nowrap">
+              <span style="display:inline-block;padding:2px 10px;border-radius:4px;background:${fromS.color}22;color:${fromS.color};font-size:12px">${fromS.label}</span>
+              <span style="margin:0 6px;color:var(--muted)">→</span>
+              <span style="display:inline-block;padding:2px 10px;border-radius:4px;background:${toS.color}22;color:${toS.color};font-size:12px;font-weight:600">${toS.label}</span>
+            </td>
+          `;
+          tr.title=`ソース: ${e.source}\ntrace: ${e.trace||'(なし)'}\n\n全データ:\n${JSON.stringify(e,null,2)}`;
+          tr.style.cursor='help';
+          tbody.appendChild(tr);
+        }
+        info.textContent=`${filtered.length} 件表示 / 全 ${events.length} 件${filtered.length>500?'（上位 500 件のみ）':''}`;
+      }
+      searchInp.oninput=renderRows;
+      sourceSel.onchange=renderRows;
+      if(monthSel)monthSel.onchange=renderRows;
+      if(shotSel)shotSel.onchange=renderRows;
+      renderRows();
+      /* 凡例（タブ別に文面変更） */
+      const legend=el('div','muted');legend.style.cssText='font-size:11px;margin-top:10px;padding:8px 12px;background:var(--bg2);border-radius:6px';
+      legend.innerHTML=opts.legend||'';
+      if(opts.legend)pane.appendChild(legend);
+    }
+    renderEventsPane(paneAudit,auditEvents,{
+      csvName:'status-audit',
+      showMonthFilter:true,
+      emptyMsg:'監査ログはまだありません（v.049 以降のステータス変更のみ記録されます）。',
+      legend:'ステータス変更を <b>「いつ・誰が・どの操作で」</b> 記録。'
+        +'<b style="color:#a56bf0">紫/緑/青</b>：ユーザー操作（UI・アップロード・提出）または他ユーザーからの通常同期。'
+        +' <b style="color:#5cc7ef">フォルダ同期</b> = 他メンバーの変更を取り込んだ痕跡（正常）。'
+        +'<b style="color:#ee6a6a"> ⚠ 3-way マージ</b>：巻き戻り事故の主犯経路（要確認）。'
+        +' 行ホバーで詳細情報表示。',
+    });
+    renderEventsPane(paneHist,historyEvents,{
+      csvName:'status-history',
+      showMonthFilter:true,
+      emptyMsg:'まだ status/*.json の履歴がありません。ステータス変更（UI・アップロード・提出）が発生すると記録されます。',
+      legend:'各ショット固有の <code>status</code> ファイル（v:5 分離データ）の変更履歴を集約。<b style="color:#a56bf0">ユーザー操作のみ</b> のきれいな narrative — 「そのショットがどう進んできたか」を辿るのに使ってください。',
+    });
+    /* 【v.051】「生データ」タブ：全ての status/{sid}.json の内容を UI 上で直接確認できる。
+       ショット選択ドロップダウン＋整形 JSON 表示＋クリップボードコピー。F12 不要。 */
+    (function buildRawPane(){
+      const p=paneRaw;
+      const desc=el('div','muted');desc.style.cssText='font-size:11px;margin-bottom:10px;padding:8px 12px;background:var(--bg2);border-radius:6px';
+      desc.innerHTML='<b>生データビューア</b>：ディスク上の <code>projects/{pid}/status/{sid}.json</code> の中身をショット単位で直接表示します。JSON の実データと画面表示の差を突き合わせるためのタブです。<br>「history[] が空 or ない → 期待するデータが disk に届いていない」／「history[] があるが上のタブに出ない → 表示側バグ」の切り分けに使ってください。';
+      p.appendChild(desc);
+      /* コントロールバー */
+      const ctl=el('div');ctl.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap';
+      const sel=el('select','form-input');sel.style.cssText='flex:1;min-width:200px;padding:6px 10px;font-size:12px';
+      /* オプション：全体サマリ */
+      const optAll=el('option',null,'▼ 全ショットサマリ（先頭 20 件）');optAll.value='__all__';sel.appendChild(optAll);
+      /* オプション：ショット別（履歴あり優先） */
+      const filesByShot={};for(const f of (statusFiles||[])){if(f&&f.shotId)filesByShot[f.shotId]=f}
+      const shotEntries=shotIds.map(sid=>{
+        const nm=(getNode(sid)&&getNode(sid).name)||sid.slice(-8);
+        const f=filesByShot[sid];
+        const hcnt=(f&&Array.isArray(f.history))?f.history.length:0;
+        const st=(f&&f.status!=null)?f.status:'(未着手)';
+        return {sid,nm,hcnt,st,hasFile:!!f};
+      });
+      /* 履歴多い順 → 履歴少ない順 → ファイル無し */
+      shotEntries.sort((a,b)=>b.hcnt-a.hcnt||(a.hasFile===b.hasFile?0:a.hasFile?-1:1));
+      for(const e of shotEntries){
+        const o=el('option',null,`${e.nm} · status:${e.st} · history:${e.hcnt}${e.hasFile?'':' · ⚠ status.json 無し'}`);
+        o.value=e.sid;sel.appendChild(o);
+      }
+      const lblSel=el('span','muted','対象:');lblSel.style.fontSize='11px';
+      ctl.appendChild(lblSel);
+      ctl.appendChild(sel);
+      const copyBtn=el('button','btn btn-ghost');copyBtn.type='button';copyBtn.textContent='📋 表示中をコピー';copyBtn.style.cssText='font-size:12px;padding:6px 12px';
+      ctl.appendChild(copyBtn);
+      p.appendChild(ctl);
+      /* 表示エリア */
+      const preWrap=el('div');preWrap.style.cssText='max-height:60vh;overflow:auto;border:1px solid var(--bd);border-radius:8px;background:#0d0d10';
+      const pre=el('pre');pre.style.cssText='margin:0;padding:14px;font-family:var(--font-code);font-size:12px;line-height:1.5;color:#eee;white-space:pre-wrap;word-break:break-all';
+      preWrap.appendChild(pre);p.appendChild(preWrap);
+      function fmt(o){try{return JSON.stringify(o,null,2)}catch(_){return String(o)}}
+      function renderRaw(){
+        if(sel.value==='__all__'){
+          const summary={
+            project:{id:pid,name:projName},
+            shotCount:shotIds.length,
+            statusFilesLoaded:_dbgFileCount,
+            statusFilesWithHistory:_dbgFilesWithHistory,
+            totalHistoryEntries:_dbgTotalHistory,
+            auditMonths:auditMonths,
+            auditEventsTotal:auditEvents.length,
+            historyEventsTotal:historyEvents.length,
+            firstFewFiles:(statusFiles||[]).slice(0,20).map(f=>({
+              shotId:f&&f.shotId,
+              status:f&&f.status,
+              updatedAt:f&&f.updatedAt,
+              updatedBy:f&&f.updatedBy,
+              historyLength:(f&&Array.isArray(f.history))?f.history.length:'(no history[])',
+              _rev:f&&f._rev,
+            })),
+          };
+          pre.textContent=fmt(summary);
+        }else{
+          const sid=sel.value;
+          const f=filesByShot[sid];
+          if(!f){
+            pre.textContent=`⚠️ status/${sid}.json は disk に存在しません（loadStatus が null を返しました）。\n\n未マイグレのショット or フォルダ書き込み失敗が疑われます。\n\nDB 上のノード情報:\n${fmt(getNode(sid))}`;
+          }else{
+            pre.textContent=fmt(f);
+          }
+        }
+      }
+      sel.onchange=renderRaw;
+      copyBtn.onclick=()=>{
+        try{navigator.clipboard.writeText(pre.textContent);toast('クリップボードにコピーしました')}
+        catch(e){toast('コピー失敗（クリップボード権限を確認）')}
+      };
+      renderRaw();
+    })();
+    mFoot(body,[(()=>{const b=el('button','btn','閉じる');b.onclick=closeModal;return b})()]);
+  },true);
+}
+window.openStatusAuditModal=openStatusAuditModal;
 closeOnBackdrop($('#modal'),closeModal);
 function mHead(body,title,sub){const h=el('div','modal-header');const t=el('div','modal-title');t.appendChild(document.createTextNode(title));if(sub)t.appendChild(el('div','sub',sub));h.appendChild(t);const x=el('button','modal-close','×');x.onclick=closeModal;h.appendChild(x);body.appendChild(h);const inner=el('div','modal-body');body.appendChild(inner);return inner}
 function mFoot(body,btns){const f=el('div','modal-footer');for(const b of btns)f.appendChild(b);body.appendChild(f)}
@@ -8227,6 +8930,12 @@ function openRename(node){
       pwConf=frow('確認（再入力）','input');pwConf.f.type='password';inner.appendChild(pwConf.r);
       if(_pwSet){const rr=el('label','form-check');rr.style.cssText='display:flex;align-items:center;gap:8px;margin:6px 0';pwRemove=el('input');pwRemove.type='checkbox';rr.appendChild(pwRemove);rr.appendChild(el('span','form-label','パスワード保護を解除する（誰でも開けるようになります）'));rr.querySelector('.form-label').style.margin='0';inner.appendChild(rr)}
       inner.appendChild(el('div','form-label','※ パスワードを設定すると、プロジェクトデータ（コメント・ノート等のメタデータ）はパスワードから導出した鍵で暗号化して保存されます。パスワードが分からないと中身は復号できません。ただし動画・画像ファイル本体（media/ 配下）は暗号化対象外です。パスワードを紛失すると復号できなくなる点にご注意ください。'));
+      /* 監査ログビューア（現場の巻き戻り再発調査用） */
+      sec(secN++,'📜','ステータス変更 監査ログ','v.049 以降のすべてのステータス変更を記録しています。巻き戻り事故の原因調査に使えます。');
+      const auditWrap=el('div');auditWrap.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px';
+      auditWrap.appendChild(el('span','form-label','今月のステータス変更履歴を確認します（source ハイライト・CSV 書き出し対応）。'));
+      const auditBtn=el('button','btn btn-ghost btn-sm','📜 監査ログを見る');auditBtn.type='button';auditBtn.onclick=()=>{closeModal();openStatusAuditModal(node.id)};auditWrap.appendChild(auditBtn);
+      inner.appendChild(auditWrap);
       /* このユーザーの接続を解除・プロジェクトの削除 */
       sec(secN++,'⚠️','危険な操作','プロジェクトの接続を外す・削除するなど、取り消しにくい操作です。');
       const dcWrap=el('div');dcWrap.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px';
@@ -8617,12 +9326,15 @@ function _mergeNode3(base,ours,theirs){
 }
 /* マージ結果を DB に反映（当該プロジェクトのノード/サブミットを置換） */
 function applyMergedIntoDB(id,merged){
+  /* 【監査ログ】v<4 プロジェクトの 3-way マージ結果適用前後で status 差分を記録 */
+  const _snap=_snapshotShotStatuses(id);
   const ids=new Set([id,...DB.nodes.filter(n=>rootOfId(n)===id).map(n=>n.id)]);
   DB.nodes=DB.nodes.filter(n=>!ids.has(n.id));
   for(const n of (merged.nodes||[]))if(!DB.nodes.some(x=>x.id===n.id))DB.nodes.push(n);
   DB.submits=(DB.submits||[]).filter(s=>s.projectId!==id);
   for(const s of (merged.submits||[]))if(!DB.submits.some(x=>x.id===s.id))DB.submits.push(s);
   normalizeNodes();
+  _diffAndLogStatusChanges(id,_snap,'applyMergedIntoDB:v<4');
 }
 /* Phase 3 Issue C：v:4 プロジェクト用の「骨格 union」軽量版。
    ・remote は骨格のみ（shots/submits 未 hydrate）で読み込む前提
@@ -8647,6 +9359,9 @@ function _unionSkeletonIntoDB(pid,remote){
    baseline 不明時（読込直後の初回保存）の丸ごと上書きを避けるために使う。 */
 function _unionRemoteIntoDB(id,remote,opts){
   if(!remote)return;
+  /* 【監査ログ】refresh 経路の union-fill 前後で status 差分を記録
+     （preferRemote+authoritative で state 系が remote 値に置き換わる経路の可視化） */
+  const _snap=_snapshotShotStatuses(id);
   for(const rn of (remote.nodes||[])){
     const ex=DB.nodes.find(n=>n.id===rn.id);
     if(!ex)DB.nodes.push(rn);else _mergeNodeInto(ex,rn,opts);
@@ -8654,6 +9369,7 @@ function _unionRemoteIntoDB(id,remote,opts){
   DB.submits=DB.submits||[];
   for(const rs of (remote.submits||[]))if(!DB.submits.some(s=>s.id===rs.id))DB.submits.push(rs);
   normalizeNodes();
+  _diffAndLogStatusChanges(id,_snap,'unionRemoteIntoDB:refresh',{opts:JSON.stringify(opts||{}).slice(0,120)});
 }
 /* プロジェクト読込直後に保存baseline(_saveCache.proj)を種付けする。これが無いと初回保存で
    3-way マージがスキップされ、フォルダ側（他者の記入）を丸ごと上書きしてしまう。 */

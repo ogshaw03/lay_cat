@@ -14,100 +14,7 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-- (dev v2026.09.14.009) **【重大バグ修正】`loadProject` に `_hydrateStatuses` 呼び出しを追加**：v:5 status 分離の効果が起動時・F5 リロード時のパスで無効化されていた重大な抜け穴を修正。UI 巻き戻りの根本原因の一つ。
-  - **原因**：v:5 MVP 実装時、`readProjectData` にのみ `_hydrateStatuses` を追加し、`loadProject`（起動時・F5 リロード時のパス）に追加し忘れていた。
-  - **影響**：
-    - autoRefresh 経由の同期時：`readProjectData` → `_hydrateStatuses` → v:5 復元 ✅
-    - **F5 リロード・初回起動時：`loadProject` → `_hydrateStatuses` 未呼び出し** → shot.json inline の古い status がそのまま反映 ❌
-  - **具体的な再現手順**：同一ショットを複数タブで開く → タブ A で status 変更 → タブ B でリフレッシュより先に担当者変更（3-way マージで shot.json inline に古い status が書き込まれる）→ タブ A で F5 → shot.json inline の古い status が反映されて UI 上で巻き戻り発生
-  - **修正**：`loadProject` の両パス（R2 / フォルダ）に `await this._hydrateStatuses(id,parsed)` を追加。これで起動時・F5 リロード時にも status.json による権威源復元が働く。
-  - APP_VERSION：2026.09.14.008 → 2026.09.14.009
-
-- (dev v2026.09.14.008) **v:5 復元処理の可視化＋整合性チェックボタン追加**：現場で「読込上書きで status が巻き戻った」報告あり、v:5 の復元が本当に効いているかを実行時検証できるようにする。
-  - **`_hydrateStatuses` に監査ログ記録追加**：`hydrateShots:Object.assign` の直後に走る v:5 復元処理を audit log に記録（source: `hydrateStatuses:v5restore`・緑・防御動作扱い）。これで「読込上書きで書き換わった直後に v:5 が正しい値に戻している」という一連の防御シーケンスが log 上で可視化される。
-  - **`_verifyStatusIntegrity(pid)` 診断関数を追加**：全ショットについて memory の `node.status` と disk 上の `status/{sid}.json.status` を比較。不一致があれば v:5 分離の抜け穴と判定できる。コンソールから `_verifyStatusIntegrity()` で呼び出し可能。
-  - **監査ログモーダルに「🔬 整合性チェック」ボタン追加**：ワンクリックで整合性検証、結果を toast / alert で表示。不一致があれば要調査、なければ v:5 分離は正常。
-  - **切り分けフロー**：
-    1. 「読込上書き」ログを見た時にすぐ「整合性チェック」を実行
-    2. すべて一致 = 復元が働いている（UI は正常）
-    3. 不一致あり = v:5 抜け穴（要修正）
-  - APP_VERSION：2026.09.14.007 → 2026.09.14.008
-
-- (dev v2026.09.14.007) **監査ログ：ショット絞り込みセレクタ追加＋フォルダ同期を「通常同期」に降格**：現場運用フィードバックに対応。
-  - **ショット絞り込みセレクタ**：モーダルのフィルタバーに「対象ショット」ドロップダウンを追加。events 中に登場する shotId を件数多い順で列挙、`ショット名 (件数)` の形式。カットごとの履歴に絞り込んで見られる。
-  - **フォルダ同期の色を赤 → 青に降格**：`unionRemoteIntoDB:refresh` は多重ユーザー運用の正常同期経路であることが実運用で確認できたため、`danger:true 赤` → `danger:false 青` にリクラス。⚠ 要確認バッジと赤背景が消え、正常動作として扱われる。
-  - 赤（⚠ 要確認）は「巻き戻り事故の主犯経路」の `3-way マージ` / `v<4 マージ` に限定。
-  - 黄（要確認）は「状況次第で危険」の `復元処理` / `読込上書き` に限定。
-  - 検索プレースホルダを「ショット名・user...」に更新。source セレクタも日本語ラベル化。
-  - 凡例文を「色分けの新しい意味」に合わせて書き直し。
-  - APP_VERSION：2026.09.14.006 → 2026.09.14.007
-
-- (dev v2026.09.14.006) **監査ログの表示を「いつ・誰が・どの操作で・対象ショット・変更内容」の 5 列に読みやすくリファクタ**：ID 表示が読めないという現場フィードバックに対応。
-  - **列構成**：`いつ` `誰が` `どの操作` `対象ショット` `変更内容` の 5 列。従来の `ts / shot / from→to / source / by` の順序を変更。
-  - **時刻**：メイン表示は「M/D HH:MM」の短縮形。下段に完全形の ISO を muted 表示。
-  - **誰が**：`@` 前の名前部分をメイン表示、フル email はサブ表示（`@` があるときのみ）
-  - **どの操作**：8 種類の source を日本語ラベル化＋色バッジ化
-    - `UI 操作`（紫）／`版アップロード`（シアン）／`提出`（緑）／`初回移行`（グレー）
-    - `3-way マージ`／`v<4 マージ`／`フォルダ同期`（赤・⚠ 要確認）
-    - `復元処理`／`読込上書き`（黄・⚠ 要確認）
-    - IDs の生表示は廃止。source フィルタは内部 ID 経由（filter は継続動作）
-  - **対象ショット**：メインはショット名、下段に階層パス（Scene A / SC-010 形式）を muted 表示
-  - **変更内容**：`未着手 → 作業中` の形式でステータス名＋各ステータスの色を反映。ID の生表示（`in_progress` 等）は廃止
-  - フォーマッタ群 `_fmtTs / _fmtUser / _fmtSource / _fmtShotPath / _fmtStatus` を導入
-  - `_sourceLabels` テーブルで日本語ラベル化を集中管理
-  - APP_VERSION：2026.09.14.005 → 2026.09.14.006
-
-- (dev v2026.09.14.005) **監査ログモーダルに 3 つ目のタブ「生データ（JSON）」を追加**：F12 コンソールを開かなくても UI 上で status/*.json の実データを直接確認できる。
-  - **ショット選択ドロップダウン**：全ショットをプルダウンで選択、`ショット名 · status:X · history:N` の形式で表示。履歴が多い順にソート、status.json が無いショットは末尾に `⚠ status.json 無し` バッジ付き
-  - **「全ショットサマリ」ビュー**：デフォルト表示。プロジェクト全体の統計＋先頭 20 ショットの status.json 概要（shotId・status・updatedAt・historyLength・_rev）を整形 JSON で表示
-  - **個別ショットビュー**：選んだショットの status.json 全内容を整形表示。ファイルが無ければ `⚠️ status/{sid}.json は disk に存在しません` と警告表示 + DB ノード情報も表示
-  - **クリップボードコピーボタン**：表示中の JSON をワンクリックでコピー
-  - **切り分け目的**：「history[] が空/ない → disk に届いていない」／「history[] があるが上のタブに出ない → 表示側バグ」の判別が UI だけで可能に
-  - APP_VERSION：2026.09.14.004 → 2026.09.14.005
-
-- (dev v2026.09.14.004) **監査ログモーダルの表示側フィルタを完全撤廃＋診断バー・生 JSON ダンプ追加**：現場で「JSON にデータあるのに表示されない」との報告あり、表示側の過度なフィルタが原因の可能性を排除。
-  - **表示側フィルタ撤廃**：`null→null / 同値エントリを表示側で全部除外` を撤廃。クリーンアップは disk 側（`_cleanupNullStatusHistories`）だけに任せる。表示側は全エントリをそのまま流す。
-  - **診断バー**：モーダル上部に「DB ショット数・status.json 読込数・履歴あり数・history 総エントリ数・audit 総件数」を常時表示。0 のカラムがあれば読み込み側の問題と即判定できる。
-  - **生 JSON ダンプボタン**：「🔍 生 JSON をコンソールに出力」で shotIds・statusFiles 全て・auditEvents・historyEvents を console.group で完全出力。ユーザーが F12 で内容確認可能。
-  - **console.group 診断ログ**：モーダルを開いた時点で自動的にコンソールに shot count / loaded files / history entries の統計と最初のショットの status.json 全体を出力。
-  - APP_VERSION：2026.09.14.003 → 2026.09.14.004
-
-- (dev v2026.09.14.003) **監査ログのノイズ対策・複数月対応・日別ヒストグラム追加**：v.049 の一括マイグレで null→null ノイズが大量に生成されて実際の変更履歴が埋もれていた問題を修正。
-  - **マイグレ修正**：`_migrateV5Statuses` で未着手（cur==null）のショットは history エントリを生成しない（`from:null,to:null` の無意味エントリを廃止）
-  - **既存データのクリーンアップ**：`_cleanupNullStatusHistories(pid)` を新設。起動時に全 status/{sid}.json を走査して null→null や同値エントリを一括除去。件数をコンソールに出力（トーストは出さない）。
-  - **表示側フィルタ**：setStatus 履歴タブでも null→null エントリを表示時に除外（既存の破損データが残っている環境向け安全網）
-  - **月フィルタセレクタ**：モーダルの両タブに月選択ドロップダウンを追加。デフォルトは「全期間」。
-  - **listAuditMonths / readAuditAll**：audit ディレクトリ内の全 YYYY-MM.jsonl を列挙・読み込み。旧実装は "今月" 固定で他月のログが見えなかった問題を解消。
-  - **日別ヒストグラム**：モーダル上部に日別イベント数の棒グラフを表示（どの日にどれだけ変更があったか一目で把握）
-  - APP_VERSION：2026.09.14.002 → 2026.09.14.003
-
-- (dev v2026.09.14.002) **監査ログモーダルに「setStatus 履歴（分離データ）」タブを追加**：v:5 で分離した `status/{sid}.json` の `history[]` をショット横断で集約表示するタブを追加。既存の「全経路（監査ログ）」タブと 2 タブ構成にリファクタ。
-  - **タブ 1「全経路（監査ログ）」**：`audit/YYYY-MM.jsonl` の全記録（merge3・unionRemote・review-fallback・setStatus 全部）
-  - **タブ 2「setStatus 履歴（分離データ）」**：各 shot の `status/{sid}.json.history[]` を flatten して集約表示。**ユーザー明示操作のみのきれいな narrative**（マージ・refresh 系のノイズなし）。「そのショットが今の状態に至った経緯」を辿るのに最適。
-  - 共通実装 `renderEventsPane(pane, events, opts)` を導入して 2 タブで再利用。検索・source フィルタ・CSV 書き出し・巻き戻り疑い赤ハイライト・トレース tooltip も全部両タブで動作。
-  - APP_VERSION：2026.09.14.001 → 2026.09.14.002
-
-- (dev v2026.09.14.001) **ステータス変更専用の監査ログ機能**：v:5 導入後も現場で巻き戻り再発しているため、**あらゆる書き換え経路**を全部記録して原因追跡できるようにする。
-  - **storage.appendAudit(pid, events) / readAudit(pid, yyyymm)** 追加：`projects/{pid}/audit/YYYY-MM.jsonl` に append-only 記録。R2 未対応（フォルダ運用のみ）。
-  - **記録スキーマ**：`{ts, kind:'status_change', shotId, from, to, by, source, trace, ...extra}`
-  - **`_queueStatusAudit / _flushStatusAuditBuffer`**：200ms バッファで連続イベントをまとめて 1 回書き込み（read-modify-write 削減）。
-  - **`_snapshotShotStatuses(pid) / _diffAndLogStatusChanges(pid, before, source)`**：任意の書き換え経路の前後で status 差分を検出→ログ。
-  - **`_logStatusChange(pid, sid, prev, next, source, extra)`**：単発ログ（prev===next は自動 skip）。スタックトレースを短く付与。
-  - **記録対象の書き換え経路**（source ラベル）：
-    - `setStatus:ui / setStatus:upload / setStatus:submit / setStatus:migrate` … 正常な明示操作
-    - `merge3:saveShotWithLock` … 3-way マージ（knownRev/remoteRev/sid 付き）← 最有力容疑
-    - `applyMergedIntoDB:v<4` … v<4 プロジェクトの全体 3-way マージ結果
-    - `unionRemoteIntoDB:refresh` … refresh 経路の union-fill（opts 付き）
-    - `normalizeNodes:review-fallback` … review.status からの復元（lastVer 付き）
-    - `hydrateShots:Object.assign` … 既存値がある場合の disk 上書きのみ（初回 null→X はノイズ抑制）
-  - **UI ビューア（openStatusAuditModal(pid)）**：プロジェクト設定モーダルに「📜 監査ログを見る」ボタン追加。
-    - 検索・source フィルタ・巻き戻り疑い source を赤背景ハイライト（merge3・unionRemote・review-fallback・applyMergedIntoDB）
-    - 行ホバーでスタックトレース＋全データ表示
-    - CSV 書き出し対応
-    - 最新順表示・500 件で打ち止め
-  - **コンソール API**：`_showStatusAudit(pid, limit)`（console.table 表示）／`openStatusAuditModal(pid)`（モーダル）
-  - APP_VERSION：2026.09.12.002 → 2026.09.14.001
-
+（現在なし。直近のサイレント反映は下部の「反映済み・パッチノート記載なし」参照）
 ---
 
 ## 反映済み beta v0.2.0（2026-09-08）
@@ -1330,6 +1237,101 @@ GLB モデル差し替え／Maya 準拠カメラ／複数選択マニピュレ�
 ---
 
 ## 反映済み・パッチノート記載なし（Beta 反映済み・PATCH_NOTES.md 未記載）
+
+- **【2026-09-14 Beta v0.2.0 追加サイレント反映】** 監査ログ機能・v:5 復元経路の重大バグ修正 (v.001〜v.009) を Beta へサイレント反映（バージョン据え置き・パッチノート記載なし・現場で被害進行中の巻き戻り根本原因を潰したため即時反映）：
+  - (dev v2026.09.14.009) **【重大バグ修正】`loadProject` に `_hydrateStatuses` 呼び出しを追加**：v:5 status 分離の効果が起動時・F5 リロード時のパスで無効化されていた重大な抜け穴を修正。UI 巻き戻りの根本原因の一つ。
+    - **原因**：v:5 MVP 実装時、`readProjectData` にのみ `_hydrateStatuses` を追加し、`loadProject`（起動時・F5 リロード時のパス）に追加し忘れていた。
+    - **影響**：
+      - autoRefresh 経由の同期時：`readProjectData` → `_hydrateStatuses` → v:5 復元 ✅
+      - **F5 リロード・初回起動時：`loadProject` → `_hydrateStatuses` 未呼び出し** → shot.json inline の古い status がそのまま反映 ❌
+    - **具体的な再現手順**：同一ショットを複数タブで開く → タブ A で status 変更 → タブ B でリフレッシュより先に担当者変更（3-way マージで shot.json inline に古い status が書き込まれる）→ タブ A で F5 → shot.json inline の古い status が反映されて UI 上で巻き戻り発生
+    - **修正**：`loadProject` の両パス（R2 / フォルダ）に `await this._hydrateStatuses(id,parsed)` を追加。これで起動時・F5 リロード時にも status.json による権威源復元が働く。
+    - APP_VERSION：2026.09.14.008 → 2026.09.14.009
+  
+  - (dev v2026.09.14.008) **v:5 復元処理の可視化＋整合性チェックボタン追加**：現場で「読込上書きで status が巻き戻った」報告あり、v:5 の復元が本当に効いているかを実行時検証できるようにする。
+    - **`_hydrateStatuses` に監査ログ記録追加**：`hydrateShots:Object.assign` の直後に走る v:5 復元処理を audit log に記録（source: `hydrateStatuses:v5restore`・緑・防御動作扱い）。これで「読込上書きで書き換わった直後に v:5 が正しい値に戻している」という一連の防御シーケンスが log 上で可視化される。
+    - **`_verifyStatusIntegrity(pid)` 診断関数を追加**：全ショットについて memory の `node.status` と disk 上の `status/{sid}.json.status` を比較。不一致があれば v:5 分離の抜け穴と判定できる。コンソールから `_verifyStatusIntegrity()` で呼び出し可能。
+    - **監査ログモーダルに「🔬 整合性チェック」ボタン追加**：ワンクリックで整合性検証、結果を toast / alert で表示。不一致があれば要調査、なければ v:5 分離は正常。
+    - **切り分けフロー**：
+      1. 「読込上書き」ログを見た時にすぐ「整合性チェック」を実行
+      2. すべて一致 = 復元が働いている（UI は正常）
+      3. 不一致あり = v:5 抜け穴（要修正）
+    - APP_VERSION：2026.09.14.007 → 2026.09.14.008
+  
+  - (dev v2026.09.14.007) **監査ログ：ショット絞り込みセレクタ追加＋フォルダ同期を「通常同期」に降格**：現場運用フィードバックに対応。
+    - **ショット絞り込みセレクタ**：モーダルのフィルタバーに「対象ショット」ドロップダウンを追加。events 中に登場する shotId を件数多い順で列挙、`ショット名 (件数)` の形式。カットごとの履歴に絞り込んで見られる。
+    - **フォルダ同期の色を赤 → 青に降格**：`unionRemoteIntoDB:refresh` は多重ユーザー運用の正常同期経路であることが実運用で確認できたため、`danger:true 赤` → `danger:false 青` にリクラス。⚠ 要確認バッジと赤背景が消え、正常動作として扱われる。
+    - 赤（⚠ 要確認）は「巻き戻り事故の主犯経路」の `3-way マージ` / `v<4 マージ` に限定。
+    - 黄（要確認）は「状況次第で危険」の `復元処理` / `読込上書き` に限定。
+    - 検索プレースホルダを「ショット名・user...」に更新。source セレクタも日本語ラベル化。
+    - 凡例文を「色分けの新しい意味」に合わせて書き直し。
+    - APP_VERSION：2026.09.14.006 → 2026.09.14.007
+  
+  - (dev v2026.09.14.006) **監査ログの表示を「いつ・誰が・どの操作で・対象ショット・変更内容」の 5 列に読みやすくリファクタ**：ID 表示が読めないという現場フィードバックに対応。
+    - **列構成**：`いつ` `誰が` `どの操作` `対象ショット` `変更内容` の 5 列。従来の `ts / shot / from→to / source / by` の順序を変更。
+    - **時刻**：メイン表示は「M/D HH:MM」の短縮形。下段に完全形の ISO を muted 表示。
+    - **誰が**：`@` 前の名前部分をメイン表示、フル email はサブ表示（`@` があるときのみ）
+    - **どの操作**：8 種類の source を日本語ラベル化＋色バッジ化
+      - `UI 操作`（紫）／`版アップロード`（シアン）／`提出`（緑）／`初回移行`（グレー）
+      - `3-way マージ`／`v<4 マージ`／`フォルダ同期`（赤・⚠ 要確認）
+      - `復元処理`／`読込上書き`（黄・⚠ 要確認）
+      - IDs の生表示は廃止。source フィルタは内部 ID 経由（filter は継続動作）
+    - **対象ショット**：メインはショット名、下段に階層パス（Scene A / SC-010 形式）を muted 表示
+    - **変更内容**：`未着手 → 作業中` の形式でステータス名＋各ステータスの色を反映。ID の生表示（`in_progress` 等）は廃止
+    - フォーマッタ群 `_fmtTs / _fmtUser / _fmtSource / _fmtShotPath / _fmtStatus` を導入
+    - `_sourceLabels` テーブルで日本語ラベル化を集中管理
+    - APP_VERSION：2026.09.14.005 → 2026.09.14.006
+  
+  - (dev v2026.09.14.005) **監査ログモーダルに 3 つ目のタブ「生データ（JSON）」を追加**：F12 コンソールを開かなくても UI 上で status/*.json の実データを直接確認できる。
+    - **ショット選択ドロップダウン**：全ショットをプルダウンで選択、`ショット名 · status:X · history:N` の形式で表示。履歴が多い順にソート、status.json が無いショットは末尾に `⚠ status.json 無し` バッジ付き
+    - **「全ショットサマリ」ビュー**：デフォルト表示。プロジェクト全体の統計＋先頭 20 ショットの status.json 概要（shotId・status・updatedAt・historyLength・_rev）を整形 JSON で表示
+    - **個別ショットビュー**：選んだショットの status.json 全内容を整形表示。ファイルが無ければ `⚠️ status/{sid}.json は disk に存在しません` と警告表示 + DB ノード情報も表示
+    - **クリップボードコピーボタン**：表示中の JSON をワンクリックでコピー
+    - **切り分け目的**：「history[] が空/ない → disk に届いていない」／「history[] があるが上のタブに出ない → 表示側バグ」の判別が UI だけで可能に
+    - APP_VERSION：2026.09.14.004 → 2026.09.14.005
+  
+  - (dev v2026.09.14.004) **監査ログモーダルの表示側フィルタを完全撤廃＋診断バー・生 JSON ダンプ追加**：現場で「JSON にデータあるのに表示されない」との報告あり、表示側の過度なフィルタが原因の可能性を排除。
+    - **表示側フィルタ撤廃**：`null→null / 同値エントリを表示側で全部除外` を撤廃。クリーンアップは disk 側（`_cleanupNullStatusHistories`）だけに任せる。表示側は全エントリをそのまま流す。
+    - **診断バー**：モーダル上部に「DB ショット数・status.json 読込数・履歴あり数・history 総エントリ数・audit 総件数」を常時表示。0 のカラムがあれば読み込み側の問題と即判定できる。
+    - **生 JSON ダンプボタン**：「🔍 生 JSON をコンソールに出力」で shotIds・statusFiles 全て・auditEvents・historyEvents を console.group で完全出力。ユーザーが F12 で内容確認可能。
+    - **console.group 診断ログ**：モーダルを開いた時点で自動的にコンソールに shot count / loaded files / history entries の統計と最初のショットの status.json 全体を出力。
+    - APP_VERSION：2026.09.14.003 → 2026.09.14.004
+  
+  - (dev v2026.09.14.003) **監査ログのノイズ対策・複数月対応・日別ヒストグラム追加**：v.049 の一括マイグレで null→null ノイズが大量に生成されて実際の変更履歴が埋もれていた問題を修正。
+    - **マイグレ修正**：`_migrateV5Statuses` で未着手（cur==null）のショットは history エントリを生成しない（`from:null,to:null` の無意味エントリを廃止）
+    - **既存データのクリーンアップ**：`_cleanupNullStatusHistories(pid)` を新設。起動時に全 status/{sid}.json を走査して null→null や同値エントリを一括除去。件数をコンソールに出力（トーストは出さない）。
+    - **表示側フィルタ**：setStatus 履歴タブでも null→null エントリを表示時に除外（既存の破損データが残っている環境向け安全網）
+    - **月フィルタセレクタ**：モーダルの両タブに月選択ドロップダウンを追加。デフォルトは「全期間」。
+    - **listAuditMonths / readAuditAll**：audit ディレクトリ内の全 YYYY-MM.jsonl を列挙・読み込み。旧実装は "今月" 固定で他月のログが見えなかった問題を解消。
+    - **日別ヒストグラム**：モーダル上部に日別イベント数の棒グラフを表示（どの日にどれだけ変更があったか一目で把握）
+    - APP_VERSION：2026.09.14.002 → 2026.09.14.003
+  
+  - (dev v2026.09.14.002) **監査ログモーダルに「setStatus 履歴（分離データ）」タブを追加**：v:5 で分離した `status/{sid}.json` の `history[]` をショット横断で集約表示するタブを追加。既存の「全経路（監査ログ）」タブと 2 タブ構成にリファクタ。
+    - **タブ 1「全経路（監査ログ）」**：`audit/YYYY-MM.jsonl` の全記録（merge3・unionRemote・review-fallback・setStatus 全部）
+    - **タブ 2「setStatus 履歴（分離データ）」**：各 shot の `status/{sid}.json.history[]` を flatten して集約表示。**ユーザー明示操作のみのきれいな narrative**（マージ・refresh 系のノイズなし）。「そのショットが今の状態に至った経緯」を辿るのに最適。
+    - 共通実装 `renderEventsPane(pane, events, opts)` を導入して 2 タブで再利用。検索・source フィルタ・CSV 書き出し・巻き戻り疑い赤ハイライト・トレース tooltip も全部両タブで動作。
+    - APP_VERSION：2026.09.14.001 → 2026.09.14.002
+  
+  - (dev v2026.09.14.001) **ステータス変更専用の監査ログ機能**：v:5 導入後も現場で巻き戻り再発しているため、**あらゆる書き換え経路**を全部記録して原因追跡できるようにする。
+    - **storage.appendAudit(pid, events) / readAudit(pid, yyyymm)** 追加：`projects/{pid}/audit/YYYY-MM.jsonl` に append-only 記録。R2 未対応（フォルダ運用のみ）。
+    - **記録スキーマ**：`{ts, kind:'status_change', shotId, from, to, by, source, trace, ...extra}`
+    - **`_queueStatusAudit / _flushStatusAuditBuffer`**：200ms バッファで連続イベントをまとめて 1 回書き込み（read-modify-write 削減）。
+    - **`_snapshotShotStatuses(pid) / _diffAndLogStatusChanges(pid, before, source)`**：任意の書き換え経路の前後で status 差分を検出→ログ。
+    - **`_logStatusChange(pid, sid, prev, next, source, extra)`**：単発ログ（prev===next は自動 skip）。スタックトレースを短く付与。
+    - **記録対象の書き換え経路**（source ラベル）：
+      - `setStatus:ui / setStatus:upload / setStatus:submit / setStatus:migrate` … 正常な明示操作
+      - `merge3:saveShotWithLock` … 3-way マージ（knownRev/remoteRev/sid 付き）← 最有力容疑
+      - `applyMergedIntoDB:v<4` … v<4 プロジェクトの全体 3-way マージ結果
+      - `unionRemoteIntoDB:refresh` … refresh 経路の union-fill（opts 付き）
+      - `normalizeNodes:review-fallback` … review.status からの復元（lastVer 付き）
+      - `hydrateShots:Object.assign` … 既存値がある場合の disk 上書きのみ（初回 null→X はノイズ抑制）
+    - **UI ビューア（openStatusAuditModal(pid)）**：プロジェクト設定モーダルに「📜 監査ログを見る」ボタン追加。
+      - 検索・source フィルタ・巻き戻り疑い source を赤背景ハイライト（merge3・unionRemote・review-fallback・applyMergedIntoDB）
+      - 行ホバーでスタックトレース＋全データ表示
+      - CSV 書き出し対応
+      - 最新順表示・500 件で打ち止め
+    - **コンソール API**：`_showStatusAudit(pid, limit)`（console.table 表示）／`openStatusAuditModal(pid)`（モーダル）
+    - APP_VERSION：2026.09.12.002 → 2026.09.14.001
 
 - **【2026-09-12 Beta v0.2.0 追加サイレント反映】** ステータス JSON 分離（v:5 MVP）＋既存プロジェクト一括マイグレを Beta へサイレント反映（バージョン据え置き・パッチノート記載なし・現場の巻き戻り被害を即座に止めるため）：
   - (dev v2026.09.12.002) **既存プロジェクトの v:5 一括マイグレ**：現場で巻き戻り事故が進行中のため、lazy 方式から一括マイグレ方式に変更。起動時に `normalizeNodes` 実行後、全プロジェクトの全ショットに対して `status/{sid}.json` を自動作成（`_migrateV5Statuses(pid)`）。バックグラウンド実行（400ms setTimeout）で boot を止めない。0 件時は無音、1 件以上でトースト通知。既に status.json がある shot は skip（idempotent・複数回実行しても副作用なし）。R2 プロジェクトは saveStatus が false を返して自動 skip。`normalizeNodes` の review.status フォールバックで復元された値もこのマイグレで正しく永続化される。
