@@ -14,6 +14,13 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.14.004) **監査ログモーダルの表示側フィルタを完全撤廃＋診断バー・生 JSON ダンプ追加**：現場で「JSON にデータあるのに表示されない」との報告あり、表示側の過度なフィルタが原因の可能性を排除。
+  - **表示側フィルタ撤廃**：`null→null / 同値エントリを表示側で全部除外` を撤廃。クリーンアップは disk 側（`_cleanupNullStatusHistories`）だけに任せる。表示側は全エントリをそのまま流す。
+  - **診断バー**：モーダル上部に「DB ショット数・status.json 読込数・履歴あり数・history 総エントリ数・audit 総件数」を常時表示。0 のカラムがあれば読み込み側の問題と即判定できる。
+  - **生 JSON ダンプボタン**：「🔍 生 JSON をコンソールに出力」で shotIds・statusFiles 全て・auditEvents・historyEvents を console.group で完全出力。ユーザーが F12 で内容確認可能。
+  - **console.group 診断ログ**：モーダルを開いた時点で自動的にコンソールに shot count / loaded files / history entries の統計と最初のショットの status.json 全体を出力。
+  - APP_VERSION：2026.09.14.003 → 2026.09.14.004
+
 - (dev v2026.09.14.003) **監査ログのノイズ対策・複数月対応・日別ヒストグラム追加**：v.049 の一括マイグレで null→null ノイズが大量に生成されて実際の変更履歴が埋もれていた問題を修正。
   - **マイグレ修正**：`_migrateV5Statuses` で未着手（cur==null）のショットは history エントリを生成しない（`from:null,to:null` の無意味エントリを廃止）
   - **既存データのクリーンアップ**：`_cleanupNullStatusHistories(pid)` を新設。起動時に全 status/{sid}.json を走査して null→null や同値エントリを一括除去。件数をコンソールに出力（トーストは出さない）。

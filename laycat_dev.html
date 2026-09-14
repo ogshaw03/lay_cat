@@ -3441,7 +3441,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.14.003';
+const APP_VERSION='2026.09.14.004';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7635,28 +7635,80 @@ async function openStatusAuditModal(pid){
   const shotNodes=DB.nodes.filter(n=>_isShotNodeForSave(n,DB.nodes)&&rootOfId(n)===pid);
   const shotIds=shotNodes.map(n=>n.id);
   const statusFiles=await storage.loadAllStatuses(pid,shotIds);
-  /* status.json.history[] を flatten して events 形式に揃える
-     【v.050】表示側でも null→null エントリはフィルタ（クリーンアップ未実行の環境向け安全網） */
+  /* 【v.051 修正】status.json.history[] を flatten して events 形式に揃える。
+     以前は「null→null と同値エントリを表示側で全部フィルタ」していたが、これが
+     正当なデータまで隠していた可能性があるため、**表示側フィルタは完全撤廃**。
+     クリーンアップは disk 側の _cleanupNullStatusHistories だけに任せる。 */
   const historyEvents=[];
+  let _dbgFileCount=0,_dbgFilesWithHistory=0,_dbgTotalHistory=0;
   for(const f of (statusFiles||[])){
-    if(!f||!Array.isArray(f.history))continue;
+    if(!f)continue;
+    _dbgFileCount++;
+    if(!Array.isArray(f.history))continue;
+    _dbgFilesWithHistory++;
+    _dbgTotalHistory+=f.history.length;
     for(const h of f.history){
-      const _from=(h.from==null||h.from==='')?null:h.from;
-      const _to=(h.to==null||h.to==='')?null:h.to;
-      if(_from===_to)continue; /* null→null や同値エントリは表示しない */
       historyEvents.push({
         ts:h.ts,kind:'status_change',shotId:f.shotId,
-        from:_from,to:_to,by:h.by,
+        from:(h.from==null||h.from==='')?null:h.from,
+        to:(h.to==null||h.to==='')?null:h.to,
+        by:h.by,
         source:'setStatus:'+(h.source||'ui'),
         _rev:f._rev,
       });
     }
   }
   historyEvents.sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
+  /* 診断情報をコンソールに出力（現場デバッグ用）。ユーザーは F12 で確認可能。 */
+  try{
+    console.group('[laycat audit modal] '+(getNode(pid)&&getNode(pid).name||pid));
+    console.log('shot count (DB):', shotIds.length);
+    console.log('status.json files loaded:', _dbgFileCount);
+    console.log('  with history[]:', _dbgFilesWithHistory);
+    console.log('  total history entries:', _dbgTotalHistory);
+    console.log('  after flatten (displayed):', historyEvents.length);
+    console.log('audit/*.jsonl months:', auditMonths);
+    console.log('audit events total:', auditEvents.length);
+    if(statusFiles && statusFiles.length){
+      console.log('sample status.json (first shot):', statusFiles[0]);
+    }
+    console.groupEnd();
+  }catch(_){}
 
   const projName=(getNode(pid)&&getNode(pid).name)||pid;
   openModal(body=>{
     const inner=mHead(body,'ステータス変更 監査ログ',projName);
+    /* 【v.051】診断バーを追加：読み込み統計とコンソール出力ボタンで原因追跡を助ける */
+    const dbg=el('div');dbg.style.cssText='display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--bg2);border:1px solid var(--bd);border-radius:8px;margin-bottom:14px;font-size:11px;font-family:var(--font-code);color:var(--muted);flex-wrap:wrap';
+    dbg.innerHTML=`
+      <span>📊 診断：</span>
+      <span>DB ショット数 <b style="color:var(--fg,#eee)">${shotIds.length}</b></span>
+      <span style="color:var(--bd)">·</span>
+      <span>status.json 読込 <b style="color:var(--fg,#eee)">${_dbgFileCount}</b></span>
+      <span style="color:var(--bd)">·</span>
+      <span>履歴あり <b style="color:var(--fg,#eee)">${_dbgFilesWithHistory}</b></span>
+      <span style="color:var(--bd)">·</span>
+      <span>history 総エントリ <b style="color:${_dbgTotalHistory>0?'#5cc7ef':'#ee6a6a'}">${_dbgTotalHistory}</b></span>
+      <span style="color:var(--bd)">·</span>
+      <span>audit 総件数 <b style="color:var(--fg,#eee)">${auditEvents.length}</b></span>
+    `;
+    const rawBtn=el('button','btn btn-ghost');rawBtn.type='button';rawBtn.textContent='🔍 生 JSON をコンソールに出力';rawBtn.style.cssText='padding:4px 10px;font-size:11px;margin-left:auto';
+    rawBtn.onclick=()=>{
+      try{
+        console.group('[laycat audit modal] 生データ dump: '+projName);
+        console.log('=== shotIds ===');console.log(shotIds);
+        console.log('=== status.json ファイル群（loadAllStatuses の返り値） ===');
+        for(const f of (statusFiles||[])){
+          console.log(f&&f.shotId?f.shotId+':':'(null)',f);
+        }
+        console.log('=== audit events (readAuditAll の返り値) ===');console.log(auditEvents);
+        console.log('=== historyEvents (flatten 後) ===');console.log(historyEvents);
+        console.groupEnd();
+        toast('生 JSON をコンソール（F12）に出力しました');
+      }catch(e){toast('出力失敗: '+e.message)}
+    };
+    dbg.appendChild(rawBtn);
+    inner.appendChild(dbg);
     /* タブバー */
     const tabBar=el('div');tabBar.style.cssText='display:flex;gap:2px;margin-bottom:14px;border-bottom:1px solid var(--bd)';
     function mkTab(label,cnt,active){
