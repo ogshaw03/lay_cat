@@ -3441,7 +3441,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.14.004';
+const APP_VERSION='2026.09.14.005';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7720,23 +7720,24 @@ async function openStatusAuditModal(pid){
     }
     const tabAudit=mkTab('全経路（監査ログ）',auditEvents.length,true);
     const tabHist=mkTab('setStatus 履歴（分離データ）',historyEvents.length,false);
-    tabBar.appendChild(tabAudit);tabBar.appendChild(tabHist);
+    const tabRaw=mkTab('生データ（JSON）',_dbgFileCount,false);
+    tabBar.appendChild(tabAudit);tabBar.appendChild(tabHist);tabBar.appendChild(tabRaw);
     inner.appendChild(tabBar);
-    /* 2 つの pane コンテナ */
+    /* 3 つの pane コンテナ */
     const paneAudit=el('div');
     const paneHist=el('div');paneHist.style.display='none';
-    inner.appendChild(paneAudit);inner.appendChild(paneHist);
+    const paneRaw=el('div');paneRaw.style.display='none';
+    inner.appendChild(paneAudit);inner.appendChild(paneHist);inner.appendChild(paneRaw);
     /* タブ切替 */
-    tabAudit.onclick=()=>{
-      tabAudit.style.borderBottomColor='var(--purple,#A56BF0)';tabAudit.style.color='var(--fg,#eee)';
-      tabHist.style.borderBottomColor='transparent';tabHist.style.color='var(--muted,#888)';
-      paneAudit.style.display='';paneHist.style.display='none';
-    };
-    tabHist.onclick=()=>{
-      tabHist.style.borderBottomColor='var(--purple,#A56BF0)';tabHist.style.color='var(--fg,#eee)';
-      tabAudit.style.borderBottomColor='transparent';tabAudit.style.color='var(--muted,#888)';
-      paneHist.style.display='';paneAudit.style.display='none';
-    };
+    function activate(a,b,c){
+      for(const t of [tabAudit,tabHist,tabRaw]){t.style.borderBottomColor='transparent';t.style.color='var(--muted,#888)'}
+      a.style.borderBottomColor='var(--purple,#A56BF0)';a.style.color='var(--fg,#eee)';
+      paneAudit.style.display='none';paneHist.style.display='none';paneRaw.style.display='none';
+      b.style.display='';
+    }
+    tabAudit.onclick=()=>activate(tabAudit,paneAudit);
+    tabHist.onclick=()=>activate(tabHist,paneHist);
+    tabRaw.onclick=()=>activate(tabRaw,paneRaw);
     /* 共通レンダラ：events 配列を検索・source フィルタ・CSV 書き出しつきテーブルで表示 */
     function renderEventsPane(pane,events,opts){
       opts=opts||{};
@@ -7854,6 +7855,82 @@ async function openStatusAuditModal(pid){
       emptyMsg:'まだ status/*.json の履歴がありません。setStatus 経由の変更（UI・upload・submit・migrate）が発生すると記録されます。',
       legend:'各 <code>status/{sid}.json</code> の <code>history[]</code> をショット横断で集約表示。v:5 で分離した「権威源データ」の変遷を確認できます。<b style="color:#a56bf0">全て setStatus:* エントリ</b>（マージ・refresh 等の書き換えは含まれません）。null→null エントリは自動フィルタで非表示。',
     });
+    /* 【v.051】「生データ」タブ：全ての status/{sid}.json の内容を UI 上で直接確認できる。
+       ショット選択ドロップダウン＋整形 JSON 表示＋クリップボードコピー。F12 不要。 */
+    (function buildRawPane(){
+      const p=paneRaw;
+      const desc=el('div','muted');desc.style.cssText='font-size:11px;margin-bottom:10px;padding:8px 12px;background:var(--bg2);border-radius:6px';
+      desc.innerHTML='<b>生データビューア</b>：ディスク上の <code>projects/{pid}/status/{sid}.json</code> の中身をショット単位で直接表示します。JSON の実データと画面表示の差を突き合わせるためのタブです。<br>「history[] が空 or ない → 期待するデータが disk に届いていない」／「history[] があるが上のタブに出ない → 表示側バグ」の切り分けに使ってください。';
+      p.appendChild(desc);
+      /* コントロールバー */
+      const ctl=el('div');ctl.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap';
+      const sel=el('select','form-input');sel.style.cssText='flex:1;min-width:200px;padding:6px 10px;font-size:12px';
+      /* オプション：全体サマリ */
+      const optAll=el('option',null,'▼ 全ショットサマリ（先頭 20 件）');optAll.value='__all__';sel.appendChild(optAll);
+      /* オプション：ショット別（履歴あり優先） */
+      const filesByShot={};for(const f of (statusFiles||[])){if(f&&f.shotId)filesByShot[f.shotId]=f}
+      const shotEntries=shotIds.map(sid=>{
+        const nm=(getNode(sid)&&getNode(sid).name)||sid.slice(-8);
+        const f=filesByShot[sid];
+        const hcnt=(f&&Array.isArray(f.history))?f.history.length:0;
+        const st=(f&&f.status!=null)?f.status:'(未着手)';
+        return {sid,nm,hcnt,st,hasFile:!!f};
+      });
+      /* 履歴多い順 → 履歴少ない順 → ファイル無し */
+      shotEntries.sort((a,b)=>b.hcnt-a.hcnt||(a.hasFile===b.hasFile?0:a.hasFile?-1:1));
+      for(const e of shotEntries){
+        const o=el('option',null,`${e.nm} · status:${e.st} · history:${e.hcnt}${e.hasFile?'':' · ⚠ status.json 無し'}`);
+        o.value=e.sid;sel.appendChild(o);
+      }
+      const lblSel=el('span','muted','対象:');lblSel.style.fontSize='11px';
+      ctl.appendChild(lblSel);
+      ctl.appendChild(sel);
+      const copyBtn=el('button','btn btn-ghost');copyBtn.type='button';copyBtn.textContent='📋 表示中をコピー';copyBtn.style.cssText='font-size:12px;padding:6px 12px';
+      ctl.appendChild(copyBtn);
+      p.appendChild(ctl);
+      /* 表示エリア */
+      const preWrap=el('div');preWrap.style.cssText='max-height:60vh;overflow:auto;border:1px solid var(--bd);border-radius:8px;background:#0d0d10';
+      const pre=el('pre');pre.style.cssText='margin:0;padding:14px;font-family:var(--font-code);font-size:12px;line-height:1.5;color:#eee;white-space:pre-wrap;word-break:break-all';
+      preWrap.appendChild(pre);p.appendChild(preWrap);
+      function fmt(o){try{return JSON.stringify(o,null,2)}catch(_){return String(o)}}
+      function renderRaw(){
+        if(sel.value==='__all__'){
+          const summary={
+            project:{id:pid,name:projName},
+            shotCount:shotIds.length,
+            statusFilesLoaded:_dbgFileCount,
+            statusFilesWithHistory:_dbgFilesWithHistory,
+            totalHistoryEntries:_dbgTotalHistory,
+            auditMonths:auditMonths,
+            auditEventsTotal:auditEvents.length,
+            historyEventsTotal:historyEvents.length,
+            firstFewFiles:(statusFiles||[]).slice(0,20).map(f=>({
+              shotId:f&&f.shotId,
+              status:f&&f.status,
+              updatedAt:f&&f.updatedAt,
+              updatedBy:f&&f.updatedBy,
+              historyLength:(f&&Array.isArray(f.history))?f.history.length:'(no history[])',
+              _rev:f&&f._rev,
+            })),
+          };
+          pre.textContent=fmt(summary);
+        }else{
+          const sid=sel.value;
+          const f=filesByShot[sid];
+          if(!f){
+            pre.textContent=`⚠️ status/${sid}.json は disk に存在しません（loadStatus が null を返しました）。\n\n未マイグレのショット or フォルダ書き込み失敗が疑われます。\n\nDB 上のノード情報:\n${fmt(getNode(sid))}`;
+          }else{
+            pre.textContent=fmt(f);
+          }
+        }
+      }
+      sel.onchange=renderRaw;
+      copyBtn.onclick=()=>{
+        try{navigator.clipboard.writeText(pre.textContent);toast('クリップボードにコピーしました')}
+        catch(e){toast('コピー失敗（クリップボード権限を確認）')}
+      };
+      renderRaw();
+    })();
     mFoot(body,[(()=>{const b=el('button','btn','閉じる');b.onclick=closeModal;return b})()]);
   },true);
 }
