@@ -136,8 +136,18 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row .track{position:relative;height:100%;padding:8px 0;min-height:60px}
 .gantt-row .track .day{position:absolute;top:0;bottom:0;border-right:1px solid rgba(255,255,255,.02)}
 .gantt-row .track .day.wknd{background:rgba(255,255,255,.015)}
-.gantt-row .track .seg-plan{position:absolute;top:9px;height:14px;border:1px dashed;border-radius:var(--radius2);overflow:hidden}
-.gantt-row .track .seg-plan .seg-lbl{position:absolute;left:5px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;font-family:var(--font-head);font-weight:600;letter-spacing:.2px;white-space:nowrap;pointer-events:none}
+.gantt-row .track .seg-plan{position:absolute;top:9px;height:14px;border:1px dashed;border-radius:var(--radius2);overflow:visible;cursor:grab;user-select:none}
+.gantt-row .track .seg-plan:hover{filter:brightness(1.4)}
+.gantt-row .track .seg-plan.dragging{cursor:grabbing;filter:brightness(1.6);z-index:5}
+.gantt-row .track .seg-plan .seg-lbl{position:absolute;left:5px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;font-family:var(--font-head);font-weight:600;letter-spacing:.2px;white-space:nowrap;pointer-events:none;overflow:hidden}
+/* ドラッグハンドル：左右端の 6px でリサイズ、中央は移動 */
+.gantt-row .track .seg-plan .handle{position:absolute;top:0;bottom:0;width:6px;cursor:ew-resize}
+.gantt-row .track .seg-plan .handle.l{left:0}
+.gantt-row .track .seg-plan .handle.r{right:0}
+.gantt-row .track .seg-plan:hover .handle{background:rgba(255,255,255,.25)}
+/* ドラッグ中のツールチップ */
+.drag-tip{position:fixed;z-index:1000;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius2);padding:6px 10px;font-size:11px;color:var(--text);font-family:var(--font-code);white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.5);pointer-events:none}
+.drag-tip .lbl{color:var(--text3);font-size:10px;margin-right:6px;letter-spacing:.5px}
 .gantt-row .track .seg-actual{position:absolute;top:30px;height:14px;border-radius:var(--radius2)}
 .gantt-row .track .seg-actual.wip{border-right:1px dashed rgba(255,255,255,.35)}
 .gantt-row .track .seg-actual.late{outline:1px solid rgba(224,106,106,.5)}
@@ -424,7 +434,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.16.001';
+const APP_VERSION='2026.09.16.002';
 
 /* =========== ダミーデータ =========== */
 const TODAY = new Date('2026-09-16');
@@ -572,12 +582,12 @@ function buildGantt(){
       const dow = dt.getDay();
       if(dow===0||dow===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
     }
-    /* 予定バー：工程色の破線枠 */
+    /* 予定バー：工程色の破線枠（ドラッグで期間伸縮可能） */
     for(const st of stages){
       if(!st.plan) continue;
       const [p1,p2]=st.plan; const w=(p2-p1)*px;
       const cfg=STAGES[st.id]||{label:st.id,color:'#888'};
-      track.push(`<div class="seg-plan" style="left:${p1*px}%;width:${w}%;border-color:${cfg.color};background:${cfg.color.replace('var(','').replace(')','')}"><span class="seg-lbl" style="color:${cfg.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${cfg.label}</span></div>`);
+      track.push(`<div class="seg-plan" data-shot="${s.id}" data-stage="${st.id}" style="left:${p1*px}%;width:${w}%;border-color:${cfg.color};background:${cfg.color.replace('var(','').replace(')','')}"><span class="seg-lbl" style="color:${cfg.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${cfg.label}</span><div class="handle l"></div><div class="handle r"></div></div>`);
     }
     /* 実績バー：工程色でソリッド塗り */
     for(const st of stages){
@@ -756,6 +766,92 @@ document.getElementById('scaleToggle').addEventListener('click',e=>{
   b.classList.add('on');
 });
 
+/* =========== スケジュール編集：予定バーのドラッグ =========== */
+/* 予定バーの左端/右端/中央をドラッグして工程の開始日・終了日を変更。
+   - 中央ドラッグ → 期間を維持したまま平行移動
+   - 左端ドラッグ → 開始日のみ変更（終了日は固定）
+   - 右端ドラッグ → 終了日のみ変更（開始日は固定）
+   - 1 日単位でスナップ、最小 1 日
+   - ドラッグ中は日付ツールチップを表示
+   実運用（Phase 1）では変更をそのまま status.json ではなく schedule/{sid}.json に保存する。
+   現在はモックのため in-memory の SHOTS 配列を更新して再描画のみ。 */
+function fmtDate(dayIdx){
+  const d = new Date(RANGE_START);
+  d.setDate(d.getDate() + dayIdx);
+  const M = d.getMonth()+1, D = d.getDate();
+  const wk = ['日','月','火','水','木','金','土'][d.getDay()];
+  return `${M}/${D}（${wk}）`;
+}
+function initScheduleDrag(){
+  const body = document.getElementById('ganttBody');
+  let drag = null; /* {shotId, stageId, mode:'move'|'resize-l'|'resize-r', startX, origP1, origP2, trackW} */
+  const tip = document.createElement('div');
+  tip.className='drag-tip'; tip.style.display='none';
+  document.body.appendChild(tip);
+
+  body.addEventListener('mousedown', e=>{
+    const seg = e.target.closest('.seg-plan');
+    if(!seg) return;
+    const shotId = seg.dataset.shot, stageId = seg.dataset.stage;
+    const shot = SHOTS.find(s=>s.id===shotId);
+    if(!shot) return;
+    const st = shot.stages.find(x=>x.id===stageId);
+    if(!st||!st.plan) return;
+    const track = seg.parentElement;
+    const trackW = track.getBoundingClientRect().width;
+    const mode = e.target.classList.contains('handle')
+      ? (e.target.classList.contains('l')?'resize-l':'resize-r')
+      : 'move';
+    drag = {seg, shotId, stageId, st, mode, startX:e.clientX, origP1:st.plan[0], origP2:st.plan[1], trackW};
+    seg.classList.add('dragging');
+    tip.style.display='block';
+    e.preventDefault();
+  });
+
+  window.addEventListener('mousemove', e=>{
+    if(!drag) return;
+    const dx = e.clientX - drag.startX;
+    const dayShift = Math.round((dx / drag.trackW) * DAYS);
+    let p1 = drag.origP1, p2 = drag.origP2;
+    if(drag.mode === 'move'){ p1 += dayShift; p2 += dayShift; }
+    else if(drag.mode === 'resize-l'){ p1 = Math.min(drag.origP2-1, drag.origP1 + dayShift); }
+    else if(drag.mode === 'resize-r'){ p2 = Math.max(drag.origP1+1, drag.origP2 + dayShift); }
+    /* 範囲クランプ */
+    if(p1<0){ const shift=-p1; p1=0; if(drag.mode==='move') p2+=shift; }
+    if(p2>DAYS-1){ const shift=p2-(DAYS-1); p2=DAYS-1; if(drag.mode==='move') p1-=shift; }
+    if(p1<0)p1=0; if(p2>DAYS-1)p2=DAYS-1;
+    /* 反映 */
+    drag.st.plan[0] = p1; drag.st.plan[1] = p2;
+    const px = 100/DAYS;
+    drag.seg.style.left = (p1*px)+'%';
+    drag.seg.style.width = ((p2-p1)*px)+'%';
+    /* ツールチップ */
+    const stg = STAGES[drag.stageId] || {label:drag.stageId};
+    const modeText = drag.mode==='resize-l'?'開始日':(drag.mode==='resize-r'?'終了日':'期間移動');
+    tip.innerHTML = `
+      <div><span class="lbl">${drag.shotId} · ${stg.label}</span></div>
+      <div><span class="lbl">${modeText}</span>${fmtDate(p1)} — ${fmtDate(p2)} <span style="color:var(--text3)">（${p2-p1}日）</span></div>
+    `;
+    tip.style.left = (e.clientX + 14) + 'px';
+    tip.style.top  = (e.clientY - 40) + 'px';
+  });
+
+  window.addEventListener('mouseup', ()=>{
+    if(!drag) return;
+    drag.seg.classList.remove('dragging');
+    tip.style.display='none';
+    /* TODO: Phase 1 実装時は schedule/{sid}.json に保存 */
+    /* console.log('[pmboard] schedule updated:', drag.shotId, drag.stageId, drag.st.plan); */
+    drag = null;
+    /* 状態集計（遅延判定など）が変わり得るのでロールアップ chip を更新するため再描画。
+       ただし他のバーの位置は同じデータ参照なので、位置は保たれる（in-memory）。 */
+    document.getElementById('ganttBody').innerHTML='';
+    /* Today marker が二重にならないよう既存を除去 */
+    document.querySelectorAll('.gantt-today').forEach(x=>x.remove());
+    buildGantt();
+  });
+}
+
 /* Init */
 document.getElementById('appVer').textContent = APP_VERSION;
 buildTimelineHdr();
@@ -763,6 +859,7 @@ buildGantt();
 buildRetakeChart();
 buildActivityChart();
 buildLog();
+initScheduleDrag();
 </script>
 
 </body>
