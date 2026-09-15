@@ -165,6 +165,8 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row .shot .meta{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;align-items:center}
 .gantt-row .shot .stbadges{display:flex;gap:2px}
 .gantt-row .shot .stbadge{font-size:9px;font-family:var(--font-head);font-weight:700;width:14px;height:14px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.gantt-row .shot .asg-badges{display:inline-flex;gap:2px;margin-left:4px}
+.gantt-row .shot .asg-badge{font-size:9px;font-family:var(--font-head);font-weight:600;width:14px;height:14px;border-radius:50%;border:1px solid;display:inline-flex;align-items:center;justify-content:center;line-height:1}
 /* mp-badge に似せた status chip */
 .st-chip{display:inline-flex;align-items:center;font-size:10px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-weight:500}
 .st-chip.done{background:rgba(127,191,154,.13);border-color:rgba(127,191,154,.42);color:var(--green)}
@@ -485,7 +487,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.16.006';
+const APP_VERSION='2026.09.16.007';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -682,6 +684,14 @@ const DATA = {
   loaded: false,
 };
 
+/* フィルタ状態：サイドバーのセレクタと連動 */
+const FILTERS = {
+  assignee: '', /* member id */
+  stage: '',    /* stage name */
+  status: '',   /* status id */
+  search: '',   /* free text */
+};
+
 async function loadProjectData(){
   /* laycat.project.json を読む（旧名 layna.project.json も念のため） */
   let proj = await storage.readJson('laycat.project.json');
@@ -745,15 +755,19 @@ async function loadProjectData(){
       const plannedEnd = ss.plannedEnd ? new Date(ss.plannedEnd) : null;
       const sf = statusMap[k.id];
       const history = (sf && Array.isArray(sf.history)) ? sf.history : [];
-      let actualStart=null, actualEnd=null, isDone=false;
+      let actualStart=null, actualEnd=null, isDone=false, currentStatus=null;
       if(history.length){
         const firstMeaningful = history.find(h=>h && h.to);
         if(firstMeaningful) actualStart = new Date(firstMeaningful.ts);
         const last = history[history.length-1];
         if(last && last.ts) actualEnd = new Date(last.ts);
-        isDone = isStatusDone(sf.status, projStatuses);
+        currentStatus = sf.status || null;
+        isDone = isStatusDone(currentStatus, projStatuses);
       }
-      return {reviewNode:k, kind, label, color, plannedStart, plannedEnd, actualStart, actualEnd, isDone, history};
+      /* review node にも current status を反映（LayCAT の v:5 分離では node.status = status.json.status） */
+      const assignee = k.assignee || null;
+      const reviewer = k.reviewer || null;
+      return {reviewNode:k, kind, label, color, plannedStart, plannedEnd, actualStart, actualEnd, isDone, currentStatus, assignee, reviewer, history};
     });
     shots.push({sectionNode:section, stages, milestones:(sched.milestones||[])});
   }
@@ -849,6 +863,36 @@ function buildTimelineHdr(){
   hdr.appendChild(weeks); hdr.appendChild(dow);
 }
 
+/* =========== フィルタ適用 =========== */
+function filterShots(shots){
+  const {assignee, stage, status, search} = FILTERS;
+  const q = search.trim().toLowerCase();
+  return shots.filter(shot=>{
+    /* 検索：shot 名 or id に部分一致 */
+    if(q){
+      const hay = ((shot.sectionNode.name||'') + ' ' + (shot.sectionNode.id||'')).toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    /* 担当者：少なくとも 1 工程で assignee (or reviewer) が一致すれば通過 */
+    if(assignee){
+      const has = shot.stages.some(st => (st.assignee && String(st.assignee).toLowerCase()===String(assignee).toLowerCase())
+                                       || (st.reviewer && String(st.reviewer).toLowerCase()===String(assignee).toLowerCase()));
+      if(!has) return false;
+    }
+    /* 工程：ショットに指定工程名が存在するかどうか */
+    if(stage){
+      const has = shot.stages.some(st => st.reviewNode.name === stage);
+      if(!has) return false;
+    }
+    /* ステータス：少なくとも 1 工程の現在ステータスが一致 */
+    if(status){
+      const has = shot.stages.some(st => st.currentStatus === status);
+      if(!has) return false;
+    }
+    return true;
+  });
+}
+
 /* Scene グループ判定：shot section の 1 段上の親（root でなければグループ扱い） */
 function shotScene(shot){
   const nodes = (DATA.project&&DATA.project.nodes)||[];
@@ -882,8 +926,16 @@ function buildGantt(){
   const px = 100/days;
   const todayIdx = dayIdx(new Date());
 
+  /* フィルタ適用 */
+  const filteredShots = filterShots(DATA.shots);
+  if(!filteredShots.length){
+    body.innerHTML=`<div class="empty-panel"><div class="ep-ico">🔍</div><div class="ep-title">条件に合うショットがありません</div><div class="ep-sub">サイドバーのフィルタを緩めるか、検索文字列を変更してください。</div></div>`;
+    /* Today marker を出さないよう return */
+    return;
+  }
+
   const byScene = new Map();
-  for(const shot of DATA.shots){
+  for(const shot of filteredShots){
     const sc = shotScene(shot);
     const key = sc ? sc.id : '__top__';
     if(!byScene.has(key)) byScene.set(key,{scene:sc, shots:[]});
@@ -919,6 +971,26 @@ function buildGantt(){
         const ch = (st.label||'?').charAt(0).toUpperCase();
         return `<span class="stbadge" style="background:${st.color};opacity:.85;color:#16161a" title="${escapeHtml(st.reviewNode.name)}">${escapeHtml(ch)}</span>`;
       }).join('');
+      /* 担当者バッジ：ショット内の全工程の assignee/reviewer を集約 */
+      const rootNode = (DATA.project.nodes||[]).find(n=>n.id===DATA.project.id) || (DATA.project.nodes||[]).find(n=>!n.parentId);
+      const memberMap = new Map();
+      if(rootNode && Array.isArray(rootNode.members)){
+        for(const m of rootNode.members){ if(m&&m.id) memberMap.set(String(m.id).toLowerCase(), m); }
+      }
+      const asgSet = new Set();
+      const asgBadges = [];
+      for(const st of stages){
+        if(st.assignee){
+          const key = String(st.assignee).toLowerCase();
+          if(!asgSet.has(key)){
+            asgSet.add(key);
+            const m = memberMap.get(key);
+            const nm = m ? (m.name||m.id) : st.assignee;
+            const col = m && m.color ? m.color : 'var(--green)';
+            asgBadges.push(`<span class="asg-badge" style="border-color:${col}55;background:${col}22;color:${col}" title="担当：${escapeHtml(nm)}">${escapeHtml((nm||'?').charAt(0))}</span>`);
+          }
+        }
+      }
 
       const track=[];
       /* Weekend */
@@ -982,7 +1054,7 @@ function buildGantt(){
         <div class="shot">
           <div class="id">${escapeHtml(shot.sectionNode.name||shot.sectionNode.id.slice(-8))}</div>
           <div class="name">${stages.length} 工程</div>
-          <div class="meta">${rollup}</div>
+          <div class="meta">${rollup}${asgBadges.length?`<span class="asg-badges">${asgBadges.join('')}</span>`:''}</div>
           <div class="stbadges">${stageBadges}</div>
         </div>
         <div class="track">${track.join('')}</div>
@@ -1337,6 +1409,19 @@ document.getElementById('projSelect').addEventListener('change', e=>{
   const pid = e.target.value;
   if(pid) switchToProject(pid);
 });
+/* =========== フィルタイベント =========== */
+function bindFilterEvents(){
+  const map = {fltAssignee:'assignee', fltStage:'stage', fltStatus:'status', fltSearch:'search'};
+  for(const [id,key] of Object.entries(map)){
+    const el = document.getElementById(id);
+    if(!el) continue;
+    const ev = (el.tagName==='INPUT') ? 'input' : 'change';
+    el.addEventListener(ev, ()=>{
+      FILTERS[key] = el.value || '';
+      buildGantt();
+    });
+  }
+}
 document.getElementById('folderStatus').addEventListener('click', ()=>{
   /* 許可未取得時に押されたらプロジェクトへ再接続を試行（button re-render で許可ボタンが出る） */
   if(!storage.dirHandle && storage.pid) switchToProject(storage.pid);
@@ -1369,6 +1454,7 @@ document.getElementById('appVer').textContent = APP_VERSION;
 buildOtherTabsPlaceholder();
 populateProjectPicker();
 initScheduleDrag();
+bindFilterEvents();
 updateFolderUI();
 /* 初期プロジェクトへ自動接続を試行 */
 const initialPid = document.getElementById('projSelect').value;
