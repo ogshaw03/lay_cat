@@ -2281,12 +2281,14 @@ const storage={
        ここで合成後の `parsed.nodes` から `saveProjectSplit` と同じ形で作れば乖離は消える。
        ローカル未保存編集の baseline を書き潰さないため、既に値がある場合は触らない（v.039 の意図）。 */
     const _sc=(_saveCache.shot[pid]=_saveCache.shot[pid]||{});
+    /* 【v.056 D-4】書き込み側 v:5 分離：baseline fingerprint も status キーを含めない形に統一 */
+    const _stripS=n=>{const c=Object.assign({},n);if('status' in c)delete c.status;return c;};
     for(const sid of _seedIds){
       if(_sc[sid]!=null)continue;
       const shotNode=nodeMap.get(sid);
       if(!shotNode)continue;
       const kids=parsed.nodes.filter(x=>x&&x.parentId===sid);
-      try{_sc[sid]=JSON.stringify({v:1,shotId:sid,nodes:[shotNode,...kids]});}catch(_){}
+      try{_sc[sid]=JSON.stringify({v:1,shotId:sid,nodes:[_stripS(shotNode),...kids.map(_stripS)]});}catch(_){}
     }
   },
   /* 現在フォルダ（またはlocalStorage）に保存されている実データを読む（暗号化なら復号）。
@@ -2327,9 +2329,13 @@ const storage={
      review.status フォールバックを無効化する（明示クリアが version 側から復元される事故を防ぐ）。 */
   async _hydrateStatuses(pid,parsed){
     if(!parsed||typeof parsed!=='object')return;
-    if(!Array.isArray(parsed.shotIds)||!parsed.shotIds.length)return;
-    const files=await this.loadAllStatuses(pid,parsed.shotIds);
-    if(!files.length)return;
+    /* 【v.056 重大バグ修正】以前は `parsed.shotIds`（ショット section の id）で loadAllStatuses を
+       呼んでいたが、setStatus は node.id（工程/review task の id）で status.json を書くため、
+       ID がすれ違って書いた status.json が実質読まれていなかった（v:5 分離が無効化されていた）。
+       修正：disk 上の status/ ディレクトリを列挙して、実在する全ファイルを読み込み、
+       中身の shotId フィールド（＝実際の node.id）で parsed.nodes とマッチさせる。 */
+    const files=await this.listAllStatusFiles(pid);
+    if(!files||!files.length)return;
     const nodeMap=new Map();
     for(const n of (parsed.nodes||[]))if(n&&n.id)nodeMap.set(n.id,n);
     for(const f of files){
@@ -2338,8 +2344,7 @@ const storage={
       if(!n)continue;
       _v5StatusShots.add(pid+':'+f.shotId);
       /* 【v.054】status.json による復元処理を audit log に記録：
-         「読込上書き」で書き換わった直後に v:5 が正しい値に戻していることを可視化する。
-         復元前後で値が変わった時のみ記録（無変化ならスキップ）。 */
+         「読込上書き」で書き換わった直後に v:5 が正しい値に戻していることを可視化する。 */
       const _prevStat=(n.status==null||n.status==='')?null:n.status;
       /* status.json の値で override（null/undefined なら未着手＝キー削除） */
       if(f.status==null||f.status==='')delete n.status;
@@ -2560,6 +2565,37 @@ const storage={
     const list=await Promise.all(ids.map(id=>this.loadStatus(pid,id)));
     return list.filter(x=>x&&x.shotId);
   },
+  /* 【v.056】status/ ディレクトリ配下の全 JSON を列挙して並列読み込みする。
+     従来 loadAllStatuses は「呼び出し側が渡した ids」しか読めなかったため、
+     shotIds（親 section の id）で呼び出すと工程（review task）レベルの
+     status/{taskId}.json が読み込まれず、v:5 分離が実質無効化されていた。
+     このヘルパで disk 上に実在する status.json を全部読めば、
+     どの node id で書かれていても漏れなく hydrate に反映できる。 */
+  async listAllStatusFiles(pid){
+    if(this._backend(pid)==='r2')return [];
+    const ph=await this.projRoot(pid);if(!ph)return [];
+    try{
+      const dir=await ph.getDirectoryHandle('status');
+      if(typeof dir.entries!=='function'&&typeof dir.keys!=='function')return [];
+      const names=[];
+      if(typeof dir.entries==='function'){
+        for await(const [name,handle] of dir.entries()){
+          if(!name.endsWith('.json'))continue;
+          if(handle&&handle.kind&&handle.kind!=='file')continue;
+          names.push(name);
+        }
+      }else{
+        for await(const name of dir.keys()){if(name.endsWith('.json'))names.push(name)}
+      }
+      const files=await Promise.all(names.map(async name=>{
+        try{
+          const fh=await dir.getFileHandle(name);
+          return JSON.parse(await (await fh.getFile()).text());
+        }catch(_){return null}
+      }));
+      return files.filter(f=>f&&f.shotId);
+    }catch(_){return []}
+  },
 
   /* ==== 監査ログ：`projects/{pid}/audit/YYYY-MM.jsonl`（append-only JSONL） ====
      【設計意図】ステータス巻き戻りの再発追跡用。setStatus 以外の経路（3-way マージ・
@@ -2693,7 +2729,10 @@ function _shotFileJsonForBaseline(pid,sid){
     const shotNode=DB.nodes.find(n=>n&&n.id===sid);
     if(!shotNode)return null;
     const kids=DB.nodes.filter(n=>n&&n.parentId===sid);
-    return JSON.stringify({v:1,shotId:sid,nodes:[shotNode,...kids]});
+    /* 【v.056 D-4】書き込み側 v:5 分離：shot.json に書き出すノードから status キーを除去。
+       baseline fingerprint も write の形と一致させる必要があるため、ここでも strip する。 */
+    const _stripStatus=n=>{const c=Object.assign({},n);if('status' in c)delete c.status;return c;};
+    return JSON.stringify({v:1,shotId:sid,nodes:[_stripStatus(shotNode),...kids.map(_stripStatus)]});
   }catch(_){return null;}
 }
 /* 【監査ログ・v.049】ステータス変更を全経路で記録するバッファ機構。
@@ -2871,29 +2910,74 @@ async function _migrateV5Statuses(pid){
     if(storage._backend(pid)==='r2')return 0;
     if(!DB||!Array.isArray(DB.nodes))return 0;
     const allNodes=DB.nodes;
-    const shotIds=allNodes.filter(n=>_isShotNodeForSave(n,allNodes)&&rootOfId(n)===pid).map(n=>n.id);
-    if(!shotIds.length)return 0;
+    /* 【v.056 重大バグ修正】以前は shot section の id のみを対象にしていたが、実際に status を
+       持つのは工程（review task）ノード。section を対象にしても意味のあるマイグレにならず、
+       null→null エントリを大量に作るだけだった。修正：review type と shot section の両方を対象に。
+       target = { プロジェクト配下の review タスク } ∪ { ショット section 自身 }。
+       status が実際に非 null のノードだけを migrate し、null 状態のノードは skip。 */
+    const targets=allNodes.filter(n=>n&&rootOfId(n)===pid&&(n.type==='review'||_isShotNodeForSave(n,allNodes)));
+    if(!targets.length)return 0;
     const nowTs=nowIso();
     const me=((authUser&&authUser.email)||'')||null;
     let migrated=0;
-    await Promise.all(shotIds.map(async sid=>{
+    await Promise.all(targets.map(async n=>{
+      const sid=n.id;
       if(_v5StatusShots.has(pid+':'+sid))return; /* _hydrateStatuses が既に登録済み → skip */
       const existing=await storage.loadStatus(pid,sid); /* 保険：ファイル実在チェック */
       if(existing){_v5StatusShots.add(pid+':'+sid);return}
-      const n=allNodes.find(x=>x.id===sid);
-      if(!n)return;
       const cur=(n.status==null||n.status==='')?null:n.status;
-      /* 【v.050 修正】未着手（cur==null）の初期状態は「変化」ではないので history に含めない。
-         cur が非 null（マイグレ時点で既にステータスが設定されているケース）だけ「null → cur」を記録。
-         v.049 マイグレで大量に生まれた null→null エントリは、下記の追加クリーンアップで除去する。 */
-      const history=(cur!=null)?[{ts:nowTs,by:me,from:null,to:cur,source:'migrate'}]:[];
+      /* 未着手（cur==null）は migrate する必要なし。書けば null→null エントリのノイズになるだけ。 */
+      if(cur==null)return;
+      const history=[{ts:nowTs,by:me,from:null,to:cur,source:'migrate'}];
       const file={v:1,shotId:sid,status:cur,updatedAt:nowTs,updatedBy:me,source:'migrate',history,_rev:1};
       const ok=await storage.saveStatus(pid,sid,file);
       if(ok!==false){_v5StatusShots.add(pid+':'+sid);migrated++;}
     }));
-    if(migrated>0)try{console.log('[laycat v:5 migrate]',pid,'migrated',migrated,'shots')}catch(_){}
+    if(migrated>0)try{console.log('[laycat v:5 migrate]',pid,'migrated',migrated,'nodes (review tasks + shot sections)')}catch(_){}
     return migrated;
   }catch(e){try{console.warn('[laycat v:5 migrate] failed',pid,e)}catch(_){}return 0;}
+}
+
+/* 【v.056 D-6】既存 shot.json 内の inline status キーを除去する後方互換クリーンアップ。
+   v.001〜v.055 時代に書かれた shot.json には各ノードに status キーが inline で入っており、
+   これが Object.assign 経由で local memory を上書きして巻き戻り事故の原因になっていた。
+   v.056 以降 saveProjectSplit は status を書き出さないので、既存 shot.json も統一しておく。
+   R2 未対応。起動時に 1 回だけ実行、対象ゼロなら書き込みなし。 */
+async function _cleanupShotJsonStatuses(pid){
+  try{
+    if(storage._backend(pid)==='r2')return 0;
+    const ph=await storage.projRoot(pid);if(!ph)return 0;
+    let dir=null;try{dir=await ph.getDirectoryHandle('shots')}catch(_){return 0}
+    if(typeof dir.entries!=='function'&&typeof dir.keys!=='function')return 0;
+    const names=[];
+    if(typeof dir.entries==='function'){
+      for await(const [name,handle] of dir.entries()){
+        if(!name.endsWith('.json'))continue;
+        if(handle&&handle.kind&&handle.kind!=='file')continue;
+        names.push(name);
+      }
+    }else{
+      for await(const name of dir.keys()){if(name.endsWith('.json'))names.push(name)}
+    }
+    let cleaned=0;
+    await Promise.all(names.map(async name=>{
+      try{
+        const fh=await dir.getFileHandle(name);
+        const txt=await (await fh.getFile()).text();
+        const parsed=JSON.parse(txt);
+        if(!parsed||!Array.isArray(parsed.nodes))return;
+        let hit=false;
+        for(const n of parsed.nodes){
+          if(n&&('status' in n)){delete n.status;hit=true;}
+        }
+        if(!hit)return;
+        await storage._write(()=>dir,name,JSON.stringify(parsed,null,2));
+        cleaned++;
+      }catch(_){}
+    }));
+    if(cleaned>0)try{console.log('[laycat v:5 shot.json cleanup]',pid,'stripped status from',cleaned,'files')}catch(_){}
+    return cleaned;
+  }catch(e){try{console.warn('[laycat v:5 shot.json cleanup] failed',pid,e)}catch(_){}return 0;}
 }
 
 /* 【v.050】既存 status/{sid}.json 内の「from:null, to:null」ノイズエントリを除去する
@@ -3159,6 +3243,16 @@ async function _saveSubmitWithLock(pid,sid,submit){
    Phase 3：ショット・サブミット単位でも _rev による楽観ロックを掛け、同一ショット同時編集も 3-way マージで両立。 */
 async function saveProjectSplit(pid,data){
   const allNodes=Array.isArray(data.nodes)?data.nodes:[];
+  /* 【v.056 D-4】v:5 status 分離を書き込み側でも徹底：shot.json に書き出す各ノードから
+     status キーを物理的に除去する。status.json だけが権威源になり、他タブが assignee 等の
+     独立編集を saveProjectSplit しても shot.json に古い status を書き込む余地が消える。
+     DB.nodes[X] 本体には触らない（memory の status はそのまま維持）。 */
+  const _stripStatus=n=>{
+    if(!n||typeof n!=='object')return n;
+    const c=Object.assign({},n);
+    if('status' in c)delete c.status;
+    return c;
+  };
   /* -------- Phase 2：ショット分割 -------- */
   const shotFiles=new Map(); /* shotId → {v,shotId,nodes} */
   const shotOfNode=new Map(); /* nodeId → shotId（骨格から抜くべきかの判定用） */
@@ -3166,7 +3260,8 @@ async function saveProjectSplit(pid,data){
   for(const n of allNodes){
     if(_isShotNodeForSave(n,allNodes)){
       const kids=allNodes.filter(x=>x.parentId===n.id);
-      const file={v:1,shotId:n.id,nodes:[n,...kids]};
+      /* shot ファイルへ書き出すノードから status を除去（コピーを渡す） */
+      const file={v:1,shotId:n.id,nodes:[_stripStatus(n),...kids.map(_stripStatus)]};
       shotFiles.set(n.id,file);
       shotIds.push(n.id);
       shotOfNode.set(n.id,n.id);
@@ -3491,7 +3586,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.14.009';
+const APP_VERSION='2026.09.15.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3659,6 +3754,13 @@ async function boot(){
           try{cleaned+=await _cleanupNullStatusHistories(e.id)}catch(_){}
         }
         if(cleaned>0)try{console.log('[laycat v:5] null→null 履歴を計 '+cleaned+' 件クリーンアップ')}catch(_){}
+        /* 【v.056 D-6】既存 shot.json から inline status キーを一括除去。v.056 以降の
+           書き込み側 v:5 分離を disk 側にも徹底する（disk と write の形を統一）。 */
+        let strippedShots=0;
+        for(const e of REG){
+          try{strippedShots+=await _cleanupShotJsonStatuses(e.id)}catch(_){}
+        }
+        if(strippedShots>0)try{console.log('[laycat v:5] shot.json の inline status を計 '+strippedShots+' ファイルからクリーンアップ')}catch(_){}
       }catch(_){}
     },400);
   }
@@ -4124,7 +4226,9 @@ async function _syncShotRevAndCacheFromRemote(pid){
           const shotNode=allNodes.find(n=>n.id===sid);
           if(shotNode){
             const kids=allNodes.filter(n=>n.parentId===sid);
-            _saveCache.shot[pid][sid]=JSON.stringify({v:1,shotId:sid,nodes:[shotNode,...kids]});
+            /* 【v.056 D-4】書き込み側 v:5 分離：baseline fingerprint も status キー除去に統一 */
+            const _stripS=n=>{const c=Object.assign({},n);if('status' in c)delete c.status;return c;};
+            _saveCache.shot[pid][sid]=JSON.stringify({v:1,shotId:sid,nodes:[_stripS(shotNode),...kids.map(_stripS)]});
           }
         }else if(nr<cur){
           try{console.warn('[laycat] _syncShotRev: skip rev regression',{pid,sid,remote:nr,local:cur});}catch(_){}
@@ -9274,11 +9378,12 @@ function _mergeNode3(base,ours,theirs){
     const js=x=>JSON.stringify(x);
     const _empty=v=>(v==null||v==='');
     const _has=(o,k)=>o&&Object.prototype.hasOwnProperty.call(o,k);
-    for(const k of ['status','assignee','reviewer','name','description','thumbnail','thumbCrop']){
+    /* 【v.056 D-5】status は v:5 で status.json に分離済み。マージスカラーからは物理除外し、
+       shot.json 側の inline status が仮にあってもマージ処理で触らない。
+       これで shot.json の書き込み経路（saveProjectSplit）が status を書き出さない状態と整合。 */
+    for(const k of ['assignee','reviewer','name','description','thumbnail','thumbCrop']){
       /* v.027 修正：theirs は「そのキーに明示的に言及したか」で変更検知する。
-         キー自体が無い場合は「言及なし＝維持」であり、削除意図（null）とは区別する。
-         これをしないと、旧バージョンや外部ツールで作られた status キー無しのショット JSON を
-         読み込んだだけで local の status が null に上書きされ、UI 上「未着手」に転落する事故が起きる。 */
+         キー自体が無い場合は「言及なし＝維持」であり、削除意図（null）とは区別する。 */
       const oursChanged=js(ours[k])!==js(base[k]);
       const theirsChanged=_has(theirs,k)&&js(theirs[k])!==js(base[k]);
       if(oursChanged){
@@ -9384,10 +9489,12 @@ function seedProjBaseline(id){
     _saveCache.shot[id]=_saveCache.shot[id]||{};
     _saveCache.submit[id]=_saveCache.submit[id]||{};
     const allNodes=DB.nodes||[];
+    /* 【v.056 D-4】書き込み側 v:5 分離：baseline fingerprint も status キー除去 */
+    const _stripS=n=>{const c=Object.assign({},n);if('status' in c)delete c.status;return c;};
     for(const n of allNodes){
       if(_isShotNodeForSave(n, allNodes)){
         const kids=allNodes.filter(x=>x.parentId===n.id);
-        _saveCache.shot[id][n.id]=JSON.stringify({v:1,shotId:n.id,nodes:[n,...kids]});
+        _saveCache.shot[id][n.id]=JSON.stringify({v:1,shotId:n.id,nodes:[_stripS(n),...kids.map(_stripS)]});
       }
     }
     for(const s of (DB.submits||[])){
@@ -9481,9 +9588,12 @@ function _mergeNodeInto(a,b,opts){
        state 系除外を無効化して remote 採用に戻す。clean=false（rollback 検知）時は fill-only で守る。
        → 「正常時は他ユーザー status 変更を即時反映、rollback 時のみ守る」の両立。 */
   const _authoritative=!!(opts&&opts.remoteAuthoritative);
-  const _stateKeys=new Set(['status','assignee','reviewer']);
+  /* 【v.056 D-5】status は v:5 で status.json に分離済み。state keys からも scalar loop からも
+     除外。これで refresh 経路の union-fill が status を触らなくなり、v:5 status.json だけが
+     権威源として機能する。 */
+  const _stateKeys=new Set(['assignee','reviewer']);
   const _bHas=k=>b&&Object.prototype.hasOwnProperty.call(b,k);
-  for(const k of ['thumbnail','status','assignee','reviewer','description','folderName','thumbCrop','type','name']){
+  for(const k of ['thumbnail','assignee','reviewer','description','folderName','thumbCrop','type','name']){
     /* preferB=true && (authoritative || 非 state 系) → 従来の preferB（remote 採用）
        それ以外（preferB=false、または preferB=true && authoritative=false && state 系）→ fill-only */
     if(preferB&&(_authoritative||!_stateKeys.has(k))){

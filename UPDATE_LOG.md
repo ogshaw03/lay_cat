@@ -14,7 +14,19 @@
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-（現在なし。直近のサイレント反映は下部の「反映済み・パッチノート記載なし」参照）
+- (dev v2026.09.15.001) **【重大アーキテクチャバグ修正】v:5 status 分離を書き込み側にも徹底（案 D 完全実装）**：現場報告「フォルダ同期で status が上書きされて巻き戻る」の根本原因を潰した。
+  - **発見した本質バグ**：v:5 の設計で以下の ID 使い分けが完全に食い違っていた
+    - setStatus は `node.id`（工程/review task の ID）で `status/{taskId}.json` に書き込む
+    - `_hydrateStatuses` / `_migrateV5Statuses` は `shotIds`（親ショット section の ID）で読もうとする
+    - **結果：書いた status.json が復元時に一切読まれず、v:5 分離が実質「書きっぱなし」で無効化されていた**
+  - **D-1 `storage.listAllStatusFiles(pid)` 追加**：status/ ディレクトリを列挙して全 JSON を並列読み込み。書き込み側で使った ID に関係なく実在ファイルを網羅できる。
+  - **D-2 `_hydrateStatuses` を修正**：`parsed.shotIds` 経由 → `listAllStatusFiles` 経由に置換。ファイル内の `shotId` フィールド（＝実際の node.id）で parsed.nodes とマッチさせる。工程 (review task) レベルの status.json が正しく反映される。
+  - **D-3 `_migrateV5Statuses` を修正**：section だけでなく **review type ノード（工程）も migrate 対象に**。実際に status を持つのは工程なので、ここが本命。未着手（cur==null）は最初から skip し null→null ノイズも根絶。
+  - **D-4 `saveProjectSplit` で shot.json 書き込み時に status キーを除去**：`_stripStatus` ヘルパで shot node と kids から status キーを物理削除してから JSON.stringify。shot.json は status を持たない形に統一。DB.nodes には触らない（memory の status はそのまま維持）。関連する fingerprint 生成箇所（`_shotFileJsonForBaseline`・`_hydrateShots` seed・`_syncShotRevAndCacheFromRemote`・`seedProjBaseline`）も同じ strip ロジックに揃えた。
+  - **D-5 `_mergeNode3` / `_mergeNodeInto` から status を除外**：マージスカラーキーから status を削除。3-way マージ・フォルダ同期・refresh の全経路が status に触らなくなる。「フォルダ同期で status が上書きされる」経路が物理的に消滅。
+  - **D-6 既存 shot.json の inline status を一括クリーンアップ**：`_cleanupShotJsonStatuses(pid)` を新設。起動時に既存 shot.json を全走査、各 node から status キーを削除して disk と write の形を統一。件数はコンソール出力（トーストなし・静かに動く）。
+  - **これで status.json が唯一の権威源**：読み書き両方で status に触るのは setStatus 経由の status.json のみ。マージ・refresh・Object.assign 系の間接経路は全て status に触らない。多重タブ・多重ユーザーで status が巻き戻る余地が原理的に消えた。
+  - APP_VERSION：2026.09.14.009 → 2026.09.15.001
 ---
 
 ## 反映済み beta v0.2.0（2026-09-08）
