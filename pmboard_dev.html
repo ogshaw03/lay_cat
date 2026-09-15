@@ -144,6 +144,20 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .pane{position:absolute;inset:0;overflow:auto;padding:16px 20px;display:none}
 .pane.on{display:block}
 
+/* サブタブ列（メインタブの一段下・スケジュールタブでのみ表示） */
+.sub-tabs{display:flex;gap:2px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.sub-tab{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:5px 12px;color:var(--text3);font-size:12px;font-family:var(--font-head);font-weight:500;letter-spacing:.3px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.sub-tab:hover{color:var(--text2);border-color:var(--border2)}
+.sub-tab.on{background:var(--bg4);color:var(--text);border-color:var(--border2)}
+.sub-tab .del{opacity:.5;font-size:14px;line-height:1;margin-left:2px;padding:0 3px;border-radius:3px}
+.sub-tab .del:hover{opacity:1;background:rgba(224,106,106,.2);color:var(--red)}
+.sub-tab-add{background:transparent;border:1px dashed var(--border2);border-radius:var(--radius2);padding:5px 10px;color:var(--text3);font-size:12px;cursor:pointer}
+.sub-tab-add:hover{color:var(--text);border-color:var(--accent2)}
+
+/* カスタム工程追加ボタン */
+.custom-add-item{background:transparent;border:1px dashed var(--border2);border-radius:var(--radius2);padding:6px 12px;color:var(--text3);font-size:12px;cursor:pointer;margin:8px 0}
+.custom-add-item:hover{color:var(--text);border-color:var(--accent2)}
+
 /* =========== GANTT =========== */
 .gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
 .gantt-hdr{display:grid;grid-template-columns:220px 1fr;background:var(--bg3);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
@@ -377,9 +391,11 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 
     <!-- ========== スケジュール ========== -->
     <div class="pane on" data-pane="schedule">
+      <!-- サブタブ列（スケジュールタブ配下）：ショットごと / オリジナル N... / + ボタン -->
+      <nav class="sub-tabs" id="subTabs"></nav>
       <div class="gantt">
         <div class="gantt-hdr">
-          <div class="lbl">Shot</div>
+          <div class="lbl" id="ganttLeftLbl">Shot</div>
           <div class="timeline" id="timelineHdr"></div>
         </div>
         <div class="gantt-body" id="ganttBody"></div>
@@ -487,7 +503,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.16.007';
+const APP_VERSION='2026.09.16.008';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -680,6 +696,8 @@ const storage = {
 const DATA = {
   project: null,
   shots: [],
+  customSchedules: [], /* [{id, name, items:[{id,name,color,plannedStart,plannedEnd}]}] */
+  currentSubTab: 'shots', /* 'shots' | scheduleId */
   timeline: {start:null,end:null,days:0},
   loaded: false,
 };
@@ -800,6 +818,41 @@ async function loadProjectData(){
   return {ok:true};
 }
 
+/* =========== カスタム（オリジナル）スケジュール =========== */
+/* 独自の工程セット。ショットではなく案件全体のワークフロー（モデリング/アニメーション/etc）を
+   ユーザーが自由に定義してスケジュール管理できる。
+   ストレージ：projects/{pid}/pmboard/customSchedules.json */
+async function loadCustomSchedules(){
+  const f = await storage.readJson('pmboard/customSchedules.json');
+  if(!f || !Array.isArray(f.schedules)){ DATA.customSchedules=[]; return; }
+  /* Date に復元 */
+  DATA.customSchedules = f.schedules.map(sch=>({
+    id: sch.id, name: sch.name,
+    items: (Array.isArray(sch.items)?sch.items:[]).map(it=>({
+      id: it.id, name: it.name, color: it.color||'var(--st-anim)',
+      plannedStart: it.plannedStart ? new Date(it.plannedStart) : null,
+      plannedEnd: it.plannedEnd ? new Date(it.plannedEnd) : null,
+    })),
+  }));
+}
+async function saveCustomSchedules(){
+  const file = {
+    v: 1,
+    schedules: DATA.customSchedules.map(sch=>({
+      id: sch.id, name: sch.name,
+      items: sch.items.map(it=>({
+        id: it.id, name: it.name, color: it.color,
+        plannedStart: it.plannedStart ? isoDate(it.plannedStart) : null,
+        plannedEnd: it.plannedEnd ? isoDate(it.plannedEnd) : null,
+      })),
+    })),
+    updatedAt: new Date().toISOString(),
+  };
+  return await storage.writeJson('pmboard/customSchedules.json', file);
+}
+function newId(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,10); }
+function customById(id){ return DATA.customSchedules.find(s=>s.id===id); }
+
 async function saveShotSchedule(shot){
   const stages = shot.stages.map(st=>({
     stageId: st.reviewNode.id,
@@ -900,6 +953,73 @@ function shotScene(shot){
   if(!parent) return null;
   if(!parent.parentId) return null; /* root */
   return parent;
+}
+
+/* =========== サブタブ描画 =========== */
+function buildSubTabs(){
+  const bar = document.getElementById('subTabs');
+  if(!bar) return;
+  bar.innerHTML='';
+  /* ショットごと（固定） */
+  const shotsBtn = document.createElement('button');
+  shotsBtn.className = 'sub-tab' + (DATA.currentSubTab==='shots' ? ' on' : '');
+  shotsBtn.textContent = 'ショットごと';
+  shotsBtn.onclick = ()=>{ DATA.currentSubTab='shots'; buildSubTabs(); rebuildActiveView(); };
+  bar.appendChild(shotsBtn);
+  /* カスタムスケジュール */
+  for(const sch of DATA.customSchedules){
+    const b = document.createElement('button');
+    b.className = 'sub-tab' + (DATA.currentSubTab===sch.id ? ' on' : '');
+    b.innerHTML = `<span>${escapeHtml(sch.name||'(名称なし)')}</span><span class="del" title="このスケジュールを削除">×</span>`;
+    b.onclick = (e)=>{
+      if(e.target.classList.contains('del')){
+        e.stopPropagation();
+        if(confirm(`「${sch.name}」を削除しますか？（元に戻せません）`)){
+          DATA.customSchedules = DATA.customSchedules.filter(x=>x.id!==sch.id);
+          if(DATA.currentSubTab===sch.id) DATA.currentSubTab='shots';
+          saveCustomSchedules();
+          buildSubTabs(); rebuildActiveView();
+        }
+        return;
+      }
+      DATA.currentSubTab=sch.id; buildSubTabs(); rebuildActiveView();
+    };
+    /* ダブルクリックで名前変更 */
+    b.ondblclick = (e)=>{
+      if(e.target.classList.contains('del')) return;
+      const nm = prompt('スケジュール名を変更', sch.name||'');
+      if(nm && nm.trim()){
+        sch.name = nm.trim();
+        saveCustomSchedules(); buildSubTabs();
+      }
+    };
+    bar.appendChild(b);
+  }
+  /* + ボタン */
+  const addBtn = document.createElement('button');
+  addBtn.className = 'sub-tab-add';
+  addBtn.innerHTML = '＋ スケジュール追加';
+  addBtn.onclick = onAddCustomSchedule;
+  bar.appendChild(addBtn);
+}
+async function onAddCustomSchedule(){
+  const name = prompt('スケジュール名を入力してください（例：モデリング / アニメーション 等）');
+  if(!name || !name.trim()) return;
+  const sch = {id: newId('sch'), name: name.trim(), items: []};
+  DATA.customSchedules.push(sch);
+  DATA.currentSubTab = sch.id;
+  await saveCustomSchedules();
+  buildSubTabs();
+  rebuildActiveView();
+}
+function rebuildActiveView(){
+  if(DATA.currentSubTab === 'shots'){
+    document.getElementById('ganttLeftLbl').textContent = 'Shot';
+    buildGantt();
+  }else{
+    document.getElementById('ganttLeftLbl').textContent = '工程';
+    buildCustomGantt(DATA.currentSubTab);
+  }
 }
 
 /* =========== Gantt =========== */
@@ -1072,6 +1192,135 @@ function buildGantt(){
   wrapper.appendChild(marker);
 }
 
+/* =========== カスタムスケジュール Gantt =========== */
+function buildCustomGantt(scheduleId){
+  const body = document.getElementById('ganttBody');
+  const oldToday = document.querySelector('.gantt-today');
+  if(oldToday) oldToday.remove();
+  body.innerHTML='';
+  const sch = customById(scheduleId);
+  if(!sch){
+    body.innerHTML=`<div class="empty-panel"><div class="ep-ico">⚠</div><div class="ep-title">スケジュールが見つかりません</div></div>`;
+    return;
+  }
+  /* 空状態：工程追加ボタンを配置 */
+  if(!sch.items.length){
+    body.innerHTML=`
+      <div class="empty-panel">
+        <div class="ep-ico">📋</div>
+        <div class="ep-title">「${escapeHtml(sch.name)}」に工程がありません</div>
+        <div class="ep-sub">案件全体のワークフロー（例：キャラクターモデリング／背景モデリング／リギング／アニメーション／コンポジット 等）を工程として追加してください。<br>各工程はガント上でドラッグして期間を設定できます。</div>
+        <button class="btn btn-primary" onclick="onAddCustomItem('${sch.id}')">＋ 工程を追加</button>
+      </div>`;
+    return;
+  }
+  if(!DATA.timeline || !DATA.timeline.days){
+    /* プロジェクトデータがロード済みでも timeline はショット由来。カスタムだけなら自動計算 */
+    computeCustomTimeline(sch);
+  }
+  const {start, days} = DATA.timeline;
+  const px = 100/days;
+  const todayIdx = dayIdx(new Date());
+
+  for(const it of sch.items){
+    const row = document.createElement('div');
+    row.className='gantt-row';
+    const rollup = it.plannedStart&&it.plannedEnd
+      ? `<span class="st-chip plan">${Math.round((it.plannedEnd-it.plannedStart)/86400000)+1}日</span>`
+      : `<span class="st-chip noplan">未計画</span>`;
+
+    const track=[];
+    /* Weekend background */
+    for(let i=0;i<days;i++){
+      const dt=new Date(start); dt.setDate(dt.getDate()+i);
+      const dw=dt.getDay();
+      if(dw===0||dw===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
+    }
+    /* Plan bar または placeholder */
+    if(it.plannedStart && it.plannedEnd){
+      const p1 = dayIdx(it.plannedStart), p2 = dayIdx(it.plannedEnd);
+      const w = Math.max(px, (p2-p1)*px);
+      track.push(`<div class="seg-plan" data-cust-sch="${sch.id}" data-cust-item="${it.id}" style="left:${p1*px}%;width:${w}%;border-color:${it.color};background:${it.color}"><span class="seg-lbl" style="color:${it.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${escapeHtml(it.name)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
+    }else{
+      const p1 = todayIdx, p2 = todayIdx+3;
+      const w = (p2-p1)*px;
+      track.push(`<div class="seg-plan seg-placeholder" data-cust-sch="${sch.id}" data-cust-item="${it.id}" style="left:${p1*px}%;width:${w}%;border-color:${it.color};background:transparent;opacity:.55" title="ドラッグして「${escapeHtml(it.name)}」の予定を設定"><span class="seg-lbl" style="color:${it.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">+ ${escapeHtml(it.name)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
+    }
+
+    row.innerHTML = `
+      <div class="shot">
+        <div class="id">${escapeHtml(it.name)}</div>
+        <div class="meta">${rollup}
+          <button class="chip-del" data-cust-sch="${sch.id}" data-cust-item="${it.id}" title="この工程を削除" style="background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px;cursor:pointer">×</button>
+        </div>
+      </div>
+      <div class="track">${track.join('')}</div>
+    `;
+    /* 削除ボタン */
+    const delBtn = row.querySelector('.chip-del');
+    if(delBtn){
+      delBtn.onclick = async ()=>{
+        if(!confirm(`工程「${it.name}」を削除しますか？`)) return;
+        sch.items = sch.items.filter(x=>x.id!==it.id);
+        await saveCustomSchedules();
+        buildCustomGantt(sch.id);
+      };
+    }
+    body.appendChild(row);
+  }
+
+  /* 「工程を追加」ボタン */
+  const addRow = document.createElement('div');
+  addRow.style.cssText='padding:10px 14px;background:var(--bg2);border-top:1px solid var(--border);text-align:center';
+  addRow.innerHTML = `<button class="custom-add-item" onclick="onAddCustomItem('${sch.id}')">＋ 工程を追加</button>`;
+  body.appendChild(addRow);
+
+  /* Today marker */
+  const wrapper = body.parentElement;
+  const marker = document.createElement('div');
+  marker.className='gantt-today';
+  marker.style.left = `calc(220px + ${todayIdx*px}%)`;
+  const t = new Date();
+  marker.innerHTML = `<div class="lbl">TODAY ${t.getMonth()+1}/${t.getDate()}</div>`;
+  wrapper.appendChild(marker);
+}
+
+/* カスタム工程を追加：色は STAGE_ORDER_COLORS を巡回で自動割当 */
+async function onAddCustomItem(scheduleId){
+  const sch = customById(scheduleId);
+  if(!sch) return;
+  const name = prompt('工程名を入力してください（例：モデリング／リギング／アニメーション 等）');
+  if(!name || !name.trim()) return;
+  const idx = sch.items.length;
+  const color = STAGE_ORDER_COLORS[idx % STAGE_ORDER_COLORS.length];
+  sch.items.push({id: newId('itm'), name: name.trim(), color, plannedStart: null, plannedEnd: null});
+  await saveCustomSchedules();
+  buildCustomGantt(sch.id);
+}
+window.onAddCustomItem = onAddCustomItem;
+
+/* カスタムのみで表示するときの timeline 自動計算：全予定日 + プロジェクト timeline の union */
+function computeCustomTimeline(sch){
+  const dates = [];
+  for(const it of sch.items){
+    if(it.plannedStart) dates.push(it.plannedStart);
+    if(it.plannedEnd) dates.push(it.plannedEnd);
+  }
+  const now = new Date();
+  dates.push(now);
+  if(dates.length<2){
+    dates.push(new Date(now.getTime()-30*86400000));
+    dates.push(new Date(now.getTime()+30*86400000));
+  }
+  const times = dates.map(d=>d.getTime()).filter(t=>!isNaN(t));
+  const minD = new Date(Math.min(...times));
+  const maxD = new Date(Math.max(...times));
+  const start = new Date(minD.getFullYear(),minD.getMonth(),minD.getDate()-7);
+  const end = new Date(maxD.getFullYear(),maxD.getMonth(),maxD.getDate()+7);
+  DATA.timeline = {start,end,days:Math.max(30, Math.round((end-start)/86400000)+1)};
+  buildTimelineHdr();
+}
+
 /* =========== ドラッグ編集（実データ保存） =========== */
 function initScheduleDrag(){
   const body = document.getElementById('ganttBody');
@@ -1083,14 +1332,30 @@ function initScheduleDrag(){
   body.addEventListener('mousedown', e=>{
     const seg = e.target.closest('.seg-plan');
     if(!seg) return;
-    const shotId = seg.dataset.shot, stageId = seg.dataset.stage;
-    const shot = DATA.shots.find(s=>s.sectionNode.id===shotId);
-    if(!shot) return;
-    const st = shot.stages.find(x=>x.reviewNode.id===stageId);
-    if(!st) return;
-    /* プレースホルダの場合：DOM 上の描画位置から plannedStart/End を初期化。
-       これでドラッグ開始時にバーが飛ばず、視覚的な連続性が保たれる。 */
-    if(!st.plannedStart||!st.plannedEnd){
+    /* カスタム工程 or ショット工程かで対象を切替 */
+    const custSch = seg.dataset.custSch, custItem = seg.dataset.custItem;
+    let target = null; /* {plannedStart, plannedEnd, label|name} を持つオブジェクト */
+    let contextLabel = ''; /* ツールチップの上段に出す */
+    let isCustom = false;
+    if(custSch && custItem){
+      const sch = customById(custSch);
+      if(!sch) return;
+      const it = sch.items.find(x=>x.id===custItem);
+      if(!it) return;
+      target = it;
+      contextLabel = `${sch.name} · ${it.name}`;
+      isCustom = true;
+    }else{
+      const shotId = seg.dataset.shot, stageId = seg.dataset.stage;
+      const shot = DATA.shots.find(s=>s.sectionNode.id===shotId);
+      if(!shot) return;
+      const st = shot.stages.find(x=>x.reviewNode.id===stageId);
+      if(!st) return;
+      target = st;
+      contextLabel = `${shot.sectionNode.name||''} · ${st.label}`;
+    }
+    /* プレースホルダの場合：DOM 上の描画位置から plannedStart/End を初期化 */
+    if(!target.plannedStart||!target.plannedEnd){
       const trackRect = seg.parentElement.getBoundingClientRect();
       const segRect = seg.getBoundingClientRect();
       const startPct = (segRect.left - trackRect.left) / trackRect.width;
@@ -1101,21 +1366,20 @@ function initScheduleDrag(){
       if(p1<0) p1=0; if(p2>days-1) p2=days-1;
       const s1 = new Date(DATA.timeline.start); s1.setDate(s1.getDate()+p1);
       const s2 = new Date(DATA.timeline.start); s2.setDate(s2.getDate()+p2);
-      st.plannedStart = s1;
-      st.plannedEnd = s2;
-      /* プレースホルダ表示を解除して通常バー扱いに */
+      target.plannedStart = s1;
+      target.plannedEnd = s2;
       seg.classList.remove('seg-placeholder');
       seg.style.opacity = '';
-      seg.style.background = st.color;
-      /* ラベル先頭の "+" を除去 */
+      seg.style.background = isCustom ? target.color : target.color;
       const lbl = seg.querySelector('.seg-lbl');
-      if(lbl) lbl.textContent = st.label;
+      if(lbl) lbl.textContent = isCustom ? target.name : target.label;
     }
     const trackW = seg.parentElement.getBoundingClientRect().width;
     const mode = e.target.classList.contains('handle')
       ? (e.target.classList.contains('l')?'resize-l':'resize-r')
       : 'move';
-    drag = {seg,shot,st,mode,startX:e.clientX,origP1:dayIdx(st.plannedStart),origP2:dayIdx(st.plannedEnd),trackW};
+    drag = {seg, target, isCustom, custSchId:custSch, contextLabel, mode, startX:e.clientX,
+            origP1:dayIdx(target.plannedStart), origP2:dayIdx(target.plannedEnd), trackW};
     seg.classList.add('dragging');
     tip.style.display='block';
     e.preventDefault();
@@ -1135,14 +1399,14 @@ function initScheduleDrag(){
     if(p1<0)p1=0; if(p2>days-1)p2=days-1;
     const s1=new Date(DATA.timeline.start); s1.setDate(s1.getDate()+p1);
     const s2=new Date(DATA.timeline.start); s2.setDate(s2.getDate()+p2);
-    drag.st.plannedStart=s1;
-    drag.st.plannedEnd=s2;
+    drag.target.plannedStart=s1;
+    drag.target.plannedEnd=s2;
     const px=100/days;
     drag.seg.style.left = (p1*px)+'%';
     drag.seg.style.width= ((p2-p1)*px)+'%';
     const modeText = drag.mode==='resize-l'?'開始日':(drag.mode==='resize-r'?'終了日':'期間移動');
     tip.innerHTML=`
-      <div><span class="lbl">${escapeHtml(drag.shot.sectionNode.name||'')} · ${escapeHtml(drag.st.label)}</span></div>
+      <div><span class="lbl">${escapeHtml(drag.contextLabel)}</span></div>
       <div><span class="lbl">${modeText}</span>${fmtDate(p1)} — ${fmtDate(p2)} <span style="color:var(--text3)">（${p2-p1}日）</span></div>
     `;
     tip.style.left=(e.clientX+14)+'px';
@@ -1153,16 +1417,19 @@ function initScheduleDrag(){
     if(!drag) return;
     drag.seg.classList.remove('dragging');
     tip.style.display='none';
-    const shot = drag.shot;
+    const d = drag;
     drag = null;
-    /* schedule.json に保存 */
     try{
-      const ok = await saveShotSchedule(shot);
-      if(!ok){
-        console.warn('[pmboard] schedule save failed');
+      if(d.isCustom){
+        await saveCustomSchedules();
+        buildCustomGantt(d.custSchId);
+      }else{
+        /* shot 側は drag.target が stage オブジェクト。所属 shot を逆引き */
+        const shot = DATA.shots.find(s=>s.stages.some(x=>x===d.target));
+        if(shot){ await saveShotSchedule(shot); }
+        buildGantt();
       }
     }catch(e){console.warn(e);}
-    buildGantt();
   });
 }
 
@@ -1250,8 +1517,11 @@ async function loadAndRender(){
     body.innerHTML=`<div class="empty-panel"><div class="ep-ico">⚠</div><div class="ep-title">読み込み失敗</div><div class="ep-sub">${escapeHtml(r.err||'不明なエラー')}</div></div>`;
     return;
   }
+  /* カスタムスケジュール（オリジナル工程セット）も並列読み込み */
+  await loadCustomSchedules();
   buildTimelineHdr();
-  buildGantt();
+  buildSubTabs();
+  rebuildActiveView();
   updateSidebar();
 }
 function updateSidebar(){
