@@ -18,7 +18,7 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-（現在なし。直近のサイレント反映は下部の「反映済み・パッチノート記載なし」参照）
+- (dev v2026.09.16.001) **ヘッダーに「進行管理」ボタン追加**：pmboard（進行管理ボード）を別タブで開くボタンをヘッダー右側に追加。ドキュメント（rect）＋横 3 本線のアイコン。`onmousedown` で現在アクティブなプロジェクトの pid を URL 引数として付与するので、そのまま pmboard 側で該当プロジェクトのスケジュールが自動表示される。 (APP_VERSION：2026.09.15.001 → 2026.09.16.001)
 ---
 
 ## 反映済み beta v0.2.0（2026-09-08）
@@ -1926,6 +1926,16 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.09.16.004) **pmboard を LayCAT の IDB/localStorage 共有方式に移行**：フォルダ選択を pmboard から撤去し、LayCAT で設定済みのプロジェクトフォルダをそのまま使う。
+  - **フォルダ選択 UI を撤去**：ヘッダー右上の「フォルダ未選択」ボタンを廃止、代わりに **プロジェクトセレクタ**（`layna_registry` から生成）を追加。ユーザーはドロップダウンで LayCAT に登録済みのプロジェクトを切替。
+  - **LayCAT の IDB を共有**：pmboard は同じ URL オリジンで動作するため、LayCAT の `IndexedDB('layna').handles.proj_{pid}` から FileSystemDirectoryHandle を直接取得。
+  - **URL 引数対応**：`pmboard.html?pid={pid}` で任意のプロジェクトを直接開ける。無指定時は `layna_loc.lastPageId` から推測、それも無ければ registry 先頭。
+  - **権限フロー**：LayCAT で許可済みフォルダは permission 'granted' のまま利用可能。未許可の場合は「フォルダアクセスを許可」ボタン（user gesture 必須のため）を表示、ワンクリックで許可 → 接続。
+  - **プロジェクト工程設定を利用**：`projectStageNames(section, root)` で `node.stages` / `root.stages` / `root.stageTemplates[0].stages` の優先順位で工程名リストを抽出。工程カラーは `STAGE_ORDER_COLORS` の 5 色パレットからプロジェクト工程配列の index で自動割当。キーワード判定と併用（Layout/Anim/FX/Comp/Paint 名の場合は固定色）。
+  - **状態メッセージ**：LayCAT でプロジェクト未登録 → 「LayCAT でプロジェクトを開いてください」／プロジェクト未選択 → 「プロジェクトを選択してください」／許可待ち → 「フォルダアクセスを許可」／エラー → 対応する詳細メッセージ＋LayCAT リンク。
+  - **サイドバーのフォルダ設定 UI 削除**、ヘッダー内 folder-status は「読み取り専用の接続状態表示」に降格。
+  - APP_VERSION：2026.09.16.003 → 2026.09.16.004
 
 - (dev v2026.09.16.003) **スケジュールタブを実データ対応で全機能実装**：稼働中のプロジェクトデータを直接読み書きできるように移行。ダミーデータ廃止。
   - **フォルダ選択**：ヘッダー右上「フォルダ未選択」→ クリックで FSA API（`showDirectoryPicker`）でプロジェクトフォルダを選択。IndexedDB (`pmboard_kv/projectDir`) に FileSystemDirectoryHandle を永続化し、再訪時に権限確認済みなら自動接続。

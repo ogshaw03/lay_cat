@@ -254,10 +254,12 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
   </div>
   <div class="app-ver" id="appVer">…</div>
   <div class="header-sep"></div>
-  <div class="folder-status" id="folderStatus" title="プロジェクトフォルダを選択">
+  <div class="proj-picker" id="projPicker" title="プロジェクトを切り替え">
+    <select id="projSelect"></select>
+  </div>
+  <div class="folder-status" id="folderStatus" title="LayCAT で設定したプロジェクトフォルダを共有">
     <div class="dot" id="folderDot"></div>
-    <span class="fname" id="folderName">フォルダ未選択</span>
-    <span class="fchange">選択</span>
+    <span class="fname" id="folderName">未接続</span>
   </div>
   <div class="header-actions">
     <div class="scale" id="scaleToggle">
@@ -448,7 +450,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.16.003';
+const APP_VERSION='2026.09.16.004';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -466,7 +468,23 @@ const STAGE_COLORS = {
   comp:'var(--st-comp)', paint:'var(--st-paint)',
 };
 const STAGE_LABELS = {layout:'Layout', anim:'Anim', fx:'FX', comp:'Comp', paint:'Paint'};
+/* プロジェクト定義の工程順に対応する 5 色パレット（Layout→Anim→FX→Comp→Paint 相当） */
+const STAGE_ORDER_COLORS = ['var(--st-layout)','var(--st-anim)','var(--st-fx)','var(--st-comp)','var(--st-paint)'];
 const STAGE_FALLBACK_COLORS = ['#9ba3ad','#a89aab','#9baba1','#aba99a','#9ba7ad'];
+/* LayCAT のプロジェクト root ノードから工程名リストを抽出。
+   優先順位：node.stages（section 直下に持つ場合）→ root.stages → stageTemplates[0].stages */
+function projectStageNames(sectionNode, rootNode){
+  const st = (n)=>{if(!n)return null;if(Array.isArray(n.stages)&&n.stages.length){return n.stages.map(x=>typeof x==='string'?x:(x&&x.name)||'').filter(Boolean);}return null;};
+  const nsec = st(sectionNode);
+  if(nsec) return nsec;
+  const nroot = st(rootNode);
+  if(nroot) return nroot;
+  if(rootNode&&Array.isArray(rootNode.stageTemplates)&&rootNode.stageTemplates.length){
+    const t0 = rootNode.stageTemplates[0];
+    if(t0 && Array.isArray(t0.stages)) return t0.stages.map(x=>typeof x==='string'?x:(x&&x.name)||'').filter(Boolean);
+  }
+  return [];
+}
 function classifyStage(name){
   if(!name) return 'unknown';
   for(const [k,pats] of Object.entries(STAGE_KEYWORDS)){
@@ -474,15 +492,23 @@ function classifyStage(name){
   }
   return 'unknown';
 }
-function stageColor(kind, name){
+function stageColor(kind, name, projectStages){
+  /* 1) キーワード判定でヒット → 固定カラー（Layout/Anim/FX/Comp/Paint） */
   if(STAGE_COLORS[kind]) return STAGE_COLORS[kind];
+  /* 2) プロジェクト工程配列にあれば、その順序でパレットから割当 */
+  if(Array.isArray(projectStages)&&projectStages.length){
+    const idx = projectStages.findIndex(x=>x===name);
+    if(idx>=0) return STAGE_ORDER_COLORS[idx%STAGE_ORDER_COLORS.length];
+  }
+  /* 3) 名前ハッシュベース フォールバック */
   let h=0; for(const c of (name||'?')) h=(h*31+c.charCodeAt(0))|0;
   return STAGE_FALLBACK_COLORS[Math.abs(h)%STAGE_FALLBACK_COLORS.length];
 }
 function stageLabel(kind, name){
-  if(STAGE_LABELS[kind]) return STAGE_LABELS[kind];
+  /* LayCAT の工程名をそのまま表示（LAY / ANM / CP など短縮された名前が多いのでそのまま出せる） */
   const nm = name||'?';
-  return nm.length>4 ? nm.slice(0,4) : nm;
+  if(STAGE_LABELS[kind] && nm.length>6) return STAGE_LABELS[kind];
+  return nm.length>6 ? nm.slice(0,6) : nm;
 }
 
 /* status.json 内容から「終了」判定：project.statuses の中で「checkWait 相当でない最終値」
@@ -501,70 +527,76 @@ function isStatusDone(statusId, projStatuses){
   return false;
 }
 
-/* =========== ストレージ（FSA + IDB） =========== */
-const IDB_NAME='pmboard_kv';
-const IDB_STORE='kv';
-function idbOpen(){
+/* =========== ストレージ（LayCAT の IDB / localStorage を共有） =========== */
+/* pmboard は LayCAT 本体と同じ URL オリジン（GitHub Pages）で動作するため、IndexedDB と
+   localStorage を共有できる。LayCAT が保存しているプロジェクト登録と FSA フォルダハンドルを
+   そのまま利用し、pmboard 側で改めてフォルダ選択させる必要をなくす。
+   LayCAT の永続化スキーマ：
+     IDB name = 'layna', store = 'handles', key = 'proj_{pid}' → FileSystemDirectoryHandle
+     localStorage['layna_registry'] = [{id, name, folderName, backend}, ...]
+     localStorage['layna_loc'] = {lastPageId, ...} */
+const LAYCAT_IDB_NAME='layna';
+const LAYCAT_IDB_STORE='handles';
+function laycatIdbOpen(){
   return new Promise((res,rej)=>{
-    const r=indexedDB.open(IDB_NAME,1);
-    r.onupgradeneeded=()=>{r.result.createObjectStore(IDB_STORE)};
+    const r=indexedDB.open(LAYCAT_IDB_NAME,1);
+    /* LayCAT の onupgradeneeded と同じスキーマ（存在確認・作成しないと開けない環境向け保険） */
+    r.onupgradeneeded=()=>{const d=r.result;for(const s of ['handles','blobs','kv']){if(!d.objectStoreNames.contains(s))d.createObjectStore(s);}};
     r.onsuccess=()=>res(r.result);
     r.onerror=()=>rej(r.error);
   });
 }
-async function idbGet(k){
-  const d=await idbOpen();
-  return new Promise((res,rej)=>{
-    const t=d.transaction(IDB_STORE,'readonly');
-    const r=t.objectStore(IDB_STORE).get(k);
-    r.onsuccess=()=>res(r.result);
-    r.onerror=()=>rej(r.error);
-  });
+async function laycatIdbGet(store,key){
+  try{
+    const d=await laycatIdbOpen();
+    return await new Promise((res,rej)=>{
+      const t=d.transaction(store,'readonly');
+      const r=t.objectStore(store).get(key);
+      r.onsuccess=()=>res(r.result);
+      r.onerror=()=>rej(r.error);
+    });
+  }catch(_){return null;}
 }
-async function idbSet(k,v){
-  const d=await idbOpen();
-  return new Promise((res,rej)=>{
-    const t=d.transaction(IDB_STORE,'readwrite');
-    const r=t.objectStore(IDB_STORE).put(v,k);
-    r.onsuccess=()=>res();
-    r.onerror=()=>rej(r.error);
-  });
+function laycatRegistry(){
+  try{const v=localStorage.getItem('layna_registry');return v?JSON.parse(v):[];}catch(_){return [];}
+}
+function laycatLastPageId(){
+  try{const v=localStorage.getItem('layna_loc');return v?(JSON.parse(v).lastPageId||null):null;}catch(_){return null;}
+}
+function urlParam(k){
+  try{return new URLSearchParams(window.location.search).get(k);}catch(_){return null;}
 }
 
 const storage = {
-  dirHandle: null,
-  async pickFolder(){
-    if(!window.showDirectoryPicker){
-      alert('お使いのブラウザは File System Access API 未対応です（Chrome/Edge 系推奨）');
-      return null;
+  dirHandle: null,   /* 現在アクティブなプロジェクトのフォルダハンドル */
+  pid: null,         /* 現在アクティブなプロジェクト ID */
+  async connectProject(pid){
+    /* LayCAT の IDB からハンドルを取得 → permission 確認 → 接続 */
+    this.pid = pid;
+    this.dirHandle = null;
+    if(!pid) return {ok:false, err:'プロジェクト ID が指定されていません'};
+    const h = await laycatIdbGet('handles','proj_'+pid);
+    if(!h) return {ok:false, err:'このプロジェクトのフォルダハンドルが LayCAT に保存されていません。LayCAT でプロジェクトを開いてフォルダを接続してください。'};
+    /* permission 確認 */
+    let perm='denied';
+    try{ perm = await h.queryPermission({mode:'readwrite'}); }catch(_){}
+    if(perm!=='granted'){
+      return {ok:false, needsPermission:true, handle:h, err:'フォルダアクセスの許可が必要です。「接続を許可」ボタンをクリックしてください。'};
     }
-    try{
-      const h = await window.showDirectoryPicker({mode:'readwrite'});
-      this.dirHandle = h;
-      try{ await idbSet('projectDir', h); }catch(_){}
-      return h;
-    }catch(e){
-      if(e && e.name!=='AbortError') console.warn(e);
-      return null;
-    }
+    this.dirHandle = h;
+    return {ok:true};
   },
-  async restoreFolder(){
+  async requestPermissionAndConnect(pid, handle){
+    /* user gesture の中で呼ばれる想定 */
     try{
-      const h = await idbGet('projectDir');
-      if(!h) return null;
-      const perm = await h.queryPermission({mode:'readwrite'});
-      if(perm==='granted'){this.dirHandle=h; return h;}
-      /* 未許可なら null 返し：ユーザーが再度クリックしたら permission ダイアログ */
-      this.dirHandle = h;
-      return null;
-    }catch(_){return null;}
-  },
-  async ensurePermission(){
-    if(!this.dirHandle) return false;
-    try{
-      const p = await this.dirHandle.requestPermission({mode:'readwrite'});
-      return p==='granted';
-    }catch(_){return false;}
+      const p = await handle.requestPermission({mode:'readwrite'});
+      if(p==='granted'){
+        this.pid = pid;
+        this.dirHandle = handle;
+        return true;
+      }
+    }catch(e){console.warn(e);}
+    return false;
   },
   async readJson(path){
     if(!this.dirHandle) return null;
@@ -667,10 +699,12 @@ async function loadProjectData(){
       : kidsOf(section.id).filter(n=>n.type==='review');
     const sched = scheduleMap[section.id] || {};
     const schedStages = Array.isArray(sched.stages)?sched.stages:[];
+    /* この shot の工程名リストを取得（node.stages 優先、なければ root.stages / stageTemplates） */
+    const projectStages = projectStageNames(section, root);
     const stages = kids.map(k=>{
       const kind = classifyStage(k.name);
       const label = stageLabel(kind, k.name);
-      const color = stageColor(kind, k.name);
+      const color = stageColor(kind, k.name, projectStages);
       const ss = schedStages.find(x=>x.stageId===k.id) || {};
       const plannedStart = ss.plannedStart ? new Date(ss.plannedStart) : null;
       const plannedEnd = ss.plannedEnd ? new Date(ss.plannedEnd) : null;
@@ -1003,16 +1037,61 @@ function buildOtherTabsPlaceholder(){
   }
 }
 
-/* =========== フォルダ選択と読み込み =========== */
-async function onPickFolder(){
-  await storage.pickFolder();
-  updateFolderUI();
-  if(storage.dirHandle) await loadAndRender();
+/* =========== プロジェクト切替とフォルダ接続 =========== */
+function populateProjectPicker(){
+  const sel = document.getElementById('projSelect');
+  const reg = laycatRegistry();
+  sel.innerHTML='';
+  if(!reg.length){
+    const o=document.createElement('option'); o.value=''; o.textContent='（LayCAT にプロジェクトなし）'; sel.appendChild(o);
+    return;
+  }
+  for(const p of reg){
+    const o=document.createElement('option'); o.value=p.id;
+    o.textContent = p.name + (p.folderName?`（${p.folderName}）`:'');
+    sel.appendChild(o);
+  }
+  /* 選択：URL param > lastPageId 由来 > 先頭 */
+  const paramPid = urlParam('pid');
+  const lastPid  = laycatLastPageId();
+  let target = paramPid || lastPid || reg[0].id;
+  /* lastPid はショットの node.id かもしれない。registry に無ければ先頭 */
+  if(!reg.some(p=>p.id===target)) target = reg[0].id;
+  sel.value = target;
 }
-async function tryRestoreFolder(){
-  const h = await storage.restoreFolder();
+async function switchToProject(pid){
+  storage.pid = pid;
+  updateFolderUI(); /* まず未接続表示 */
+  const body = document.getElementById('ganttBody');
+  body.innerHTML=`<div class="loading-panel">読み込み中…</div>`;
+  const r = await storage.connectProject(pid);
+  if(!r.ok){
+    if(r.needsPermission && r.handle){
+      body.innerHTML=`
+        <div class="empty-panel">
+          <div class="ep-ico">🔓</div>
+          <div class="ep-title">フォルダアクセスの許可が必要です</div>
+          <div class="ep-sub">LayCAT で設定したこのプロジェクトのフォルダに、pmboard もアクセスする許可が必要です。<br>下のボタンをクリックして許可してください（初回のみ）。</div>
+          <button class="btn btn-primary" id="btnGrant">🔓 フォルダアクセスを許可</button>
+        </div>`;
+      document.getElementById('btnGrant').onclick = async ()=>{
+        const ok = await storage.requestPermissionAndConnect(pid, r.handle);
+        if(ok){ updateFolderUI(); await loadAndRender(); }
+        else { alert('許可が得られませんでした'); }
+      };
+      return;
+    }
+    body.innerHTML=`
+      <div class="empty-panel">
+        <div class="ep-ico">⚠</div>
+        <div class="ep-title">プロジェクトに接続できません</div>
+        <div class="ep-sub">${escapeHtml(r.err||'不明なエラー')}<br><br>LayCAT でこのプロジェクトを開いてフォルダを接続すると、pmboard でも同じフォルダを使えるようになります。</div>
+        <a class="btn btn-primary" href="./laycat.html" target="_blank" style="text-decoration:none">LayCAT を開く →</a>
+      </div>`;
+    return;
+  }
   updateFolderUI();
-  if(h) await loadAndRender();
+  await loadAndRender();
 }
 function updateFolderUI(){
   const fs = document.getElementById('folderStatus');
@@ -1022,7 +1101,7 @@ function updateFolderUI(){
     nm.textContent = storage.dirHandle.name || '接続済み';
   }else{
     fs.classList.remove('connected'); fs.classList.remove('warn');
-    nm.textContent = 'フォルダ未選択';
+    nm.textContent = storage.pid ? '許可待ち' : '未接続';
   }
 }
 async function loadAndRender(){
@@ -1030,7 +1109,7 @@ async function loadAndRender(){
   body.innerHTML=`<div class="loading-panel">読み込み中…</div>`;
   const r = await loadProjectData();
   if(!r.ok){
-    body.innerHTML=`<div class="empty-panel"><div class="ep-ico">⚠</div><div class="ep-title">読み込み失敗</div><div class="ep-sub">${escapeHtml(r.err||'不明なエラー')}</div><button class="btn btn-primary" onclick="onPickFolder()">📁 別のフォルダを選択</button></div>`;
+    body.innerHTML=`<div class="empty-panel"><div class="ep-ico">⚠</div><div class="ep-title">読み込み失敗</div><div class="ep-sub">${escapeHtml(r.err||'不明なエラー')}</div></div>`;
     return;
   }
   buildTimelineHdr();
@@ -1075,16 +1154,47 @@ document.getElementById('scaleToggle').addEventListener('click',e=>{
   document.querySelectorAll('#scaleToggle button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');
 });
-document.getElementById('folderStatus').addEventListener('click', onPickFolder);
-window.onPickFolder = onPickFolder;
+document.getElementById('projSelect').addEventListener('change', e=>{
+  const pid = e.target.value;
+  if(pid) switchToProject(pid);
+});
+document.getElementById('folderStatus').addEventListener('click', ()=>{
+  /* 許可未取得時に押されたらプロジェクトへ再接続を試行（button re-render で許可ボタンが出る） */
+  if(!storage.dirHandle && storage.pid) switchToProject(storage.pid);
+});
+
+/* =========== 空状態（プロジェクト未選択）UI =========== */
+function showInitialEmptyState(){
+  const body = document.getElementById('ganttBody');
+  const reg = laycatRegistry();
+  if(!reg.length){
+    body.innerHTML=`
+      <div class="empty-panel">
+        <div class="ep-ico">🎬</div>
+        <div class="ep-title">LayCAT でプロジェクトを開いてください</div>
+        <div class="ep-sub">pmboard は LayCAT で登録・接続済みのプロジェクトフォルダを共有します。<br>まず LayCAT でプロジェクトを開き、フォルダを接続してから pmboard に戻ってきてください。</div>
+        <a class="btn btn-primary" href="./laycat.html" target="_blank" style="text-decoration:none">LayCAT を開く →</a>
+      </div>`;
+    return;
+  }
+  body.innerHTML=`
+    <div class="empty-panel">
+      <div class="ep-ico">📋</div>
+      <div class="ep-title">プロジェクトを選択してください</div>
+      <div class="ep-sub">左上のドロップダウンからプロジェクトを選ぶと、スケジュールが表示されます。</div>
+    </div>`;
+}
 
 /* =========== Init =========== */
 document.getElementById('appVer').textContent = APP_VERSION;
-updateFolderUI();
 buildOtherTabsPlaceholder();
-buildGantt();
+populateProjectPicker();
 initScheduleDrag();
-tryRestoreFolder();
+updateFolderUI();
+/* 初期プロジェクトへ自動接続を試行 */
+const initialPid = document.getElementById('projSelect').value;
+if(initialPid){ switchToProject(initialPid); }
+else { showInitialEmptyState(); }
 
 </script>
 
