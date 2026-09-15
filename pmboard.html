@@ -8,276 +8,269 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
+/* =========== LayCAT のカラー・タイポ・radius を継承 =========== */
 :root{
-  --bg:#0A0A0D; --bg2:#141418; --bg3:#1C1C22; --bg4:#26262E;
-  --border:#2A2A32; --border2:#3A3A46;
-  --text:#EEEEF2; --text2:#B4B4C0; --text3:#707080;
-  --purple:#A56BF0; --purple2:#7A5CFF; --purple-dim:rgba(165,107,240,.22);
-  --cyan:#5CC7EF; --cyan-dim:rgba(92,199,239,.22);
-  --green:#5CB878; --amber:#F2C86B; --red:#EE6A6A; --white:#FFFFFF;
-  --grad:linear-gradient(135deg,var(--cyan),var(--purple));
+  --bg:#0d0d0f;--bg2:#141416;--bg3:#1c1c1f;--bg4:#232327;
+  --border:#2a2a2f;--border2:#3a3a42;
+  --text:#e8e8ec;--text2:#9a9aaa;--text3:#5a5a6a;
+  --accent:#c7c7cf;--accent2:#e8e8ec;
+  --red:#e06a6a;--green:#7fbf9a;--amber:#d6a95f;
+  --hover-bg:rgba(255,255,255,.08);
+  --radius:10px;--radius2:6px;
+  --font-ui:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Hiragino Sans','Yu Gothic UI','Meiryo','Noto Sans JP',sans-serif;
   --font-head:'Space Grotesk','Noto Sans JP',sans-serif;
   --font-body:'Noto Sans JP',sans-serif;
-  --font-code:'Space Grotesk','Noto Sans JP',monospace;
+  --font-code:'Space Grotesk','Noto Sans JP',sans-serif;
+  /* 工程カラー：LayCAT の抑えたトーンに合わせて彩度低め */
+  --st-layout:#7ab6ff;
+  --st-anim:#a488d4;
+  --st-fx:#d68b7a;
+  --st-comp:#d6a95f;
+  --st-paint:#7fbf9a;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:13px;overflow:hidden}
-a{color:var(--cyan);text-decoration:none}
-button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
-input,select{font-family:inherit;color:inherit;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;outline:none}
-input:focus,select:focus{border-color:var(--purple)}
-::selection{background:var(--purple-dim)}
+html,body{height:100%}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text);font-size:14px;display:flex;flex-direction:column;overflow:hidden}
+button{font-family:inherit;background:none;border:none;color:inherit;cursor:pointer}
+input,textarea,select{font-family:inherit}
+a{color:var(--accent);text-decoration:none;cursor:pointer}
+::selection{background:rgba(199,199,207,.22)}
 
-/* ================ Layout ================ */
-.app{display:grid;grid-template-rows:56px 1fr;height:100vh;overflow:hidden}
-.hdr{display:flex;align-items:center;gap:20px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);z-index:20}
-.hdr .brand{display:flex;align-items:center;gap:10px;font-family:var(--font-head);font-weight:700}
-.hdr .brand .logo{width:28px;height:28px;border-radius:8px;background:var(--grad);display:flex;align-items:center;justify-content:center;color:var(--white);font-size:16px}
-.hdr .brand .title{font-size:15px;letter-spacing:1px}
-.hdr .brand .sub{font-size:11px;color:var(--text3);letter-spacing:2px;margin-left:4px}
+/* =========== HEADER =========== */
+.header{display:flex;align-items:center;gap:12px;padding:0 16px;height:56px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;z-index:100}
+.logo{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-head);font-weight:700;font-size:15px;letter-spacing:.5px}
+.logo .brand-mark{width:28px;height:28px;border-radius:var(--radius2);background:var(--bg4);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--accent2)}
+.logo .brand-sub{font-size:10px;color:var(--text3);letter-spacing:2px;margin-left:2px;font-weight:500}
+.app-ver{align-self:center;font-family:var(--font-head);font-size:10px;letter-spacing:.5px;color:var(--text3);padding:2px 7px;border:1px solid var(--border);border-radius:6px;background:var(--bg);white-space:nowrap}
+.header-sep{width:1px;height:24px;background:var(--border2);flex-shrink:0}
+.folder-status{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);padding:5px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);cursor:pointer}
+.folder-status:hover{border-color:var(--border2)}
+.folder-status .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.folder-status .fname{color:var(--text);font-weight:500}
+.folder-status .fchange{color:var(--text3);font-size:11px;margin-left:4px}
+.folder-status:hover .fchange{color:var(--text)}
+.header-actions{display:flex;gap:8px;margin-left:auto;align-items:center}
+.scale{display:inline-flex;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);padding:2px;font-size:11px}
+.scale button{padding:5px 10px;border-radius:4px;color:var(--text3);letter-spacing:.5px;font-family:var(--font-head);font-weight:500}
+.scale button.on{background:var(--bg4);color:var(--text)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--radius2);font-size:13px;font-weight:500;transition:all .15s;white-space:nowrap}
+.btn-primary{background:#ececf0;color:#16161a}
+.btn-primary:hover{background:#fff}
+.btn-ghost{border:1px solid var(--border);color:var(--text2)}
+.btn-ghost:hover{border-color:var(--border2);color:var(--text)}
+.btn-sm{padding:4px 9px;font-size:12px}
 
-.hdr .sep{width:1px;height:24px;background:var(--border)}
-.hdr .folder{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text2)}
-.hdr .folder .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
-.hdr .folder .name{color:var(--text);font-weight:500}
-.hdr .folder button{padding:4px 8px;background:transparent;color:var(--text3);font-size:11px;border-radius:4px}
-.hdr .folder button:hover{color:var(--purple);background:var(--purple-dim)}
+/* =========== BODY =========== */
+.app-body{display:flex;flex:1;overflow:hidden;position:relative}
+.sidebar{width:250px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;padding:12px 8px;gap:14px}
+.sidebar-label{font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;padding:0 8px;margin-bottom:4px}
+.sb-box{padding:10px 8px;background:transparent}
+.sb-proj-name{font-family:var(--font-head);font-size:15px;font-weight:600;color:var(--text);margin-bottom:5px}
+.sb-proj-meta{font-size:11px;color:var(--text3);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.sb-chip{font-size:10px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:1px 8px}
+.sb-chip.hot{background:rgba(214,169,95,.13);border-color:rgba(214,169,95,.42);color:var(--amber)}
 
-.hdr .grow{flex:1}
-.hdr .scale{display:inline-flex;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:3px;font-size:11px}
-.hdr .scale button{padding:5px 12px;border-radius:5px;color:var(--text2);letter-spacing:1px;font-family:var(--font-head);font-weight:500}
-.hdr .scale button.on{background:var(--purple);color:var(--white)}
-.hdr .today{padding:6px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text)}
-.hdr .today:hover{border-color:var(--purple);color:var(--purple)}
+.sb-stat{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 4px}
+.sb-cell{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 10px}
+.sb-cell .n{font-family:var(--font-head);font-size:20px;font-weight:700;color:var(--text);line-height:1.1}
+.sb-cell .l{font-size:10px;color:var(--text3);letter-spacing:.5px;margin-top:2px;text-transform:uppercase}
+.sb-cell .u{font-size:10px;color:var(--text3);font-weight:500;margin-left:2px}
 
-.hdr .avatars{display:flex;margin-left:8px}
-.hdr .avatars .av{width:28px;height:28px;border-radius:50%;background:var(--bg3);border:2px solid var(--bg2);margin-left:-8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--white)}
-.hdr .avatars .av:nth-child(1){background:linear-gradient(135deg,#A56BF0,#7A5CFF);margin-left:0}
-.hdr .avatars .av:nth-child(2){background:linear-gradient(135deg,#5CC7EF,#3B9EFF)}
-.hdr .avatars .av:nth-child(3){background:linear-gradient(135deg,#F2C86B,#EE9F4E)}
-.hdr .avatars .av:nth-child(4){background:linear-gradient(135deg,#5CB878,#3A9E5A)}
+.sb-filter{padding:0 4px;display:flex;flex-direction:column;gap:6px}
+.sb-filter label{font-size:10px;color:var(--text3);letter-spacing:.5px;margin-top:6px}
+.sb-filter label:first-child{margin-top:0}
+.sb-filter select,.sb-filter input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text);padding:6px 9px;font-size:12px}
+.sb-filter select:focus,.sb-filter input:focus{outline:none;border-color:var(--border2)}
 
-/* ================ Body ================ */
-.body{display:grid;grid-template-columns:280px 1fr;overflow:hidden}
-.side{background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;padding:20px 16px}
-.side h3{font-family:var(--font-head);font-size:10px;font-weight:700;letter-spacing:3px;color:var(--text3);margin-bottom:10px;text-transform:uppercase}
-.side .box{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:18px}
+.sb-legend{padding:0 4px;display:flex;flex-direction:column;gap:6px}
+.sb-legend .row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2)}
+.sb-legend .swatch{width:18px;height:10px;border-radius:2px;flex-shrink:0;background:var(--accent)}
+.sb-legend .swatch.plan{background:transparent;border:1px dashed var(--accent2)}
+.sb-legend .swatch.actual{background:var(--accent2)}
+.sb-legend .swatch.wip{background:linear-gradient(90deg,var(--accent2),var(--text3));opacity:.7}
+.sb-legend .swatch.late{background:var(--red)}
+.sb-legend .swatch.milestone{background:var(--amber);width:9px;height:9px;transform:rotate(45deg)}
 
-.side .proj-name{font-family:var(--font-head);font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px}
-.side .proj-meta{font-size:11px;color:var(--text3);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.side .proj-meta .chip{background:var(--bg4);padding:2px 8px;border-radius:10px;color:var(--text2)}
-.side .proj-meta .chip.hot{background:var(--purple-dim);color:var(--purple)}
-
-.side .stat{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.side .stat .cell{background:var(--bg4);border-radius:8px;padding:10px 12px}
-.side .stat .cell .n{font-family:var(--font-head);font-size:22px;font-weight:700;color:var(--text);line-height:1.1}
-.side .stat .cell .l{font-size:10px;color:var(--text3);letter-spacing:1px;margin-top:2px;text-transform:uppercase}
-.side .stat .cell .n .u{font-size:11px;color:var(--text3);font-weight:500;margin-left:2px}
-
-.side .filt label{display:block;font-size:11px;color:var(--text3);margin-bottom:5px;margin-top:10px;letter-spacing:1px}
-.side .filt label:first-child{margin-top:0}
-.side .filt select,.side .filt input{width:100%}
-
-.side .legend{display:flex;flex-direction:column;gap:8px}
-.side .legend .row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text2)}
-.side .legend .swatch{width:22px;height:12px;border-radius:3px;flex-shrink:0}
-.side .legend .sw-plan{background:transparent;border:1.5px dashed var(--purple)}
-.side .legend .sw-actual{background:var(--grad)}
-.side .legend .sw-late{background:var(--red);opacity:.6}
-.side .legend .sw-noplan{background:var(--bg4);border:1px solid var(--border2)}
-.side .legend .sw-milestone{background:var(--amber);width:12px;height:12px;transform:rotate(45deg)}
-
-/* ================ Main ================ */
-.main{overflow:hidden;display:flex;flex-direction:column;background:var(--bg)}
-.tabs{display:flex;gap:2px;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px}
-.tabs button{position:relative;padding:14px 18px;color:var(--text3);font-size:13px;font-family:var(--font-head);font-weight:500;letter-spacing:1px}
-.tabs button:hover{color:var(--text2)}
-.tabs button.on{color:var(--text)}
-.tabs button.on::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--purple)}
-.tabs button .cnt{margin-left:6px;font-size:10px;background:var(--bg4);padding:1px 6px;border-radius:8px;color:var(--text3);font-family:var(--font-code)}
-.tabs button.on .cnt{background:var(--purple-dim);color:var(--purple)}
+/* =========== MAIN =========== */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;background:var(--bg)}
+.head-tabs{display:flex;gap:2px;align-items:flex-end;padding:0 20px;background:var(--bg);border-bottom:1px solid var(--border)}
+.ptab{background:none;border:none;border-bottom:2px solid transparent;color:var(--text3);font-family:var(--font-head);font-size:14px;font-weight:700;letter-spacing:.5px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:8px}
+.ptab:hover{color:var(--text)}
+.ptab.on{color:var(--text);border-bottom-color:var(--accent2)}
+.ptab .cnt{font-size:10px;font-family:var(--font-code);color:var(--text3);background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:1px 7px}
+.ptab.on .cnt{color:var(--text);border-color:var(--border2)}
 
 .content{flex:1;overflow:hidden;position:relative}
-.pane{position:absolute;inset:0;overflow:auto;padding:20px;display:none}
+.pane{position:absolute;inset:0;overflow:auto;padding:16px 20px;display:none}
 .pane.on{display:block}
 
-/* ================ Schedule Gantt ================ */
-.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+/* =========== GANTT =========== */
+.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
 .gantt-hdr{display:grid;grid-template-columns:220px 1fr;background:var(--bg3);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
-.gantt-hdr .lbl{padding:14px 16px;font-family:var(--font-head);font-size:10px;font-weight:700;letter-spacing:3px;color:var(--text3);text-transform:uppercase;border-right:1px solid var(--border)}
+.gantt-hdr .lbl{padding:11px 14px;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;border-right:1px solid var(--border)}
 .gantt-hdr .timeline{position:relative;overflow:hidden}
-.gantt-hdr .timeline .weeks{display:flex;font-family:var(--font-code);font-size:10px;color:var(--text3);letter-spacing:1px;height:26px;align-items:center;border-bottom:1px solid var(--border)}
-.gantt-hdr .timeline .weeks .w{flex:1;padding:0 10px;border-right:1px solid var(--border);white-space:nowrap;overflow:hidden}
-.gantt-hdr .timeline .days{display:flex;font-family:var(--font-code);font-size:9px;color:var(--text3);height:22px;align-items:center}
-.gantt-hdr .timeline .days .d{flex:1;text-align:center;border-right:1px solid var(--bg2);height:100%;padding-top:4px}
+.gantt-hdr .timeline .weeks{display:flex;font-family:var(--font-code);font-size:10px;color:var(--text3);letter-spacing:.5px;height:22px;align-items:center;border-bottom:1px solid var(--border)}
+.gantt-hdr .timeline .weeks .w{flex:1;padding:0 8px;border-right:1px solid var(--border);white-space:nowrap;overflow:hidden}
+.gantt-hdr .timeline .days{display:flex;font-family:var(--font-code);font-size:9px;color:var(--text3);height:20px;align-items:center}
+.gantt-hdr .timeline .days .d{flex:1;text-align:center;border-right:1px solid var(--bg2);height:100%;padding-top:3px}
 .gantt-hdr .timeline .days .d.wknd{background:rgba(255,255,255,.02);color:var(--text3)}
 
 .gantt-body{position:relative}
-.gantt-row{display:grid;grid-template-columns:220px 1fr;border-bottom:1px solid var(--border);min-height:56px}
-.gantt-row:hover{background:rgba(165,107,240,.03)}
-.gantt-row .shot{padding:10px 16px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;position:sticky;left:0;background:var(--bg2);z-index:2}
+.gantt-row{display:grid;grid-template-columns:220px 1fr;border-bottom:1px solid var(--border);min-height:60px}
+.gantt-row:hover{background:rgba(255,255,255,.02)}
+.gantt-row .shot{padding:9px 14px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;position:sticky;left:0;background:var(--bg2);z-index:2}
 .gantt-row:hover .shot{background:var(--bg3)}
-.gantt-row .shot .id{font-family:var(--font-code);font-size:13px;font-weight:600;color:var(--text)}
+.gantt-row .shot .id{font-family:var(--font-code);font-size:13px;font-weight:700;color:var(--text);letter-spacing:.2px}
 .gantt-row .shot .name{font-size:11px;color:var(--text3);margin-top:2px}
-.gantt-row .shot .meta{display:flex;gap:6px;margin-top:4px}
-.gantt-row .shot .meta .chip{font-size:9px;padding:1px 6px;border-radius:8px;background:var(--bg4);color:var(--text2);font-family:var(--font-code)}
-.gantt-row .shot .meta .chip.late{background:rgba(238,106,106,.15);color:var(--red)}
-.gantt-row .shot .meta .chip.done{background:rgba(92,184,120,.15);color:var(--green)}
+.gantt-row .shot .meta{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;align-items:center}
+.gantt-row .shot .stbadges{display:flex;gap:2px}
+.gantt-row .shot .stbadge{font-size:9px;font-family:var(--font-head);font-weight:700;width:14px;height:14px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+/* mp-badge に似せた status chip */
+.st-chip{display:inline-flex;align-items:center;font-size:10px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-weight:500}
+.st-chip.done{background:rgba(127,191,154,.13);border-color:rgba(127,191,154,.42);color:var(--green)}
+.st-chip.wip{background:rgba(96,165,255,.13);border-color:rgba(96,165,255,.42);color:var(--accent2)}
+.st-chip.late{background:rgba(224,106,106,.13);border-color:rgba(224,106,106,.42);color:var(--red)}
+.st-chip.plan{background:rgba(214,169,95,.13);border-color:rgba(214,169,95,.42);color:var(--amber)}
+.st-chip.noplan{background:var(--bg3);border-color:var(--border);color:var(--text3)}
 
-.gantt-row .track{position:relative;height:100%;padding:8px 0;min-height:56px}
-.gantt-row .track .day{position:absolute;top:0;bottom:0;border-right:1px solid rgba(255,255,255,.03)}
-.gantt-row .track .day.wknd{background:rgba(255,255,255,.02)}
-/* 工程セグメント：予定バー（破線枠、工程色で染める） */
-.gantt-row .track .seg-plan{position:absolute;top:8px;height:16px;border:1.5px dashed;border-radius:4px;overflow:hidden}
-.gantt-row .track .seg-plan .seg-lbl{position:absolute;left:4px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;font-family:var(--font-head);font-weight:600;letter-spacing:.5px;white-space:nowrap;pointer-events:none;text-shadow:0 0 4px rgba(0,0,0,.6)}
-/* 工程セグメント：実績バー（工程色でソリッド塗り） */
-.gantt-row .track .seg-actual{position:absolute;top:30px;height:16px;border-radius:4px}
-.gantt-row .track .seg-actual.wip{border:1px dashed rgba(255,255,255,.4)}
-.gantt-row .track .seg-actual.late{outline:1px solid rgba(238,106,106,.5)}
-.gantt-row .track .seg-actual .seg-actual-lbl{position:absolute;right:4px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;color:var(--white);font-family:var(--font-code);font-weight:600;letter-spacing:.5px;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.4)}
-.gantt-row .track .milestone{position:absolute;top:24px;width:10px;height:10px;background:var(--amber);transform:rotate(45deg);box-shadow:0 0 8px rgba(242,200,107,.4);z-index:2}
-/* ショットカードの工程バッジ */
-.gantt-row .shot .stbadges{display:flex;gap:2px;margin-top:4px}
-.gantt-row .shot .stbadges .stbadge{font-size:9px;font-family:var(--font-head);font-weight:700;width:14px;height:14px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:0;line-height:1}
+.gantt-row .track{position:relative;height:100%;padding:8px 0;min-height:60px}
+.gantt-row .track .day{position:absolute;top:0;bottom:0;border-right:1px solid rgba(255,255,255,.02)}
+.gantt-row .track .day.wknd{background:rgba(255,255,255,.015)}
+.gantt-row .track .seg-plan{position:absolute;top:9px;height:14px;border:1px dashed;border-radius:var(--radius2);overflow:hidden}
+.gantt-row .track .seg-plan .seg-lbl{position:absolute;left:5px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;font-family:var(--font-head);font-weight:600;letter-spacing:.2px;white-space:nowrap;pointer-events:none}
+.gantt-row .track .seg-actual{position:absolute;top:30px;height:14px;border-radius:var(--radius2)}
+.gantt-row .track .seg-actual.wip{border-right:1px dashed rgba(255,255,255,.35)}
+.gantt-row .track .seg-actual.late{outline:1px solid rgba(224,106,106,.5)}
+.gantt-row .track .seg-actual .seg-actual-lbl{position:absolute;right:5px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;color:#16161a;font-family:var(--font-code);font-weight:700;letter-spacing:.2px;white-space:nowrap}
+.gantt-row .track .milestone{position:absolute;top:22px;width:9px;height:9px;background:var(--amber);transform:rotate(45deg);z-index:3}
 
-.gantt-today{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--red);z-index:3;pointer-events:none}
-.gantt-today .lbl{position:absolute;top:2px;left:4px;font-size:9px;color:var(--red);font-family:var(--font-code);font-weight:600;letter-spacing:1px;background:var(--bg);padding:1px 4px;border-radius:3px}
+.gantt-today{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed var(--red);z-index:3;pointer-events:none}
+.gantt-today .lbl{position:absolute;top:2px;left:4px;font-size:9px;color:var(--red);font-family:var(--font-code);font-weight:700;letter-spacing:.5px;background:var(--bg);padding:1px 5px;border-radius:3px;border:1px solid rgba(224,106,106,.4)}
 
-/* Group header rows */
+/* Scene group row */
 .gantt-row.group{background:var(--bg3);min-height:32px}
-.gantt-row.group .shot{background:var(--bg3);padding:6px 16px}
-.gantt-row.group .shot .id{font-family:var(--font-head);font-size:11px;letter-spacing:2px;color:var(--purple);text-transform:uppercase}
+.gantt-row.group .shot{background:var(--bg3);padding:8px 14px}
+.gantt-row.group .shot .id{font-family:var(--font-head);font-size:11px;letter-spacing:1.5px;color:var(--text2);text-transform:uppercase;font-weight:500}
 .gantt-row.group:hover{background:var(--bg3)}
 .gantt-row.group:hover .shot{background:var(--bg3)}
+.gantt-row.group .track{min-height:32px}
 
-/* ================ 工数 tab ================ */
-.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
-.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;position:relative;overflow:hidden}
-.stat-card .l{font-size:10px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;font-family:var(--font-head)}
-.stat-card .n{font-family:var(--font-head);font-size:34px;font-weight:700;color:var(--text);margin-top:6px;line-height:1.1}
-.stat-card .n .u{font-size:14px;color:var(--text3);font-weight:500;margin-left:4px}
-.stat-card .d{font-size:11px;color:var(--text3);margin-top:6px;display:flex;align-items:center;gap:4px}
+/* =========== 工数タブ =========== */
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;position:relative}
+.stat-card .l{font-size:10px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;font-family:var(--font-head);font-weight:500}
+.stat-card .n{font-family:var(--font-head);font-size:28px;font-weight:700;color:var(--text);margin-top:4px;line-height:1.1}
+.stat-card .n .u{font-size:13px;color:var(--text3);font-weight:500;margin-left:3px}
+.stat-card .d{font-size:11px;color:var(--text3);margin-top:5px}
 .stat-card .d.up{color:var(--green)}
 .stat-card .d.dn{color:var(--red)}
-.stat-card .icon{position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:8px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:16px}
 
-.mode-toggle{display:inline-flex;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:16px}
-.mode-toggle button{padding:8px 16px;border-radius:7px;color:var(--text3);font-size:12px;font-family:var(--font-head);font-weight:500;letter-spacing:1px}
-.mode-toggle button.on{background:var(--purple);color:var(--white)}
-.mode-toggle .note{font-size:10px;color:var(--text3);padding:8px 12px;letter-spacing:.5px;display:inline-flex;align-items:center}
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px}
+.panel h4{font-family:var(--font-head);font-size:11px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;margin-bottom:12px}
 
-.panel{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px}
-.panel h4{font-family:var(--font-head);font-size:12px;font-weight:700;letter-spacing:2px;color:var(--text2);text-transform:uppercase;margin-bottom:16px}
+.mode-toggle{display:inline-flex;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);padding:2px}
+.mode-toggle button{padding:6px 12px;border-radius:4px;color:var(--text3);font-size:12px;font-family:var(--font-head);font-weight:500;letter-spacing:.3px}
+.mode-toggle button.on{background:var(--bg4);color:var(--text)}
+.mode-note{font-size:11px;color:var(--text3);margin-left:12px}
 
-/* Effort bars */
-.effort-list .row{display:grid;grid-template-columns:150px 1fr 80px;gap:16px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+.effort-list .row{display:grid;grid-template-columns:150px 1fr 76px;gap:14px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
 .effort-list .row:last-child{border-bottom:none}
-.effort-list .row .l{font-family:var(--font-code);font-size:12px;color:var(--text)}
-.effort-list .row .bar{position:relative;height:22px;background:var(--bg3);border-radius:4px;overflow:hidden}
-.effort-list .row .bar .fill{position:absolute;top:0;bottom:0;left:0;background:var(--grad);border-radius:4px}
-.effort-list .row .bar .fill.b{background:linear-gradient(135deg,#F2C86B,#EE9F4E);opacity:.7}
-.effort-list .row .n{font-family:var(--font-code);font-size:12px;color:var(--text2);text-align:right}
-.effort-list .row .n .u{color:var(--text3);font-size:10px}
+.effort-list .row .l{font-family:var(--font-code);font-size:12px;color:var(--text);font-weight:600}
+.effort-list .row .bar{position:relative;height:18px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);overflow:hidden}
+.effort-list .row .bar .fill{position:absolute;top:0;bottom:0;left:0;background:var(--accent);border-radius:var(--radius2)}
+.effort-list .row .n{font-family:var(--font-code);font-size:12px;color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
+.effort-list .row .n .u{color:var(--text3);font-size:10px;margin-left:2px}
 
-/* ================ Retake / Activity Charts ================ */
-.chart-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px}
-.chart-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
-.chart-title h4{font-family:var(--font-head);font-size:12px;font-weight:700;letter-spacing:2px;color:var(--text2);text-transform:uppercase}
-.chart-title .legend2{display:flex;gap:14px;font-size:11px;color:var(--text3)}
-.chart-title .legend2 .row{display:flex;align-items:center;gap:6px}
-.chart-title .legend2 .row .swatch{width:10px;height:10px;border-radius:2px}
-.chart-svg{width:100%;height:280px}
+/* =========== グラフパネル =========== */
+.chart-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.chart-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.chart-title h4{font-family:var(--font-head);font-size:11px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase}
+.chart-legend{display:flex;gap:12px;font-size:11px;color:var(--text3)}
+.chart-legend .row{display:flex;align-items:center;gap:5px}
+.chart-legend .swatch{width:10px;height:10px;border-radius:2px}
+.chart-svg{width:100%;height:260px}
 
-/* ================ 操作ログ table ================ */
-.log-tools{display:flex;gap:10px;margin-bottom:16px}
-.log-tools input{flex:1}
-.log-tools .btn{padding:8px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px}
-.log-tools .btn:hover{background:var(--purple-dim);color:var(--purple);border-color:var(--purple)}
+/* =========== 操作ログ =========== */
+.log-tools{display:flex;gap:8px;margin-bottom:12px}
+.log-tools input{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text);padding:6px 10px;font-size:12px}
+.log-tools input:focus{outline:none;border-color:var(--border2)}
 
-.log-table{width:100%;border-collapse:collapse;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden}
-.log-table thead{background:var(--bg3);text-align:left}
-.log-table thead th{padding:12px 16px;font-family:var(--font-head);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text3);text-transform:uppercase;border-bottom:1px solid var(--border)}
-.log-table tbody td{padding:11px 16px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)}
+.log-table{width:100%;border-collapse:collapse;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.log-table thead{background:var(--bg3)}
+.log-table thead th{padding:10px 12px;text-align:left;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;border-bottom:1px solid var(--border)}
+.log-table tbody td{padding:9px 12px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)}
 .log-table tbody tr:last-child td{border-bottom:none}
-.log-table tbody tr:hover{background:rgba(165,107,240,.03)}
+.log-table tbody tr:hover{background:rgba(255,255,255,.02)}
 .log-table .ts{font-family:var(--font-code);color:var(--text3);font-size:11px;white-space:nowrap}
 .log-table .who{color:var(--text);font-weight:500}
-.log-table .kind{font-family:var(--font-code);font-size:10px;padding:2px 8px;border-radius:8px;background:var(--bg3);color:var(--text2);letter-spacing:1px;display:inline-block}
-.log-table .kind.upload{background:rgba(92,199,239,.15);color:var(--cyan)}
-.log-table .kind.status{background:rgba(165,107,240,.15);color:var(--purple)}
-.log-table .kind.submit{background:rgba(92,184,120,.15);color:var(--green)}
-.log-table .kind.comment{background:rgba(242,200,107,.15);color:var(--amber)}
-.log-table .kind.member{background:rgba(238,106,106,.15);color:var(--red)}
+.log-table .kind{font-family:var(--font-head);font-size:10px;padding:2px 8px;border-radius:5px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);letter-spacing:.3px;display:inline-block;font-weight:500}
+.log-table .kind.upload{background:rgba(96,165,255,.13);border-color:rgba(96,165,255,.42);color:var(--accent2)}
+.log-table .kind.status{background:rgba(199,199,207,.13);border-color:rgba(199,199,207,.35);color:var(--accent)}
+.log-table .kind.submit{background:rgba(127,191,154,.13);border-color:rgba(127,191,154,.42);color:var(--green)}
+.log-table .kind.comment{background:rgba(214,169,95,.13);border-color:rgba(214,169,95,.42);color:var(--amber)}
+.log-table .kind.member{background:rgba(224,106,106,.13);border-color:rgba(224,106,106,.42);color:var(--red)}
 .log-table .target{font-family:var(--font-code);color:var(--text)}
 .log-table .detail{color:var(--text3);font-size:11px}
 
-/* ================ scrollbar ================ */
+/* =========== scrollbar =========== */
 ::-webkit-scrollbar{width:10px;height:10px}
-::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:5px;border:2px solid var(--bg)}
 ::-webkit-scrollbar-thumb:hover{background:var(--border2)}
 </style>
 </head>
 <body>
-<div class="app">
 
-<!-- Header -->
-<header class="hdr">
-  <div class="brand">
-    <div class="logo">◆</div>
-    <div>
-      <div class="title">LayCAT</div>
-    </div>
-    <div class="sub">PMBOARD</div>
+<!-- =========== HEADER =========== -->
+<header class="header">
+  <div class="logo">
+    <span class="brand-mark">◆</span>
+    <span>LayCAT</span>
+    <span class="brand-sub">PMBOARD</span>
   </div>
-  <div class="sep"></div>
-  <div class="folder">
+  <div class="app-ver">beta v0.2.0</div>
+  <div class="header-sep"></div>
+  <div class="folder-status">
     <div class="dot"></div>
-    <span>プロジェクト:</span>
-    <span class="name">Karaoke MV / Ep3</span>
-    <button>変更</button>
+    <span class="fname">Karaoke MV / Ep3</span>
+    <span class="fchange">変更</span>
   </div>
-  <div class="grow"></div>
-  <div class="scale" id="scaleToggle">
-    <button data-scale="day">DAY</button>
-    <button data-scale="week" class="on">WEEK</button>
-    <button data-scale="month">MONTH</button>
-  </div>
-  <button class="today">今日へ</button>
-  <div class="avatars">
-    <div class="av">TA</div>
-    <div class="av">YM</div>
-    <div class="av">SK</div>
-    <div class="av">+3</div>
+  <div class="header-actions">
+    <div class="scale" id="scaleToggle">
+      <button data-scale="day">日</button>
+      <button data-scale="week" class="on">週</button>
+      <button data-scale="month">月</button>
+    </div>
+    <button class="btn btn-ghost btn-sm">今日</button>
+    <button class="btn btn-ghost btn-sm">📥 CSV</button>
   </div>
 </header>
 
-<div class="body">
+<!-- =========== BODY =========== -->
+<div class="app-body">
 
-<!-- Sidebar -->
-<aside class="side">
-  <h3>プロジェクト</h3>
-  <div class="box">
-    <div class="proj-name">Karaoke MV / Ep3</div>
-    <div class="proj-meta">
-      <span class="chip hot">進行中</span>
-      <span class="chip">32 shots</span>
-      <span class="chip">6 members</span>
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-label">プロジェクト</div>
+  <div class="sb-box">
+    <div class="sb-proj-name">Karaoke MV / Ep3</div>
+    <div class="sb-proj-meta">
+      <span class="sb-chip hot">進行中</span>
+      <span class="sb-chip">32 shots</span>
+      <span class="sb-chip">6 members</span>
     </div>
   </div>
 
-  <h3>サマリ</h3>
-  <div class="box">
-    <div class="stat">
-      <div class="cell"><div class="n">73<span class="u">%</span></div><div class="l">Progress</div></div>
-      <div class="cell"><div class="n">18<span class="u">/32</span></div><div class="l">Done</div></div>
-      <div class="cell"><div class="n">4</div><div class="l">Late</div></div>
-      <div class="cell"><div class="n">21<span class="u">days</span></div><div class="l">Remain</div></div>
-    </div>
+  <div class="sidebar-label">サマリ</div>
+  <div class="sb-stat">
+    <div class="sb-cell"><div class="n">73<span class="u">%</span></div><div class="l">進捗</div></div>
+    <div class="sb-cell"><div class="n">18<span class="u">/32</span></div><div class="l">完了</div></div>
+    <div class="sb-cell"><div class="n">4</div><div class="l">遅延</div></div>
+    <div class="sb-cell"><div class="n">21<span class="u">日</span></div><div class="l">残</div></div>
   </div>
 
-  <h3>フィルタ</h3>
-  <div class="box filt">
+  <div class="sidebar-label">フィルタ</div>
+  <div class="sb-filter">
     <label>担当者</label>
     <select><option>すべて</option><option>田中太郎</option><option>山田花子</option><option>佐藤健</option></select>
     <label>工程</label>
@@ -288,38 +281,38 @@ input:focus,select:focus{border-color:var(--purple)}
     <input type="text" placeholder="ショット ID / 名前">
   </div>
 
-  <h3>工程カラー</h3>
-  <div class="box legend">
-    <div class="row"><span class="swatch" style="background:#5CC7EF"></span><span>Layout</span></div>
-    <div class="row"><span class="swatch" style="background:#A56BF0"></span><span>Anim</span></div>
-    <div class="row"><span class="swatch" style="background:#F2867F"></span><span>FX</span></div>
-    <div class="row"><span class="swatch" style="background:#F2C86B"></span><span>Comp</span></div>
-    <div class="row"><span class="swatch" style="background:#5CB878"></span><span>Paint</span></div>
+  <div class="sidebar-label">工程カラー</div>
+  <div class="sb-legend">
+    <div class="row"><span class="swatch" style="background:var(--st-layout)"></span><span>Layout</span></div>
+    <div class="row"><span class="swatch" style="background:var(--st-anim)"></span><span>Anim</span></div>
+    <div class="row"><span class="swatch" style="background:var(--st-fx)"></span><span>FX</span></div>
+    <div class="row"><span class="swatch" style="background:var(--st-comp)"></span><span>Comp</span></div>
+    <div class="row"><span class="swatch" style="background:var(--st-paint)"></span><span>Paint</span></div>
   </div>
 
-  <h3>凡例</h3>
-  <div class="box legend">
-    <div class="row"><span class="swatch sw-plan"></span><span>予定期間（工程別）</span></div>
-    <div class="row"><span class="swatch sw-actual"></span><span>実績・完了</span></div>
-    <div class="row"><span class="swatch" style="background:transparent;border:1px dashed rgba(255,255,255,.4);background-image:linear-gradient(90deg,#A56BF0,#A56BF088)"></span><span>作業中（進行中）</span></div>
-    <div class="row"><span class="swatch sw-late"></span><span>遅延</span></div>
-    <div class="row"><span class="swatch sw-milestone"></span><span>マイルストーン</span></div>
+  <div class="sidebar-label">凡例</div>
+  <div class="sb-legend">
+    <div class="row"><span class="swatch plan"></span><span>予定（工程別）</span></div>
+    <div class="row"><span class="swatch actual"></span><span>実績・完了</span></div>
+    <div class="row"><span class="swatch wip"></span><span>作業中</span></div>
+    <div class="row"><span class="swatch late"></span><span>遅延</span></div>
+    <div class="row"><span class="swatch milestone"></span><span>マイルストーン</span></div>
   </div>
 </aside>
 
-<!-- Main -->
+<!-- MAIN -->
 <main class="main">
-  <nav class="tabs" id="tabs">
-    <button class="on" data-tab="schedule">📅 スケジュール<span class="cnt">32</span></button>
-    <button data-tab="effort">⏱ 工数<span class="cnt">A/B</span></button>
-    <button data-tab="retake">🔁 リテイク<span class="cnt">73</span></button>
-    <button data-tab="activity">📈 アクティビティ<span class="cnt">30d</span></button>
-    <button data-tab="log">📜 操作ログ<span class="cnt">1.2k</span></button>
+  <nav class="head-tabs" id="tabs">
+    <button class="ptab on" data-tab="schedule">スケジュール<span class="cnt">32</span></button>
+    <button class="ptab" data-tab="effort">工数<span class="cnt">A/B</span></button>
+    <button class="ptab" data-tab="retake">リテイク<span class="cnt">73</span></button>
+    <button class="ptab" data-tab="activity">アクティビティ<span class="cnt">30d</span></button>
+    <button class="ptab" data-tab="log">操作ログ<span class="cnt">1.2k</span></button>
   </nav>
 
   <div class="content">
 
-    <!-- ============================= Schedule ============================= -->
+    <!-- ========== スケジュール ========== -->
     <div class="pane on" data-pane="schedule">
       <div class="gantt">
         <div class="gantt-hdr">
@@ -330,153 +323,89 @@ input:focus,select:focus{border-color:var(--purple)}
       </div>
     </div>
 
-    <!-- ============================= 工数 ============================= -->
+    <!-- ========== 工数 ========== -->
     <div class="pane" data-pane="effort">
       <div class="grid-4">
-        <div class="stat-card">
-          <div class="icon">⏱</div>
-          <div class="l">総稼働時間</div>
-          <div class="n">284<span class="u">h</span></div>
-          <div class="d up">▲ +12h vs 先週</div>
-        </div>
-        <div class="stat-card">
-          <div class="icon">🎬</div>
-          <div class="l">平均 per shot</div>
-          <div class="n">15.7<span class="u">h</span></div>
-          <div class="d up">▲ +0.8h</div>
-        </div>
-        <div class="stat-card">
-          <div class="icon">🔥</div>
-          <div class="l">最長ショット</div>
-          <div class="n">42<span class="u">h</span></div>
-          <div class="d">SC-030</div>
-        </div>
-        <div class="stat-card">
-          <div class="icon">👥</div>
-          <div class="l">作業者数</div>
-          <div class="n">6</div>
-          <div class="d">アニメ 3 / モデル 2 / コンポ 1</div>
-        </div>
+        <div class="stat-card"><div class="l">総稼働時間</div><div class="n">284<span class="u">h</span></div><div class="d up">▲ +12h vs 先週</div></div>
+        <div class="stat-card"><div class="l">平均 per shot</div><div class="n">15.7<span class="u">h</span></div><div class="d up">▲ +0.8h</div></div>
+        <div class="stat-card"><div class="l">最長ショット</div><div class="n">42<span class="u">h</span></div><div class="d">SC-030</div></div>
+        <div class="stat-card"><div class="l">作業者数</div><div class="n">6</div><div class="d">アニメ 3 / モデル 2 / コンポ 1</div></div>
       </div>
-
       <div class="panel">
         <h4>算出モード</h4>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center">
           <div class="mode-toggle">
             <button class="on">案 A・作業中限定</button>
             <button>案 B・未着手離脱〜次工程</button>
             <button>両方併記</button>
           </div>
-          <div class="mode-toggle"><div class="note">※ 案 C の両方併記は判断材料として最強</div></div>
+          <div class="mode-note">※ 案 C の両方併記が判断材料として最強</div>
         </div>
       </div>
-
       <div class="panel">
         <h4>ショット別稼働時間</h4>
         <div class="effort-list">
-          <div class="row"><div class="l">SC-010 / A</div><div class="bar"><div class="fill" style="width:65%"></div></div><div class="n">18.5<span class="u">h</span></div></div>
-          <div class="row"><div class="l">SC-020 / A</div><div class="bar"><div class="fill" style="width:78%"></div></div><div class="n">22.0<span class="u">h</span></div></div>
+          <div class="row"><div class="l">SC-010 / A</div><div class="bar"><div class="fill" style="width:44%"></div></div><div class="n">18.5<span class="u">h</span></div></div>
+          <div class="row"><div class="l">SC-020 / A</div><div class="bar"><div class="fill" style="width:52%"></div></div><div class="n">22.0<span class="u">h</span></div></div>
           <div class="row"><div class="l">SC-030 / B</div><div class="bar"><div class="fill" style="width:100%"></div></div><div class="n">42.0<span class="u">h</span></div></div>
-          <div class="row"><div class="l">SC-040 / B</div><div class="bar"><div class="fill" style="width:45%"></div></div><div class="n">12.5<span class="u">h</span></div></div>
-          <div class="row"><div class="l">SC-050 / C</div><div class="bar"><div class="fill" style="width:52%"></div></div><div class="n">14.8<span class="u">h</span></div></div>
-          <div class="row"><div class="l">SC-060 / C</div><div class="bar"><div class="fill" style="width:71%"></div></div><div class="n">20.2<span class="u">h</span></div></div>
-          <div class="row"><div class="l">SC-070 / D</div><div class="bar"><div class="fill" style="width:38%"></div></div><div class="n">10.5<span class="u">h</span></div></div>
-          <div class="row"><div class="l">SC-080 / D</div><div class="bar"><div class="fill" style="width:60%"></div></div><div class="n">17.0<span class="u">h</span></div></div>
+          <div class="row"><div class="l">SC-040 / B</div><div class="bar"><div class="fill" style="width:30%"></div></div><div class="n">12.5<span class="u">h</span></div></div>
+          <div class="row"><div class="l">SC-050 / C</div><div class="bar"><div class="fill" style="width:35%"></div></div><div class="n">14.8<span class="u">h</span></div></div>
+          <div class="row"><div class="l">SC-060 / C</div><div class="bar"><div class="fill" style="width:48%"></div></div><div class="n">20.2<span class="u">h</span></div></div>
+          <div class="row"><div class="l">SC-070 / D</div><div class="bar"><div class="fill" style="width:25%"></div></div><div class="n">10.5<span class="u">h</span></div></div>
+          <div class="row"><div class="l">SC-080 / D</div><div class="bar"><div class="fill" style="width:40%"></div></div><div class="n">17.0<span class="u">h</span></div></div>
         </div>
       </div>
     </div>
 
-    <!-- ============================= Retake ============================= -->
+    <!-- ========== リテイク ========== -->
     <div class="pane" data-pane="retake">
       <div class="grid-4">
-        <div class="stat-card">
-          <div class="icon">🔁</div>
-          <div class="l">総リテイク数</div>
-          <div class="n">73</div>
-          <div class="d dn">▲ +8 vs 先週</div>
-        </div>
-        <div class="stat-card">
-          <div class="icon">📩</div>
-          <div class="l">クライアントリテイク</div>
-          <div class="n">18</div>
-          <div class="d">全体の 24.7%</div>
-        </div>
-        <div class="stat-card">
-          <div class="icon">🏢</div>
-          <div class="l">社内リテイク</div>
-          <div class="n">55</div>
-          <div class="d">全体の 75.3%</div>
-        </div>
-        <div class="stat-card">
-          <div class="icon">🎯</div>
-          <div class="l">平均 per shot</div>
-          <div class="n">2.3</div>
-          <div class="d up">▲ 前月比 +0.4</div>
-        </div>
+        <div class="stat-card"><div class="l">総リテイク数</div><div class="n">73</div><div class="d dn">▲ +8 vs 先週</div></div>
+        <div class="stat-card"><div class="l">クライアントリテイク</div><div class="n">18</div><div class="d">全体の 24.7%</div></div>
+        <div class="stat-card"><div class="l">社内リテイク</div><div class="n">55</div><div class="d">全体の 75.3%</div></div>
+        <div class="stat-card"><div class="l">平均 per shot</div><div class="n">2.3</div><div class="d up">▲ 前月比 +0.4</div></div>
       </div>
-
       <div class="chart-wrap">
         <div class="chart-title">
           <h4>ショット別リテイク数</h4>
-          <div class="legend2">
-            <div class="row"><span class="swatch" style="background:var(--purple)"></span><span>クライアント</span></div>
-            <div class="row"><span class="swatch" style="background:var(--cyan)"></span><span>社内</span></div>
+          <div class="chart-legend">
+            <div class="row"><span class="swatch" style="background:var(--amber)"></span><span>クライアント</span></div>
+            <div class="row"><span class="swatch" style="background:var(--accent)"></span><span>社内</span></div>
           </div>
         </div>
-        <svg class="chart-svg" viewBox="0 0 800 280" id="retakeChart"></svg>
+        <svg class="chart-svg" viewBox="0 0 800 260" id="retakeChart"></svg>
       </div>
     </div>
 
-    <!-- ============================= Activity ============================= -->
+    <!-- ========== アクティビティ ========== -->
     <div class="pane" data-pane="activity">
       <div class="grid-4">
-        <div class="stat-card">
-          <div class="icon">📤</div>
-          <div class="l">総アップロード</div>
-          <div class="n">156</div>
-          <div class="d">直近 30 日</div>
-        </div>
-        <div class="stat-card">
-          <div class="icon">🔄</div>
-          <div class="l">ステータス変更</div>
-          <div class="n">412</div>
-          <div class="d">直近 30 日</div>
-        </div>
-        <div class="stat-card">
-          <div class="icon">💬</div>
-          <div class="l">コメント</div>
-          <div class="n">89</div>
-          <div class="d">直近 30 日</div>
-        </div>
-        <div class="stat-card">
-          <div class="icon">📊</div>
-          <div class="l">日平均</div>
-          <div class="n">21.9</div>
-          <div class="d">操作 / 日</div>
-        </div>
+        <div class="stat-card"><div class="l">総アップロード</div><div class="n">156</div><div class="d">直近 30 日</div></div>
+        <div class="stat-card"><div class="l">ステータス変更</div><div class="n">412</div><div class="d">直近 30 日</div></div>
+        <div class="stat-card"><div class="l">コメント</div><div class="n">89</div><div class="d">直近 30 日</div></div>
+        <div class="stat-card"><div class="l">日平均</div><div class="n">21.9</div><div class="d">操作 / 日</div></div>
       </div>
-
       <div class="chart-wrap">
         <div class="chart-title">
           <h4>日別アクティビティ推移</h4>
-          <div class="legend2">
-            <div class="row"><span class="swatch" style="background:var(--cyan)"></span><span>アップロード</span></div>
-            <div class="row"><span class="swatch" style="background:var(--purple)"></span><span>ステータス変更</span></div>
+          <div class="chart-legend">
+            <div class="row"><span class="swatch" style="background:var(--accent2)"></span><span>アップロード</span></div>
+            <div class="row"><span class="swatch" style="background:var(--accent)"></span><span>ステータス変更</span></div>
             <div class="row"><span class="swatch" style="background:var(--amber)"></span><span>コメント</span></div>
           </div>
         </div>
-        <svg class="chart-svg" viewBox="0 0 800 280" id="activityChart"></svg>
+        <svg class="chart-svg" viewBox="0 0 800 260" id="activityChart"></svg>
       </div>
     </div>
 
-    <!-- ============================= 操作ログ ============================= -->
+    <!-- ========== 操作ログ ========== -->
     <div class="pane" data-pane="log">
       <div class="log-tools">
-        <input type="text" placeholder="検索：ユーザー・ショット ID・操作種別 ...">
-        <button class="btn">🗓 期間</button>
-        <button class="btn">👤 ユーザー</button>
-        <button class="btn">🏷 種別</button>
-        <button class="btn">📥 CSV 書き出し</button>
+        <input type="text" placeholder="検索：ユーザー・ショット ID・操作種別...">
+        <button class="btn btn-ghost btn-sm">🗓 期間</button>
+        <button class="btn btn-ghost btn-sm">👤 ユーザー</button>
+        <button class="btn btn-ghost btn-sm">🏷 種別</button>
+        <button class="btn btn-ghost btn-sm">📥 CSV</button>
       </div>
       <table class="log-table">
         <thead>
@@ -490,25 +419,22 @@ input:focus,select:focus{border-color:var(--purple)}
 </main>
 
 </div>
-</div>
 
 <script>
-/* =========== モックデータ =========== */
-const TODAY = new Date('2026-09-14');
+/* =========== ダミーデータ =========== */
+const TODAY = new Date('2026-09-16');
 const RANGE_START = new Date('2026-09-01');
 const RANGE_END   = new Date('2026-10-31');
 const DAYS = Math.round((RANGE_END - RANGE_START) / (1000*60*60*24)) + 1;
 
-/* 工程（ステージ）定義：色マッピング。実装時はプロジェクトの stageTemplates と連動 */
 const STAGES = {
-  layout: {label:'Layout', color:'#5CC7EF'},
-  anim:   {label:'Anim',   color:'#A56BF0'},
-  fx:     {label:'FX',     color:'#F2867F'},
-  comp:   {label:'Comp',   color:'#F2C86B'},
-  paint:  {label:'Paint',  color:'#5CB878'},
+  layout: {label:'Layout', color:'var(--st-layout)'},
+  anim:   {label:'Anim',   color:'var(--st-anim)'},
+  fx:     {label:'FX',     color:'var(--st-fx)'},
+  comp:   {label:'Comp',   color:'var(--st-comp)'},
+  paint:  {label:'Paint',  color:'var(--st-paint)'},
 };
-/* 各ショットは工程セグメント配列を持つ。plan と actual それぞれに配列を持つ形式：
-   stages: [{id, plan:[start,end], actual:[start,end|null] or null, status:'done'|'wip'|'noplan'|'late'}] */
+
 const SHOTS = [
   {group:'Scene A / ライブ導入部'},
   {id:'SC-010', name:'キャラ登場', milestone:8, stages:[
@@ -577,41 +503,36 @@ const SHOTS = [
   ]},
 ];
 
-/* =========== Timeline Header =========== */
+/* Timeline Header */
 function buildTimelineHdr(){
   const hdr = document.getElementById('timelineHdr');
-  const weeks = document.createElement('div');
-  weeks.className = 'weeks';
-  const days = document.createElement('div');
-  days.className = 'days';
-  const weekCount = Math.ceil(DAYS / 7);
-  for(let i=0; i<weekCount; i++){
-    const w = document.createElement('div');
-    w.className = 'w';
-    const d0 = new Date(RANGE_START); d0.setDate(d0.getDate() + i*7);
-    w.textContent = `W${String(Math.floor(d0.getTime()/(1000*60*60*24*7)) % 53).padStart(2,'0')} · ${d0.getMonth()+1}/${d0.getDate()}`;
+  const weeks = document.createElement('div'); weeks.className='weeks';
+  const days = document.createElement('div'); days.className='days';
+  const weekCount = Math.ceil(DAYS/7);
+  for(let i=0;i<weekCount;i++){
+    const w = document.createElement('div'); w.className='w';
+    const d0 = new Date(RANGE_START); d0.setDate(d0.getDate()+i*7);
+    w.textContent = `W${String(Math.floor(d0.getTime()/(1000*60*60*24*7))%53).padStart(2,'0')} · ${d0.getMonth()+1}/${d0.getDate()}`;
     weeks.appendChild(w);
   }
-  for(let i=0; i<DAYS; i++){
-    const d = document.createElement('div');
-    d.className = 'd';
-    const dt = new Date(RANGE_START); dt.setDate(dt.getDate() + i);
+  for(let i=0;i<DAYS;i++){
+    const d = document.createElement('div'); d.className='d';
+    const dt = new Date(RANGE_START); dt.setDate(dt.getDate()+i);
     const dow = dt.getDay();
-    if(dow===0 || dow===6) d.classList.add('wknd');
+    if(dow===0||dow===6) d.classList.add('wknd');
     d.textContent = dt.getDate();
     days.appendChild(d);
   }
-  hdr.appendChild(weeks);
-  hdr.appendChild(days);
+  hdr.appendChild(weeks); hdr.appendChild(days);
 }
 
-/* =========== Gantt Body =========== */
+/* Gantt Body */
 function buildGantt(){
   const body = document.getElementById('ganttBody');
-  const px = 100 / DAYS;
-  const todayIdx = Math.round((TODAY - RANGE_START)/(1000*60*60*24));
+  const px = 100/DAYS;
+  const todayIdx = Math.round((TODAY-RANGE_START)/(1000*60*60*24));
 
-  SHOTS.forEach(s => {
+  SHOTS.forEach(s=>{
     if(s.group){
       const row = document.createElement('div');
       row.className = 'gantt-row group';
@@ -620,68 +541,53 @@ function buildGantt(){
       return;
     }
     const row = document.createElement('div');
-    row.className = 'gantt-row';
+    row.className='gantt-row';
+    const stages = s.stages||[];
+    const stagesTotalDays = stages.reduce((sum,st)=>sum+(st.plan?(st.plan[1]-st.plan[0]):0),0);
+    const totalHours = Math.round(stagesTotalDays*6*10)/10;
+    const anyLate = stages.some(st=>st.status==='late');
+    const anyWip = stages.some(st=>st.status==='wip');
+    const allDone = stages.length>0 && stages.every(st=>st.status==='done');
+    const allNoplan = stages.every(st=>st.status==='noplan');
+    let rollupChip='';
+    if(anyLate) rollupChip='<span class="st-chip late">遅延</span>';
+    else if(allDone) rollupChip='<span class="st-chip done">完了</span>';
+    else if(anyWip) rollupChip='<span class="st-chip wip">作業中</span>';
+    else if(allNoplan) rollupChip='<span class="st-chip noplan">未計画</span>';
+    else rollupChip='<span class="st-chip plan">計画中</span>';
 
-    /* ショット全体のロールアップ status を算出 */
-    const stages = s.stages || [];
-    const stagesTotalDays = stages.reduce((sum, st) => sum + (st.plan ? (st.plan[1]-st.plan[0]) : 0), 0);
-    const totalHours = Math.round(stagesTotalDays * 6 * 10) / 10; /* ダミー：1 日 6h 換算 */
-    const anyLate = stages.some(st => st.status==='late');
-    const anyWip = stages.some(st => st.status==='wip');
-    const allDone = stages.length > 0 && stages.every(st => st.status==='done');
-    const allNoplan = stages.every(st => st.status==='noplan');
-    let rollupChip = '';
-    if(anyLate) rollupChip = '<span class="chip late">遅延</span>';
-    else if(allDone) rollupChip = '<span class="chip done">完了</span>';
-    else if(anyWip) rollupChip = '<span class="chip">作業中</span>';
-    else if(allNoplan) rollupChip = '<span class="chip">未計画</span>';
-    else rollupChip = '<span class="chip">計画中</span>';
-
-    /* 工程バッジ（担当色の帯） */
-    const stageBadges = stages.map(st => {
-      const cfg = STAGES[st.id] || {label:st.id, color:'#888'};
-      return `<span class="stbadge" style="background:${cfg.color}22;color:${cfg.color};border:1px solid ${cfg.color}55" title="${cfg.label}">${cfg.label[0]}</span>`;
+    const stageBadges = stages.map(st=>{
+      const cfg = STAGES[st.id]||{label:st.id,color:'#888'};
+      return `<span class="stbadge" style="background:${cfg.color};opacity:.85;color:#16161a" title="${cfg.label}">${cfg.label[0]}</span>`;
     }).join('');
 
-    const track = [];
-    /* Weekend background */
-    for(let i=0; i<DAYS; i++){
-      const dt = new Date(RANGE_START); dt.setDate(dt.getDate() + i);
+    const track=[];
+    for(let i=0;i<DAYS;i++){
+      const dt = new Date(RANGE_START); dt.setDate(dt.getDate()+i);
       const dow = dt.getDay();
-      if(dow===0 || dow===6){
-        track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
-      }
+      if(dow===0||dow===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
     }
-    /* ========= 工程セグメント：予定バー ========= */
+    /* 予定バー：工程色の破線枠 */
     for(const st of stages){
       if(!st.plan) continue;
-      const [p1,p2] = st.plan;
-      const w = (p2-p1) * px;
-      const cfg = STAGES[st.id] || {label:st.id, color:'#888'};
-      /* 予定：破線枠のみ・工程色で染める（背景薄く） */
-      track.push(`<div class="seg-plan" style="left:${p1*px}%;width:${w}%;border-color:${cfg.color};background:${cfg.color}12"><span class="seg-lbl" style="color:${cfg.color}">${cfg.label}</span></div>`);
+      const [p1,p2]=st.plan; const w=(p2-p1)*px;
+      const cfg=STAGES[st.id]||{label:st.id,color:'#888'};
+      track.push(`<div class="seg-plan" style="left:${p1*px}%;width:${w}%;border-color:${cfg.color};background:${cfg.color.replace('var(','').replace(')','')}"><span class="seg-lbl" style="color:${cfg.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${cfg.label}</span></div>`);
     }
-    /* ========= 工程セグメント：実績バー ========= */
+    /* 実績バー：工程色でソリッド塗り */
     for(const st of stages){
-      if(!st.actual) continue; /* 未着手はここに出さない */
-      const [a1, rawA2] = st.actual;
-      const a2 = rawA2 !== null ? rawA2 : todayIdx;
-      const w = (a2-a1) * px;
-      const cfg = STAGES[st.id] || {label:st.id, color:'#888'};
-      const isWip = st.status === 'wip';
-      const isLate = st.status === 'late';
-      const solid = isLate ? '#EE6A6A' : cfg.color;
-      const style = isWip
-        ? `background:linear-gradient(90deg,${solid},${solid}88);box-shadow:0 2px 8px ${solid}55`
-        : `background:${solid};box-shadow:0 2px 6px ${solid}44`;
-      const label = (rawA2 === null) ? '進行中' : (isLate ? `+${a2-st.plan[1]}d` : `${a2-a1}d`);
-      track.push(`<div class="seg-actual ${isLate?'late':''} ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}"><span class="seg-lbl seg-actual-lbl">${label}</span></div>`);
+      if(!st.actual) continue;
+      const [a1,rawA2]=st.actual;
+      const a2 = rawA2!==null?rawA2:todayIdx;
+      const w = (a2-a1)*px;
+      const cfg=STAGES[st.id]||{label:st.id,color:'#888'};
+      const isWip = st.status==='wip';
+      const isLate = st.status==='late';
+      const fill = isLate ? 'var(--red)' : cfg.color;
+      const style = `background:${fill};opacity:${isWip?'.7':'.9'}`;
+      const label = (rawA2===null)?'進行中':(isLate?`+${a2-st.plan[1]}d`:`${a2-a1}d`);
+      track.push(`<div class="seg-actual ${isLate?'late':''} ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}"><span class="seg-actual-lbl">${label}</span></div>`);
     }
-    /* ========= 未計画：薄い枠 ========= */
-    if(allNoplan){
-      /* 全工程が未計画：予定バーを薄く表示するだけ（noplan-hint は不要） */
-    }
-    /* Milestone */
     if(s.milestone!=null){
       track.push(`<div class="milestone" style="left:calc(${s.milestone*px}% - 5px)"></div>`);
     }
@@ -690,7 +596,7 @@ function buildGantt(){
       <div class="shot">
         <div class="id">${s.id}</div>
         <div class="name">${s.name}</div>
-        <div class="meta">${rollupChip}${totalHours>0?`<span class="chip">${totalHours}h</span>`:''}</div>
+        <div class="meta">${rollupChip}${totalHours>0?`<span class="st-chip">${totalHours}h</span>`:''}</div>
         <div class="stbadges">${stageBadges}</div>
       </div>
       <div class="track">${track.join('')}</div>
@@ -699,132 +605,126 @@ function buildGantt(){
   });
 
   /* Today marker */
-  const todayIdx = Math.round((TODAY - RANGE_START)/(1000*60*60*24));
+  const todayIdx2 = Math.round((TODAY-RANGE_START)/(1000*60*60*24));
   const marker = document.createElement('div');
-  marker.className = 'gantt-today';
-  marker.style.left = `calc(220px + ${todayIdx*px}%)`;
-  marker.innerHTML = `<div class="lbl">TODAY 9/14</div>`;
+  marker.className='gantt-today';
+  marker.style.left = `calc(220px + ${todayIdx2*px}%)`;
+  marker.innerHTML = `<div class="lbl">TODAY 9/16</div>`;
   body.parentElement.appendChild(marker);
 }
 
-/* =========== Retake Chart =========== */
+/* Retake Chart */
 function buildRetakeChart(){
   const svg = document.getElementById('retakeChart');
   const data = [
-    {id:'SC-010', c:2, i:3}, {id:'SC-020', c:1, i:4}, {id:'SC-030', c:5, i:8},
-    {id:'SC-040', c:2, i:3}, {id:'SC-050', c:3, i:5}, {id:'SC-060', c:1, i:4},
-    {id:'SC-070', c:2, i:2}, {id:'SC-080', c:0, i:3}, {id:'SC-090', c:1, i:1},
-    {id:'SC-100', c:1, i:5}, {id:'SC-110', c:0, i:4}, {id:'SC-120', c:0, i:3},
+    {id:'SC-010',c:2,i:3},{id:'SC-020',c:1,i:4},{id:'SC-030',c:5,i:8},
+    {id:'SC-040',c:2,i:3},{id:'SC-050',c:3,i:5},{id:'SC-060',c:1,i:4},
+    {id:'SC-070',c:2,i:2},{id:'SC-080',c:0,i:3},{id:'SC-090',c:1,i:1},
+    {id:'SC-100',c:1,i:5},{id:'SC-110',c:0,i:4},{id:'SC-120',c:0,i:3},
   ];
-  const W=800, H=280, PL=40, PR=20, PT=20, PB=40;
-  const cw = W - PL - PR, ch = H - PT - PB;
-  const maxY = 10;
-  let s = '';
-  /* Grid */
-  for(let i=0; i<=maxY; i+=2){
-    const y = PT + ch - (i/maxY)*ch;
-    s += `<line x1="${PL}" x2="${W-PR}" y1="${y}" y2="${y}" stroke="#2A2A32" stroke-width="1"/>`;
-    s += `<text x="${PL-8}" y="${y+4}" fill="#707080" font-size="10" text-anchor="end" font-family="Space Grotesk">${i}</text>`;
+  const W=800,H=260,PL=36,PR=16,PT=12,PB=36;
+  const cw=W-PL-PR, ch=H-PT-PB;
+  const maxY=10;
+  let s='';
+  for(let i=0;i<=maxY;i+=2){
+    const y = PT+ch-(i/maxY)*ch;
+    s+=`<line x1="${PL}" x2="${W-PR}" y1="${y}" y2="${y}" stroke="#2a2a2f" stroke-width="1"/>`;
+    s+=`<text x="${PL-6}" y="${y+4}" fill="#5a5a6a" font-size="10" text-anchor="end" font-family="Space Grotesk">${i}</text>`;
   }
-  /* X labels */
   data.forEach((d,i)=>{
-    const x = PL + (i/(data.length-1))*cw;
-    s += `<text x="${x}" y="${H-14}" fill="#707080" font-size="10" text-anchor="middle" font-family="Space Grotesk">${d.id}</text>`;
+    const x = PL+(i/(data.length-1))*cw;
+    s+=`<text x="${x}" y="${H-12}" fill="#5a5a6a" font-size="10" text-anchor="middle" font-family="Space Grotesk">${d.id}</text>`;
   });
-  /* Lines */
-  function pathFor(arr, key){
+  function pathFor(arr,key){
     return arr.map((d,i)=>{
-      const x = PL + (i/(arr.length-1))*cw;
-      const y = PT + ch - (d[key]/maxY)*ch;
+      const x = PL+(i/(arr.length-1))*cw;
+      const y = PT+ch-(d[key]/maxY)*ch;
       return `${i===0?'M':'L'}${x},${y}`;
     }).join(' ');
   }
-  s += `<path d="${pathFor(data,'i')}" fill="none" stroke="#5CC7EF" stroke-width="2.5" stroke-linecap="round"/>`;
-  s += `<path d="${pathFor(data,'c')}" fill="none" stroke="#A56BF0" stroke-width="2.5" stroke-linecap="round"/>`;
-  /* Dots */
+  s+=`<path d="${pathFor(data,'i')}" fill="none" stroke="#c7c7cf" stroke-width="2" stroke-linecap="round"/>`;
+  s+=`<path d="${pathFor(data,'c')}" fill="none" stroke="#d6a95f" stroke-width="2" stroke-linecap="round"/>`;
   data.forEach((d,i)=>{
-    const x = PL + (i/(data.length-1))*cw;
-    const yc = PT + ch - (d.c/maxY)*ch;
-    const yi = PT + ch - (d.i/maxY)*ch;
-    s += `<circle cx="${x}" cy="${yi}" r="3.5" fill="#5CC7EF"/>`;
-    s += `<circle cx="${x}" cy="${yc}" r="3.5" fill="#A56BF0"/>`;
+    const x = PL+(i/(data.length-1))*cw;
+    const yc = PT+ch-(d.c/maxY)*ch;
+    const yi = PT+ch-(d.i/maxY)*ch;
+    s+=`<circle cx="${x}" cy="${yi}" r="3" fill="#c7c7cf"/>`;
+    s+=`<circle cx="${x}" cy="${yc}" r="3" fill="#d6a95f"/>`;
   });
-  svg.innerHTML = s;
+  svg.innerHTML=s;
 }
 
-/* =========== Activity Chart =========== */
+/* Activity Chart */
 function buildActivityChart(){
   const svg = document.getElementById('activityChart');
-  const W=800, H=280, PL=40, PR=20, PT=20, PB=40;
-  const cw = W - PL - PR, ch = H - PT - PB;
-  const days = 30;
-  const rand = (min,max,seed)=> min + ((Math.sin(seed)*10000)%1 + 1)%1 * (max-min);
-  const upload = Array.from({length:days},(_,i)=> Math.round(rand(2,12,i*1.7)));
-  const status = Array.from({length:days},(_,i)=> Math.round(rand(5,22,i*2.3+7)));
-  const comment = Array.from({length:days},(_,i)=> Math.round(rand(1,8,i*3.1+13)));
-  const maxY = 25;
+  const W=800,H=260,PL=36,PR=16,PT=12,PB=36;
+  const cw=W-PL-PR, ch=H-PT-PB;
+  const days=30;
+  const rand=(min,max,seed)=>min+((Math.sin(seed)*10000)%1+1)%1*(max-min);
+  const upload = Array.from({length:days},(_,i)=>Math.round(rand(2,12,i*1.7)));
+  const status = Array.from({length:days},(_,i)=>Math.round(rand(5,22,i*2.3+7)));
+  const comment = Array.from({length:days},(_,i)=>Math.round(rand(1,8,i*3.1+13)));
+  const maxY=25;
   let s='';
-  /* Grid */
-  for(let i=0; i<=maxY; i+=5){
-    const y = PT + ch - (i/maxY)*ch;
-    s += `<line x1="${PL}" x2="${W-PR}" y1="${y}" y2="${y}" stroke="#2A2A32" stroke-width="1"/>`;
-    s += `<text x="${PL-8}" y="${y+4}" fill="#707080" font-size="10" text-anchor="end" font-family="Space Grotesk">${i}</text>`;
+  for(let i=0;i<=maxY;i+=5){
+    const y = PT+ch-(i/maxY)*ch;
+    s+=`<line x1="${PL}" x2="${W-PR}" y1="${y}" y2="${y}" stroke="#2a2a2f" stroke-width="1"/>`;
+    s+=`<text x="${PL-6}" y="${y+4}" fill="#5a5a6a" font-size="10" text-anchor="end" font-family="Space Grotesk">${i}</text>`;
   }
-  /* X labels every 5 */
-  for(let i=0; i<days; i+=5){
-    const x = PL + (i/(days-1))*cw;
-    s += `<text x="${x}" y="${H-14}" fill="#707080" font-size="10" text-anchor="middle" font-family="Space Grotesk">D-${days-i}</text>`;
+  for(let i=0;i<days;i+=5){
+    const x = PL+(i/(days-1))*cw;
+    s+=`<text x="${x}" y="${H-12}" fill="#5a5a6a" font-size="10" text-anchor="middle" font-family="Space Grotesk">D-${days-i}</text>`;
   }
-  function pathAndArea(arr,color,fill){
+  function pathAndArea(arr,color){
     const pts = arr.map((v,i)=>{
-      const x = PL + (i/(arr.length-1))*cw;
-      const y = PT + ch - (v/maxY)*ch;
+      const x = PL+(i/(arr.length-1))*cw;
+      const y = PT+ch-(v/maxY)*ch;
       return [x,y];
     });
     const line = pts.map((p,i)=>`${i===0?'M':'L'}${p[0]},${p[1]}`).join(' ');
     const area = `${line} L${pts[pts.length-1][0]},${PT+ch} L${pts[0][0]},${PT+ch} Z`;
-    return `<path d="${area}" fill="${fill}" opacity="0.15"/><path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"/>`;
+    return `<path d="${area}" fill="${color}" opacity="0.1"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/>`;
   }
-  s += pathAndArea(status,'#A56BF0','#A56BF0');
-  s += pathAndArea(upload,'#5CC7EF','#5CC7EF');
-  s += pathAndArea(comment,'#F2C86B','#F2C86B');
-  svg.innerHTML = s;
+  s+=pathAndArea(status,'#c7c7cf');
+  s+=pathAndArea(upload,'#e8e8ec');
+  s+=pathAndArea(comment,'#d6a95f');
+  svg.innerHTML=s;
 }
 
-/* =========== Log Table =========== */
+/* Log Table */
 function buildLog(){
-  const kinds = [
-    {k:'upload', label:'アップロード'},
-    {k:'status', label:'ステータス変更'},
-    {k:'submit', label:'提出'},
-    {k:'comment', label:'コメント'},
-    {k:'member', label:'メンバー'},
+  const kinds=[
+    {k:'upload',label:'アップロード'},
+    {k:'status',label:'ステータス変更'},
+    {k:'submit',label:'提出'},
+    {k:'comment',label:'コメント'},
+    {k:'member',label:'メンバー'},
   ];
-  const users = ['田中太郎','山田花子','佐藤健','鈴木一郎','高橋美咲'];
-  const shots = ['SC-010','SC-020','SC-030','SC-040','SC-050','SC-060'];
-  const details = {
-    upload: ['v3.mp4 (52 MB)','v2.mp4 (48 MB)','EXR 連番 v1 (240 frames)','v4_final.mp4 (61 MB)'],
-    status: ['作業中 → チェック待ち','未着手 → 作業中','チェック待ち → 差し戻し','差し戻し → 作業中','チェック待ち → クライアントOK'],
-    submit: ['提出「9/14 チェック」に含める','提出「9/12 中間チェック」に含める'],
-    comment: ['「タイミング少し遅め」','「表情の間、もう少し取れる？」','「OK です」'],
-    member: ['佐藤健 を レビュワーに追加','鈴木一郎 を 担当から外す'],
+  const users=['田中太郎','山田花子','佐藤健','鈴木一郎','高橋美咲'];
+  const shots=['SC-010','SC-020','SC-030','SC-040','SC-050','SC-060'];
+  const details={
+    upload:['v3.mp4 (52 MB)','v2.mp4 (48 MB)','EXR 連番 v1 (240 frames)','v4_final.mp4 (61 MB)'],
+    status:['作業中 → チェック待ち','未着手 → 作業中','チェック待ち → 差し戻し','差し戻し → 作業中','チェック待ち → クライアントOK'],
+    submit:['提出「9/14 チェック」に含める','提出「9/12 中間チェック」に含める'],
+    comment:['「タイミング少し遅め」','「表情の間、もう少し取れる？」','「OK です」'],
+    member:['佐藤健 を レビュワーに追加','鈴木一郎 を 担当から外す'],
   };
   const body = document.getElementById('logBody');
-  const rows = [];
+  const rows=[];
   const nowMin = TODAY.getTime();
-  for(let i=0; i<30; i++){
+  for(let i=0;i<30;i++){
     const kind = kinds[Math.floor(Math.random()*kinds.length)];
-    const t = new Date(nowMin - Math.floor(Math.random()*1000*60*60*24*7));
+    const t = new Date(nowMin-Math.floor(Math.random()*1000*60*60*24*7));
     const user = users[Math.floor(Math.random()*users.length)];
     const shot = shots[Math.floor(Math.random()*shots.length)];
     const detArr = details[kind.k];
     const det = detArr[Math.floor(Math.random()*detArr.length)];
-    rows.push({ts:t, user, kind, shot, det});
+    rows.push({ts:t,user,kind,shot,det});
   }
-  rows.sort((a,b)=>b.ts - a.ts);
+  rows.sort((a,b)=>b.ts-a.ts);
   body.innerHTML = rows.map(r=>{
-    const p = n => String(n).padStart(2,'0');
-    const ts = `${r.ts.getFullYear()}-${p(r.ts.getMonth()+1)}-${p(r.ts.getDate())} ${p(r.ts.getHours())}:${p(r.ts.getMinutes())}`;
+    const p=n=>String(n).padStart(2,'0');
+    const ts=`${r.ts.getFullYear()}-${p(r.ts.getMonth()+1)}-${p(r.ts.getDate())} ${p(r.ts.getHours())}:${p(r.ts.getMinutes())}`;
     return `<tr>
       <td class="ts">${ts}</td>
       <td class="who">${r.user}</td>
@@ -835,7 +735,7 @@ function buildLog(){
   }).join('');
 }
 
-/* =========== Tabs =========== */
+/* Tabs */
 document.getElementById('tabs').addEventListener('click',e=>{
   const b = e.target.closest('button[data-tab]');
   if(!b) return;
@@ -851,7 +751,7 @@ document.getElementById('scaleToggle').addEventListener('click',e=>{
   b.classList.add('on');
 });
 
-/* =========== Init =========== */
+/* Init */
 buildTimelineHdr();
 buildGantt();
 buildRetakeChart();
