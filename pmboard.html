@@ -113,7 +113,7 @@ input:focus,select:focus{border-color:var(--purple)}
 .gantt-hdr .timeline .days .d.wknd{background:rgba(255,255,255,.02);color:var(--text3)}
 
 .gantt-body{position:relative}
-.gantt-row{display:grid;grid-template-columns:220px 1fr;border-bottom:1px solid var(--border);min-height:48px}
+.gantt-row{display:grid;grid-template-columns:220px 1fr;border-bottom:1px solid var(--border);min-height:56px}
 .gantt-row:hover{background:rgba(165,107,240,.03)}
 .gantt-row .shot{padding:10px 16px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;position:sticky;left:0;background:var(--bg2);z-index:2}
 .gantt-row:hover .shot{background:var(--bg3)}
@@ -124,18 +124,21 @@ input:focus,select:focus{border-color:var(--purple)}
 .gantt-row .shot .meta .chip.late{background:rgba(238,106,106,.15);color:var(--red)}
 .gantt-row .shot .meta .chip.done{background:rgba(92,184,120,.15);color:var(--green)}
 
-.gantt-row .track{position:relative;height:100%;padding:8px 0;min-height:48px}
+.gantt-row .track{position:relative;height:100%;padding:8px 0;min-height:56px}
 .gantt-row .track .day{position:absolute;top:0;bottom:0;border-right:1px solid rgba(255,255,255,.03)}
 .gantt-row .track .day.wknd{background:rgba(255,255,255,.02)}
-.gantt-row .track .plan{position:absolute;top:8px;height:14px;border:1.5px dashed var(--purple);border-radius:4px;background:transparent}
-.gantt-row .track .plan .lbl{position:absolute;top:-16px;left:0;font-size:9px;color:var(--purple);font-family:var(--font-code);white-space:nowrap;letter-spacing:.5px}
-.gantt-row .track .actual{position:absolute;top:26px;height:14px;border-radius:4px;background:var(--grad);box-shadow:0 2px 8px rgba(165,107,240,.3)}
-.gantt-row .track .actual.late{background:linear-gradient(135deg,#EE6A6A,#F2867F);box-shadow:0 2px 8px rgba(238,106,106,.35)}
-.gantt-row .track .actual .lbl{position:absolute;left:6px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;color:var(--white);font-family:var(--font-code);font-weight:600;letter-spacing:.5px;white-space:nowrap}
-.gantt-row .track .noplan{position:absolute;top:8px;height:14px;background:var(--bg4);border:1px dashed var(--border2);border-radius:4px}
-.gantt-row .track .noplan .lbl{position:absolute;left:6px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;color:var(--text3);font-family:var(--font-code);letter-spacing:.5px}
-.gantt-row .track .stage-mark{position:absolute;top:8px;bottom:26px;width:2px;background:var(--white);opacity:.4}
-.gantt-row .track .milestone{position:absolute;top:22px;width:10px;height:10px;background:var(--amber);transform:rotate(45deg);box-shadow:0 0 8px rgba(242,200,107,.4)}
+/* 工程セグメント：予定バー（破線枠、工程色で染める） */
+.gantt-row .track .seg-plan{position:absolute;top:8px;height:16px;border:1.5px dashed;border-radius:4px;overflow:hidden}
+.gantt-row .track .seg-plan .seg-lbl{position:absolute;left:4px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;font-family:var(--font-head);font-weight:600;letter-spacing:.5px;white-space:nowrap;pointer-events:none;text-shadow:0 0 4px rgba(0,0,0,.6)}
+/* 工程セグメント：実績バー（工程色でソリッド塗り） */
+.gantt-row .track .seg-actual{position:absolute;top:30px;height:16px;border-radius:4px}
+.gantt-row .track .seg-actual.wip{border:1px dashed rgba(255,255,255,.4)}
+.gantt-row .track .seg-actual.late{outline:1px solid rgba(238,106,106,.5)}
+.gantt-row .track .seg-actual .seg-actual-lbl{position:absolute;right:4px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;color:var(--white);font-family:var(--font-code);font-weight:600;letter-spacing:.5px;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.gantt-row .track .milestone{position:absolute;top:24px;width:10px;height:10px;background:var(--amber);transform:rotate(45deg);box-shadow:0 0 8px rgba(242,200,107,.4);z-index:2}
+/* ショットカードの工程バッジ */
+.gantt-row .shot .stbadges{display:flex;gap:2px;margin-top:4px}
+.gantt-row .shot .stbadges .stbadge{font-size:9px;font-family:var(--font-head);font-weight:700;width:14px;height:14px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:0;line-height:1}
 
 .gantt-today{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--red);z-index:3;pointer-events:none}
 .gantt-today .lbl{position:absolute;top:2px;left:4px;font-size:9px;color:var(--red);font-family:var(--font-code);font-weight:600;letter-spacing:1px;background:var(--bg);padding:1px 4px;border-radius:3px}
@@ -278,19 +281,28 @@ input:focus,select:focus{border-color:var(--purple)}
     <label>担当者</label>
     <select><option>すべて</option><option>田中太郎</option><option>山田花子</option><option>佐藤健</option></select>
     <label>工程</label>
-    <select><option>すべて</option><option>Layout</option><option>Anim</option><option>Comp</option></select>
+    <select><option>すべて</option><option>Layout</option><option>Anim</option><option>FX</option><option>Comp</option><option>Paint</option></select>
     <label>ステータス</label>
     <select><option>すべて</option><option>作業中</option><option>チェック待ち</option><option>クライアントOK</option></select>
     <label>検索</label>
     <input type="text" placeholder="ショット ID / 名前">
   </div>
 
+  <h3>工程カラー</h3>
+  <div class="box legend">
+    <div class="row"><span class="swatch" style="background:#5CC7EF"></span><span>Layout</span></div>
+    <div class="row"><span class="swatch" style="background:#A56BF0"></span><span>Anim</span></div>
+    <div class="row"><span class="swatch" style="background:#F2867F"></span><span>FX</span></div>
+    <div class="row"><span class="swatch" style="background:#F2C86B"></span><span>Comp</span></div>
+    <div class="row"><span class="swatch" style="background:#5CB878"></span><span>Paint</span></div>
+  </div>
+
   <h3>凡例</h3>
   <div class="box legend">
-    <div class="row"><span class="swatch sw-plan"></span><span>予定期間</span></div>
-    <div class="row"><span class="swatch sw-actual"></span><span>実績（進行中/完了）</span></div>
+    <div class="row"><span class="swatch sw-plan"></span><span>予定期間（工程別）</span></div>
+    <div class="row"><span class="swatch sw-actual"></span><span>実績・完了</span></div>
+    <div class="row"><span class="swatch" style="background:transparent;border:1px dashed rgba(255,255,255,.4);background-image:linear-gradient(90deg,#A56BF0,#A56BF088)"></span><span>作業中（進行中）</span></div>
     <div class="row"><span class="swatch sw-late"></span><span>遅延</span></div>
-    <div class="row"><span class="swatch sw-noplan"></span><span>未計画</span></div>
     <div class="row"><span class="swatch sw-milestone"></span><span>マイルストーン</span></div>
   </div>
 </aside>
@@ -487,25 +499,82 @@ const RANGE_START = new Date('2026-09-01');
 const RANGE_END   = new Date('2026-10-31');
 const DAYS = Math.round((RANGE_END - RANGE_START) / (1000*60*60*24)) + 1;
 
+/* 工程（ステージ）定義：色マッピング。実装時はプロジェクトの stageTemplates と連動 */
+const STAGES = {
+  layout: {label:'Layout', color:'#5CC7EF'},
+  anim:   {label:'Anim',   color:'#A56BF0'},
+  fx:     {label:'FX',     color:'#F2867F'},
+  comp:   {label:'Comp',   color:'#F2C86B'},
+  paint:  {label:'Paint',  color:'#5CB878'},
+};
+/* 各ショットは工程セグメント配列を持つ。plan と actual それぞれに配列を持つ形式：
+   stages: [{id, plan:[start,end], actual:[start,end|null] or null, status:'done'|'wip'|'noplan'|'late'}] */
 const SHOTS = [
   {group:'Scene A / ライブ導入部'},
-  {id:'SC-010', name:'キャラ登場', plan:[2,9],  actual:[3,10], status:'done',  hours:18.5, milestone:8},
-  {id:'SC-020', name:'カラオケ画面 zoom', plan:[5,12], actual:[6,14], status:'done', hours:22.0},
-  {id:'SC-025', name:'マイクアップ',   plan:[10,16], actual:null, status:'noplan', hours:0},
+  {id:'SC-010', name:'キャラ登場', milestone:8, stages:[
+    {id:'layout', plan:[2,4],  actual:[3,4],  status:'done'},
+    {id:'anim',   plan:[4,7],  actual:[4,7],  status:'done'},
+    {id:'comp',   plan:[7,9],  actual:[7,10], status:'done'},
+  ]},
+  {id:'SC-020', name:'カラオケ画面 zoom', stages:[
+    {id:'layout', plan:[5,7],  actual:[6,7],  status:'done'},
+    {id:'anim',   plan:[7,10], actual:[7,11], status:'done'},
+    {id:'fx',     plan:[10,11],actual:[11,12],status:'done'},
+    {id:'comp',   plan:[11,12],actual:[12,14],status:'done'},
+  ]},
+  {id:'SC-025', name:'マイクアップ', stages:[
+    {id:'layout', plan:[10,12],actual:null,   status:'noplan'},
+    {id:'anim',   plan:[12,14],actual:null,   status:'noplan'},
+    {id:'comp',   plan:[14,16],actual:null,   status:'noplan'},
+  ]},
 
   {group:'Scene B / サビ前'},
-  {id:'SC-030', name:'ダンス俯瞰',   plan:[8,20],  actual:[9,25], status:'late', hours:42.0, milestone:22},
-  {id:'SC-040', name:'表情 CU',      plan:[15,22], actual:[16,20], status:'done', hours:12.5},
-  {id:'SC-050', name:'照明フラッシュ',plan:[18,26], actual:[19,null], status:'wip', hours:14.8},
+  {id:'SC-030', name:'ダンス俯瞰', milestone:22, stages:[
+    {id:'layout', plan:[8,11], actual:[9,12], status:'done'},
+    {id:'anim',   plan:[11,15],actual:[12,17],status:'late'},
+    {id:'fx',     plan:[15,17],actual:[17,21],status:'late'},
+    {id:'comp',   plan:[17,20],actual:[21,25],status:'late'},
+  ]},
+  {id:'SC-040', name:'表情 CU', stages:[
+    {id:'layout', plan:[15,16],actual:[16,17],status:'done'},
+    {id:'anim',   plan:[16,20],actual:[17,19],status:'done'},
+    {id:'comp',   plan:[20,22],actual:[19,20],status:'done'},
+  ]},
+  {id:'SC-050', name:'照明フラッシュ', stages:[
+    {id:'layout', plan:[18,20],actual:[19,20],status:'done'},
+    {id:'fx',     plan:[20,23],actual:[20,null],status:'wip'},
+    {id:'comp',   plan:[23,26],actual:null,   status:'noplan'},
+  ]},
 
   {group:'Scene C / サビ'},
-  {id:'SC-060', name:'ステージ全景', plan:[22,32], actual:[23,null], status:'wip',  hours:20.2},
-  {id:'SC-070', name:'観客リアクション', plan:[26,36], actual:[28,null], status:'wip', hours:10.5},
-  {id:'SC-075', name:'モニター抜き',   plan:[30,38], actual:null,      status:'noplan', hours:0},
+  {id:'SC-060', name:'ステージ全景', stages:[
+    {id:'layout', plan:[22,25],actual:[23,25],status:'done'},
+    {id:'anim',   plan:[25,29],actual:[25,null],status:'wip'},
+    {id:'fx',     plan:[29,30],actual:null,   status:'noplan'},
+    {id:'comp',   plan:[30,32],actual:null,   status:'noplan'},
+  ]},
+  {id:'SC-070', name:'観客リアクション', stages:[
+    {id:'layout', plan:[26,29],actual:[28,null],status:'wip'},
+    {id:'anim',   plan:[29,33],actual:null,   status:'noplan'},
+    {id:'comp',   plan:[33,36],actual:null,   status:'noplan'},
+  ]},
+  {id:'SC-075', name:'モニター抜き', stages:[
+    {id:'layout', plan:[30,33],actual:null,   status:'noplan'},
+    {id:'comp',   plan:[33,38],actual:null,   status:'noplan'},
+  ]},
 
   {group:'Scene D / エンディング'},
-  {id:'SC-080', name:'サビ落ち',     plan:[35,46], actual:null, status:'noplan', hours:17.0, milestone:44},
-  {id:'SC-090', name:'ラストカット', plan:[42,52], actual:null, status:'noplan', hours:0},
+  {id:'SC-080', name:'サビ落ち', milestone:44, stages:[
+    {id:'layout', plan:[35,38],actual:null,   status:'noplan'},
+    {id:'anim',   plan:[38,42],actual:null,   status:'noplan'},
+    {id:'fx',     plan:[42,44],actual:null,   status:'noplan'},
+    {id:'comp',   plan:[44,46],actual:null,   status:'noplan'},
+  ]},
+  {id:'SC-090', name:'ラストカット', stages:[
+    {id:'layout', plan:[42,45],actual:null,   status:'noplan'},
+    {id:'anim',   plan:[45,49],actual:null,   status:'noplan'},
+    {id:'comp',   plan:[49,52],actual:null,   status:'noplan'},
+  ]},
 ];
 
 /* =========== Timeline Header =========== */
@@ -540,6 +609,7 @@ function buildTimelineHdr(){
 function buildGantt(){
   const body = document.getElementById('ganttBody');
   const px = 100 / DAYS;
+  const todayIdx = Math.round((TODAY - RANGE_START)/(1000*60*60*24));
 
   SHOTS.forEach(s => {
     if(s.group){
@@ -551,11 +621,27 @@ function buildGantt(){
     }
     const row = document.createElement('div');
     row.className = 'gantt-row';
-    let metaChip = '';
-    if(s.status === 'done') metaChip = '<span class="chip done">完了</span>';
-    else if(s.status === 'late') metaChip = '<span class="chip late">遅延</span>';
-    else if(s.status === 'wip') metaChip = '<span class="chip">作業中</span>';
-    else metaChip = '<span class="chip">未計画</span>';
+
+    /* ショット全体のロールアップ status を算出 */
+    const stages = s.stages || [];
+    const stagesTotalDays = stages.reduce((sum, st) => sum + (st.plan ? (st.plan[1]-st.plan[0]) : 0), 0);
+    const totalHours = Math.round(stagesTotalDays * 6 * 10) / 10; /* ダミー：1 日 6h 換算 */
+    const anyLate = stages.some(st => st.status==='late');
+    const anyWip = stages.some(st => st.status==='wip');
+    const allDone = stages.length > 0 && stages.every(st => st.status==='done');
+    const allNoplan = stages.every(st => st.status==='noplan');
+    let rollupChip = '';
+    if(anyLate) rollupChip = '<span class="chip late">遅延</span>';
+    else if(allDone) rollupChip = '<span class="chip done">完了</span>';
+    else if(anyWip) rollupChip = '<span class="chip">作業中</span>';
+    else if(allNoplan) rollupChip = '<span class="chip">未計画</span>';
+    else rollupChip = '<span class="chip">計画中</span>';
+
+    /* 工程バッジ（担当色の帯） */
+    const stageBadges = stages.map(st => {
+      const cfg = STAGES[st.id] || {label:st.id, color:'#888'};
+      return `<span class="stbadge" style="background:${cfg.color}22;color:${cfg.color};border:1px solid ${cfg.color}55" title="${cfg.label}">${cfg.label[0]}</span>`;
+    }).join('');
 
     const track = [];
     /* Weekend background */
@@ -566,23 +652,34 @@ function buildGantt(){
         track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
       }
     }
-    /* Plan bar */
-    if(s.plan){
-      const [p1,p2] = s.plan;
-      const label = `PLAN ${p2-p1+1}d`;
-      track.push(`<div class="plan" style="left:${p1*px}%;width:${(p2-p1+1)*px}%"><div class="lbl">${label}</div></div>`);
+    /* ========= 工程セグメント：予定バー ========= */
+    for(const st of stages){
+      if(!st.plan) continue;
+      const [p1,p2] = st.plan;
+      const w = (p2-p1) * px;
+      const cfg = STAGES[st.id] || {label:st.id, color:'#888'};
+      /* 予定：破線枠のみ・工程色で染める（背景薄く） */
+      track.push(`<div class="seg-plan" style="left:${p1*px}%;width:${w}%;border-color:${cfg.color};background:${cfg.color}12"><span class="seg-lbl" style="color:${cfg.color}">${cfg.label}</span></div>`);
     }
-    /* Actual bar */
-    if(s.actual){
-      const [a1, a2] = s.actual;
-      const end = a2 !== null ? a2 : Math.round((TODAY - RANGE_START)/(1000*60*60*24));
-      const label = s.status === 'late' ? `LATE +${a2 - s.plan[1]}d` : (a2!==null ? `${a2-a1+1}d` : `IN PROGRESS`);
-      const cls = s.status === 'late' ? 'actual late' : 'actual';
-      track.push(`<div class="${cls}" style="left:${a1*px}%;width:${(end-a1+1)*px}%"><div class="lbl">${label}</div></div>`);
-    } else if(!s.plan) {
-      /* Fallback: nothing */
-    } else {
-      /* Plan but no actual — show noplan bar overlaid with dim style */
+    /* ========= 工程セグメント：実績バー ========= */
+    for(const st of stages){
+      if(!st.actual) continue; /* 未着手はここに出さない */
+      const [a1, rawA2] = st.actual;
+      const a2 = rawA2 !== null ? rawA2 : todayIdx;
+      const w = (a2-a1) * px;
+      const cfg = STAGES[st.id] || {label:st.id, color:'#888'};
+      const isWip = st.status === 'wip';
+      const isLate = st.status === 'late';
+      const solid = isLate ? '#EE6A6A' : cfg.color;
+      const style = isWip
+        ? `background:linear-gradient(90deg,${solid},${solid}88);box-shadow:0 2px 8px ${solid}55`
+        : `background:${solid};box-shadow:0 2px 6px ${solid}44`;
+      const label = (rawA2 === null) ? '進行中' : (isLate ? `+${a2-st.plan[1]}d` : `${a2-a1}d`);
+      track.push(`<div class="seg-actual ${isLate?'late':''} ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}"><span class="seg-lbl seg-actual-lbl">${label}</span></div>`);
+    }
+    /* ========= 未計画：薄い枠 ========= */
+    if(allNoplan){
+      /* 全工程が未計画：予定バーを薄く表示するだけ（noplan-hint は不要） */
     }
     /* Milestone */
     if(s.milestone!=null){
@@ -593,7 +690,8 @@ function buildGantt(){
       <div class="shot">
         <div class="id">${s.id}</div>
         <div class="name">${s.name}</div>
-        <div class="meta">${metaChip}${s.hours>0?`<span class="chip">${s.hours}h</span>`:''}</div>
+        <div class="meta">${rollupChip}${totalHours>0?`<span class="chip">${totalHours}h</span>`:''}</div>
+        <div class="stbadges">${stageBadges}</div>
       </div>
       <div class="track">${track.join('')}</div>
     `;
