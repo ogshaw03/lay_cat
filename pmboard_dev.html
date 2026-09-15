@@ -105,6 +105,32 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .sb-legend .swatch.late{background:var(--red)}
 .sb-legend .swatch.milestone{background:var(--amber);width:9px;height:9px;transform:rotate(45deg)}
 
+/* 工程進捗（各工程が何%完了しているか） */
+.sb-stage-progress{padding:0 4px;display:flex;flex-direction:column;gap:6px}
+.sb-stage-progress .row{display:flex;flex-direction:column;gap:3px;font-size:11px}
+.sb-stage-progress .row .lbl{display:flex;justify-content:space-between;align-items:center;color:var(--text2)}
+.sb-stage-progress .row .lbl .nm{display:flex;align-items:center;gap:5px}
+.sb-stage-progress .row .lbl .dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.sb-stage-progress .row .lbl .pct{font-family:var(--font-code);color:var(--text3);font-size:10px}
+.sb-stage-progress .row .bar{height:5px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;overflow:hidden;position:relative}
+.sb-stage-progress .row .bar .fill{position:absolute;top:0;bottom:0;left:0;border-radius:3px}
+.sb-empty{color:var(--text3);font-size:11px;padding:6px 4px}
+
+/* ステータス内訳（各ステータスにいくつのショットがあるか） */
+.sb-status-list{padding:0 4px;display:flex;flex-direction:column;gap:4px}
+.sb-status-list .row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);padding:3px 4px;border-radius:4px}
+.sb-status-list .row:hover{background:var(--bg3)}
+.sb-status-list .row .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.sb-status-list .row .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-status-list .row .cnt{font-family:var(--font-code);color:var(--text3);font-size:10px}
+
+/* 工程設定リスト */
+.sb-stage-list{padding:0 4px;display:flex;flex-direction:column;gap:3px}
+.sb-stage-list .row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);padding:3px 4px;border-radius:4px}
+.sb-stage-list .row .idx{font-family:var(--font-code);color:var(--text3);font-size:10px;min-width:16px;text-align:right}
+.sb-stage-list .row .swatch{width:12px;height:8px;border-radius:2px;flex-shrink:0}
+.sb-stage-list .row .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 /* =========== MAIN =========== */
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;background:var(--bg)}
 .head-tabs{display:flex;gap:2px;align-items:flex-end;padding:0 20px;background:var(--bg);border-bottom:1px solid var(--border)}
@@ -298,25 +324,31 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
     <div class="sb-cell"><div class="n">21<span class="u">日</span></div><div class="l">残</div></div>
   </div>
 
+  <div class="sidebar-label">工程進捗</div>
+  <div class="sb-stage-progress" id="sbStageProgress">
+    <div class="sb-empty">プロジェクトを選択</div>
+  </div>
+
+  <div class="sidebar-label">ステータス内訳</div>
+  <div class="sb-status-list" id="sbStatusList">
+    <div class="sb-empty">プロジェクトを選択</div>
+  </div>
+
+  <div class="sidebar-label">工程設定</div>
+  <div class="sb-stage-list" id="sbStageList">
+    <div class="sb-empty">プロジェクトを選択</div>
+  </div>
+
   <div class="sidebar-label">フィルタ</div>
   <div class="sb-filter">
     <label>担当者</label>
-    <select><option>すべて</option><option>田中太郎</option><option>山田花子</option><option>佐藤健</option></select>
+    <select id="fltAssignee"><option value="">すべて</option></select>
     <label>工程</label>
-    <select><option>すべて</option><option>Layout</option><option>Anim</option><option>FX</option><option>Comp</option><option>Paint</option></select>
+    <select id="fltStage"><option value="">すべて</option></select>
     <label>ステータス</label>
-    <select><option>すべて</option><option>作業中</option><option>チェック待ち</option><option>クライアントOK</option></select>
+    <select id="fltStatus"><option value="">すべて</option></select>
     <label>検索</label>
-    <input type="text" placeholder="ショット ID / 名前">
-  </div>
-
-  <div class="sidebar-label">工程カラー</div>
-  <div class="sb-legend">
-    <div class="row"><span class="swatch" style="background:var(--st-layout)"></span><span>Layout</span></div>
-    <div class="row"><span class="swatch" style="background:var(--st-anim)"></span><span>Anim</span></div>
-    <div class="row"><span class="swatch" style="background:var(--st-fx)"></span><span>FX</span></div>
-    <div class="row"><span class="swatch" style="background:var(--st-comp)"></span><span>Comp</span></div>
-    <div class="row"><span class="swatch" style="background:var(--st-paint)"></span><span>Paint</span></div>
+    <input type="text" id="fltSearch" placeholder="ショット名 / ID">
   </div>
 
   <div class="sidebar-label">凡例</div>
@@ -453,7 +485,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.16.005';
+const APP_VERSION='2026.09.16.006';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1154,9 +1186,14 @@ function updateSidebar(){
   if(!DATA.project) return;
   document.querySelector('.sb-proj-name').textContent = DATA.project.name || DATA.project.id || '(名称なし)';
   const shotCount = DATA.shots.length;
+  /* メンバー数（LayCAT の projectMembers から取得） */
+  const nodes = DATA.project.nodes||[];
+  const root = nodes.find(n=>n.id===DATA.project.id) || nodes.find(n=>!n.parentId);
+  const memberCount = (root && Array.isArray(root.members)) ? root.members.filter(m=>m&&m.active!==false).length : 0;
   document.querySelector('.sb-proj-meta').innerHTML =
     `<span class="sb-chip hot">進行中</span>`+
-    `<span class="sb-chip">${shotCount} shots</span>`;
+    `<span class="sb-chip">${shotCount} shots</span>`+
+    (memberCount>0?`<span class="sb-chip">${memberCount} members</span>`:'');
   const done = DATA.shots.filter(s=>s.stages.length>0 && s.stages.every(st=>st.isDone)).length;
   const late = DATA.shots.filter(s=>s.stages.some(st=>{
     if(!st.plannedEnd) return false;
@@ -1171,6 +1208,114 @@ function updateSidebar(){
   if(cells[2]) cells[2].innerHTML = `<div class="n">${late}</div><div class="l">遅延</div>`;
   const daysLeft = DATA.timeline.end ? Math.max(0, Math.round((DATA.timeline.end - new Date())/86400000)) : 0;
   if(cells[3]) cells[3].innerHTML = `<div class="n">${daysLeft}<span class="u">日</span></div><div class="l">残</div>`;
+
+  /* ========== 工程進捗（工程ごとの完了率） ========== */
+  renderStageProgress(root);
+  /* ========== ステータス内訳（LayCAT の統計と同じ算出） ========== */
+  renderStatusList(root);
+  /* ========== 工程設定（プロジェクトの stages 定義） ========== */
+  renderStageList(root);
+  /* ========== フィルタドロップダウン更新 ========== */
+  renderFilters(root);
+}
+
+/* 工程進捗：各工程種類（layout/anim/...）ごとに、実績で完了したものの割合 */
+function renderStageProgress(root){
+  const wrap = document.getElementById('sbStageProgress');
+  if(!wrap) return;
+  /* 全ショットの stage を工程ラベル別に集計 */
+  const byLabel = new Map(); /* label → {total, done, color} */
+  for(const shot of DATA.shots){
+    for(const st of shot.stages){
+      const key = st.label;
+      if(!byLabel.has(key)) byLabel.set(key,{label:key, color:st.color, total:0, done:0});
+      const rec = byLabel.get(key);
+      rec.total++;
+      if(st.isDone) rec.done++;
+    }
+  }
+  const rows = Array.from(byLabel.values());
+  if(!rows.length){ wrap.innerHTML='<div class="sb-empty">工程データなし</div>'; return; }
+  wrap.innerHTML = rows.map(r=>{
+    const pct = r.total>0 ? Math.round((r.done/r.total)*100) : 0;
+    return `
+      <div class="row">
+        <div class="lbl">
+          <span class="nm"><span class="dot" style="background:${r.color}"></span>${escapeHtml(r.label)}</span>
+          <span class="pct">${r.done}/${r.total}・${pct}%</span>
+        </div>
+        <div class="bar"><div class="fill" style="width:${pct}%;background:${r.color};opacity:.75"></div></div>
+      </div>`;
+  }).join('');
+}
+
+/* ステータス内訳：プロジェクト定義の各ステータスに何ショット該当するか */
+function renderStatusList(root){
+  const wrap = document.getElementById('sbStatusList');
+  if(!wrap) return;
+  const statuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
+  if(!statuses.length){ wrap.innerHTML='<div class="sb-empty">ステータス未設定</div>'; return; }
+  /* 各 review タスクの現在の status を集計 */
+  const counts = new Map();
+  let noneCount = 0;
+  for(const shot of DATA.shots){
+    for(const st of shot.stages){
+      /* 現在の status は status.json 内の status フィールド。history の最後の to を採用 */
+      const last = (st.history && st.history.length) ? st.history[st.history.length-1] : null;
+      const sid = last ? last.to : null;
+      if(!sid) noneCount++;
+      else counts.set(sid,(counts.get(sid)|0)+1);
+    }
+  }
+  const rows = statuses.map(s=>{
+    return `<div class="row"><span class="dot" style="background:${s.color||'var(--text3)'}"></span><span class="nm">${escapeHtml(s.label||s.id)}</span><span class="cnt">${counts.get(s.id)|0}</span></div>`;
+  }).join('');
+  const noneRow = `<div class="row"><span class="dot" style="background:var(--text3);opacity:.5"></span><span class="nm">未着手</span><span class="cnt">${noneCount}</span></div>`;
+  wrap.innerHTML = noneRow + rows;
+}
+
+/* 工程設定：プロジェクトが定義している工程テンプレートを表示 */
+function renderStageList(root){
+  const wrap = document.getElementById('sbStageList');
+  if(!wrap) return;
+  const projStages = projectStageNames(null, root);
+  if(!projStages.length){
+    /* テンプレートなし → 実際のショットから工程名を集約 */
+    const collected = new Set();
+    for(const shot of DATA.shots){
+      for(const st of shot.stages){ collected.add(st.reviewNode.name); }
+    }
+    if(!collected.size){ wrap.innerHTML='<div class="sb-empty">工程未設定</div>'; return; }
+    wrap.innerHTML = Array.from(collected).map((name,i)=>{
+      const kind = classifyStage(name);
+      const color = stageColor(kind, name, []);
+      return `<div class="row"><span class="idx">${i+1}</span><span class="swatch" style="background:${color}"></span><span class="nm">${escapeHtml(name)}</span></div>`;
+    }).join('');
+    return;
+  }
+  wrap.innerHTML = projStages.map((name,i)=>{
+    const kind = classifyStage(name);
+    const color = stageColor(kind, name, projStages);
+    return `<div class="row"><span class="idx">${i+1}</span><span class="swatch" style="background:${color}"></span><span class="nm">${escapeHtml(name)}</span></div>`;
+  }).join('');
+}
+
+/* フィルタドロップダウンをプロジェクトの実データから生成 */
+function renderFilters(root){
+  const fltAssignee = document.getElementById('fltAssignee');
+  const fltStage = document.getElementById('fltStage');
+  const fltStatus = document.getElementById('fltStatus');
+  if(!fltAssignee||!fltStage||!fltStatus) return;
+  /* 担当者：projectMembers */
+  const members = (root && Array.isArray(root.members)) ? root.members.filter(m=>m&&m.active!==false) : [];
+  fltAssignee.innerHTML = '<option value="">すべて</option>' + members.map(m=>`<option value="${escapeHtml(m.id)}">${escapeHtml(m.name||m.id)}</option>`).join('');
+  /* 工程：ショットから集約した工程名 */
+  const stgSet = new Set();
+  for(const shot of DATA.shots){ for(const st of shot.stages){ stgSet.add(st.reviewNode.name); } }
+  fltStage.innerHTML = '<option value="">すべて</option>' + Array.from(stgSet).map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  /* ステータス：project.statuses */
+  const statuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
+  fltStatus.innerHTML = '<option value="">すべて</option>' + statuses.map(s=>`<option value="${escapeHtml(s.id)}">${escapeHtml(s.label||s.id)}</option>`).join('');
 }
 
 /* =========== Tabs / Scale =========== */
