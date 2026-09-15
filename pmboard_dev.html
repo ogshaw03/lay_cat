@@ -45,7 +45,21 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .header-sep{width:1px;height:24px;background:var(--border2);flex-shrink:0}
 .folder-status{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);padding:5px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);cursor:pointer}
 .folder-status:hover{border-color:var(--border2)}
-.folder-status .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.folder-status .dot{width:8px;height:8px;border-radius:50%;background:var(--text3)}
+.folder-status.connected .dot{background:var(--green)}
+.folder-status.warn{border-color:rgba(214,169,95,.5);color:var(--amber)}
+.folder-status.warn .dot{background:var(--amber)}
+/* 空状態 */
+.empty-panel{padding:60px 20px;text-align:center;color:var(--text3)}
+.empty-panel .ep-ico{font-size:36px;margin-bottom:8px}
+.empty-panel .ep-title{font-family:var(--font-head);font-size:16px;font-weight:600;color:var(--text2);margin-bottom:6px}
+.empty-panel .ep-sub{font-size:12px;margin-bottom:16px;line-height:1.6}
+.empty-panel .btn{margin:0 auto}
+.loading-panel{padding:40px 20px;text-align:center;color:var(--text3);font-size:13px}
+/* プロジェクトセレクタ */
+.proj-picker{position:relative;display:inline-flex}
+.proj-picker select{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text);padding:5px 10px;font-size:12px;max-width:180px}
+.proj-picker select:focus{outline:none;border-color:var(--border2)}
 .folder-status .fname{color:var(--text);font-weight:500}
 .folder-status .fchange{color:var(--text3);font-size:11px;margin-left:4px}
 .folder-status:hover .fchange{color:var(--text)}
@@ -240,10 +254,10 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
   </div>
   <div class="app-ver" id="appVer">…</div>
   <div class="header-sep"></div>
-  <div class="folder-status">
-    <div class="dot"></div>
-    <span class="fname">Karaoke MV / Ep3</span>
-    <span class="fchange">変更</span>
+  <div class="folder-status" id="folderStatus" title="プロジェクトフォルダを選択">
+    <div class="dot" id="folderDot"></div>
+    <span class="fname" id="folderName">フォルダ未選択</span>
+    <span class="fchange">選択</span>
   </div>
   <div class="header-actions">
     <div class="scale" id="scaleToggle">
@@ -434,357 +448,483 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.16.002';
+const APP_VERSION='2026.09.16.003';
 
-/* =========== ダミーデータ =========== */
-const TODAY = new Date('2026-09-16');
-const RANGE_START = new Date('2026-09-01');
-const RANGE_END   = new Date('2026-10-31');
-const DAYS = Math.round((RANGE_END - RANGE_START) / (1000*60*60*24)) + 1;
+/* =========== 工程分類・カラーマップ =========== */
+/* review 子ノード名 → 工程種を判定するキーワードマップ。
+   LayCAT では工程名は自由記述（プロジェクトの stageTemplates 由来）なので
+   キーワードで色分類する。マッチしないものは灰色系フォールバック。 */
+const STAGE_KEYWORDS = {
+  layout: [/レイアウト/, /layout/i, /^LAY$/i, /^LO$/i],
+  anim:   [/アニ/, /anim/i, /^ANM$/i, /^ANIM$/i],
+  fx:     [/^FX$/i, /エフェクト/, /^effect/i],
+  comp:   [/コンポ/, /^comp/i, /composite/i, /^CP$/i, /仕上げ/],
+  paint:  [/ペイント/, /^paint/i, /^彩色/, /^PT$/i],
+};
+const STAGE_COLORS = {
+  layout:'var(--st-layout)', anim:'var(--st-anim)', fx:'var(--st-fx)',
+  comp:'var(--st-comp)', paint:'var(--st-paint)',
+};
+const STAGE_LABELS = {layout:'Layout', anim:'Anim', fx:'FX', comp:'Comp', paint:'Paint'};
+const STAGE_FALLBACK_COLORS = ['#9ba3ad','#a89aab','#9baba1','#aba99a','#9ba7ad'];
+function classifyStage(name){
+  if(!name) return 'unknown';
+  for(const [k,pats] of Object.entries(STAGE_KEYWORDS)){
+    if(pats.some(p=>p.test(name))) return k;
+  }
+  return 'unknown';
+}
+function stageColor(kind, name){
+  if(STAGE_COLORS[kind]) return STAGE_COLORS[kind];
+  let h=0; for(const c of (name||'?')) h=(h*31+c.charCodeAt(0))|0;
+  return STAGE_FALLBACK_COLORS[Math.abs(h)%STAGE_FALLBACK_COLORS.length];
+}
+function stageLabel(kind, name){
+  if(STAGE_LABELS[kind]) return STAGE_LABELS[kind];
+  const nm = name||'?';
+  return nm.length>4 ? nm.slice(0,4) : nm;
+}
 
-const STAGES = {
-  layout: {label:'Layout', color:'var(--st-layout)'},
-  anim:   {label:'Anim',   color:'var(--st-anim)'},
-  fx:     {label:'FX',     color:'var(--st-fx)'},
-  comp:   {label:'Comp',   color:'var(--st-comp)'},
-  paint:  {label:'Paint',  color:'var(--st-paint)'},
+/* status.json 内容から「終了」判定：project.statuses の中で「checkWait 相当でない最終値」
+   または特定キーワードに該当する場合。 */
+const DONE_KEYWORDS_ID = /^(ok|approved|done|complete|clientok|client-ok|client_ok|final)$/i;
+const DONE_KEYWORDS_LABEL = /(クライアントOK|クライアントok|OK|完了|approved|完成|検収)/;
+function isStatusDone(statusId, projStatuses){
+  if(!statusId) return false;
+  if(DONE_KEYWORDS_ID.test(statusId)) return true;
+  if(Array.isArray(projStatuses)){
+    const st = projStatuses.find(x=>x&&x.id===statusId);
+    if(st && DONE_KEYWORDS_LABEL.test(st.label||'')) return true;
+    /* 最終ステータスなら done とみなす */
+    if(st && projStatuses[projStatuses.length-1] === st) return true;
+  }
+  return false;
+}
+
+/* =========== ストレージ（FSA + IDB） =========== */
+const IDB_NAME='pmboard_kv';
+const IDB_STORE='kv';
+function idbOpen(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(IDB_NAME,1);
+    r.onupgradeneeded=()=>{r.result.createObjectStore(IDB_STORE)};
+    r.onsuccess=()=>res(r.result);
+    r.onerror=()=>rej(r.error);
+  });
+}
+async function idbGet(k){
+  const d=await idbOpen();
+  return new Promise((res,rej)=>{
+    const t=d.transaction(IDB_STORE,'readonly');
+    const r=t.objectStore(IDB_STORE).get(k);
+    r.onsuccess=()=>res(r.result);
+    r.onerror=()=>rej(r.error);
+  });
+}
+async function idbSet(k,v){
+  const d=await idbOpen();
+  return new Promise((res,rej)=>{
+    const t=d.transaction(IDB_STORE,'readwrite');
+    const r=t.objectStore(IDB_STORE).put(v,k);
+    r.onsuccess=()=>res();
+    r.onerror=()=>rej(r.error);
+  });
+}
+
+const storage = {
+  dirHandle: null,
+  async pickFolder(){
+    if(!window.showDirectoryPicker){
+      alert('お使いのブラウザは File System Access API 未対応です（Chrome/Edge 系推奨）');
+      return null;
+    }
+    try{
+      const h = await window.showDirectoryPicker({mode:'readwrite'});
+      this.dirHandle = h;
+      try{ await idbSet('projectDir', h); }catch(_){}
+      return h;
+    }catch(e){
+      if(e && e.name!=='AbortError') console.warn(e);
+      return null;
+    }
+  },
+  async restoreFolder(){
+    try{
+      const h = await idbGet('projectDir');
+      if(!h) return null;
+      const perm = await h.queryPermission({mode:'readwrite'});
+      if(perm==='granted'){this.dirHandle=h; return h;}
+      /* 未許可なら null 返し：ユーザーが再度クリックしたら permission ダイアログ */
+      this.dirHandle = h;
+      return null;
+    }catch(_){return null;}
+  },
+  async ensurePermission(){
+    if(!this.dirHandle) return false;
+    try{
+      const p = await this.dirHandle.requestPermission({mode:'readwrite'});
+      return p==='granted';
+    }catch(_){return false;}
+  },
+  async readJson(path){
+    if(!this.dirHandle) return null;
+    try{
+      const parts = path.split('/');
+      let cur = this.dirHandle;
+      for(let i=0;i<parts.length-1;i++){cur=await cur.getDirectoryHandle(parts[i])}
+      const fh = await cur.getFileHandle(parts[parts.length-1]);
+      const txt = await (await fh.getFile()).text();
+      return JSON.parse(txt);
+    }catch(_){return null;}
+  },
+  async writeJson(path, data){
+    if(!this.dirHandle) return false;
+    try{
+      const parts = path.split('/');
+      let cur = this.dirHandle;
+      for(let i=0;i<parts.length-1;i++){cur=await cur.getDirectoryHandle(parts[i],{create:true})}
+      const fh = await cur.getFileHandle(parts[parts.length-1],{create:true});
+      const w = await fh.createWritable();
+      await w.write(JSON.stringify(data,null,2));
+      await w.close();
+      return true;
+    }catch(e){console.warn('writeJson failed',path,e);return false;}
+  },
+  async listDir(dirName){
+    if(!this.dirHandle) return [];
+    try{
+      const dir = await this.dirHandle.getDirectoryHandle(dirName);
+      const names=[];
+      if(typeof dir.entries==='function'){
+        for await(const [name,h] of dir.entries()){
+          if(!h || h.kind==='file') names.push(name);
+        }
+      }else if(typeof dir.keys==='function'){
+        for await(const name of dir.keys()){names.push(name);}
+      }
+      return names;
+    }catch(_){return [];}
+  },
 };
 
-const SHOTS = [
-  {group:'Scene A / ライブ導入部'},
-  {id:'SC-010', name:'キャラ登場', milestone:8, stages:[
-    {id:'layout', plan:[2,4],  actual:[3,4],  status:'done'},
-    {id:'anim',   plan:[4,7],  actual:[4,7],  status:'done'},
-    {id:'comp',   plan:[7,9],  actual:[7,10], status:'done'},
-  ]},
-  {id:'SC-020', name:'カラオケ画面 zoom', stages:[
-    {id:'layout', plan:[5,7],  actual:[6,7],  status:'done'},
-    {id:'anim',   plan:[7,10], actual:[7,11], status:'done'},
-    {id:'fx',     plan:[10,11],actual:[11,12],status:'done'},
-    {id:'comp',   plan:[11,12],actual:[12,14],status:'done'},
-  ]},
-  {id:'SC-025', name:'マイクアップ', stages:[
-    {id:'layout', plan:[10,12],actual:null,   status:'noplan'},
-    {id:'anim',   plan:[12,14],actual:null,   status:'noplan'},
-    {id:'comp',   plan:[14,16],actual:null,   status:'noplan'},
-  ]},
+/* =========== データモデル =========== */
+const DATA = {
+  project: null,
+  shots: [],
+  timeline: {start:null,end:null,days:0},
+  loaded: false,
+};
 
-  {group:'Scene B / サビ前'},
-  {id:'SC-030', name:'ダンス俯瞰', milestone:22, stages:[
-    {id:'layout', plan:[8,11], actual:[9,12], status:'done'},
-    {id:'anim',   plan:[11,15],actual:[12,17],status:'late'},
-    {id:'fx',     plan:[15,17],actual:[17,21],status:'late'},
-    {id:'comp',   plan:[17,20],actual:[21,25],status:'late'},
-  ]},
-  {id:'SC-040', name:'表情 CU', stages:[
-    {id:'layout', plan:[15,16],actual:[16,17],status:'done'},
-    {id:'anim',   plan:[16,20],actual:[17,19],status:'done'},
-    {id:'comp',   plan:[20,22],actual:[19,20],status:'done'},
-  ]},
-  {id:'SC-050', name:'照明フラッシュ', stages:[
-    {id:'layout', plan:[18,20],actual:[19,20],status:'done'},
-    {id:'fx',     plan:[20,23],actual:[20,null],status:'wip'},
-    {id:'comp',   plan:[23,26],actual:null,   status:'noplan'},
-  ]},
+async function loadProjectData(){
+  /* laycat.project.json を読む（旧名 layna.project.json も念のため） */
+  let proj = await storage.readJson('laycat.project.json');
+  if(!proj) proj = await storage.readJson('layna.project.json');
+  if(!proj) return {ok:false, err:'laycat.project.json が見つかりません。LayCAT で開いたプロジェクトフォルダを選択してください。'};
+  DATA.project = proj;
 
-  {group:'Scene C / サビ'},
-  {id:'SC-060', name:'ステージ全景', stages:[
-    {id:'layout', plan:[22,25],actual:[23,25],status:'done'},
-    {id:'anim',   plan:[25,29],actual:[25,null],status:'wip'},
-    {id:'fx',     plan:[29,30],actual:null,   status:'noplan'},
-    {id:'comp',   plan:[30,32],actual:null,   status:'noplan'},
-  ]},
-  {id:'SC-070', name:'観客リアクション', stages:[
-    {id:'layout', plan:[26,29],actual:[28,null],status:'wip'},
-    {id:'anim',   plan:[29,33],actual:null,   status:'noplan'},
-    {id:'comp',   plan:[33,36],actual:null,   status:'noplan'},
-  ]},
-  {id:'SC-075', name:'モニター抜き', stages:[
-    {id:'layout', plan:[30,33],actual:null,   status:'noplan'},
-    {id:'comp',   plan:[33,38],actual:null,   status:'noplan'},
-  ]},
+  const allNodes = Array.isArray(proj.nodes)?proj.nodes:[];
+  const nodeById = new Map(allNodes.map(n=>[n.id,n]));
+  const root = nodeById.get(proj.id) || allNodes.find(n=>!n.parentId);
+  const projStatuses = (root&&Array.isArray(root.statuses)&&root.statuses.length)?root.statuses:[];
+  DATA.project.statuses = projStatuses;
 
-  {group:'Scene D / エンディング'},
-  {id:'SC-080', name:'サビ落ち', milestone:44, stages:[
-    {id:'layout', plan:[35,38],actual:null,   status:'noplan'},
-    {id:'anim',   plan:[38,42],actual:null,   status:'noplan'},
-    {id:'fx',     plan:[42,44],actual:null,   status:'noplan'},
-    {id:'comp',   plan:[44,46],actual:null,   status:'noplan'},
-  ]},
-  {id:'SC-090', name:'ラストカット', stages:[
-    {id:'layout', plan:[42,45],actual:null,   status:'noplan'},
-    {id:'anim',   plan:[45,49],actual:null,   status:'noplan'},
-    {id:'comp',   plan:[49,52],actual:null,   status:'noplan'},
-  ]},
-];
+  /* Shot section を判定：type='section' で子が全て 'review' な非ルート */
+  const kidsOf = id => allNodes.filter(n=>n.parentId===id);
+  const isShot = n => n && n.type==='section' && n.parentId
+    && kidsOf(n.id).length>0
+    && kidsOf(n.id).every(x=>x.type==='review');
+  const shotSections = allNodes.filter(isShot);
 
-/* Timeline Header */
+  /* shots/*.json を並列読み込み */
+  const shotFiles = await Promise.all(shotSections.map(async s => {
+    const f = await storage.readJson(`shots/${s.id}.json`);
+    return {section:s, file:f};
+  }));
+
+  /* status/*.json 全部読む */
+  const statusNames = await storage.listDir('status');
+  const statusMap = {};
+  await Promise.all(statusNames.map(async name=>{
+    if(!name.endsWith('.json')) return;
+    const f = await storage.readJson(`status/${name}`);
+    if(f && f.shotId) statusMap[f.shotId] = f;
+  }));
+
+  /* schedule/*.json 全部読む */
+  const scheduleNames = await storage.listDir('schedule');
+  const scheduleMap = {};
+  await Promise.all(scheduleNames.map(async name=>{
+    if(!name.endsWith('.json')) return;
+    const f = await storage.readJson(`schedule/${name}`);
+    if(f && f.shotId) scheduleMap[f.shotId] = f;
+  }));
+
+  const shots = [];
+  for(const {section, file} of shotFiles){
+    /* section 直下の review 子を取得（shot ファイルがあれば優先、なければ skeleton） */
+    const kids = (file && Array.isArray(file.nodes))
+      ? file.nodes.filter(n=>n && n.parentId===section.id && n.type==='review')
+      : kidsOf(section.id).filter(n=>n.type==='review');
+    const sched = scheduleMap[section.id] || {};
+    const schedStages = Array.isArray(sched.stages)?sched.stages:[];
+    const stages = kids.map(k=>{
+      const kind = classifyStage(k.name);
+      const label = stageLabel(kind, k.name);
+      const color = stageColor(kind, k.name);
+      const ss = schedStages.find(x=>x.stageId===k.id) || {};
+      const plannedStart = ss.plannedStart ? new Date(ss.plannedStart) : null;
+      const plannedEnd = ss.plannedEnd ? new Date(ss.plannedEnd) : null;
+      const sf = statusMap[k.id];
+      const history = (sf && Array.isArray(sf.history)) ? sf.history : [];
+      let actualStart=null, actualEnd=null, isDone=false;
+      if(history.length){
+        const firstMeaningful = history.find(h=>h && h.to);
+        if(firstMeaningful) actualStart = new Date(firstMeaningful.ts);
+        const last = history[history.length-1];
+        if(last && last.ts) actualEnd = new Date(last.ts);
+        isDone = isStatusDone(sf.status, projStatuses);
+      }
+      return {reviewNode:k, kind, label, color, plannedStart, plannedEnd, actualStart, actualEnd, isDone, history};
+    });
+    shots.push({sectionNode:section, stages, milestones:(sched.milestones||[])});
+  }
+  DATA.shots = shots;
+
+  /* Timeline auto-scale：全予定・実績日 min-max ± 7 日パディング */
+  const dates=[];
+  for(const s of shots){
+    for(const st of s.stages){
+      if(st.plannedStart) dates.push(st.plannedStart);
+      if(st.plannedEnd) dates.push(st.plannedEnd);
+      if(st.actualStart) dates.push(st.actualStart);
+      if(st.actualEnd) dates.push(st.actualEnd);
+    }
+  }
+  const now = new Date();
+  dates.push(now);
+  if(dates.length<2){
+    dates.push(new Date(now.getTime()-30*86400000));
+    dates.push(new Date(now.getTime()+30*86400000));
+  }
+  const times = dates.map(d=>d.getTime()).filter(t=>!isNaN(t));
+  const minD = new Date(Math.min(...times));
+  const maxD = new Date(Math.max(...times));
+  const start = new Date(minD.getFullYear(), minD.getMonth(), minD.getDate()-7);
+  const end = new Date(maxD.getFullYear(), maxD.getMonth(), maxD.getDate()+7);
+  const days = Math.max(30, Math.round((end-start)/86400000)+1);
+  DATA.timeline = {start, end, days};
+  DATA.loaded = true;
+  return {ok:true};
+}
+
+async function saveShotSchedule(shot){
+  const stages = shot.stages.map(st=>({
+    stageId: st.reviewNode.id,
+    stageName: st.reviewNode.name,
+    plannedStart: st.plannedStart ? isoDate(st.plannedStart) : null,
+    plannedEnd: st.plannedEnd ? isoDate(st.plannedEnd) : null,
+  }));
+  const existing = await storage.readJson(`schedule/${shot.sectionNode.id}.json`);
+  const rev = (existing&&existing._rev|0) || 0;
+  const file = {
+    v:1,
+    shotId: shot.sectionNode.id,
+    stages,
+    milestones: (existing&&existing.milestones)||shot.milestones||[],
+    updatedAt: new Date().toISOString(),
+    _rev: rev+1,
+  };
+  return await storage.writeJson(`schedule/${shot.sectionNode.id}.json`, file);
+}
+
+/* =========== 描画ヘルパ =========== */
+function isoDate(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function dayIdx(d){
+  return Math.round((d - DATA.timeline.start)/86400000);
+}
+function fmtDate(dayIndex){
+  const d = new Date(DATA.timeline.start);
+  d.setDate(d.getDate()+dayIndex);
+  const wk = ['日','月','火','水','木','金','土'][d.getDay()];
+  return `${d.getMonth()+1}/${d.getDate()}（${wk}）`;
+}
+function escapeHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* =========== Timeline Header =========== */
 function buildTimelineHdr(){
   const hdr = document.getElementById('timelineHdr');
+  hdr.innerHTML='';
+  if(!DATA.loaded) return;
+  const {start, days} = DATA.timeline;
   const weeks = document.createElement('div'); weeks.className='weeks';
-  const days = document.createElement('div'); days.className='days';
-  const weekCount = Math.ceil(DAYS/7);
+  const dow = document.createElement('div'); dow.className='days';
+  const weekCount = Math.ceil(days/7);
   for(let i=0;i<weekCount;i++){
     const w = document.createElement('div'); w.className='w';
-    const d0 = new Date(RANGE_START); d0.setDate(d0.getDate()+i*7);
-    w.textContent = `W${String(Math.floor(d0.getTime()/(1000*60*60*24*7))%53).padStart(2,'0')} · ${d0.getMonth()+1}/${d0.getDate()}`;
+    const d0 = new Date(start); d0.setDate(d0.getDate()+i*7);
+    w.textContent = `${d0.getMonth()+1}/${d0.getDate()}〜`;
     weeks.appendChild(w);
   }
-  for(let i=0;i<DAYS;i++){
+  for(let i=0;i<days;i++){
     const d = document.createElement('div'); d.className='d';
-    const dt = new Date(RANGE_START); dt.setDate(dt.getDate()+i);
-    const dow = dt.getDay();
-    if(dow===0||dow===6) d.classList.add('wknd');
+    const dt = new Date(start); dt.setDate(dt.getDate()+i);
+    const dw = dt.getDay();
+    if(dw===0||dw===6) d.classList.add('wknd');
     d.textContent = dt.getDate();
-    days.appendChild(d);
+    dow.appendChild(d);
   }
-  hdr.appendChild(weeks); hdr.appendChild(days);
+  hdr.appendChild(weeks); hdr.appendChild(dow);
 }
 
-/* Gantt Body */
+/* Scene グループ判定：shot section の 1 段上の親（root でなければグループ扱い） */
+function shotScene(shot){
+  const nodes = (DATA.project&&DATA.project.nodes)||[];
+  const parent = nodes.find(n=>n.id===shot.sectionNode.parentId);
+  if(!parent) return null;
+  if(!parent.parentId) return null; /* root */
+  return parent;
+}
+
+/* =========== Gantt =========== */
 function buildGantt(){
   const body = document.getElementById('ganttBody');
-  const px = 100/DAYS;
-  const todayIdx = Math.round((TODAY-RANGE_START)/(1000*60*60*24));
+  const oldToday = document.querySelector('.gantt-today');
+  if(oldToday) oldToday.remove();
+  body.innerHTML='';
+  if(!DATA.loaded){
+    body.innerHTML=`
+      <div class="empty-panel">
+        <div class="ep-ico">📁</div>
+        <div class="ep-title">プロジェクトフォルダを選択してください</div>
+        <div class="ep-sub">LayCAT で使っているプロジェクトフォルダ（<code>laycat.project.json</code> がある場所）を選択します。<br>スケジュールは <code>schedule/</code> サブフォルダに保存され、LayCAT 本体には影響しません。</div>
+        <button class="btn btn-primary" onclick="onPickFolder()">📁 フォルダを選択</button>
+      </div>`;
+    return;
+  }
+  if(!DATA.shots.length){
+    body.innerHTML=`<div class="empty-panel"><div class="ep-ico">🎬</div><div class="ep-title">ショットが見つかりません</div><div class="ep-sub">このプロジェクトにはまだショット（type:section で工程を子に持つノード）が無いようです。</div></div>`;
+    return;
+  }
+  const {start, days} = DATA.timeline;
+  const px = 100/days;
+  const todayIdx = dayIdx(new Date());
 
-  SHOTS.forEach(s=>{
-    if(s.group){
+  const byScene = new Map();
+  for(const shot of DATA.shots){
+    const sc = shotScene(shot);
+    const key = sc ? sc.id : '__top__';
+    if(!byScene.has(key)) byScene.set(key,{scene:sc, shots:[]});
+    byScene.get(key).shots.push(shot);
+  }
+
+  for(const [,grp] of byScene){
+    if(grp.scene){
+      const gr = document.createElement('div');
+      gr.className='gantt-row group';
+      gr.innerHTML=`<div class="shot"><div class="id">${escapeHtml(grp.scene.name||'')}</div></div><div class="track"></div>`;
+      body.appendChild(gr);
+    }
+    for(const shot of grp.shots){
+      const stages = shot.stages;
+      const anyLate = stages.some(st=>{
+        if(!st.plannedEnd)return false;
+        if(st.actualEnd && st.actualEnd>st.plannedEnd && !st.isDone) return true;
+        if(!st.actualEnd && new Date() > st.plannedEnd && st.actualStart) return true;
+        return false;
+      });
+      const anyWip = stages.some(st=>st.actualStart && !st.isDone);
+      const allDone = stages.length>0 && stages.every(st=>st.isDone);
+      const allNoplan = stages.every(st=>!st.actualStart && !st.plannedStart);
+      let rollup='';
+      if(anyLate) rollup='<span class="st-chip late">遅延</span>';
+      else if(allDone) rollup='<span class="st-chip done">完了</span>';
+      else if(anyWip) rollup='<span class="st-chip wip">作業中</span>';
+      else if(allNoplan) rollup='<span class="st-chip noplan">未計画</span>';
+      else rollup='<span class="st-chip plan">計画中</span>';
+
+      const stageBadges = stages.map(st=>{
+        const ch = (st.label||'?').charAt(0).toUpperCase();
+        return `<span class="stbadge" style="background:${st.color};opacity:.85;color:#16161a" title="${escapeHtml(st.reviewNode.name)}">${escapeHtml(ch)}</span>`;
+      }).join('');
+
+      const track=[];
+      /* Weekend */
+      for(let i=0;i<days;i++){
+        const dt=new Date(start); dt.setDate(dt.getDate()+i);
+        const dw=dt.getDay();
+        if(dw===0||dw===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
+      }
+      /* Plan bars */
+      for(const st of stages){
+        if(!st.plannedStart||!st.plannedEnd) continue;
+        const p1 = dayIdx(st.plannedStart);
+        const p2 = dayIdx(st.plannedEnd);
+        if(p2<0||p1>days) continue;
+        const w = Math.max(px, (p2-p1)*px);
+        track.push(`<div class="seg-plan" data-shot="${shot.sectionNode.id}" data-stage="${st.reviewNode.id}" style="left:${p1*px}%;width:${w}%;border-color:${st.color};background:${st.color}"><span class="seg-lbl" style="color:${st.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${escapeHtml(st.label)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
+      }
+      /* Actual bars */
+      for(const st of stages){
+        if(!st.actualStart) continue;
+        const a1 = dayIdx(st.actualStart);
+        const rawA2 = st.actualEnd ? dayIdx(st.actualEnd) : todayIdx;
+        const a2 = st.isDone ? rawA2 : Math.max(rawA2, todayIdx);
+        if(a2<0||a1>days) continue;
+        const w = Math.max(px*0.5, (a2-a1)*px);
+        const isLate = st.plannedEnd && st.actualEnd && st.actualEnd>st.plannedEnd && !st.isDone;
+        const isWip = !st.isDone;
+        const fill = isLate ? 'var(--red)' : st.color;
+        const style = `background:${fill};opacity:${isWip?'.7':'.9'}`;
+        let labelText;
+        if(isWip) labelText='進行中';
+        else if(st.plannedEnd && st.actualEnd && st.actualEnd>st.plannedEnd){
+          const dLate = Math.round((st.actualEnd-st.plannedEnd)/86400000);
+          labelText = `+${dLate}d`;
+        }else{
+          labelText = `${Math.max(1,a2-a1)}d`;
+        }
+        track.push(`<div class="seg-actual ${isLate?'late':''} ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}"><span class="seg-actual-lbl">${labelText}</span></div>`);
+      }
+      /* Milestones */
+      for(const m of (shot.milestones||[])){
+        if(!m.ts) continue;
+        const idx = dayIdx(new Date(m.ts));
+        if(idx<0||idx>days) continue;
+        track.push(`<div class="milestone" title="${escapeHtml(m.label||'')}" style="left:calc(${idx*px}% - 5px)"></div>`);
+      }
+
       const row = document.createElement('div');
-      row.className = 'gantt-row group';
-      row.innerHTML = `<div class="shot"><div class="id">${s.group}</div></div><div class="track"></div>`;
+      row.className='gantt-row';
+      row.innerHTML = `
+        <div class="shot">
+          <div class="id">${escapeHtml(shot.sectionNode.name||shot.sectionNode.id.slice(-8))}</div>
+          <div class="name">${stages.length} 工程</div>
+          <div class="meta">${rollup}</div>
+          <div class="stbadges">${stageBadges}</div>
+        </div>
+        <div class="track">${track.join('')}</div>
+      `;
       body.appendChild(row);
-      return;
     }
-    const row = document.createElement('div');
-    row.className='gantt-row';
-    const stages = s.stages||[];
-    const stagesTotalDays = stages.reduce((sum,st)=>sum+(st.plan?(st.plan[1]-st.plan[0]):0),0);
-    const totalHours = Math.round(stagesTotalDays*6*10)/10;
-    const anyLate = stages.some(st=>st.status==='late');
-    const anyWip = stages.some(st=>st.status==='wip');
-    const allDone = stages.length>0 && stages.every(st=>st.status==='done');
-    const allNoplan = stages.every(st=>st.status==='noplan');
-    let rollupChip='';
-    if(anyLate) rollupChip='<span class="st-chip late">遅延</span>';
-    else if(allDone) rollupChip='<span class="st-chip done">完了</span>';
-    else if(anyWip) rollupChip='<span class="st-chip wip">作業中</span>';
-    else if(allNoplan) rollupChip='<span class="st-chip noplan">未計画</span>';
-    else rollupChip='<span class="st-chip plan">計画中</span>';
+  }
 
-    const stageBadges = stages.map(st=>{
-      const cfg = STAGES[st.id]||{label:st.id,color:'#888'};
-      return `<span class="stbadge" style="background:${cfg.color};opacity:.85;color:#16161a" title="${cfg.label}">${cfg.label[0]}</span>`;
-    }).join('');
-
-    const track=[];
-    for(let i=0;i<DAYS;i++){
-      const dt = new Date(RANGE_START); dt.setDate(dt.getDate()+i);
-      const dow = dt.getDay();
-      if(dow===0||dow===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
-    }
-    /* 予定バー：工程色の破線枠（ドラッグで期間伸縮可能） */
-    for(const st of stages){
-      if(!st.plan) continue;
-      const [p1,p2]=st.plan; const w=(p2-p1)*px;
-      const cfg=STAGES[st.id]||{label:st.id,color:'#888'};
-      track.push(`<div class="seg-plan" data-shot="${s.id}" data-stage="${st.id}" style="left:${p1*px}%;width:${w}%;border-color:${cfg.color};background:${cfg.color.replace('var(','').replace(')','')}"><span class="seg-lbl" style="color:${cfg.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${cfg.label}</span><div class="handle l"></div><div class="handle r"></div></div>`);
-    }
-    /* 実績バー：工程色でソリッド塗り */
-    for(const st of stages){
-      if(!st.actual) continue;
-      const [a1,rawA2]=st.actual;
-      const a2 = rawA2!==null?rawA2:todayIdx;
-      const w = (a2-a1)*px;
-      const cfg=STAGES[st.id]||{label:st.id,color:'#888'};
-      const isWip = st.status==='wip';
-      const isLate = st.status==='late';
-      const fill = isLate ? 'var(--red)' : cfg.color;
-      const style = `background:${fill};opacity:${isWip?'.7':'.9'}`;
-      const label = (rawA2===null)?'進行中':(isLate?`+${a2-st.plan[1]}d`:`${a2-a1}d`);
-      track.push(`<div class="seg-actual ${isLate?'late':''} ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}"><span class="seg-actual-lbl">${label}</span></div>`);
-    }
-    if(s.milestone!=null){
-      track.push(`<div class="milestone" style="left:calc(${s.milestone*px}% - 5px)"></div>`);
-    }
-
-    row.innerHTML = `
-      <div class="shot">
-        <div class="id">${s.id}</div>
-        <div class="name">${s.name}</div>
-        <div class="meta">${rollupChip}${totalHours>0?`<span class="st-chip">${totalHours}h</span>`:''}</div>
-        <div class="stbadges">${stageBadges}</div>
-      </div>
-      <div class="track">${track.join('')}</div>
-    `;
-    body.appendChild(row);
-  });
-
-  /* Today marker */
-  const todayIdx2 = Math.round((TODAY-RANGE_START)/(1000*60*60*24));
+  const wrapper = body.parentElement;
   const marker = document.createElement('div');
   marker.className='gantt-today';
-  marker.style.left = `calc(220px + ${todayIdx2*px}%)`;
-  marker.innerHTML = `<div class="lbl">TODAY 9/16</div>`;
-  body.parentElement.appendChild(marker);
+  marker.style.left = `calc(220px + ${todayIdx*px}%)`;
+  const t = new Date();
+  marker.innerHTML = `<div class="lbl">TODAY ${t.getMonth()+1}/${t.getDate()}</div>`;
+  wrapper.appendChild(marker);
 }
 
-/* Retake Chart */
-function buildRetakeChart(){
-  const svg = document.getElementById('retakeChart');
-  const data = [
-    {id:'SC-010',c:2,i:3},{id:'SC-020',c:1,i:4},{id:'SC-030',c:5,i:8},
-    {id:'SC-040',c:2,i:3},{id:'SC-050',c:3,i:5},{id:'SC-060',c:1,i:4},
-    {id:'SC-070',c:2,i:2},{id:'SC-080',c:0,i:3},{id:'SC-090',c:1,i:1},
-    {id:'SC-100',c:1,i:5},{id:'SC-110',c:0,i:4},{id:'SC-120',c:0,i:3},
-  ];
-  const W=800,H=260,PL=36,PR=16,PT=12,PB=36;
-  const cw=W-PL-PR, ch=H-PT-PB;
-  const maxY=10;
-  let s='';
-  for(let i=0;i<=maxY;i+=2){
-    const y = PT+ch-(i/maxY)*ch;
-    s+=`<line x1="${PL}" x2="${W-PR}" y1="${y}" y2="${y}" stroke="#2a2a2f" stroke-width="1"/>`;
-    s+=`<text x="${PL-6}" y="${y+4}" fill="#5a5a6a" font-size="10" text-anchor="end" font-family="Space Grotesk">${i}</text>`;
-  }
-  data.forEach((d,i)=>{
-    const x = PL+(i/(data.length-1))*cw;
-    s+=`<text x="${x}" y="${H-12}" fill="#5a5a6a" font-size="10" text-anchor="middle" font-family="Space Grotesk">${d.id}</text>`;
-  });
-  function pathFor(arr,key){
-    return arr.map((d,i)=>{
-      const x = PL+(i/(arr.length-1))*cw;
-      const y = PT+ch-(d[key]/maxY)*ch;
-      return `${i===0?'M':'L'}${x},${y}`;
-    }).join(' ');
-  }
-  s+=`<path d="${pathFor(data,'i')}" fill="none" stroke="#c7c7cf" stroke-width="2" stroke-linecap="round"/>`;
-  s+=`<path d="${pathFor(data,'c')}" fill="none" stroke="#d6a95f" stroke-width="2" stroke-linecap="round"/>`;
-  data.forEach((d,i)=>{
-    const x = PL+(i/(data.length-1))*cw;
-    const yc = PT+ch-(d.c/maxY)*ch;
-    const yi = PT+ch-(d.i/maxY)*ch;
-    s+=`<circle cx="${x}" cy="${yi}" r="3" fill="#c7c7cf"/>`;
-    s+=`<circle cx="${x}" cy="${yc}" r="3" fill="#d6a95f"/>`;
-  });
-  svg.innerHTML=s;
-}
-
-/* Activity Chart */
-function buildActivityChart(){
-  const svg = document.getElementById('activityChart');
-  const W=800,H=260,PL=36,PR=16,PT=12,PB=36;
-  const cw=W-PL-PR, ch=H-PT-PB;
-  const days=30;
-  const rand=(min,max,seed)=>min+((Math.sin(seed)*10000)%1+1)%1*(max-min);
-  const upload = Array.from({length:days},(_,i)=>Math.round(rand(2,12,i*1.7)));
-  const status = Array.from({length:days},(_,i)=>Math.round(rand(5,22,i*2.3+7)));
-  const comment = Array.from({length:days},(_,i)=>Math.round(rand(1,8,i*3.1+13)));
-  const maxY=25;
-  let s='';
-  for(let i=0;i<=maxY;i+=5){
-    const y = PT+ch-(i/maxY)*ch;
-    s+=`<line x1="${PL}" x2="${W-PR}" y1="${y}" y2="${y}" stroke="#2a2a2f" stroke-width="1"/>`;
-    s+=`<text x="${PL-6}" y="${y+4}" fill="#5a5a6a" font-size="10" text-anchor="end" font-family="Space Grotesk">${i}</text>`;
-  }
-  for(let i=0;i<days;i+=5){
-    const x = PL+(i/(days-1))*cw;
-    s+=`<text x="${x}" y="${H-12}" fill="#5a5a6a" font-size="10" text-anchor="middle" font-family="Space Grotesk">D-${days-i}</text>`;
-  }
-  function pathAndArea(arr,color){
-    const pts = arr.map((v,i)=>{
-      const x = PL+(i/(arr.length-1))*cw;
-      const y = PT+ch-(v/maxY)*ch;
-      return [x,y];
-    });
-    const line = pts.map((p,i)=>`${i===0?'M':'L'}${p[0]},${p[1]}`).join(' ');
-    const area = `${line} L${pts[pts.length-1][0]},${PT+ch} L${pts[0][0]},${PT+ch} Z`;
-    return `<path d="${area}" fill="${color}" opacity="0.1"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/>`;
-  }
-  s+=pathAndArea(status,'#c7c7cf');
-  s+=pathAndArea(upload,'#e8e8ec');
-  s+=pathAndArea(comment,'#d6a95f');
-  svg.innerHTML=s;
-}
-
-/* Log Table */
-function buildLog(){
-  const kinds=[
-    {k:'upload',label:'アップロード'},
-    {k:'status',label:'ステータス変更'},
-    {k:'submit',label:'提出'},
-    {k:'comment',label:'コメント'},
-    {k:'member',label:'メンバー'},
-  ];
-  const users=['田中太郎','山田花子','佐藤健','鈴木一郎','高橋美咲'];
-  const shots=['SC-010','SC-020','SC-030','SC-040','SC-050','SC-060'];
-  const details={
-    upload:['v3.mp4 (52 MB)','v2.mp4 (48 MB)','EXR 連番 v1 (240 frames)','v4_final.mp4 (61 MB)'],
-    status:['作業中 → チェック待ち','未着手 → 作業中','チェック待ち → 差し戻し','差し戻し → 作業中','チェック待ち → クライアントOK'],
-    submit:['提出「9/14 チェック」に含める','提出「9/12 中間チェック」に含める'],
-    comment:['「タイミング少し遅め」','「表情の間、もう少し取れる？」','「OK です」'],
-    member:['佐藤健 を レビュワーに追加','鈴木一郎 を 担当から外す'],
-  };
-  const body = document.getElementById('logBody');
-  const rows=[];
-  const nowMin = TODAY.getTime();
-  for(let i=0;i<30;i++){
-    const kind = kinds[Math.floor(Math.random()*kinds.length)];
-    const t = new Date(nowMin-Math.floor(Math.random()*1000*60*60*24*7));
-    const user = users[Math.floor(Math.random()*users.length)];
-    const shot = shots[Math.floor(Math.random()*shots.length)];
-    const detArr = details[kind.k];
-    const det = detArr[Math.floor(Math.random()*detArr.length)];
-    rows.push({ts:t,user,kind,shot,det});
-  }
-  rows.sort((a,b)=>b.ts-a.ts);
-  body.innerHTML = rows.map(r=>{
-    const p=n=>String(n).padStart(2,'0');
-    const ts=`${r.ts.getFullYear()}-${p(r.ts.getMonth()+1)}-${p(r.ts.getDate())} ${p(r.ts.getHours())}:${p(r.ts.getMinutes())}`;
-    return `<tr>
-      <td class="ts">${ts}</td>
-      <td class="who">${r.user}</td>
-      <td><span class="kind ${r.kind.k}">${r.kind.label}</span></td>
-      <td class="target">${r.shot}</td>
-      <td class="detail">${r.det}</td>
-    </tr>`;
-  }).join('');
-}
-
-/* Tabs */
-document.getElementById('tabs').addEventListener('click',e=>{
-  const b = e.target.closest('button[data-tab]');
-  if(!b) return;
-  document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('on'));
-  document.querySelectorAll('.pane').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on');
-  document.querySelector(`[data-pane="${b.dataset.tab}"]`).classList.add('on');
-});
-document.getElementById('scaleToggle').addEventListener('click',e=>{
-  const b = e.target.closest('button[data-scale]');
-  if(!b) return;
-  document.querySelectorAll('#scaleToggle button').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on');
-});
-
-/* =========== スケジュール編集：予定バーのドラッグ =========== */
-/* 予定バーの左端/右端/中央をドラッグして工程の開始日・終了日を変更。
-   - 中央ドラッグ → 期間を維持したまま平行移動
-   - 左端ドラッグ → 開始日のみ変更（終了日は固定）
-   - 右端ドラッグ → 終了日のみ変更（開始日は固定）
-   - 1 日単位でスナップ、最小 1 日
-   - ドラッグ中は日付ツールチップを表示
-   実運用（Phase 1）では変更をそのまま status.json ではなく schedule/{sid}.json に保存する。
-   現在はモックのため in-memory の SHOTS 配列を更新して再描画のみ。 */
-function fmtDate(dayIdx){
-  const d = new Date(RANGE_START);
-  d.setDate(d.getDate() + dayIdx);
-  const M = d.getMonth()+1, D = d.getDate();
-  const wk = ['日','月','火','水','木','金','土'][d.getDay()];
-  return `${M}/${D}（${wk}）`;
-}
+/* =========== ドラッグ編集（実データ保存） =========== */
 function initScheduleDrag(){
   const body = document.getElementById('ganttBody');
-  let drag = null; /* {shotId, stageId, mode:'move'|'resize-l'|'resize-r', startX, origP1, origP2, trackW} */
+  let drag = null;
   const tip = document.createElement('div');
   tip.className='drag-tip'; tip.style.display='none';
   document.body.appendChild(tip);
@@ -793,16 +933,17 @@ function initScheduleDrag(){
     const seg = e.target.closest('.seg-plan');
     if(!seg) return;
     const shotId = seg.dataset.shot, stageId = seg.dataset.stage;
-    const shot = SHOTS.find(s=>s.id===shotId);
+    const shot = DATA.shots.find(s=>s.sectionNode.id===shotId);
     if(!shot) return;
-    const st = shot.stages.find(x=>x.id===stageId);
-    if(!st||!st.plan) return;
-    const track = seg.parentElement;
-    const trackW = track.getBoundingClientRect().width;
+    const st = shot.stages.find(x=>x.reviewNode.id===stageId);
+    if(!st) return;
+    if(!st.plannedStart) st.plannedStart = new Date();
+    if(!st.plannedEnd) st.plannedEnd = new Date(st.plannedStart.getTime()+3*86400000);
+    const trackW = seg.parentElement.getBoundingClientRect().width;
     const mode = e.target.classList.contains('handle')
       ? (e.target.classList.contains('l')?'resize-l':'resize-r')
       : 'move';
-    drag = {seg, shotId, stageId, st, mode, startX:e.clientX, origP1:st.plan[0], origP2:st.plan[1], trackW};
+    drag = {seg,shot,st,mode,startX:e.clientX,origP1:dayIdx(st.plannedStart),origP2:dayIdx(st.plannedEnd),trackW};
     seg.classList.add('dragging');
     tip.style.display='block';
     e.preventDefault();
@@ -811,55 +952,140 @@ function initScheduleDrag(){
   window.addEventListener('mousemove', e=>{
     if(!drag) return;
     const dx = e.clientX - drag.startX;
-    const dayShift = Math.round((dx / drag.trackW) * DAYS);
+    const days = DATA.timeline.days;
+    const dayShift = Math.round((dx/drag.trackW)*days);
     let p1 = drag.origP1, p2 = drag.origP2;
-    if(drag.mode === 'move'){ p1 += dayShift; p2 += dayShift; }
-    else if(drag.mode === 'resize-l'){ p1 = Math.min(drag.origP2-1, drag.origP1 + dayShift); }
-    else if(drag.mode === 'resize-r'){ p2 = Math.max(drag.origP1+1, drag.origP2 + dayShift); }
-    /* 範囲クランプ */
-    if(p1<0){ const shift=-p1; p1=0; if(drag.mode==='move') p2+=shift; }
-    if(p2>DAYS-1){ const shift=p2-(DAYS-1); p2=DAYS-1; if(drag.mode==='move') p1-=shift; }
-    if(p1<0)p1=0; if(p2>DAYS-1)p2=DAYS-1;
-    /* 反映 */
-    drag.st.plan[0] = p1; drag.st.plan[1] = p2;
-    const px = 100/DAYS;
+    if(drag.mode==='move'){p1+=dayShift; p2+=dayShift;}
+    else if(drag.mode==='resize-l') p1 = Math.min(drag.origP2-1, drag.origP1+dayShift);
+    else if(drag.mode==='resize-r') p2 = Math.max(drag.origP1+1, drag.origP2+dayShift);
+    if(p1<0){const s=-p1; p1=0; if(drag.mode==='move') p2+=s;}
+    if(p2>days-1){const s=p2-(days-1); p2=days-1; if(drag.mode==='move') p1-=s;}
+    if(p1<0)p1=0; if(p2>days-1)p2=days-1;
+    const s1=new Date(DATA.timeline.start); s1.setDate(s1.getDate()+p1);
+    const s2=new Date(DATA.timeline.start); s2.setDate(s2.getDate()+p2);
+    drag.st.plannedStart=s1;
+    drag.st.plannedEnd=s2;
+    const px=100/days;
     drag.seg.style.left = (p1*px)+'%';
-    drag.seg.style.width = ((p2-p1)*px)+'%';
-    /* ツールチップ */
-    const stg = STAGES[drag.stageId] || {label:drag.stageId};
+    drag.seg.style.width= ((p2-p1)*px)+'%';
     const modeText = drag.mode==='resize-l'?'開始日':(drag.mode==='resize-r'?'終了日':'期間移動');
-    tip.innerHTML = `
-      <div><span class="lbl">${drag.shotId} · ${stg.label}</span></div>
+    tip.innerHTML=`
+      <div><span class="lbl">${escapeHtml(drag.shot.sectionNode.name||'')} · ${escapeHtml(drag.st.label)}</span></div>
       <div><span class="lbl">${modeText}</span>${fmtDate(p1)} — ${fmtDate(p2)} <span style="color:var(--text3)">（${p2-p1}日）</span></div>
     `;
-    tip.style.left = (e.clientX + 14) + 'px';
-    tip.style.top  = (e.clientY - 40) + 'px';
+    tip.style.left=(e.clientX+14)+'px';
+    tip.style.top =(e.clientY-40)+'px';
   });
 
-  window.addEventListener('mouseup', ()=>{
+  window.addEventListener('mouseup', async ()=>{
     if(!drag) return;
     drag.seg.classList.remove('dragging');
     tip.style.display='none';
-    /* TODO: Phase 1 実装時は schedule/{sid}.json に保存 */
-    /* console.log('[pmboard] schedule updated:', drag.shotId, drag.stageId, drag.st.plan); */
+    const shot = drag.shot;
     drag = null;
-    /* 状態集計（遅延判定など）が変わり得るのでロールアップ chip を更新するため再描画。
-       ただし他のバーの位置は同じデータ参照なので、位置は保たれる（in-memory）。 */
-    document.getElementById('ganttBody').innerHTML='';
-    /* Today marker が二重にならないよう既存を除去 */
-    document.querySelectorAll('.gantt-today').forEach(x=>x.remove());
+    /* schedule.json に保存 */
+    try{
+      const ok = await saveShotSchedule(shot);
+      if(!ok){
+        console.warn('[pmboard] schedule save failed');
+      }
+    }catch(e){console.warn(e);}
     buildGantt();
   });
 }
 
-/* Init */
+/* =========== 他タブ（Phase 2 で実装予定） =========== */
+function buildOtherTabsPlaceholder(){
+  for(const id of ['effort','retake','activity','log']){
+    const p = document.querySelector(`.pane[data-pane="${id}"]`);
+    if(!p) continue;
+    p.innerHTML = `<div class="empty-panel"><div class="ep-ico">🚧</div><div class="ep-title">実装予定（Phase 2）</div><div class="ep-sub">このタブは Phase 2 で実装します。<br>まずはスケジュールタブを実データで運用してください。</div></div>`;
+  }
+}
+
+/* =========== フォルダ選択と読み込み =========== */
+async function onPickFolder(){
+  await storage.pickFolder();
+  updateFolderUI();
+  if(storage.dirHandle) await loadAndRender();
+}
+async function tryRestoreFolder(){
+  const h = await storage.restoreFolder();
+  updateFolderUI();
+  if(h) await loadAndRender();
+}
+function updateFolderUI(){
+  const fs = document.getElementById('folderStatus');
+  const nm = document.getElementById('folderName');
+  if(storage.dirHandle){
+    fs.classList.add('connected'); fs.classList.remove('warn');
+    nm.textContent = storage.dirHandle.name || '接続済み';
+  }else{
+    fs.classList.remove('connected'); fs.classList.remove('warn');
+    nm.textContent = 'フォルダ未選択';
+  }
+}
+async function loadAndRender(){
+  const body = document.getElementById('ganttBody');
+  body.innerHTML=`<div class="loading-panel">読み込み中…</div>`;
+  const r = await loadProjectData();
+  if(!r.ok){
+    body.innerHTML=`<div class="empty-panel"><div class="ep-ico">⚠</div><div class="ep-title">読み込み失敗</div><div class="ep-sub">${escapeHtml(r.err||'不明なエラー')}</div><button class="btn btn-primary" onclick="onPickFolder()">📁 別のフォルダを選択</button></div>`;
+    return;
+  }
+  buildTimelineHdr();
+  buildGantt();
+  updateSidebar();
+}
+function updateSidebar(){
+  if(!DATA.project) return;
+  document.querySelector('.sb-proj-name').textContent = DATA.project.name || DATA.project.id || '(名称なし)';
+  const shotCount = DATA.shots.length;
+  document.querySelector('.sb-proj-meta').innerHTML =
+    `<span class="sb-chip hot">進行中</span>`+
+    `<span class="sb-chip">${shotCount} shots</span>`;
+  const done = DATA.shots.filter(s=>s.stages.length>0 && s.stages.every(st=>st.isDone)).length;
+  const late = DATA.shots.filter(s=>s.stages.some(st=>{
+    if(!st.plannedEnd) return false;
+    if(st.actualEnd && st.actualEnd>st.plannedEnd && !st.isDone) return true;
+    if(!st.actualEnd && new Date()>st.plannedEnd && st.actualStart) return true;
+    return false;
+  })).length;
+  const progress = shotCount>0 ? Math.round((done/shotCount)*100) : 0;
+  const cells = document.querySelectorAll('.sb-cell');
+  if(cells[0]) cells[0].innerHTML = `<div class="n">${progress}<span class="u">%</span></div><div class="l">進捗</div>`;
+  if(cells[1]) cells[1].innerHTML = `<div class="n">${done}<span class="u">/${shotCount}</span></div><div class="l">完了</div>`;
+  if(cells[2]) cells[2].innerHTML = `<div class="n">${late}</div><div class="l">遅延</div>`;
+  const daysLeft = DATA.timeline.end ? Math.max(0, Math.round((DATA.timeline.end - new Date())/86400000)) : 0;
+  if(cells[3]) cells[3].innerHTML = `<div class="n">${daysLeft}<span class="u">日</span></div><div class="l">残</div>`;
+}
+
+/* =========== Tabs / Scale =========== */
+document.getElementById('tabs').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-tab]');
+  if(!b)return;
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.pane').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  document.querySelector(`[data-pane="${b.dataset.tab}"]`).classList.add('on');
+});
+document.getElementById('scaleToggle').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-scale]');
+  if(!b)return;
+  document.querySelectorAll('#scaleToggle button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+});
+document.getElementById('folderStatus').addEventListener('click', onPickFolder);
+window.onPickFolder = onPickFolder;
+
+/* =========== Init =========== */
 document.getElementById('appVer').textContent = APP_VERSION;
-buildTimelineHdr();
+updateFolderUI();
+buildOtherTabsPlaceholder();
 buildGantt();
-buildRetakeChart();
-buildActivityChart();
-buildLog();
 initScheduleDrag();
+tryRestoreFolder();
+
 </script>
 
 </body>

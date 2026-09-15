@@ -1927,6 +1927,25 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.16.003) **スケジュールタブを実データ対応で全機能実装**：稼働中のプロジェクトデータを直接読み書きできるように移行。ダミーデータ廃止。
+  - **フォルダ選択**：ヘッダー右上「フォルダ未選択」→ クリックで FSA API（`showDirectoryPicker`）でプロジェクトフォルダを選択。IndexedDB (`pmboard_kv/projectDir`) に FileSystemDirectoryHandle を永続化し、再訪時に権限確認済みなら自動接続。
+  - **ストレージ層** (`storage`)：`pickFolder / restoreFolder / ensurePermission / readJson / writeJson / listDir`。フォルダ内のパスを "/" 区切りで指定できるジェネリック API。
+  - **データ読み込み** (`loadProjectData`)：
+    - `laycat.project.json` を読んで DB 骨格を取得（`layna.project.json` にもフォールバック）
+    - Shot section を判定（`type='section'` かつ 子が全て 'review'）
+    - `shots/*.json` を並列読み込みして工程（review）詳細を取得
+    - `status/*.json` を全ファイル列挙して history を取得（v:5 分離データを尊重）
+    - `schedule/*.json` を全ファイル列挙して予定を取得
+  - **工程分類・カラーマップ**：review 子ノード名からキーワード（レイアウト/anim/FX/コンポ/paint 等）で工程種を判定し、5 色にマッピング。未分類はハッシュベースの灰色系フォールバック。
+  - **タイムライン自動スケール**：全予定・実績日の min/max ± 7 日パディング。データが無ければ今日 ± 30 日。
+  - **予定 vs 実績の描画**：予定は工程色の破線枠、実績は工程色ソリッド塗り。実績の完了/進行中/遅延を状態から自動判定（`isStatusDone` は status ID/label のキーワード＋projStatuses 配列末尾判定）。
+  - **シーングループ表示**：ショットの親ノード（root 除く）でグループヘッダー行を挿入。
+  - **ドラッグで期間変更 → `schedule/{sid}.json` に保存**：ドロップ時に `saveShotSchedule` を呼び、`{v:1, shotId, stages:[{stageId,stageName,plannedStart,plannedEnd}], milestones, updatedAt, _rev}` を書き出し。既存 `_rev` +1 で楽観 rev 管理。
+  - **サイドバー更新**：プロジェクト名・ショット数・進捗率（完了ショット数 ÷ 全ショット数）・遅延ショット数・残日数（今日〜timeline end）を自動反映。
+  - **他タブ**：Phase 2 実装まで「実装予定」プレースホルダに置換。
+  - LayCAT 本体・pmboard の他機能への副作用なし（読み書きは `schedule/` サブフォルダのみ、LayCAT は `schedule/` を触らない）。
+  - APP_VERSION：2026.09.16.002 → 2026.09.16.003
+
 - (dev v2026.09.16.002) **スケジュール編集：予定バーのドラッグ操作を実装**
   - 予定バー（`.seg-plan`）の左端・右端・中央でドラッグ操作可能に
   - 左端ドラッグ → 開始日のみ変更（終了日固定）／右端 → 終了日のみ／中央 → 期間維持で平行移動
