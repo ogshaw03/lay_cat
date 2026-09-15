@@ -153,6 +153,9 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row .track .seg-plan{position:absolute;top:9px;height:14px;border:1px dashed;border-radius:var(--radius2);overflow:visible;cursor:grab;user-select:none}
 .gantt-row .track .seg-plan:hover{filter:brightness(1.4)}
 .gantt-row .track .seg-plan.dragging{cursor:grabbing;filter:brightness(1.6);z-index:5}
+/* プレースホルダ：予定未設定 → 破線＋薄い（ドラッグで実プランに変わる） */
+.gantt-row .track .seg-plan.seg-placeholder{opacity:.55;border-style:dashed;border-width:1.5px}
+.gantt-row .track .seg-plan.seg-placeholder:hover{opacity:.9;filter:none}
 .gantt-row .track .seg-plan .seg-lbl{position:absolute;left:5px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;font-family:var(--font-head);font-weight:600;letter-spacing:.2px;white-space:nowrap;pointer-events:none;overflow:hidden}
 /* ドラッグハンドル：左右端の 6px でリサイズ、中央は移動 */
 .gantt-row .track .seg-plan .handle{position:absolute;top:0;bottom:0;width:6px;cursor:ew-resize}
@@ -450,7 +453,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.16.004';
+const APP_VERSION='2026.09.16.005';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -892,14 +895,24 @@ function buildGantt(){
         const dw=dt.getDay();
         if(dw===0||dw===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
       }
-      /* Plan bars */
+      /* Plan bars / プレースホルダ（予定未設定の工程は今日から 3 日の破線プレースホルダを出す） */
+      let placeholderOffset = 0; /* 予定未設定が複数あるとき、少しずつずらして重ならないようにする */
       for(const st of stages){
-        if(!st.plannedStart||!st.plannedEnd) continue;
-        const p1 = dayIdx(st.plannedStart);
-        const p2 = dayIdx(st.plannedEnd);
-        if(p2<0||p1>days) continue;
-        const w = Math.max(px, (p2-p1)*px);
-        track.push(`<div class="seg-plan" data-shot="${shot.sectionNode.id}" data-stage="${st.reviewNode.id}" style="left:${p1*px}%;width:${w}%;border-color:${st.color};background:${st.color}"><span class="seg-lbl" style="color:${st.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${escapeHtml(st.label)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
+        if(st.plannedStart && st.plannedEnd){
+          /* 通常の予定バー */
+          const p1 = dayIdx(st.plannedStart);
+          const p2 = dayIdx(st.plannedEnd);
+          if(p2<0||p1>days) continue;
+          const w = Math.max(px, (p2-p1)*px);
+          track.push(`<div class="seg-plan" data-shot="${shot.sectionNode.id}" data-stage="${st.reviewNode.id}" style="left:${p1*px}%;width:${w}%;border-color:${st.color};background:${st.color}"><span class="seg-lbl" style="color:${st.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${escapeHtml(st.label)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
+        }else{
+          /* プレースホルダ：今日 + placeholderOffset 日 から 3 日、破線・薄色 */
+          const p1 = todayIdx + placeholderOffset;
+          const p2 = p1 + 3;
+          const w = Math.max(px, (p2-p1)*px);
+          track.push(`<div class="seg-plan seg-placeholder" data-shot="${shot.sectionNode.id}" data-stage="${st.reviewNode.id}" style="left:${p1*px}%;width:${w}%;border-color:${st.color};background:transparent;opacity:.55" title="ドラッグして「${escapeHtml(st.reviewNode.name)}」の予定を設定"><span class="seg-lbl" style="color:${st.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">+ ${escapeHtml(st.label)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
+          placeholderOffset += 4;
+        }
       }
       /* Actual bars */
       for(const st of stages){
@@ -971,8 +984,29 @@ function initScheduleDrag(){
     if(!shot) return;
     const st = shot.stages.find(x=>x.reviewNode.id===stageId);
     if(!st) return;
-    if(!st.plannedStart) st.plannedStart = new Date();
-    if(!st.plannedEnd) st.plannedEnd = new Date(st.plannedStart.getTime()+3*86400000);
+    /* プレースホルダの場合：DOM 上の描画位置から plannedStart/End を初期化。
+       これでドラッグ開始時にバーが飛ばず、視覚的な連続性が保たれる。 */
+    if(!st.plannedStart||!st.plannedEnd){
+      const trackRect = seg.parentElement.getBoundingClientRect();
+      const segRect = seg.getBoundingClientRect();
+      const startPct = (segRect.left - trackRect.left) / trackRect.width;
+      const widthPct = segRect.width / trackRect.width;
+      const days = DATA.timeline.days;
+      let p1 = Math.round(startPct * days);
+      let p2 = p1 + Math.max(1, Math.round(widthPct * days));
+      if(p1<0) p1=0; if(p2>days-1) p2=days-1;
+      const s1 = new Date(DATA.timeline.start); s1.setDate(s1.getDate()+p1);
+      const s2 = new Date(DATA.timeline.start); s2.setDate(s2.getDate()+p2);
+      st.plannedStart = s1;
+      st.plannedEnd = s2;
+      /* プレースホルダ表示を解除して通常バー扱いに */
+      seg.classList.remove('seg-placeholder');
+      seg.style.opacity = '';
+      seg.style.background = st.color;
+      /* ラベル先頭の "+" を除去 */
+      const lbl = seg.querySelector('.seg-lbl');
+      if(lbl) lbl.textContent = st.label;
+    }
     const trackW = seg.parentElement.getBoundingClientRect().width;
     const mode = e.target.classList.contains('handle')
       ? (e.target.classList.contains('l')?'resize-l':'resize-r')
