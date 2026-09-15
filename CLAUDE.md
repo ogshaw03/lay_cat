@@ -8,21 +8,37 @@
 ## ファイル役割
 - `laycat.html` … Beta（本番）。他ユーザーが利用中。**ユーザーの明示指示があるまで触らない**。
 - `laycat_dev.html` … Dev（開発）。**通常の開発コミットはこちらだけ編集**。
+- `pmboard.html` … Beta（進行管理ボード・本番）。**ユーザーの明示指示があるまで触らない**。
+- `pmboard_dev.html` … Dev（進行管理ボード・開発）。**通常の開発コミットはこちらだけ編集**。
 - `PATCH_NOTES.md` … 確定パッチノート。Claude から勝手に書かない（ユーザー指示のみ）。
-- `UPDATE_LOG.md` … dev コミット単位のログ（後述の 3 セクション構成）。
+- `UPDATE_LOG.md` … dev コミット単位のログ。LayCAT 本体と pmboard で **セクション分割**（後述）。
 - `docs/` … 設計メモ。
 - アセットは単一 HTML の自己完結性のため **base64 データ URI でインライン埋め込み**。
 
 ## APP_VERSION
+### LayCAT 本体
 - Dev（`laycat_dev.html`）は日付ベース `YYYY.MM.DD.NNN`。**dev コミットごとに末尾番号を +1**、日付が変わったら `.001` にリセット。
 - Beta（`laycat.html`）は `beta v0.0.X`。**パッチノート更新のタイミングでのみ上げる**。
 
+### pmboard（進行管理ボード）
+- Dev（`pmboard_dev.html`）は日付ベース `YYYY.MM.DD.NNN`。LayCAT 本体と同じルール。
+- Beta（`pmboard.html`）は `pmboard vX.Y.Z`。**Beta 反映のタイミングでのみ上げる**。
+- 初回 Beta 版は `pmboard v0.1.0`（2026-09-16）。
+
 ## Beta 反映（ユーザー明示指示のみ）
+### LayCAT 本体
 1. `laycat_dev.html` を `laycat.html` にコピー（cp）。
 2. `laycat.html` の `APP_VERSION` を新しい `beta v0.0.X` に。
 3. `PATCH_NOTES.md` に新バージョンを追記（`UPDATE_LOG.md` の未反映から抜粋）。
 4. `UPDATE_LOG.md` の未反映を「反映済み beta vX.Y.Z」に移動。
 5. `laycat_dev.html` の `APP_VERSION` は日付ベースのまま。
+
+### pmboard
+1. `pmboard_dev.html` を `pmboard.html` にコピー（cp）。
+2. `pmboard.html` の `APP_VERSION` を新しい `pmboard vX.Y.Z` に。
+3. `UPDATE_LOG.md` の pmboard 未反映を「反映済み pmboard vX.Y.Z」に移動。
+4. `pmboard_dev.html` の `APP_VERSION` は日付ベースのまま。
+5. pmboard の PATCH_NOTES は当面作らない（大きな節目までは UPDATE_LOG のみで運用）。
 
 ## フォント
 - **`Syne` は使わない**（読みづらいため廃止）。新規追加も禁止。
@@ -33,10 +49,15 @@
   - `--font-ui: system-ui,-apple-system,...,'Noto Sans JP',sans-serif` … 可読性優先の特定箇所のみ
 - `--font-ui` は現状 `.fb-title`（アノテ窓の動画タイトル）のみ。**全体を OS フォントに寄せない**（「可愛い雰囲気が消えた」というフィードバック実績あり）。
 
-## UPDATE_LOG.md の 3 セクション構成
+## UPDATE_LOG.md の構造
+LayCAT 本体と pmboard で **セクション分割**：
+- `# LayCAT 本体アップデートログ` セクション：`laycat_dev.html` / `laycat.html` の変更を記録
+- `# pmboard アップデートログ` セクション：`pmboard_dev.html` / `pmboard.html` の変更を記録
+
+各セクションは共通の 3 サブセクション構成：
 1. **未反映（次のパッチノート候補）** … Beta 未反映。新規追加はここに積む。
 2. **反映済み・パッチノート記載なし** … Beta 反映済みだが `PATCH_NOTES.md` に載せない項目（バグ修正・運営限定変更など）。
-3. **反映済み beta vX.Y.Z** … パッチノート記載済みのアーカイブ。
+3. **反映済み [beta vX.Y.Z / pmboard vX.Y.Z]** … 該当バージョンごとのアーカイブ。
 
 Beta 反映のみ→2 に移動、パッチノート記載→3 に移動。「反映済み」と「記載済み」を混同しない。
 コミット単位で `- (dev vYYYY.MM.DD.NNN) <日本語1行要約>` を追記。詳細な実装メモは bullet ネストで補足可。
@@ -54,6 +75,13 @@ Beta 反映のみ→2 に移動、パッチノート記載→3 に移動。「�
 
 ## 運用ショートカット
 - **「め」** = 現在のブランチを `main` に fast-forward push（「メインへ反映して」の短縮）。
-- **main への push はコミットのたびに自動で OK**（Dev/Beta ファイル分離済みなので `laycat_dev.html` 変更は Beta ユーザーに影響しない）。
+- **main への push はコミットのたびに自動で OK**（Dev/Beta ファイル分離済みなので `*_dev.html` 変更は Beta ユーザーに影響しない）。
 - ユーザーが「反映しないで」「保留」「main には出さないで」と明示した場合のみ push を止める。
-- Beta 反映はユーザーの明示指示のみ。
+- Beta 反映はユーザーの明示指示のみ（LayCAT 本体・pmboard それぞれ独立）。
+
+## pmboard 個別事項
+- **LayCAT 本体のデザインを継承**：モノクロ基調（`--bg` / `--text` / `--accent` 系）。紫/シアン等のブランドカラーは使わない。
+- **CSS 変数を LayCAT からそのままコピー**：`--bg/bg2/bg3/bg4`・`--text/text2/text3`・`--accent/accent2`・`--red/green/amber`・`--radius/radius2`・`--font-head/body/code`。
+- **ボタン形式も LayCAT と同じ**：`.btn` `.btn-primary` `.btn-ghost` `.btn-sm`。
+- **工程カラー**（ガント用）は彩度を落とした 5 色：Layout / Anim / FX / Comp / Paint。
+- **pmboard は LayCAT 本体からアクセス**：本体のメニュー導線から新規タブで開く（Phase 1 で導線実装予定）。
