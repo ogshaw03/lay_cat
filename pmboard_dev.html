@@ -509,7 +509,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.006';
+const APP_VERSION='2026.09.17.007';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -962,6 +962,10 @@ function buildTimelineHdr(){
     const d0 = new Date(start.getTime()+i*7*86400000);
     const p = jstParts(d0);
     w.textContent = `${p.m}/${p.d}〜`;
+    /* 週セルは含む日数分だけ幅を取る（末尾週は 7 日未満のことがある）。
+       flex:1 だと weekCount 均等割になり、下段の日セル（flex:1×days）と揃わなくなる。 */
+    const daysInWeek = Math.min(7, days - i*7);
+    w.style.flex = `${daysInWeek} 0 0`;
     weeks.appendChild(w);
   }
   for(let i=0;i<days;i++){
