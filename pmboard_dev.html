@@ -160,7 +160,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .custom-add-item:hover{color:var(--text);border-color:var(--accent2)}
 
 /* =========== GANTT =========== */
-.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;position:relative}
 .gantt-hdr{display:grid;grid-template-columns:220px 1fr;background:var(--bg3);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
 .gantt-hdr .lbl{padding:11px 14px;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;border-right:1px solid var(--border)}
 .gantt-hdr .timeline{position:relative;overflow:hidden}
@@ -509,7 +509,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.004';
+const APP_VERSION='2026.09.17.005';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1266,7 +1266,9 @@ function buildGantt(){
   const wrapper = body.parentElement;
   const marker = document.createElement('div');
   marker.className='gantt-today';
-  marker.style.left = `calc(220px + ${todayIdx*px}%)`;
+  /* 220px は .gantt-row のショット列固定幅。トラック幅 = 100% - 220px なので
+     todayIdx 番目の日は (100% - 220px) * todayIdx / days 分だけ右に来る。 */
+  marker.style.left = `calc(220px + (100% - 220px) * ${todayIdx} / ${DATA.timeline.days})`;
   const p = jstParts(new Date());
   marker.innerHTML = `<div class="lbl">TODAY ${p.m}/${p.d}</div>`;
   wrapper.appendChild(marker);
@@ -1359,7 +1361,7 @@ function buildCustomGantt(scheduleId){
   const wrapper = body.parentElement;
   const marker = document.createElement('div');
   marker.className='gantt-today';
-  marker.style.left = `calc(220px + ${todayIdx*px}%)`;
+  marker.style.left = `calc(220px + (100% - 220px) * ${todayIdx} / ${DATA.timeline.days})`;
   const pjt = jstParts(new Date());
   marker.innerHTML = `<div class="lbl">TODAY ${pjt.m}/${pjt.d}</div>`;
   wrapper.appendChild(marker);
