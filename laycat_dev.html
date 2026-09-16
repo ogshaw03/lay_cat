@@ -3601,7 +3601,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.17.003';
+const APP_VERSION='2026.09.17.004';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6792,7 +6792,7 @@ function renderReviewBody(s,cur,opts){
       badge.style.color=rc.color;
       badge.textContent=it.stage.name;
       badge.title='工程：'+it.stage.name+(it.stage.id===cur.id?'（現在）':'／クリックでこの工程ページへ');
-      badge.onclick=(e)=>{e.stopPropagation();if(it.stage.id!==cur.id)go(it.stage.id)};
+      badge.onclick=(e)=>{e.stopPropagation();if(it.stage.id!==cur.id)switchStageInTab(it.stage.id)};
       itemEl.insertBefore(badge,itemEl.firstChild);
       if(it.stage.id!==cur.id) itemEl.classList.add('other-stage');
     }
@@ -6845,7 +6845,7 @@ function buildStageStrip(shot,curReviewId){
   return wrap;
 }
 /* 作業ページ左上：同じショット内の全工程を切り替えるインラインプルダウン。
-   buildStageStrip がドロワー用（開き直す）なのに対し、こちらは実際にページ遷移する。
+   buildStageStrip がドロワー用（開き直す）なのに対し、こちらはタブ内で工程を差し替える。
    フォルダ分けのデータ構造はそのまま。UI だけの改善。 */
 function buildStageStripInline(shot,curReviewId){
   if(!shot)return null;
@@ -6853,7 +6853,7 @@ function buildStageStripInline(shot,curReviewId){
   if(reviews.length<2)return null; /* 工程が1つだけなら出さない */
   const wrap=el('span','stage-strip stage-strip-inline');
   const sel=el('select','ss-sel');
-  sel.title='この工程をクリックして切替';
+  sel.title='この工程をクリックして切替（同じタブで切替）';
   for(const r of reviews){
     const o=document.createElement('option');o.value=r.id;
     const st=stInfo(r);
@@ -6863,10 +6863,33 @@ function buildStageStripInline(shot,curReviewId){
   }
   sel.onchange=()=>{
     const nid=sel.value;
-    if(nid && nid!==curReviewId) go(nid); /* ページ遷移で工程を切替 */
+    if(nid && nid!==curReviewId) switchStageInTab(nid);
   };
   wrap.appendChild(sel);
   return wrap;
+}
+/* 同ショット内の工程切替：タブを増やさず、現在のタブの中身だけを差し替える。
+   「現在の工程」はタブの state.currentId で検知される（openTasks を置換）。
+   別ショットへの遷移や section→review の初回オープンは従来通り go() を経由。 */
+function switchStageInTab(newId){
+  const newNode=getNode(newId);
+  if(!newNode||newNode.type!=='review'){go(newId);return}
+  const cur=state.currentId?getNode(state.currentId):null;
+  const sameShot=!!(cur && cur.type==='review' && cur.parentId===newNode.parentId);
+  if(sameShot){
+    /* openTasks の該当エントリを置換（タブ本数を維持） */
+    const arr=(state.openTasks||[]).slice();
+    const idx=arr.indexOf(cur.id);
+    if(idx>=0){arr[idx]=newId} else {arr.push(newId)}
+    state.openTasks=arr;
+    state.currentId=newId;
+    state.projTab='browse';
+    state.reviewOpen=null;
+    for(const n of pathOf(newId)) state.expanded.add(n.id);
+    render();syncHash();autoRefresh();
+  }else{
+    go(newId);
+  }
 }
 function fillReviewDrawer(){
   const back=$('#reviewDrawer');if(!back||!state.drawer||state.drawer.kind!=='review')return;
