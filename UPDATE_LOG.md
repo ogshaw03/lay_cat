@@ -18,6 +18,15 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.17.005) **Option B Phase 1：新ショットモデルの型定義とルーティング基盤**：次案件のセットアップを簡素化するため、`shot=review+子review`（フォルダ管理）から `shot=単一ノード＋工程属性`（統合管理）へ移行するリファクタの土台。
+  - **新スキーマ**：`{type:'shot', currentStage, stageHistory[], status, versions[{...,stage}], comments[{...,stage}], stageAssignees{}, stageReviewers{}}`。工程セットはプロジェクト共通 `root.stages[]` を利用（決定事項）。
+  - **ヘルパ**：`isNewShot(n)` / `newShotCurrentStage(n, root)`。
+  - **shot 判定拡張**：`_isShotNodeForSave` を旧モデル（section+review 子）に加え `type:'shot'` も認識するよう拡張。ストレージ層（shots/*.json 切り出し・マージ）は自動的に対応。
+  - **ルーティング**：`cur.type==='shot'` の分岐を `renderBody` に追加、Phase 1 では簡易情報表示のスタブ。
+  - **既存プロジェクトへの影響ゼロ**：旧モデル（`section` + `review` 子）は従来どおり `renderReviewBody`。新型ノードが無いプロジェクトはコードパス上何も変化しない。
+  - **Phase 2〜**：新規プロジェクト作成での新モデル shot 生成、ページ描画の肉付け、動画・コメント・ステータス・担当のアクション、pmboard 対応、既存プロジェクトの変換ボタン。
+  - APP_VERSION：2026.09.17.004 → 2026.09.17.005
+
 - (dev v2026.09.17.004) **工程切替は同じタブ内で完結（現在の工程はタブの状態から検知）**：v.002 で追加した左上プルダウンや、v.003 の統合ログの他工程バッジからの工程切替が、これまで `go(id)` 経由で「新しいタブ」を開く挙動になっていた。→ **`switchStageInTab(newId)`** を新設し、遷移先が同じショット（`parentId` が一致する review）なら **openTasks の当該エントリを置換**して、タブを増やさず中身だけを差し替える。
   - 「現在の工程」＝ `state.currentId`（そのタブが今指しているノード）で従来通り検知。
   - 異なるショットへの遷移は従来どおり `go()` にフォールバック。

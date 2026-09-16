@@ -3074,10 +3074,41 @@ async function offerPhase2Migration(){
    条件：`type='section'` の非ルートノードで、直接の子が全て `type='review'`（工程）。
    → カテゴリ（子が section）は shot にならず骨格として project.json に残る。 */
 function _isShotNodeForSave(n,allNodes){
-  if(!n||n.type!=='section'||!n.parentId)return false;
+  if(!n||!n.parentId)return false;
+  /* 新モデル（Option B）：type:'shot' はそれ自体がショット（工程は shot.stageHistory と
+     shot.currentStage で管理し、review 子ノードは持たない） */
+  if(n.type==='shot')return true;
+  /* 旧モデル：section 直下が全て review = ショット */
+  if(n.type!=='section')return false;
   const kids=allNodes.filter(x=>x.parentId===n.id);
   if(!kids.length)return false;
   return kids.every(k=>k.type==='review');
+}
+/* ========================================================================
+   新ショットモデル（Option B）：
+     shot = {
+       id, parentId, name,
+       type: 'shot',                       // 新タイプ
+       currentStage: string,               // root.stages[] の要素名
+       stageHistory: [{ts, from, to, by}], // 工程遷移監査ログ
+       status: string,                     // 1 ショットに 1 ステータス
+       versions: [{...従来, stage: string}], // 各動画に「その時の工程」タグ
+       comments: [{...従来, stage: string}], // 各コメントに「その時の工程」タグ
+       stageAssignees: { [stageName]: memberId },
+       stageReviewers: { [stageName]: memberId },
+       thumbnail, description, createdAt, _vtomb, ...
+     }
+   ・工程セットはプロジェクト共通の root.stages[]（既存フィールドをそのまま使用）
+   ・旧モデル（section+review 子）は当面共存。既存プロジェクトは触らない
+   ・作成フロー・変換ボタン・pmboard 対応は Phase 2+ で追加
+   ======================================================================== */
+function isNewShot(n){ return !!(n && n.type==='shot'); }
+function newShotCurrentStage(n, root){
+  if(!isNewShot(n)) return null;
+  if(n.currentStage) return n.currentStage;
+  /* フォールバック：root.stages[0] */
+  const stages = (root && Array.isArray(root.stages) && root.stages.length) ? root.stages : null;
+  return stages ? stages[0] : null;
 }
 /* 骨格として project.json に残す時の "重量フィールド抜き" コピー */
 function _skeletonNode(n){
@@ -3601,7 +3632,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.17.004';
+const APP_VERSION='2026.09.17.005';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5382,10 +5413,34 @@ function renderBodyMain(){
     else renderProjTimeline(main,root);
     return;
   }
-  /* サブページ（セクション/レビュー）— 上部タブは「ページ」がアクティブ表示 */
+  /* サブページ（セクション/レビュー/ショット）— 上部タブは「ページ」がアクティブ表示 */
   state.lastPageId=cur.id; /* 「ページ」タブで最後に開いた画面として記憶 */
   if(cur.type==='review')renderReviewBody(s,cur);
+  else if(cur.type==='shot')renderShotBody(s,cur); /* 新モデル（Option B） */
   else renderSectionBody(s,cur);
+}
+/* 新モデル shot 用のレンダリング（Phase 1 スタブ：以降のフェーズで肉付け） */
+function renderShotBody(s,cur){
+  const root=rootOf(cur);
+  const stages=(root&&Array.isArray(root.stages)&&root.stages.length)?root.stages:['LAY','ANIM','COMP'];
+  const curStage=newShotCurrentStage(cur,root);
+  const wrap=el('div','shot-body-stub');
+  wrap.style.cssText='padding:24px;max-width:960px';
+  const h=el('h2','tt-proc');h.style.cssText='display:flex;align-items:center;gap:10px;margin:0 0 16px';
+  h.appendChild(document.createTextNode(cur.name||'(名称なし)'));
+  const chip=el('span','type-chip');chip.textContent='新モデル shot';chip.style.cssText='font-size:10px;padding:2px 8px;border-radius:4px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)';
+  h.appendChild(chip);
+  wrap.appendChild(h);
+  const info=el('div');info.style.cssText='display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--text2)';
+  info.appendChild(el('div',null,`現在の工程：${curStage||'—'}`));
+  info.appendChild(el('div',null,`ステータス：${cur.status||'—'}`));
+  info.appendChild(el('div',null,`動画数：${(cur.versions||[]).length}／コメント数：${(cur.comments||[]).length}`));
+  info.appendChild(el('div',null,`プロジェクト共通工程：${stages.join(' / ')}`));
+  wrap.appendChild(info);
+  const note=el('div');note.style.cssText='margin-top:20px;padding:14px 18px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text3);line-height:1.7';
+  note.innerHTML='📋 <b>新ショットモデル（Option B）Phase 1</b>：型定義とルーティングのみ。<br>Phase 2〜以降で新規プロジェクト作成・工程切替 UI・動画／コメント／担当編集・pmboard 連携・既存プロジェクトの変換ボタンを追加していきます。<br>既存プロジェクトには影響しません。';
+  wrap.appendChild(note);
+  s.appendChild(wrap);
 }
 
 /* プロジェクト（ルート）配下の更新イベント（動画アップロードのみ）を新着順で。
