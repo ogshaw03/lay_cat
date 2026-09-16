@@ -171,16 +171,16 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-hdr .timeline .days .d.wknd{background:rgba(255,255,255,.02);color:var(--text3)}
 
 .gantt-body{position:relative}
-.gantt-row{display:grid;grid-template-columns:220px 1fr;border-bottom:1px solid var(--border);min-height:60px}
-.gantt-row:hover{background:rgba(255,255,255,.02)}
-.gantt-row .shot{padding:9px 14px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;position:sticky;left:0;background:var(--bg2);z-index:2}
+/* コンパクト 1 行レイアウト：ショット名のみを表示して縦を締める。
+   工程数・ロールアップ chip・工程バッジ・担当者バッジは default では非表示（tooltip で確認可）。 */
+.gantt-row{display:grid;grid-template-columns:220px 1fr;border-bottom:1px solid var(--border);min-height:26px}
+.gantt-row:hover{background:rgba(255,255,255,.03)}
+.gantt-row .shot{padding:4px 12px;border-right:1px solid var(--border);display:flex;flex-direction:row;align-items:center;gap:6px;position:sticky;left:0;background:var(--bg2);z-index:2;overflow:hidden}
 .gantt-row:hover .shot{background:var(--bg3)}
-.gantt-row .shot .id{font-family:var(--font-code);font-size:13px;font-weight:700;color:var(--text);letter-spacing:.2px}
-.gantt-row .shot .name{font-size:11px;color:var(--text3);margin-top:2px}
-.gantt-row .shot .meta{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;align-items:center}
-.gantt-row .shot .stbadges{display:flex;gap:2px}
+.gantt-row .shot .id{font-family:var(--font-code);font-size:12px;font-weight:700;color:var(--text);letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.gantt-row .shot .name,.gantt-row .shot .meta,.gantt-row .shot .stbadges{display:none}
 .gantt-row .shot .stbadge{font-size:9px;font-family:var(--font-head);font-weight:700;width:14px;height:14px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;line-height:1}
-.gantt-row .shot .asg-badges{display:inline-flex;gap:2px;margin-left:4px}
+.gantt-row .shot .asg-badges{display:inline-flex;gap:2px;flex-shrink:0}
 .gantt-row .shot .asg-badge{font-size:9px;font-family:var(--font-head);font-weight:600;width:14px;height:14px;border-radius:50%;border:1px solid;display:inline-flex;align-items:center;justify-content:center;line-height:1}
 /* mp-badge に似せた status chip */
 .st-chip{display:inline-flex;align-items:center;font-size:10px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-weight:500}
@@ -190,10 +190,11 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .st-chip.plan{background:rgba(214,169,95,.13);border-color:rgba(214,169,95,.42);color:var(--amber)}
 .st-chip.noplan{background:var(--bg3);border-color:var(--border);color:var(--text3)}
 
-.gantt-row .track{position:relative;height:100%;padding:8px 0;min-height:60px}
+.gantt-row .track{position:relative;height:100%;padding:0;min-height:26px}
 .gantt-row .track .day{position:absolute;top:0;bottom:0;border-right:1px solid rgba(255,255,255,.02)}
 .gantt-row .track .day.wknd{background:rgba(255,255,255,.015)}
-.gantt-row .track .seg-plan{position:absolute;top:9px;height:14px;border:1px dashed;border-radius:var(--radius2);overflow:visible;cursor:grab;user-select:none}
+/* コンパクト行に合わせて plan/actual を 1 行内に上下スタック（各 9px 帯） */
+.gantt-row .track .seg-plan{position:absolute;top:3px;height:9px;border:1px dashed;border-radius:var(--radius2);overflow:visible;cursor:grab;user-select:none}
 .gantt-row .track .seg-plan:hover{filter:brightness(1.4)}
 .gantt-row .track .seg-plan.dragging{cursor:grabbing;filter:brightness(1.6);z-index:5}
 /* プレースホルダ：予定未設定 → 破線＋薄い（ドラッグで実プランに変わる） */
@@ -208,22 +209,22 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* ドラッグ中のツールチップ */
 .drag-tip{position:fixed;z-index:1000;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius2);padding:6px 10px;font-size:11px;color:var(--text);font-family:var(--font-code);white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.5);pointer-events:none}
 .drag-tip .lbl{color:var(--text3);font-size:10px;margin-right:6px;letter-spacing:.5px}
-.gantt-row .track .seg-actual{position:absolute;top:30px;height:14px;border-radius:var(--radius2)}
+.gantt-row .track .seg-actual{position:absolute;top:14px;height:9px;border-radius:var(--radius2)}
 .gantt-row .track .seg-actual.wip{border-right:1px dashed rgba(255,255,255,.35)}
 .gantt-row .track .seg-actual.late{outline:1px solid rgba(224,106,106,.5)}
-.gantt-row .track .seg-actual .seg-actual-lbl{position:absolute;right:5px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;color:#16161a;font-family:var(--font-code);font-weight:700;letter-spacing:.2px;white-space:nowrap}
-.gantt-row .track .milestone{position:absolute;top:22px;width:9px;height:9px;background:var(--amber);transform:rotate(45deg);z-index:3}
+.gantt-row .track .seg-actual .seg-actual-lbl{position:absolute;right:5px;top:0;bottom:0;display:flex;align-items:center;font-size:8px;color:#16161a;font-family:var(--font-code);font-weight:700;letter-spacing:.2px;white-space:nowrap}
+.gantt-row .track .milestone{position:absolute;top:8px;width:8px;height:8px;background:var(--amber);transform:rotate(45deg);z-index:3}
 
 .gantt-today{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed var(--red);z-index:3;pointer-events:none}
 .gantt-today .lbl{position:absolute;top:2px;left:4px;font-size:9px;color:var(--red);font-family:var(--font-code);font-weight:700;letter-spacing:.5px;background:var(--bg);padding:1px 5px;border-radius:3px;border:1px solid rgba(224,106,106,.4)}
 
 /* Scene group row */
-.gantt-row.group{background:var(--bg3);min-height:32px}
-.gantt-row.group .shot{background:var(--bg3);padding:8px 14px}
-.gantt-row.group .shot .id{font-family:var(--font-head);font-size:11px;letter-spacing:1.5px;color:var(--text2);text-transform:uppercase;font-weight:500}
+.gantt-row.group{background:var(--bg3);min-height:22px}
+.gantt-row.group .shot{background:var(--bg3);padding:3px 12px}
+.gantt-row.group .shot .id{font-family:var(--font-head);font-size:10px;letter-spacing:1.2px;color:var(--text2);text-transform:uppercase;font-weight:500}
 .gantt-row.group:hover{background:var(--bg3)}
 .gantt-row.group:hover .shot{background:var(--bg3)}
-.gantt-row.group .track{min-height:32px}
+.gantt-row.group .track{min-height:22px}
 
 /* =========== 工数タブ =========== */
 .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
@@ -506,7 +507,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.001';
+const APP_VERSION='2026.09.17.002';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1226,8 +1227,11 @@ function buildGantt(){
 
       const row = document.createElement('div');
       row.className='gantt-row';
+      /* tooltip：非表示にした情報（工程数・状態・工程種類）をショットセル hover で参照可能に */
+      const stateWord = /done/.test(rollup)?'完了':/late/.test(rollup)?'遅延':/wip/.test(rollup)?'作業中':/noplan/.test(rollup)?'未計画':/plan/.test(rollup)?'計画中':'—';
+      const tt = `${shot.sectionNode.name||''} — ${stages.length} 工程 / ${stateWord}`;
       row.innerHTML = `
-        <div class="shot">
+        <div class="shot" title="${escapeHtml(tt)}">
           <div class="id">${escapeHtml(shot.sectionNode.name||shot.sectionNode.id.slice(-8))}</div>
           <div class="name">${stages.length} 工程</div>
           <div class="meta">${rollup}${asgBadges.length?`<span class="asg-badges">${asgBadges.join('')}</span>`:''}</div>
