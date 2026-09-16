@@ -529,7 +529,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.008';
+const APP_VERSION='2026.09.17.009';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1009,10 +1009,11 @@ function filterShots(shots){
       const hay = ((shot.sectionNode.name||'') + ' ' + (shot.sectionNode.id||'')).toLowerCase();
       if(!hay.includes(q)) return false;
     }
-    /* 担当者：少なくとも 1 工程で assignee (or reviewer) が一致すれば通過 */
+    /* 担当者：少なくとも 1 工程で assignee（作業担当）が一致すれば通過。
+       reviewer（チェック担当）は含めない。「自分が担当していないショット」の混入を防ぐ。 */
     if(assignee){
-      const has = shot.stages.some(st => (st.assignee && String(st.assignee).toLowerCase()===String(assignee).toLowerCase())
-                                       || (st.reviewer && String(st.reviewer).toLowerCase()===String(assignee).toLowerCase()));
+      const key = String(assignee).toLowerCase();
+      const has = shot.stages.some(st => st.assignee && String(st.assignee).toLowerCase()===key);
       if(!has) return false;
     }
     /* 工程：ショットに指定工程名が存在するかどうか */
@@ -1868,8 +1869,19 @@ function renderFilters(root){
   const fltStage = document.getElementById('fltStage');
   const fltStatus = document.getElementById('fltStatus');
   if(!fltAssignee||!fltStage||!fltStatus) return;
-  /* 担当者：projectMembers */
-  const members = (root && Array.isArray(root.members)) ? root.members.filter(m=>m&&m.active!==false) : [];
+  /* 担当者：projectMembers を「実際にどこかの工程で assignee になっている人」で絞り込み、
+     表示名で 50 音順ソート（LayCAT の登録順だと直感的でないため）。 */
+  const rawMembers = (root && Array.isArray(root.members)) ? root.members.filter(m=>m&&m.active!==false) : [];
+  const activeAssignees = new Set();
+  for(const shot of DATA.shots){
+    for(const st of shot.stages){
+      if(st.assignee) activeAssignees.add(String(st.assignee).toLowerCase());
+    }
+  }
+  const members = rawMembers
+    .filter(m => activeAssignees.has(String(m.id||'').toLowerCase()))
+    .slice()
+    .sort((a,b)=>String(a.name||a.id||'').localeCompare(String(b.name||b.id||''), 'ja'));
   fltAssignee.innerHTML = '<option value="">すべて</option>' + members.map(m=>`<option value="${escapeHtml(m.id)}">${escapeHtml(m.name||m.id)}</option>`).join('');
   /* 工程：ショットから集約した工程名 */
   const stgSet = new Set();
