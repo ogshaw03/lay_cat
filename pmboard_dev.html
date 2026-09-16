@@ -191,6 +191,17 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row .shot .id{font-family:var(--font-code);font-size:12px;font-weight:700;color:var(--text);letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
 .gantt-row .shot .cur-stage{font-size:10px;color:var(--text2);white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px;font-family:var(--font-head);letter-spacing:.3px}
 .gantt-row .shot .cur-stage .dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+/* 未予定の工程を追加する「＋」ボタン。ショットセル末尾に小さく表示 */
+.gantt-row .shot .add-plan-btn{flex-shrink:0;background:transparent;border:1px dashed var(--border2);color:var(--text3);width:18px;height:18px;border-radius:4px;font-size:12px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-family:var(--font-head);padding:0}
+.gantt-row .shot .add-plan-btn:hover{color:var(--text);border-color:var(--text2);background:var(--bg3)}
+/* 予定追加のポップアップメニュー */
+.plan-menu{position:fixed;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius2);padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.5);z-index:1000;min-width:180px;max-height:60vh;overflow-y:auto}
+.plan-menu .item{display:flex;align-items:center;gap:8px;padding:5px 10px;font-size:12px;color:var(--text);cursor:pointer;border-radius:4px;white-space:nowrap}
+.plan-menu .item:hover{background:var(--bg3)}
+.plan-menu .item .dot{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.plan-menu .item .lbl{flex:1;overflow:hidden;text-overflow:ellipsis}
+.plan-menu .item .kbd{font-family:var(--font-code);font-size:10px;color:var(--text3)}
+.plan-menu .hdr{font-size:10px;color:var(--text3);padding:4px 10px 6px;letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid var(--border);margin-bottom:2px}
 .gantt-row .shot .name,.gantt-row .shot .meta,.gantt-row .shot .stbadges{display:none}
 .gantt-row .shot .stbadge{font-size:9px;font-family:var(--font-head);font-weight:700;width:14px;height:14px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;line-height:1}
 .gantt-row .shot .asg-badges{display:inline-flex;gap:2px;flex-shrink:0}
@@ -529,7 +540,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.010';
+const APP_VERSION='2026.09.17.011';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1259,6 +1270,12 @@ function buildGantt(){
       }
       if(curStage){ curLabel = curStage.label || '?'; curColor = curStage.color || 'var(--text3)'; }
 
+      /* 未予定の工程が残っていれば「＋」ボタンを表示（クリックでメニュー） */
+      const unplannedCount = stages.filter(st=>!(st.plannedStart && st.plannedEnd)).length;
+      const addBtn = unplannedCount>0
+        ? `<button class="add-plan-btn" data-shot="${shot.sectionNode.id}" title="未予定の工程を追加（残り ${unplannedCount}）">＋</button>`
+        : '';
+
       const row = document.createElement('div');
       row.className='gantt-row';
       /* tooltip：非表示にした情報（工程数・状態・工程種類）をショットセル hover で参照可能に */
@@ -1268,6 +1285,7 @@ function buildGantt(){
         <div class="shot" title="${escapeHtml(tt)}">
           <div class="id">${escapeHtml(shot.sectionNode.name||shot.sectionNode.id.slice(-8))}</div>
           <div class="cur-stage"><span class="dot" style="background:${curColor}"></span>${escapeHtml(curLabel)}</div>
+          ${addBtn}
           <div class="name">${stages.length} 工程</div>
           <div class="meta">${rollup}${asgBadges.length?`<span class="asg-badges">${asgBadges.join('')}</span>`:''}</div>
           <div class="stbadges">${stageBadges}</div>
@@ -1417,6 +1435,68 @@ function computeCustomTimeline(sch){
   DATA.timeline = {start,end,days:Math.max(30, Math.round((end-start)/86400000)+1)};
   buildTimelineHdr();
 }
+
+/* =========== 未予定工程「＋」メニュー =========== */
+/* ショットセルの「＋」ボタンをクリックすると、まだ予定が入っていない工程の一覧を
+   ポップアップ表示。項目クリックで今日〜+3 日のデフォルト予定を作成 → 保存 →
+   再描画（ユーザーは後からドラッグで期間調整できる）。 */
+function showAddPlanMenu(btn){
+  closePlanMenu();
+  const shotId = btn.dataset.shot;
+  const shot = DATA.shots.find(s=>s.sectionNode.id===shotId);
+  if(!shot) return;
+  const unplanned = shot.stages.filter(st=>!(st.plannedStart && st.plannedEnd));
+  if(!unplanned.length) return;
+  const menu = document.createElement('div');
+  menu.className = 'plan-menu';
+  menu.dataset.shot = shotId;
+  const hdr = `<div class="hdr">予定を追加する工程を選択</div>`;
+  const items = unplanned.map(st=>`<div class="item" data-stage="${st.reviewNode.id}"><span class="dot" style="background:${st.color}"></span><span class="lbl">${escapeHtml(st.label)}</span></div>`).join('');
+  menu.innerHTML = hdr + items;
+  document.body.appendChild(menu);
+  const rect = btn.getBoundingClientRect();
+  /* 画面外にはみ出さないよう調整 */
+  let top = rect.bottom + 4;
+  let left = rect.left;
+  menu.style.top = top + 'px';
+  menu.style.left = left + 'px';
+  const mrect = menu.getBoundingClientRect();
+  if(mrect.right > window.innerWidth - 8){ menu.style.left = (window.innerWidth - mrect.width - 8) + 'px'; }
+  if(mrect.bottom > window.innerHeight - 8){ menu.style.top = (rect.top - mrect.height - 4) + 'px'; }
+}
+function closePlanMenu(){
+  document.querySelectorAll('.plan-menu').forEach(m=>m.remove());
+}
+async function addPlanForStage(shotId, stageId){
+  const shot = DATA.shots.find(s=>s.sectionNode.id===shotId);
+  if(!shot) return;
+  const st = shot.stages.find(x=>x.reviewNode.id===stageId);
+  if(!st) return;
+  /* デフォルト予定：今日 JST 0:00 から 3 日間 */
+  const start = todayJstMidnight();
+  const end = new Date(start.getTime() + 3*86400000);
+  st.plannedStart = start;
+  st.plannedEnd = end;
+  await saveShotSchedule(shot);
+  closePlanMenu();
+  buildGantt();
+}
+/* デリゲート：body 全体で「＋」ボタンとメニュー項目のクリックを拾う */
+document.addEventListener('click', e=>{
+  const btn = e.target.closest('.add-plan-btn');
+  if(btn){ e.stopPropagation(); showAddPlanMenu(btn); return; }
+  const item = e.target.closest('.plan-menu .item');
+  if(item){
+    const menu = item.closest('.plan-menu');
+    const shotId = menu.dataset.shot;
+    const stageId = item.dataset.stage;
+    addPlanForStage(shotId, stageId);
+    return;
+  }
+  /* メニュー外クリック → 閉じる */
+  if(!e.target.closest('.plan-menu')) closePlanMenu();
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closePlanMenu(); });
 
 /* =========== ドラッグ編集（実データ保存） =========== */
 function initScheduleDrag(){
