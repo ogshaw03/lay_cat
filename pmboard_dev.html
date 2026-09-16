@@ -529,7 +529,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.009';
+const APP_VERSION='2026.09.17.010';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1203,24 +1203,14 @@ function buildGantt(){
         const pj=jstParts(dt);
         if(pj.wk===0||pj.wk===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
       }
-      /* Plan bars / プレースホルダ（予定未設定の工程は今日から 3 日の破線プレースホルダを出す） */
-      let placeholderOffset = 0; /* 予定未設定が複数あるとき、少しずつずらして重ならないようにする */
+      /* Plan bars（予定バー）。予定未設定の工程は何も描画しない（プレースホルダは廃止）。 */
       for(const st of stages){
-        if(st.plannedStart && st.plannedEnd){
-          /* 通常の予定バー */
-          const p1 = dayIdx(st.plannedStart);
-          const p2 = dayIdx(st.plannedEnd);
-          if(p2<0||p1>days) continue;
-          const w = Math.max(px, (p2-p1)*px);
-          track.push(`<div class="seg-plan" data-shot="${shot.sectionNode.id}" data-stage="${st.reviewNode.id}" style="left:${p1*px}%;width:${w}%;border-color:${st.color};background:${st.color}"><span class="seg-lbl" style="color:${st.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${escapeHtml(st.label)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
-        }else{
-          /* プレースホルダ：今日 + placeholderOffset 日 から 3 日、破線・薄色 */
-          const p1 = todayIdx + placeholderOffset;
-          const p2 = p1 + 3;
-          const w = Math.max(px, (p2-p1)*px);
-          track.push(`<div class="seg-plan seg-placeholder" data-shot="${shot.sectionNode.id}" data-stage="${st.reviewNode.id}" style="left:${p1*px}%;width:${w}%;border-color:${st.color};background:transparent;opacity:.55" title="ドラッグして「${escapeHtml(st.reviewNode.name)}」の予定を設定"><span class="seg-lbl" style="color:${st.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">+ ${escapeHtml(st.label)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
-          placeholderOffset += 4;
-        }
+        if(!(st.plannedStart && st.plannedEnd)) continue;
+        const p1 = dayIdx(st.plannedStart);
+        const p2 = dayIdx(st.plannedEnd);
+        if(p2<0||p1>days) continue;
+        const w = Math.max(px, (p2-p1)*px);
+        track.push(`<div class="seg-plan" data-shot="${shot.sectionNode.id}" data-stage="${st.reviewNode.id}" style="left:${p1*px}%;width:${w}%;border-color:${st.color};background:${st.color}"><span class="seg-lbl" style="color:${st.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${escapeHtml(st.label)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
       }
       /* Actual bars */
       for(const st of stages){
