@@ -705,6 +705,12 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .stage-strip .ss-lab svg{width:12px;height:12px}
 .ss-sel{min-width:110px;max-width:180px;padding:5px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;font-family:inherit;cursor:pointer}
 .ss-sel:focus{outline:none;border-color:var(--border2)}
+/* インライン工程プルダウン（作業ページ h1 の中）：見出しの一部として表示する。
+   通常の .ss-sel は 12px/max 180px だが、h1 内では 18px/max 260px にして
+   工程名テキストと同じ視覚重量になるように。 */
+.stage-strip-inline{display:inline-flex;align-items:center}
+.stage-strip-inline .ss-sel{font-size:18px;font-weight:700;font-family:var(--font-code);letter-spacing:.2px;min-width:140px;max-width:260px;padding:3px 8px;background:transparent;border-color:var(--border2)}
+.stage-strip-inline .ss-sel:hover{background:var(--bg3)}
 /* ステータス切替プルダウン（フルページのヘッダ・右側スライドのヘッダ共通） */
 .status-pick{display:flex;align-items:center;gap:6px}
 .status-pick .sp-lab{font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text3);text-transform:uppercase;white-space:nowrap}
@@ -3587,7 +3593,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.17.001';
+const APP_VERSION='2026.09.17.002';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6723,7 +6729,12 @@ function renderReviewBody(s,cur,opts){
   s=mainCol;
   /* 作業ページ左上の固定バー：ショット番号／工程／ステータス＋ステータス切替・設定・削除（スクロール追従） */
   const topbar=el('div','task-topbar');
-  const h1=el('h2','tt-proc');h1.appendChild(document.createTextNode(cur.name)); /* 工程（タスク名） */
+  /* 同ショット内に複数工程があればプルダウン、無ければテキストで工程名を表示。
+     プルダウン選択で他工程ページへ遷移（現在の工程は selected 状態で引き継ぎ）。 */
+  const shotSec=(cur.parentId&&getNode(cur.parentId))||null;
+  const stageSwitcher=buildStageStripInline(shotSec,cur.id);
+  const h1=el('h2','tt-proc');
+  if(stageSwitcher){h1.appendChild(stageSwitcher)} else {h1.appendChild(document.createTextNode(cur.name))}
   const tst=stInfo(cur);const tbg=el('span','badge',tst.label);tbg.style.background=hexA(tst.color,.18);tbg.style.color=tst.color;h1.appendChild(tbg);
   {const rl=roleOf(cur);const m=ROLE_META[rl]||ROLE_META.task;h1.appendChild(elIco('span','type-chip role-'+rl,m.ico,m.label));}
   topbar.appendChild(h1);
@@ -6800,6 +6811,30 @@ function buildStageStrip(shot,curReviewId){
     sel.appendChild(o);
   }
   sel.onchange=()=>openReviewDrawer(sel.value,shot.id);
+  wrap.appendChild(sel);
+  return wrap;
+}
+/* 作業ページ左上：同じショット内の全工程を切り替えるインラインプルダウン。
+   buildStageStrip がドロワー用（開き直す）なのに対し、こちらは実際にページ遷移する。
+   フォルダ分けのデータ構造はそのまま。UI だけの改善。 */
+function buildStageStripInline(shot,curReviewId){
+  if(!shot)return null;
+  const reviews=descendants(shot.id).filter(n=>n.type==='review');
+  if(reviews.length<2)return null; /* 工程が1つだけなら出さない */
+  const wrap=el('span','stage-strip stage-strip-inline');
+  const sel=el('select','ss-sel');
+  sel.title='この工程をクリックして切替';
+  for(const r of reviews){
+    const o=document.createElement('option');o.value=r.id;
+    const st=stInfo(r);
+    o.textContent=r.name+' — '+st.label;
+    if(r.id===curReviewId)o.selected=true;
+    sel.appendChild(o);
+  }
+  sel.onchange=()=>{
+    const nid=sel.value;
+    if(nid && nid!==curReviewId) go(nid); /* ページ遷移で工程を切替 */
+  };
   wrap.appendChild(sel);
   return wrap;
 }
