@@ -18,6 +18,22 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.17.006) **Simple B P1〜P4：`review` ノードそのものをショットとして扱う軽量統合**：v.005 の `type:'shot'` 新型ノード方針を撤回し、既存の `type:'review'` にオプショナルなショット系フィールドを乗せる方針に変更（数日規模の refactor → 半日規模の実装）。
+  - **P1 revert**：v.005 で入れた `type:'shot'` 分岐・`renderShotBody` スタブ・スキーマ長文コメント・`isNewShot` を削除。ルーターは元通り `review/section` の 2 分岐のみ。
+  - **P2 currentStage フィールド**：`review` ノードに以下を追加可能（未定義でも動作）
+    - `n.currentStage`（`root.stages[]` 内の 1 つ）
+    - `n.stageHistory[{ts,from,to,by}]`（工程遷移の監査ログ）
+    - `v.stage` / `c.stage`（各 version / comment に「アップ時の工程」タグ）
+  - **P2 ヘルパ**：`projStageList(root)` / `getShotCurrentStage(n)` / `setShotCurrentStage(n, newStage)`。
+  - **P3 プルダウン差替**：`buildStageStripInline` を 2 モード対応に。
+    - 兄弟 review が 2 個以上 = 旧モデル → 従来通り兄弟切替（`switchStageInTab`）
+    - それ以外 = 単一 review ショット → `root.stages[]` から `currentStage` を選ぶ → 属性書き換え＆再描画
+  - **P4 stage タグ付与**：`triggerUpload` / EXR 連番アップロード / `shotCommentInput` で書き込むオブジェクトに `stage=getShotCurrentStage(node)` を付与。
+  - **P4 ログバッジ**：`v.stage`/`c.stage` タグを優先ラベルに、無ければ従来通り所有 review ノード名。表示条件も「兄弟あり」から「stage タグが複数種類ある or 現在工程と異なるタグがある」まで拡張。
+  - 既存プロジェクトへの影響ゼロ（`currentStage` / `stageHistory` / `v.stage` / `c.stage` 全て未定義でも動作継続）。
+  - Phase 5〜6：新プロジェクト作成 UI の工程フォルダ設定廃止、pmboard の `currentStage` / `stageHistory` 対応。
+  - APP_VERSION：2026.09.17.005 → 2026.09.17.006
+
 - (dev v2026.09.17.005) **Option B Phase 1：新ショットモデルの型定義とルーティング基盤**：次案件のセットアップを簡素化するため、`shot=review+子review`（フォルダ管理）から `shot=単一ノード＋工程属性`（統合管理）へ移行するリファクタの土台。
   - **新スキーマ**：`{type:'shot', currentStage, stageHistory[], status, versions[{...,stage}], comments[{...,stage}], stageAssignees{}, stageReviewers{}}`。工程セットはプロジェクト共通 `root.stages[]` を利用（決定事項）。
   - **ヘルパ**：`isNewShot(n)` / `newShotCurrentStage(n, root)`。

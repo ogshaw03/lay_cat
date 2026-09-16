@@ -3074,41 +3074,38 @@ async function offerPhase2Migration(){
    条件：`type='section'` の非ルートノードで、直接の子が全て `type='review'`（工程）。
    → カテゴリ（子が section）は shot にならず骨格として project.json に残る。 */
 function _isShotNodeForSave(n,allNodes){
-  if(!n||!n.parentId)return false;
-  /* 新モデル（Option B）：type:'shot' はそれ自体がショット（工程は shot.stageHistory と
-     shot.currentStage で管理し、review 子ノードは持たない） */
-  if(n.type==='shot')return true;
-  /* 旧モデル：section 直下が全て review = ショット */
-  if(n.type!=='section')return false;
+  if(!n||n.type!=='section'||!n.parentId)return false;
   const kids=allNodes.filter(x=>x.parentId===n.id);
   if(!kids.length)return false;
   return kids.every(k=>k.type==='review');
 }
 /* ========================================================================
-   新ショットモデル（Option B）：
-     shot = {
-       id, parentId, name,
-       type: 'shot',                       // 新タイプ
-       currentStage: string,               // root.stages[] の要素名
-       stageHistory: [{ts, from, to, by}], // 工程遷移監査ログ
-       status: string,                     // 1 ショットに 1 ステータス
-       versions: [{...従来, stage: string}], // 各動画に「その時の工程」タグ
-       comments: [{...従来, stage: string}], // 各コメントに「その時の工程」タグ
-       stageAssignees: { [stageName]: memberId },
-       stageReviewers: { [stageName]: memberId },
-       thumbnail, description, createdAt, _vtomb, ...
-     }
-   ・工程セットはプロジェクト共通の root.stages[]（既存フィールドをそのまま使用）
-   ・旧モデル（section+review 子）は当面共存。既存プロジェクトは触らない
-   ・作成フロー・変換ボタン・pmboard 対応は Phase 2+ で追加
+   Simple Option B：review ノードそのものをショットとして使う軽量化パス。
+   既存の review ノードに以下の 3 フィールドをオプショナルで追加：
+     n.currentStage       : string  現在の工程名（root.stages[] のどれか）
+     n.stageHistory       : [{ts, from, to, by}]  工程遷移監査ログ
+     v.stage / c.stage    : string  version/comment がアップされた時の工程タグ
+   これらが「未定義」の review ノードは従来通りの多工程フォルダの子として扱う。
    ======================================================================== */
-function isNewShot(n){ return !!(n && n.type==='shot'); }
-function newShotCurrentStage(n, root){
-  if(!isNewShot(n)) return null;
+function projStageList(root){
+  return (root && Array.isArray(root.stages) && root.stages.length) ? root.stages.slice() : [];
+}
+/* ショット（review ノード）の現在工程を取得。未設定なら root.stages[0]、それも無ければ null。 */
+function getShotCurrentStage(n){
+  if(!n) return null;
   if(n.currentStage) return n.currentStage;
-  /* フォールバック：root.stages[0] */
-  const stages = (root && Array.isArray(root.stages) && root.stages.length) ? root.stages : null;
-  return stages ? stages[0] : null;
+  const list = projStageList(rootOf(n));
+  return list.length ? list[0] : null;
+}
+/* 現在工程を書き換えて履歴に追記。無変更なら noop。 */
+function setShotCurrentStage(n, newStage){
+  if(!n || !newStage) return false;
+  const prev = getShotCurrentStage(n);
+  if(prev === newStage) return false;
+  n.currentStage = newStage;
+  if(!Array.isArray(n.stageHistory)) n.stageHistory = [];
+  n.stageHistory.push({ts:new Date().toISOString(), by:currentUser(), from:prev||null, to:newStage});
+  return true;
 }
 /* 骨格として project.json に残す時の "重量フィールド抜き" コピー */
 function _skeletonNode(n){
@@ -3632,7 +3629,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.17.005';
+const APP_VERSION='2026.09.17.006';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5413,34 +5410,10 @@ function renderBodyMain(){
     else renderProjTimeline(main,root);
     return;
   }
-  /* サブページ（セクション/レビュー/ショット）— 上部タブは「ページ」がアクティブ表示 */
+  /* サブページ（セクション/レビュー）— 上部タブは「ページ」がアクティブ表示 */
   state.lastPageId=cur.id; /* 「ページ」タブで最後に開いた画面として記憶 */
   if(cur.type==='review')renderReviewBody(s,cur);
-  else if(cur.type==='shot')renderShotBody(s,cur); /* 新モデル（Option B） */
   else renderSectionBody(s,cur);
-}
-/* 新モデル shot 用のレンダリング（Phase 1 スタブ：以降のフェーズで肉付け） */
-function renderShotBody(s,cur){
-  const root=rootOf(cur);
-  const stages=(root&&Array.isArray(root.stages)&&root.stages.length)?root.stages:['LAY','ANIM','COMP'];
-  const curStage=newShotCurrentStage(cur,root);
-  const wrap=el('div','shot-body-stub');
-  wrap.style.cssText='padding:24px;max-width:960px';
-  const h=el('h2','tt-proc');h.style.cssText='display:flex;align-items:center;gap:10px;margin:0 0 16px';
-  h.appendChild(document.createTextNode(cur.name||'(名称なし)'));
-  const chip=el('span','type-chip');chip.textContent='新モデル shot';chip.style.cssText='font-size:10px;padding:2px 8px;border-radius:4px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)';
-  h.appendChild(chip);
-  wrap.appendChild(h);
-  const info=el('div');info.style.cssText='display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--text2)';
-  info.appendChild(el('div',null,`現在の工程：${curStage||'—'}`));
-  info.appendChild(el('div',null,`ステータス：${cur.status||'—'}`));
-  info.appendChild(el('div',null,`動画数：${(cur.versions||[]).length}／コメント数：${(cur.comments||[]).length}`));
-  info.appendChild(el('div',null,`プロジェクト共通工程：${stages.join(' / ')}`));
-  wrap.appendChild(info);
-  const note=el('div');note.style.cssText='margin-top:20px;padding:14px 18px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text3);line-height:1.7';
-  note.innerHTML='📋 <b>新ショットモデル（Option B）Phase 1</b>：型定義とルーティングのみ。<br>Phase 2〜以降で新規プロジェクト作成・工程切替 UI・動画／コメント／担当編集・pmboard 連携・既存プロジェクトの変換ボタンを追加していきます。<br>既存プロジェクトには影響しません。';
-  wrap.appendChild(note);
-  s.appendChild(wrap);
 }
 
 /* プロジェクト（ルート）配下の更新イベント（動画アップロードのみ）を新着順で。
@@ -6477,7 +6450,15 @@ function shotCommentInput(cur){
   const inp=el('div','sc-input');
   const ta=el('textarea');ta.placeholder='メッセージ（@でメンション。動画へのFBとは別に記録され、下のログに動画タイルと時系列で表示されます・Ctrl+Enterで送信）';
   const send=el('button','btn btn-primary btn-sm','送信');
-  const submit=async()=>{const txt=(ta.value||'').trim();if(!txt)return;const mn=extractMentions(txt,rootOf(cur),ta._mentions);(cur.comments=cur.comments||[]).push({id:newId('sc'),author:currentUser(),text:txt,time:nowIso(),mentions:mn});ta.value='';ta._mentions=[];await persist();render();resolveThumbs()}; /* サイドバー・ヘッダ含めて再描画（他の書き込み系操作と揃える） */
+  const submit=async()=>{
+    const txt=(ta.value||'').trim();if(!txt)return;
+    const mn=extractMentions(txt,rootOf(cur),ta._mentions);
+    const _cm={id:newId('sc'),author:currentUser(),text:txt,time:nowIso(),mentions:mn};
+    /* Simple B：コメント投稿時点の工程をタグ付け */
+    {const _st=getShotCurrentStage(cur); if(_st) _cm.stage=_st}
+    (cur.comments=cur.comments||[]).push(_cm);
+    ta.value='';ta._mentions=[];await persist();render();resolveThumbs()
+  }; /* サイドバー・ヘッダ含めて再描画（他の書き込み系操作と揃える） */
   send.onclick=submit;
   ta.onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();submit()}};
   attachMention(ta,rootOf(cur));
@@ -6821,35 +6802,47 @@ function renderReviewBody(s,cur,opts){
   const prog=el('div','uploading hidden');const bar=el('div','bar');const bi=el('i');bar.appendChild(bi);const pct=el('span',null,'処理中...');prog.appendChild(bar);prog.appendChild(pct);
   curUploadUI={prog,bi,pct};
   s.appendChild(prog);
-  /* 同ショットの全工程を統合表示：この工程を含む同ショット内の全 review ノードから
-     versions/comments を集めて 1 本の時系列ストリームに束ねる。データ構造は変えず、
-     UI 上だけ「1 ショット＝1 ページ」化。各アイテムには工程バッジを付けて出所を明示。
-     動画のアノテーション（review.notes[]）は logItem 内で描画されるので、
-     渡す node を「そのアイテムを保有する review ノード」に揃えるだけで自動的に引き継がれる。 */
+  /* 同ショット内の全工程を統合表示。ストリーム構築時、2 通りの「出所」情報を持たせる：
+       stageNode = そのアイテムを保有する review ノード（旧モデル・多工程フォルダ用の識別）
+       stageName = v.stage / c.stage タグ（Simple B・単一 review + 工程タグ用）
+     バッジ表示は stageName を優先、無ければ stageNode.name をフォールバック。 */
   const stageSiblings=shotSec?descendants(shotSec.id).filter(n=>n.type==='review'):[cur];
   const hasSiblings=stageSiblings.length>1;
+  const curStageName=getShotCurrentStage(cur);
+  const rootStagesArr=projStageList(rootOf(cur));
   const stream=[];
   for(const rev of stageSiblings){
-    for(const v of (rev.versions||[])) stream.push({t:v.uploadedAt||'',kind:'v',v,stage:rev});
-    for(const c of (rev.comments||[])) stream.push({t:c.time||'',kind:'c',c,stage:rev});
+    for(const v of (rev.versions||[])) stream.push({t:v.uploadedAt||'',kind:'v',v,stageNode:rev,stageName:v.stage||null});
+    for(const c of (rev.comments||[])) stream.push({t:c.time||'',kind:'c',c,stageNode:rev,stageName:c.stage||null});
   }
   if(!stream.length){s.appendChild(el('div','empty','まだ動画・画像がありません。右上の「＋ 動画」ボタンから追加してください。'));return}
   stream.sort((a,b)=>a.t<b.t?1:(a.t>b.t?-1:0));
+  /* バッジ表示するか判定：多工程フォルダ or ショット内で 2 種類以上のタグが存在 */
+  const seenStageTags=new Set();for(const it of stream){if(it.stageName)seenStageTags.add(it.stageName)}
+  const showBadges=hasSiblings||seenStageTags.size>=2||(seenStageTags.size===1&&curStageName&&!seenStageTags.has(curStageName));
   const log=el('div','log');
   for(const it of stream){
-    const itemEl=(it.kind==='v')?logItem(it.stage,it.v):shotCommentItem(it.stage,it.c);
-    if(hasSiblings){
-      /* 工程バッジ：この項目がどの工程のものかを一目で分かるよう先頭に挿入。
-         現在の工程はハイライト、他工程はグレー表示＋クリックでその工程ページへ遷移。 */
-      const rc=stInfo(it.stage);
-      const badge=el('span','log-stg-badge'+(it.stage.id===cur.id?' cur':''));
-      badge.style.borderColor=rc.color;
-      badge.style.color=rc.color;
-      badge.textContent=it.stage.name;
-      badge.title='工程：'+it.stage.name+(it.stage.id===cur.id?'（現在）':'／クリックでこの工程ページへ');
-      badge.onclick=(e)=>{e.stopPropagation();if(it.stage.id!==cur.id)switchStageInTab(it.stage.id)};
+    const itemEl=(it.kind==='v')?logItem(it.stageNode,it.v):shotCommentItem(it.stageNode,it.c);
+    if(showBadges){
+      /* 表示ラベル：v.stage/c.stage を優先、無ければ所有 review ノード名 */
+      const label=it.stageName||(it.stageNode&&it.stageNode.name)||'?';
+      const isCurrent=(hasSiblings ? it.stageNode.id===cur.id : (it.stageName? it.stageName===curStageName : false));
+      /* 色：旧モデルは review ノード自身のステータス色、新モデルは工程順のシード色 */
+      let color='var(--text3)';
+      if(hasSiblings){color=stInfo(it.stageNode).color}
+      else if(rootStagesArr.length){
+        const idx=rootStagesArr.indexOf(label);if(idx>=0){const hues=[210,150,50,300,180,20,270,90];const h=hues[idx%hues.length];color=`hsl(${h} 55% 60%)`}
+      }
+      const badge=el('span','log-stg-badge'+(isCurrent?' cur':''));
+      badge.style.borderColor=color;badge.style.color=color;
+      badge.textContent=label;
+      badge.title='工程：'+label+(isCurrent?'（現在）':'');
+      if(hasSiblings){
+        badge.title+='／クリックでこの工程ページへ';
+        badge.onclick=(e)=>{e.stopPropagation();if(it.stageNode.id!==cur.id)switchStageInTab(it.stageNode.id)};
+      }
       itemEl.insertBefore(badge,itemEl.firstChild);
-      if(it.stage.id!==cur.id) itemEl.classList.add('other-stage');
+      if(!isCurrent) itemEl.classList.add('other-stage');
     }
     log.appendChild(itemEl);
   }
@@ -6899,26 +6892,53 @@ function buildStageStrip(shot,curReviewId){
   wrap.appendChild(sel);
   return wrap;
 }
-/* 作業ページ左上：同じショット内の全工程を切り替えるインラインプルダウン。
-   buildStageStrip がドロワー用（開き直す）なのに対し、こちらはタブ内で工程を差し替える。
-   フォルダ分けのデータ構造はそのまま。UI だけの改善。 */
+/* 作業ページ左上：工程切替プルダウン。
+   優先順位：
+     ・現ノード（review）が兄弟 review を 2 個以上持つ ＝ 旧モデル（フォルダ分け）
+       → 兄弟 review を列挙し switchStageInTab で切替（従来動作）
+     ・それ以外 ＝ 新モデル（単一 review ショット）
+       → root.stages[] から現在工程を選択 → n.currentStage を書き換えて再描画。
+   root.stages が未設定なら null を返して非表示。 */
 function buildStageStripInline(shot,curReviewId){
-  if(!shot)return null;
-  const reviews=descendants(shot.id).filter(n=>n.type==='review');
-  if(reviews.length<2)return null; /* 工程が1つだけなら出さない */
+  const cur=curReviewId?getNode(curReviewId):null;
+  const root=cur?rootOf(cur):null;
+  const stages=projStageList(root);
+  const siblings=shot?descendants(shot.id).filter(n=>n.type==='review'):[];
+  const useLegacy=siblings.length>=2;
+  if(useLegacy){
+    /* --- 旧モデル：兄弟 review 列挙（従来動作） --- */
+    const wrap=el('span','stage-strip stage-strip-inline');
+    const sel=el('select','ss-sel');
+    sel.title='この工程をクリックして切替（同じタブで切替）';
+    for(const r of siblings){
+      const o=document.createElement('option');o.value=r.id;
+      const st=stInfo(r);
+      o.textContent=r.name+' — '+st.label;
+      if(r.id===curReviewId)o.selected=true;
+      sel.appendChild(o);
+    }
+    sel.onchange=()=>{const nid=sel.value; if(nid && nid!==curReviewId) switchStageInTab(nid)};
+    wrap.appendChild(sel);
+    return wrap;
+  }
+  /* --- 新モデル：root.stages[] から currentStage を選ぶ --- */
+  if(!cur||stages.length<2)return null;
   const wrap=el('span','stage-strip stage-strip-inline');
   const sel=el('select','ss-sel');
-  sel.title='この工程をクリックして切替（同じタブで切替）';
-  for(const r of reviews){
-    const o=document.createElement('option');o.value=r.id;
-    const st=stInfo(r);
-    o.textContent=r.name+' — '+st.label;
-    if(r.id===curReviewId)o.selected=true;
+  sel.title='工程を切替（このショットの現在工程を書き換え）';
+  const curStage=getShotCurrentStage(cur);
+  for(const s of stages){
+    const o=document.createElement('option');o.value=s;o.textContent=s;
+    if(s===curStage)o.selected=true;
     sel.appendChild(o);
   }
-  sel.onchange=()=>{
-    const nid=sel.value;
-    if(nid && nid!==curReviewId) switchStageInTab(nid);
+  sel.onchange=async ()=>{
+    const ns=sel.value;
+    if(!ns||ns===curStage)return;
+    if(setShotCurrentStage(cur,ns)){
+      try{await persist()}catch(_){}
+      render();
+    }
   };
   wrap.appendChild(sel);
   return wrap;
@@ -10076,13 +10096,19 @@ async function uploadVersion(node,file,ui,opts){
     /* 名前：入力があればそれ、空欄なら動画のタイトル（拡張子なしのファイル名） */
     const vname=(opts.name&&opts.name.trim())||file.name.replace(/\.[^.]+$/,'');
     const version={id:newId('ver'),name:vname,type:isVideo?'video':'image',file:mediaRef,thumb:thumbRef,uploadedBy:currentUser(),uploadedAt:nowIso(),review:{status:'pending',notes:[]}};
+    /* Simple B：アップロード時点の「その工程」を version に紐付ける（未定義環境では省略） */
+    {const _st=getShotCurrentStage(node); if(_st) version.stage=_st}
     /* サイレント・アップロード：チェック依頼通知を出さない設定（アップロードモーダルの
        「チェック担当者に通知を送る」☑ が OFF のとき）。通知スキャナで版ごとにスキップする。 */
     if(opts.notify===false)version.noNotify=true;
     /* EXR の場合はフラグを立てておく（レビュー画面で「EXR 表示調整」ボタンを出すため） */
     if(isExr){version.exr=true;version.exrView={exposure:0,gamma:2.2}}
     /* アップロード時のコメントは「メッセージ」（node.comments）として記録（ショット全体コメントは廃止） */
-    if(opts.comment&&opts.comment.trim())(node.comments=node.comments||[]).push({id:newId('sc'),author:currentUser(),text:opts.comment.trim(),time:nowIso(),kind:'upload'});
+    if(opts.comment&&opts.comment.trim()){
+      const _cm={id:newId('sc'),author:currentUser(),text:opts.comment.trim(),time:nowIso(),kind:'upload'};
+      const _st=getShotCurrentStage(node); if(_st) _cm.stage=_st;
+      (node.comments=node.comments||[]).push(_cm);
+    }
     node.versions.push(version);if(thumbRef)node.thumbnail=thumbRef;
     /* アップロード時に自動でステータスを「チェック待ち」（プロジェクトの先頭ステータス）に設定。
        新しい版が来たので既存の判定はリセットして再チェックに戻す。サブミット経由の場合は
@@ -10143,7 +10169,12 @@ async function uploadExrSequence(node,seq,ui,opts){
       uploadedBy:currentUser(),uploadedAt:nowIso(),
       review:{status:'pending',notes:[]}
     };
-    if(opts.comment&&opts.comment.trim())(node.comments=node.comments||[]).push({id:newId('sc'),author:currentUser(),text:opts.comment.trim(),time:nowIso(),kind:'upload'});
+    {const _st=getShotCurrentStage(node); if(_st) version.stage=_st}
+    if(opts.comment&&opts.comment.trim()){
+      const _cm={id:newId('sc'),author:currentUser(),text:opts.comment.trim(),time:nowIso(),kind:'upload'};
+      const _st=getShotCurrentStage(node); if(_st) _cm.stage=_st;
+      (node.comments=node.comments||[]).push(_cm);
+    }
     if(opts.notify===false)version.noNotify=true;
     node.versions.push(version);if(thumbRef)node.thumbnail=thumbRef;
     /* v.027 修正：通常動画版と同じく notify ガードを追加（サイレント時はステータス自動変更しない） */
