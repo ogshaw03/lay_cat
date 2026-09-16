@@ -42,6 +42,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .logo .brand-mark{width:28px;height:28px;border-radius:var(--radius2);background:var(--bg4);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--accent2)}
 .logo .brand-sub{font-size:10px;color:var(--text3);letter-spacing:2px;margin-left:2px;font-weight:500}
 .app-ver{align-self:center;font-family:var(--font-head);font-size:10px;letter-spacing:.5px;color:var(--text3);padding:2px 7px;border:1px solid var(--border);border-radius:6px;background:var(--bg);white-space:nowrap}
+.last-updated{align-self:center;font-family:var(--font-code);font-size:10px;color:var(--text3);white-space:nowrap;padding:0 6px;letter-spacing:.3px;font-variant-numeric:tabular-nums}
 .header-sep{width:1px;height:24px;background:var(--border2);flex-shrink:0}
 .folder-status{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);padding:5px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);cursor:pointer}
 .folder-status:hover{border-color:var(--border2)}
@@ -312,6 +313,8 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
       <button data-scale="week" class="on">週</button>
       <button data-scale="month">月</button>
     </div>
+    <div class="last-updated" id="lastUpdated" title="1時間ごとに自動更新（日本時間）">—</div>
+    <button class="btn btn-ghost btn-sm" id="refreshBtn" title="今すぐ再読み込み">↻</button>
     <button class="btn btn-ghost btn-sm">今日</button>
     <button class="btn btn-ghost btn-sm">📥 CSV</button>
   </div>
@@ -503,7 +506,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.16.008';
+const APP_VERSION='2026.09.17.001';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -564,20 +567,24 @@ function stageLabel(kind, name){
   return nm.length>6 ? nm.slice(0,6) : nm;
 }
 
-/* status.json 内容から「終了」判定：project.statuses の中で「checkWait 相当でない最終値」
-   または特定キーワードに該当する場合。 */
-const DONE_KEYWORDS_ID = /^(ok|approved|done|complete|clientok|client-ok|client_ok|final)$/i;
-const DONE_KEYWORDS_LABEL = /(クライアントOK|クライアントok|OK|完了|approved|完成|検収)/;
+/* 完了判定：LayCAT 本体のステータス設定でラベル「完了」のものを追加してもらい、
+   現在のステータスがそのラベルなら「完了扱い」とする。最もシンプルなルール。
+   未着手判定：ラベル「未着手」または status が空/null の場合。 */
+const DONE_LABEL = '完了';
+const PENDING_LABEL = '未着手';
 function isStatusDone(statusId, projStatuses){
   if(!statusId) return false;
-  if(DONE_KEYWORDS_ID.test(statusId)) return true;
-  if(Array.isArray(projStatuses)){
-    const st = projStatuses.find(x=>x&&x.id===statusId);
-    if(st && DONE_KEYWORDS_LABEL.test(st.label||'')) return true;
-    /* 最終ステータスなら done とみなす */
-    if(st && projStatuses[projStatuses.length-1] === st) return true;
-  }
-  return false;
+  if(!Array.isArray(projStatuses)) return false;
+  const st = projStatuses.find(x=>x&&x.id===statusId);
+  if(!st) return false;
+  return (st.label||'').trim() === DONE_LABEL;
+}
+function isStatusPending(statusId, projStatuses){
+  if(!statusId) return true;
+  if(!Array.isArray(projStatuses)) return false;
+  const st = projStatuses.find(x=>x&&x.id===statusId);
+  if(!st) return false;
+  return (st.label||'').trim() === PENDING_LABEL;
 }
 
 /* =========== ストレージ（LayCAT の IDB / localStorage を共有） =========== */
@@ -769,18 +776,29 @@ async function loadProjectData(){
       const label = stageLabel(kind, k.name);
       const color = stageColor(kind, k.name, projectStages);
       const ss = schedStages.find(x=>x.stageId===k.id) || {};
-      const plannedStart = ss.plannedStart ? new Date(ss.plannedStart) : null;
-      const plannedEnd = ss.plannedEnd ? new Date(ss.plannedEnd) : null;
+      const plannedStart = ss.plannedStart ? parseIsoDateJst(ss.plannedStart) : null;
+      const plannedEnd = ss.plannedEnd ? parseIsoDateJst(ss.plannedEnd) : null;
       const sf = statusMap[k.id];
       const history = (sf && Array.isArray(sf.history)) ? sf.history : [];
       let actualStart=null, actualEnd=null, isDone=false, currentStatus=null;
-      if(history.length){
-        const firstMeaningful = history.find(h=>h && h.to);
-        if(firstMeaningful) actualStart = new Date(firstMeaningful.ts);
-        const last = history[history.length-1];
-        if(last && last.ts) actualEnd = new Date(last.ts);
+      if(sf){
         currentStatus = sf.status || null;
         isDone = isStatusDone(currentStatus, projStatuses);
+        /* 実績バーは「未着手以外に最初に切り替わった瞬間」から始まり、
+           「完了になった瞬間」で止まる。完了前は actualEnd=null にして描画側で
+           日々今日まで伸ばす（buildGantt の a2 フォールバック）。 */
+        const firstMeaningful = history.find(h=>h && h.to && !isStatusPending(h.to, projStatuses));
+        if(firstMeaningful) actualStart = new Date(firstMeaningful.ts);
+        if(isDone){
+          const doneEntry = history.find(h=>h && h.to && isStatusDone(h.to, projStatuses));
+          if(doneEntry) actualEnd = new Date(doneEntry.ts);
+          else if(history.length){ /* history 欠落ケース：最後の ts を採用 */
+            const last = history[history.length-1];
+            if(last && last.ts) actualEnd = new Date(last.ts);
+          }
+        }
+        /* 現在のステータスが未着手（またはクリア）なら実績バーを引かない */
+        if(isStatusPending(currentStatus, projStatuses)) actualStart = null;
       }
       /* review node にも current status を反映（LayCAT の v:5 分離では node.status = status.json.status） */
       const assignee = k.assignee || null;
@@ -810,8 +828,9 @@ async function loadProjectData(){
   const times = dates.map(d=>d.getTime()).filter(t=>!isNaN(t));
   const minD = new Date(Math.min(...times));
   const maxD = new Date(Math.max(...times));
-  const start = new Date(minD.getFullYear(), minD.getMonth(), minD.getDate()-7);
-  const end = new Date(maxD.getFullYear(), maxD.getMonth(), maxD.getDate()+7);
+  /* JST 深夜に正規化してから ±7 日パディング */
+  const start = new Date(jstMidnightMs(minD) - 7*86400000);
+  const end = new Date(jstMidnightMs(maxD) + 7*86400000);
   const days = Math.max(30, Math.round((end-start)/86400000)+1);
   DATA.timeline = {start, end, days};
   DATA.loaded = true;
@@ -830,8 +849,8 @@ async function loadCustomSchedules(){
     id: sch.id, name: sch.name,
     items: (Array.isArray(sch.items)?sch.items:[]).map(it=>({
       id: it.id, name: it.name, color: it.color||'var(--st-anim)',
-      plannedStart: it.plannedStart ? new Date(it.plannedStart) : null,
-      plannedEnd: it.plannedEnd ? new Date(it.plannedEnd) : null,
+      plannedStart: it.plannedStart ? parseIsoDateJst(it.plannedStart) : null,
+      plannedEnd: it.plannedEnd ? parseIsoDateJst(it.plannedEnd) : null,
     })),
   }));
 }
@@ -874,17 +893,53 @@ async function saveShotSchedule(shot){
 }
 
 /* =========== 描画ヘルパ =========== */
+/* 全ての日時計算・表示を日本時間（JST, UTC+9）に統一する。
+   ・jstMidnightMs(d)     : d を JST の日付として解釈し、その日の JST 00:00 の UTC ミリ秒を返す
+   ・todayJstMidnight()   : 今日（JST）の 0 時を返す
+   ・fmtJstDateTime(d)    : "YYYY/MM/DD HH:mm"（JST）
+   ・fmtJstDate(d)        : "MM/DD（曜）"（JST） */
+const JST_OFFSET_MS = 9*3600000;
+function jstMidnightMs(d){
+  const t = (d instanceof Date ? d.getTime() : new Date(d).getTime());
+  const jstEpoch = t + JST_OFFSET_MS;
+  const jstDayStart = Math.floor(jstEpoch/86400000)*86400000;
+  return jstDayStart - JST_OFFSET_MS;
+}
+function todayJstMidnight(){
+  return new Date(jstMidnightMs(new Date()));
+}
+function jstParts(d){
+  const t = (d instanceof Date ? d.getTime() : new Date(d).getTime()) + JST_OFFSET_MS;
+  const j = new Date(t);
+  return {
+    y: j.getUTCFullYear(), m: j.getUTCMonth()+1, d: j.getUTCDate(),
+    hh: j.getUTCHours(), mm: j.getUTCMinutes(), wk: j.getUTCDay(),
+  };
+}
+function fmtJstDate(d){
+  const p = jstParts(d);
+  const wk = ['日','月','火','水','木','金','土'][p.wk];
+  return `${p.m}/${p.d}（${wk}）`;
+}
+function fmtJstDateTime(d){
+  const p = jstParts(d);
+  return `${p.y}/${String(p.m).padStart(2,'0')}/${String(p.d).padStart(2,'0')} ${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}`;
+}
 function isoDate(d){
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  /* JST 基準の YYYY-MM-DD 文字列。schedule/*.json への保存はローカルではなく JST を採用。 */
+  const p = jstParts(d);
+  return `${p.y}-${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
+}
+function parseIsoDateJst(s){
+  /* "YYYY-MM-DD" を JST 0:00 として解釈した Date を返す。 */
+  return new Date(s + 'T00:00:00+09:00');
 }
 function dayIdx(d){
-  return Math.round((d - DATA.timeline.start)/86400000);
+  return Math.round((jstMidnightMs(d) - DATA.timeline.start.getTime())/86400000);
 }
 function fmtDate(dayIndex){
-  const d = new Date(DATA.timeline.start);
-  d.setDate(d.getDate()+dayIndex);
-  const wk = ['日','月','火','水','木','金','土'][d.getDay()];
-  return `${d.getMonth()+1}/${d.getDate()}（${wk}）`;
+  const d = new Date(DATA.timeline.start.getTime() + dayIndex*86400000);
+  return fmtJstDate(d);
 }
 function escapeHtml(s){
   return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -901,16 +956,17 @@ function buildTimelineHdr(){
   const weekCount = Math.ceil(days/7);
   for(let i=0;i<weekCount;i++){
     const w = document.createElement('div'); w.className='w';
-    const d0 = new Date(start); d0.setDate(d0.getDate()+i*7);
-    w.textContent = `${d0.getMonth()+1}/${d0.getDate()}〜`;
+    const d0 = new Date(start.getTime()+i*7*86400000);
+    const p = jstParts(d0);
+    w.textContent = `${p.m}/${p.d}〜`;
     weeks.appendChild(w);
   }
   for(let i=0;i<days;i++){
     const d = document.createElement('div'); d.className='d';
-    const dt = new Date(start); dt.setDate(dt.getDate()+i);
-    const dw = dt.getDay();
-    if(dw===0||dw===6) d.classList.add('wknd');
-    d.textContent = dt.getDate();
+    const dt = new Date(start.getTime()+i*86400000);
+    const p = jstParts(dt);
+    if(p.wk===0||p.wk===6) d.classList.add('wknd');
+    d.textContent = p.d;
     dow.appendChild(d);
   }
   hdr.appendChild(weeks); hdr.appendChild(dow);
@@ -1115,9 +1171,9 @@ function buildGantt(){
       const track=[];
       /* Weekend */
       for(let i=0;i<days;i++){
-        const dt=new Date(start); dt.setDate(dt.getDate()+i);
-        const dw=dt.getDay();
-        if(dw===0||dw===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
+        const dt=new Date(start.getTime()+i*86400000);
+        const pj=jstParts(dt);
+        if(pj.wk===0||pj.wk===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
       }
       /* Plan bars / プレースホルダ（予定未設定の工程は今日から 3 日の破線プレースホルダを出す） */
       let placeholderOffset = 0; /* 予定未設定が複数あるとき、少しずつずらして重ならないようにする */
@@ -1187,8 +1243,8 @@ function buildGantt(){
   const marker = document.createElement('div');
   marker.className='gantt-today';
   marker.style.left = `calc(220px + ${todayIdx*px}%)`;
-  const t = new Date();
-  marker.innerHTML = `<div class="lbl">TODAY ${t.getMonth()+1}/${t.getDate()}</div>`;
+  const p = jstParts(new Date());
+  marker.innerHTML = `<div class="lbl">TODAY ${p.m}/${p.d}</div>`;
   wrapper.appendChild(marker);
 }
 
@@ -1232,9 +1288,9 @@ function buildCustomGantt(scheduleId){
     const track=[];
     /* Weekend background */
     for(let i=0;i<days;i++){
-      const dt=new Date(start); dt.setDate(dt.getDate()+i);
-      const dw=dt.getDay();
-      if(dw===0||dw===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
+      const dt=new Date(start.getTime()+i*86400000);
+      const p=jstParts(dt);
+      if(p.wk===0||p.wk===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
     }
     /* Plan bar または placeholder */
     if(it.plannedStart && it.plannedEnd){
@@ -1280,8 +1336,8 @@ function buildCustomGantt(scheduleId){
   const marker = document.createElement('div');
   marker.className='gantt-today';
   marker.style.left = `calc(220px + ${todayIdx*px}%)`;
-  const t = new Date();
-  marker.innerHTML = `<div class="lbl">TODAY ${t.getMonth()+1}/${t.getDate()}</div>`;
+  const pjt = jstParts(new Date());
+  marker.innerHTML = `<div class="lbl">TODAY ${pjt.m}/${pjt.d}</div>`;
   wrapper.appendChild(marker);
 }
 
@@ -1315,8 +1371,8 @@ function computeCustomTimeline(sch){
   const times = dates.map(d=>d.getTime()).filter(t=>!isNaN(t));
   const minD = new Date(Math.min(...times));
   const maxD = new Date(Math.max(...times));
-  const start = new Date(minD.getFullYear(),minD.getMonth(),minD.getDate()-7);
-  const end = new Date(maxD.getFullYear(),maxD.getMonth(),maxD.getDate()+7);
+  const start = new Date(jstMidnightMs(minD) - 7*86400000);
+  const end = new Date(jstMidnightMs(maxD) + 7*86400000);
   DATA.timeline = {start,end,days:Math.max(30, Math.round((end-start)/86400000)+1)};
   buildTimelineHdr();
 }
@@ -1364,8 +1420,8 @@ function initScheduleDrag(){
       let p1 = Math.round(startPct * days);
       let p2 = p1 + Math.max(1, Math.round(widthPct * days));
       if(p1<0) p1=0; if(p2>days-1) p2=days-1;
-      const s1 = new Date(DATA.timeline.start); s1.setDate(s1.getDate()+p1);
-      const s2 = new Date(DATA.timeline.start); s2.setDate(s2.getDate()+p2);
+      const s1 = new Date(DATA.timeline.start.getTime()+p1*86400000);
+      const s2 = new Date(DATA.timeline.start.getTime()+p2*86400000);
       target.plannedStart = s1;
       target.plannedEnd = s2;
       seg.classList.remove('seg-placeholder');
@@ -1397,8 +1453,8 @@ function initScheduleDrag(){
     if(p1<0){const s=-p1; p1=0; if(drag.mode==='move') p2+=s;}
     if(p2>days-1){const s=p2-(days-1); p2=days-1; if(drag.mode==='move') p1-=s;}
     if(p1<0)p1=0; if(p2>days-1)p2=days-1;
-    const s1=new Date(DATA.timeline.start); s1.setDate(s1.getDate()+p1);
-    const s2=new Date(DATA.timeline.start); s2.setDate(s2.getDate()+p2);
+    const s1=new Date(DATA.timeline.start.getTime()+p1*86400000);
+    const s2=new Date(DATA.timeline.start.getTime()+p2*86400000);
     drag.target.plannedStart=s1;
     drag.target.plannedEnd=s2;
     const px=100/days;
@@ -1523,6 +1579,7 @@ async function loadAndRender(){
   buildSubTabs();
   rebuildActiveView();
   updateSidebar();
+  if(typeof updateLastUpdatedLabel==='function') updateLastUpdatedLabel();
 }
 function updateSidebar(){
   if(!DATA.project) return;
@@ -1726,9 +1783,25 @@ populateProjectPicker();
 initScheduleDrag();
 bindFilterEvents();
 updateFolderUI();
+
+/* 最終更新表示（JST）と 1 時間ごとの自動リロード。
+   実績バーは actualEnd=null（未完了）のとき「今日 JST」まで伸長するため、
+   時計が進んでも表示が古くならないよう定期的に再読み込み＆再描画する。 */
+function updateLastUpdatedLabel(){
+  const el = document.getElementById('lastUpdated');
+  if(el) el.textContent = '最終更新 ' + fmtJstDateTime(new Date()) + '（JST）';
+}
+async function hourlyRefresh(){
+  if(!storage.pid || !storage.dirHandle) return;
+  try{ await loadAndRender(); updateLastUpdatedLabel(); }catch(e){ console.warn('hourly refresh failed', e); }
+}
+document.getElementById('refreshBtn').addEventListener('click', hourlyRefresh);
+setInterval(hourlyRefresh, 60*60*1000);
+updateLastUpdatedLabel();
+
 /* 初期プロジェクトへ自動接続を試行 */
 const initialPid = document.getElementById('projSelect').value;
-if(initialPid){ switchToProject(initialPid); }
+if(initialPid){ switchToProject(initialPid).then(updateLastUpdatedLabel); }
 else { showInitialEmptyState(); }
 
 </script>
