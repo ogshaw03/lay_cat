@@ -540,7 +540,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.013';
+const APP_VERSION='2026.09.17.014';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -619,6 +619,15 @@ function isStatusPending(statusId, projStatuses){
   const st = projStatuses.find(x=>x&&x.id===statusId);
   if(!st) return false;
   return (st.label||'').trim() === PENDING_LABEL;
+}
+/* クライアントチェック待ち判定：LayCAT の「☑ クライアントチェック待ち」チェックが付いた
+   ステータスに一致する場合 true。この期間は「作業が発生していない」とみなして実績バーの
+   期間から除外する。 */
+function isStatusClientWait(statusId, projStatuses){
+  if(!statusId) return false;
+  if(!Array.isArray(projStatuses)) return false;
+  const st = projStatuses.find(x=>x&&x.id===statusId);
+  return !!(st && st.clientWait === true);
 }
 
 /* =========== ストレージ（LayCAT の IDB / localStorage を共有） =========== */
@@ -815,29 +824,42 @@ async function loadProjectData(){
       const sf = statusMap[k.id];
       const history = (sf && Array.isArray(sf.history)) ? sf.history : [];
       let actualStart=null, actualEnd=null, isDone=false, currentStatus=null;
+      /* workSegments：実績バーを描く区間の配列。「作業が発生している期間」だけを含む。
+         未着手・クライアント待ちの期間は挟み込まれず、その分だけバーが分割される。
+         各要素 {start:Date, end:Date|null}。end==null は「まだ作業中で今日まで伸長」を意味する。 */
+      let workSegments = [];
       if(sf){
         currentStatus = sf.status || null;
         isDone = isStatusDone(currentStatus, projStatuses);
-        /* 実績バーは「未着手以外に最初に切り替わった瞬間」から始まり、
-           「完了になった瞬間」で止まる。完了前は actualEnd=null にして描画側で
-           日々今日まで伸ばす（buildGantt の a2 フォールバック）。 */
-        const firstMeaningful = history.find(h=>h && h.to && !isStatusPending(h.to, projStatuses));
-        if(firstMeaningful) actualStart = new Date(firstMeaningful.ts);
-        if(isDone){
-          const doneEntry = history.find(h=>h && h.to && isStatusDone(h.to, projStatuses));
-          if(doneEntry) actualEnd = new Date(doneEntry.ts);
-          else if(history.length){ /* history 欠落ケース：最後の ts を採用 */
-            const last = history[history.length-1];
-            if(last && last.ts) actualEnd = new Date(last.ts);
+        /* history をタイムスタンプ順に走査して work セグメントを構築。
+           work 状態 = pending でも clientWait でも done でもない状態。 */
+        const events = history.slice().filter(h=>h && h.ts).sort((a,b)=> new Date(a.ts) - new Date(b.ts));
+        const isWorkStatus = sid => sid && !isStatusPending(sid, projStatuses)
+                                          && !isStatusClientWait(sid, projStatuses)
+                                          && !isStatusDone(sid, projStatuses);
+        let openStart = null;
+        for(const h of events){
+          const t = new Date(h.ts);
+          if(isWorkStatus(h.to)){
+            if(openStart === null) openStart = t;
+          }else{
+            if(openStart !== null){ workSegments.push({start:openStart, end:t}); openStart = null; }
           }
         }
-        /* 現在のステータスが未着手（またはクリア）なら実績バーを引かない */
-        if(isStatusPending(currentStatus, projStatuses)) actualStart = null;
+        if(openStart !== null){
+          /* 直近のイベントが work 状態のまま → 今日まで伸長（未完了・作業中） */
+          workSegments.push({start:openStart, end:null});
+        }
+        /* サマリ用の actualStart / actualEnd（凡例・並び順の下位互換） */
+        if(workSegments.length){
+          actualStart = workSegments[0].start;
+          actualEnd = isDone ? workSegments[workSegments.length-1].end : null;
+        }
       }
       /* review node にも current status を反映（LayCAT の v:5 分離では node.status = status.json.status） */
       const assignee = k.assignee || null;
       const reviewer = k.reviewer || null;
-      return {reviewNode:k, kind, label, color, plannedStart, plannedEnd, actualStart, actualEnd, isDone, currentStatus, assignee, reviewer, history};
+      return {reviewNode:k, kind, label, color, plannedStart, plannedEnd, actualStart, actualEnd, isDone, currentStatus, assignee, reviewer, history, workSegments};
     });
     shots.push({sectionNode:section, stages, milestones:(sched.milestones||[])});
   }
@@ -1223,18 +1245,30 @@ function buildGantt(){
         const w = Math.max(px, (p2-p1)*px);
         track.push(`<div class="seg-plan" data-shot="${shot.sectionNode.id}" data-stage="${st.reviewNode.id}" style="left:${p1*px}%;width:${w}%;border-color:${st.color};background:${st.color}"><span class="seg-lbl" style="color:${st.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${escapeHtml(st.label)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
       }
-      /* Actual bars — 常に工程色で描画（遅延の色分けは廃止） */
+      /* Actual bars — workSegments を 1 セグメントずつ描画。
+         クライアントチェック待ち期間はセグメント間の隙間として自然に「除外」される。
+         最終セグメント（end==null）は open：今日まで伸長し、右端に「進行中」ラベル。
+         それ以外のセグメントは日数ラベル（Nd）。 */
       for(const st of stages){
-        if(!st.actualStart) continue;
-        const a1 = dayIdx(st.actualStart);
-        const rawA2 = st.actualEnd ? dayIdx(st.actualEnd) : todayIdx;
-        const a2 = st.isDone ? rawA2 : Math.max(rawA2, todayIdx);
-        if(a2<0||a1>days) continue;
-        const w = Math.max(px*0.5, (a2-a1)*px);
-        const isWip = !st.isDone;
-        const style = `background:${st.color};opacity:${isWip?'.7':'.9'}`;
-        const labelText = isWip ? '進行中' : `${Math.max(1,a2-a1)}d`;
-        track.push(`<div class="seg-actual ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}"><span class="seg-actual-lbl">${labelText}</span></div>`);
+        const segs = st.workSegments || [];
+        if(!segs.length) continue;
+        let totalWorkDays = 0;
+        segs.forEach((seg, idx) => {
+          const a1 = dayIdx(seg.start);
+          const openEnd = seg.end === null;
+          const a2 = openEnd ? todayIdx : dayIdx(seg.end);
+          if(a2<0||a1>days) return;
+          const w = Math.max(px*0.5, (a2-a1)*px);
+          const isLast = idx === segs.length-1;
+          const isWip = openEnd && !st.isDone && isLast;
+          const style = `background:${st.color};opacity:${isWip?'.7':'.9'}`;
+          totalWorkDays += Math.max(1, a2-a1);
+          /* ラベル：進行中は "進行中"、それ以外は日数（最終なら合計 "Nd"、途中は空欄で紛れを避ける） */
+          let labelText = '';
+          if(isWip) labelText = '進行中';
+          else if(isLast) labelText = `${totalWorkDays}d`;
+          track.push(`<div class="seg-actual ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}" title="実績：${escapeHtml(fmtJstDate(seg.start))} 〜 ${openEnd?'今日':escapeHtml(fmtJstDate(seg.end))}"><span class="seg-actual-lbl">${labelText}</span></div>`);
+        });
       }
       /* Milestones */
       for(const m of (shot.milestones||[])){

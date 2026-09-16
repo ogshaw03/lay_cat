@@ -3587,7 +3587,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.16.001';
+const APP_VERSION='2026.09.17.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8911,7 +8911,7 @@ function openRename(node){
       ovWrap.appendChild(ovS);inner.appendChild(ovWrap);
       inner.appendChild(el('div','form-label','※「自動判定」は全ショット（動画のある工程）が完了（OK/オミット等）になると自動で「完了」になります。'));
       ovSel={get:()=>ovS.value};
-      sec(secN++,'🚦','ステータス定義','各ショット・工程に付けるステータス（チェック待ち／OK／リテイク／NG など）のラベルと色を、このプロジェクトに合わせて自由に編集できます。ここで並べた順に、レビュー画面の判定ボタンや進捗ダッシュボードにそのまま並びます。先頭のステータスが新規追加時の既定値になります。右端の「☑ チェック待ち」にチェックを入れたステータスが、チェック待ちタブに集約されます（複数選択可・旧データは先頭ステータスを自動的にチェック待ち扱い）。');
+      sec(secN++,'🚦','ステータス定義','各ショット・工程に付けるステータス（チェック待ち／OK／リテイク／NG など）のラベルと色を、このプロジェクトに合わせて自由に編集できます。ここで並べた順に、レビュー画面の判定ボタンや進捗ダッシュボードにそのまま並びます。先頭のステータスが新規追加時の既定値になります。「☑ チェック待ち」にチェックを入れたステータスがチェック待ちタブに集約されます（複数選択可・旧データは先頭ステータスを自動的にチェック待ち扱い）。「☑ クライアントチェック待ち」にチェックを入れたステータスは「作業が発生していない期間」として pmboard の実績バーから除外されます。');
       const stWrap=el('div','step-grid');
       stArr=(node.statuses&&node.statuses.length?node.statuses:DEFAULT_STATUSES).map(x=>({...x}));
       /* 旧データ（checkWait 未定義）の初期値：先頭ステータスをチェック待ちに */
@@ -8929,8 +8929,14 @@ function openRename(node){
           const cwCb=el('input');cwCb.type='checkbox';cwCb.checked=(st2.checkWait===true);cwCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
           cwCb.onchange=()=>{st2.checkWait=cwCb.checked};
           cwLabel.appendChild(cwCb);cwLabel.appendChild(document.createTextNode('チェック待ち'));
+          /* クライアントチェック待ちフラグ：pmboard の実績バーから期間を除外する */
+          const clLabel=el('label');clLabel.style.cssText='display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;user-select:none;white-space:nowrap;padding:0 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg3)';
+          clLabel.title='この状態の期間は「作業が発生していない期間」として pmboard の実績バーから除外されます';
+          const clCb=el('input');clCb.type='checkbox';clCb.checked=(st2.clientWait===true);clCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
+          clCb.onchange=()=>{st2.clientWait=clCb.checked};
+          clLabel.appendChild(clCb);clLabel.appendChild(document.createTextNode('クライアント待ち'));
           const del=el('button','btn btn-danger btn-sm','削除');del.onclick=()=>{stArr.splice(i,1);redrawSt()};
-          row.appendChild(color);row.appendChild(nm);row.appendChild(cwLabel);row.appendChild(del);stWrap.appendChild(row);
+          row.appendChild(color);row.appendChild(nm);row.appendChild(cwLabel);row.appendChild(clLabel);row.appendChild(del);stWrap.appendChild(row);
         });
       };
       redrawSt();
@@ -9062,7 +9068,7 @@ function openRename(node){
        else if(raw==='cut')node.kind='cut';
        else delete node.kind; /* task / root の section/review 変更時は kind をクリア */
       }
-      if(stArr)node.statuses=stArr.filter(x=>x.label.trim()).map(x=>({id:x.id||newId('st'),label:x.label.trim(),color:x.color,checkWait:x.checkWait===true}));if(spSel){const ids=spSel.get();if(ids.length)node.shotsParentIds=ids;else delete node.shotsParentIds;delete node.shotsParentId}if(stagesArr!=null){const s=stagesArr.map(x=>x.trim()).filter(Boolean);if(s.length&&node.type==='section')node.stages=s;else delete node.stages}
+      if(stArr)node.statuses=stArr.filter(x=>x.label.trim()).map(x=>({id:x.id||newId('st'),label:x.label.trim(),color:x.color,checkWait:x.checkWait===true,clientWait:x.clientWait===true}));if(spSel){const ids=spSel.get();if(ids.length)node.shotsParentIds=ids;else delete node.shotsParentIds;delete node.shotsParentId}if(stagesArr!=null){const s=stagesArr.map(x=>x.trim()).filter(Boolean);if(s.length&&node.type==='section')node.stages=s;else delete node.stages}
       /* プロジェクトルートの工程テンプレート保存。空を除去して保存。後方互換のため node.stages は先頭テンプレートで同期。 */
       if(stageTemplatesArr!=null){
         const tpls=stageTemplatesArr
