@@ -178,6 +178,8 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row .shot{padding:4px 12px;border-right:1px solid var(--border);display:flex;flex-direction:row;align-items:center;gap:6px;position:sticky;left:0;background:var(--bg2);z-index:2;overflow:hidden}
 .gantt-row:hover .shot{background:var(--bg3)}
 .gantt-row .shot .id{font-family:var(--font-code);font-size:12px;font-weight:700;color:var(--text);letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.gantt-row .shot .cur-stage{font-size:10px;color:var(--text2);white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px;font-family:var(--font-head);letter-spacing:.3px}
+.gantt-row .shot .cur-stage .dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
 .gantt-row .shot .name,.gantt-row .shot .meta,.gantt-row .shot .stbadges{display:none}
 .gantt-row .shot .stbadge{font-size:9px;font-family:var(--font-head);font-weight:700;width:14px;height:14px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;line-height:1}
 .gantt-row .shot .asg-badges{display:inline-flex;gap:2px;flex-shrink:0}
@@ -507,7 +509,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.003';
+const APP_VERSION='2026.09.17.004';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1225,14 +1227,32 @@ function buildGantt(){
         track.push(`<div class="milestone" title="${escapeHtml(m.label||'')}" style="left:calc(${idx*px}% - 5px)"></div>`);
       }
 
+      /* 現在の工程を算出：
+         1) WIP（着手済みかつ未完了）があれば最も新しく着手された工程
+         2) 全部完了なら「完了」
+         3) 未着手ならリストの最初の未完了工程（次にやる工程）
+         4) それ以外は「—」 */
+      let curStage = null, curLabel = '—', curColor = 'var(--text3)';
+      const wips = stages.filter(st=>st.actualStart && !st.isDone);
+      if(wips.length){
+        wips.sort((a,b)=>b.actualStart-a.actualStart);
+        curStage = wips[0];
+      }else if(stages.length && stages.every(st=>st.isDone)){
+        curLabel = '完了'; curColor = 'var(--green)';
+      }else{
+        curStage = stages.find(st=>!st.isDone) || null;
+      }
+      if(curStage){ curLabel = curStage.label || '?'; curColor = curStage.color || 'var(--text3)'; }
+
       const row = document.createElement('div');
       row.className='gantt-row';
       /* tooltip：非表示にした情報（工程数・状態・工程種類）をショットセル hover で参照可能に */
       const stateWord = /done/.test(rollup)?'完了':/late/.test(rollup)?'遅延':/wip/.test(rollup)?'作業中':/noplan/.test(rollup)?'未計画':/plan/.test(rollup)?'計画中':'—';
-      const tt = `${shot.sectionNode.name||''} — ${stages.length} 工程 / ${stateWord}`;
+      const tt = `${shot.sectionNode.name||''} — ${stages.length} 工程 / ${stateWord} / 現在：${curLabel}`;
       row.innerHTML = `
         <div class="shot" title="${escapeHtml(tt)}">
           <div class="id">${escapeHtml(shot.sectionNode.name||shot.sectionNode.id.slice(-8))}</div>
+          <div class="cur-stage"><span class="dot" style="background:${curColor}"></span>${escapeHtml(curLabel)}</div>
           <div class="name">${stages.length} 工程</div>
           <div class="meta">${rollup}${asgBadges.length?`<span class="asg-badges">${asgBadges.join('')}</span>`:''}</div>
           <div class="stbadges">${stageBadges}</div>
