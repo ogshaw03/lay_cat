@@ -1927,6 +1927,9 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.17.006) **TODAY 文字ラベルの隠れを修正**：v.005 で `.gantt` に `position:relative` を入れたことで、`.gantt-today` の座標系が `.gantt` 直下に確定した結果、`.lbl`（top:2px）がスティッキーヘッダ（`.gantt-hdr` z-index:5）の下に潜って見えなくなっていた。TODAY マーカの z-index を 3→6、ラベル自体にも z-index:7 を付与してヘッダより手前に。
+  - APP_VERSION：2026.09.17.005 → 2026.09.17.006
+
 - (dev v2026.09.17.005) **TODAY マーカのズレを修正**：
   - **原因**：`marker.style.left = 220px + todayIdx*px%` で `%` の基準が `.gantt` 全幅（＝ショット列 220px＋トラック）だった。トラック側のバー（`left: i*px%`）は `.track` 幅基準なので、両者の day 割合が食い違い、TODAY 線が右に流れていた。
   - **修正**：計算式を `calc(220px + (100% - 220px) * todayIdx / days)` に変更。トラック実幅で todayIdx 番目の日位置に合わせる。
