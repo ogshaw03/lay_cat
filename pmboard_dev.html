@@ -235,7 +235,6 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .drag-tip .lbl{color:var(--text3);font-size:10px;margin-right:6px;letter-spacing:.5px}
 .gantt-row .track .seg-actual{position:absolute;top:18px;height:12px;border-radius:var(--radius2)}
 .gantt-row .track .seg-actual.wip{border-right:1px dashed rgba(255,255,255,.35)}
-.gantt-row .track .seg-actual.late{outline:1px solid rgba(224,106,106,.5)}
 .gantt-row .track .seg-actual .seg-actual-lbl{position:absolute;right:5px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;color:#16161a;font-family:var(--font-code);font-weight:700;letter-spacing:.2px;white-space:nowrap}
 .gantt-row .track .milestone{position:absolute;top:11px;width:10px;height:10px;background:var(--amber);transform:rotate(45deg);z-index:3}
 
@@ -409,7 +408,6 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
     <div class="row"><span class="swatch plan"></span><span>予定（工程別）</span></div>
     <div class="row"><span class="swatch actual"></span><span>実績・完了</span></div>
     <div class="row"><span class="swatch wip"></span><span>作業中</span></div>
-    <div class="row"><span class="swatch late"></span><span>遅延</span></div>
     <div class="row"><span class="swatch milestone"></span><span>マイルストーン</span></div>
   </div>
 </aside>
@@ -540,7 +538,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.011';
+const APP_VERSION='2026.09.17.012';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1223,7 +1221,7 @@ function buildGantt(){
         const w = Math.max(px, (p2-p1)*px);
         track.push(`<div class="seg-plan" data-shot="${shot.sectionNode.id}" data-stage="${st.reviewNode.id}" style="left:${p1*px}%;width:${w}%;border-color:${st.color};background:${st.color}"><span class="seg-lbl" style="color:${st.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${escapeHtml(st.label)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
       }
-      /* Actual bars */
+      /* Actual bars — 常に工程色で描画（遅延の色分けは廃止） */
       for(const st of stages){
         if(!st.actualStart) continue;
         const a1 = dayIdx(st.actualStart);
@@ -1231,19 +1229,10 @@ function buildGantt(){
         const a2 = st.isDone ? rawA2 : Math.max(rawA2, todayIdx);
         if(a2<0||a1>days) continue;
         const w = Math.max(px*0.5, (a2-a1)*px);
-        const isLate = st.plannedEnd && st.actualEnd && st.actualEnd>st.plannedEnd && !st.isDone;
         const isWip = !st.isDone;
-        const fill = isLate ? 'var(--red)' : st.color;
-        const style = `background:${fill};opacity:${isWip?'.7':'.9'}`;
-        let labelText;
-        if(isWip) labelText='進行中';
-        else if(st.plannedEnd && st.actualEnd && st.actualEnd>st.plannedEnd){
-          const dLate = Math.round((st.actualEnd-st.plannedEnd)/86400000);
-          labelText = `+${dLate}d`;
-        }else{
-          labelText = `${Math.max(1,a2-a1)}d`;
-        }
-        track.push(`<div class="seg-actual ${isLate?'late':''} ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}"><span class="seg-actual-lbl">${labelText}</span></div>`);
+        const style = `background:${st.color};opacity:${isWip?'.7':'.9'}`;
+        const labelText = isWip ? '進行中' : `${Math.max(1,a2-a1)}d`;
+        track.push(`<div class="seg-actual ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}"><span class="seg-actual-lbl">${labelText}</span></div>`);
       }
       /* Milestones */
       for(const m of (shot.milestones||[])){
