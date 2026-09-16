@@ -86,6 +86,9 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .sb-chip.hot{background:rgba(214,169,95,.13);border-color:rgba(214,169,95,.42);color:var(--amber)}
 
 .sb-stat{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 4px}
+.sb-stat.sb-stat-3{grid-template-columns:1fr 1fr 1fr}
+.sb-stat.sb-stat-3 .sb-cell{padding:6px 6px}
+.sb-stat.sb-stat-3 .sb-cell .n{font-size:16px}
 .sb-cell{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 10px}
 .sb-cell .n{font-family:var(--font-head);font-size:20px;font-weight:700;color:var(--text);line-height:1.1}
 .sb-cell .l{font-size:10px;color:var(--text3);letter-spacing:.5px;margin-top:2px;text-transform:uppercase}
@@ -360,11 +363,10 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
   </div>
 
   <div class="sidebar-label">サマリ</div>
-  <div class="sb-stat">
-    <div class="sb-cell"><div class="n">73<span class="u">%</span></div><div class="l">進捗</div></div>
-    <div class="sb-cell"><div class="n">18<span class="u">/32</span></div><div class="l">完了</div></div>
-    <div class="sb-cell"><div class="n">4</div><div class="l">遅延</div></div>
-    <div class="sb-cell"><div class="n">21<span class="u">日</span></div><div class="l">残</div></div>
+  <div class="sb-stat sb-stat-3">
+    <div class="sb-cell"><div class="n">—<span class="u">%</span></div><div class="l">進捗</div></div>
+    <div class="sb-cell"><div class="n">—<span class="u">/—</span></div><div class="l">完了</div></div>
+    <div class="sb-cell"><div class="n">—<span class="u">日</span></div><div class="l">残</div></div>
   </div>
 
   <div class="sidebar-label">工程分布</div>
@@ -538,7 +540,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.012';
+const APP_VERSION='2026.09.17.013';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1704,19 +1706,12 @@ function updateSidebar(){
     `<span class="sb-chip">${shotCount} shots</span>`+
     (memberCount>0?`<span class="sb-chip">${memberCount} members</span>`:'');
   const done = DATA.shots.filter(s=>s.stages.length>0 && s.stages.every(st=>st.isDone)).length;
-  const late = DATA.shots.filter(s=>s.stages.some(st=>{
-    if(!st.plannedEnd) return false;
-    if(st.actualEnd && st.actualEnd>st.plannedEnd && !st.isDone) return true;
-    if(!st.actualEnd && new Date()>st.plannedEnd && st.actualStart) return true;
-    return false;
-  })).length;
   const progress = shotCount>0 ? Math.round((done/shotCount)*100) : 0;
   const cells = document.querySelectorAll('.sb-cell');
   if(cells[0]) cells[0].innerHTML = `<div class="n">${progress}<span class="u">%</span></div><div class="l">進捗</div>`;
   if(cells[1]) cells[1].innerHTML = `<div class="n">${done}<span class="u">/${shotCount}</span></div><div class="l">完了</div>`;
-  if(cells[2]) cells[2].innerHTML = `<div class="n">${late}</div><div class="l">遅延</div>`;
   const daysLeft = DATA.timeline.end ? Math.max(0, Math.round((DATA.timeline.end - new Date())/86400000)) : 0;
-  if(cells[3]) cells[3].innerHTML = `<div class="n">${daysLeft}<span class="u">日</span></div><div class="l">残</div>`;
+  if(cells[2]) cells[2].innerHTML = `<div class="n">${daysLeft}<span class="u">日</span></div><div class="l">残</div>`;
 
   /* ========== 分布ドーナツ（LayCAT の進捗タブと同じ semantics）========== */
   renderStageDonut();
