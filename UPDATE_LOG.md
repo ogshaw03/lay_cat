@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.17.007) **Simple B P5：ショット新規作成で工程フォルダ設定を省略可能に**：
+  - ショット追加ダイアログの「⚙ 各フォルダ内に作成する工程」を **省略可** に変更。工程を追加しなければ、ショットは単一 `review` ノード（Simple B ショット）として作成される。
+  - 作成時の初期 `currentStage` は `root.stages[0]`（プロジェクト共通の工程セット）が自動セット。
+  - 工程を明示的に追加した場合は従来通り `section + review 子` の旧モデルで作成（後方互換）。
+  - 親の `stages` を継承していた初期値もクリア（意図せぬ多工程フォルダ生成を防ぐ）。
+  - APP_VERSION：2026.09.17.006 → 2026.09.17.007
+
 - (dev v2026.09.17.006) **Simple B P1〜P4：`review` ノードそのものをショットとして扱う軽量統合**：v.005 の `type:'shot'` 新型ノード方針を撤回し、既存の `type:'review'` にオプショナルなショット系フィールドを乗せる方針に変更（数日規模の refactor → 半日規模の実装）。
   - **P1 revert**：v.005 で入れた `type:'shot'` 分岐・`renderShotBody` スタブ・スキーマ長文コメント・`isNewShot` を削除。ルーターは元通り `review/section` の 2 分岐のみ。
   - **P2 currentStage フィールド**：`review` ノードに以下を追加可能（未定義でも動作）
@@ -1971,6 +1978,12 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.09.17.015) **Simple B P6：pmboard を Simple B ショットに対応**：LayCAT の Simple B ショット（`type:'review'` + `currentStage`）を pmboard がロード・表示できるよう対応。
+  - **shot 検出拡張**：`isLegacyShot`（section + review 子）に加え `isSimpleShot`（review + `currentStage` or `stageHistory`）を追加。両方を DATA.shots に取り込む。
+  - **stages 展開**：Simple B ショットは自身を stage=1 個として展開。`stageName = k.currentStage || root.stages[0] || k.name` から `classifyStage/stageColor` を導出。
+  - **後方互換**：旧モデル（section+review 子）は従来通りの経路を維持、切替は shot section の type 判定のみ。
+  - APP_VERSION：2026.09.17.014 → 2026.09.17.015
 
 - (dev v2026.09.17.014) **クライアント待ちの期間を実績バーから除外（work セグメント分割）**：LayCAT 側で「☑ クライアント待ち」を付けたステータスを検出し、`isStatusClientWait` を追加。
   - **workSegments 導出**：`history` を時系列に走査して「作業状態（＝pending でも clientWait でも done でもない）」の区間だけを `{start, end}` 配列に切り出す。クライアント待ちに切り替わった瞬間にセグメントを閉じ、再び作業ステータスに戻ったら新しいセグメントを開く。

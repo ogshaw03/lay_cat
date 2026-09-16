@@ -540,7 +540,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.014';
+const APP_VERSION='2026.09.17.015';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -773,12 +773,17 @@ async function loadProjectData(){
   const projStatuses = (root&&Array.isArray(root.statuses)&&root.statuses.length)?root.statuses:[];
   DATA.project.statuses = projStatuses;
 
-  /* Shot section を判定：type='section' で子が全て 'review' な非ルート */
+  /* Shot 判定：
+     - 旧モデル：type='section' で子が全て 'review' な非ルート
+     - Simple B 新モデル：type='review' で親を持ち、currentStage または stageHistory を持つ単体レビュー
+       （＝子ではなくそれ自体がショット） */
   const kidsOf = id => allNodes.filter(n=>n.parentId===id);
-  const isShot = n => n && n.type==='section' && n.parentId
+  const isLegacyShot = n => n && n.type==='section' && n.parentId
     && kidsOf(n.id).length>0
     && kidsOf(n.id).every(x=>x.type==='review');
-  const shotSections = allNodes.filter(isShot);
+  const isSimpleShot = n => n && n.type==='review' && n.parentId
+    && (n.currentStage!==undefined || (Array.isArray(n.stageHistory) && n.stageHistory.length));
+  const shotSections = allNodes.filter(n=>isLegacyShot(n)||isSimpleShot(n));
 
   /* shots/*.json を並列読み込み */
   const shotFiles = await Promise.all(shotSections.map(async s => {
@@ -806,18 +811,26 @@ async function loadProjectData(){
 
   const shots = [];
   for(const {section, file} of shotFiles){
-    /* section 直下の review 子を取得（shot ファイルがあれば優先、なければ skeleton） */
-    const kids = (file && Array.isArray(file.nodes))
-      ? file.nodes.filter(n=>n && n.parentId===section.id && n.type==='review')
-      : kidsOf(section.id).filter(n=>n.type==='review');
+    /* Simple B（section.type==='review'）は section 自体を工程とみなす。
+       旧モデル（section.type==='section'）は子 review を工程列として扱う（従来通り）。 */
+    const isSimpleBShot = section.type==='review';
+    const kids = isSimpleBShot
+      ? [ (file && Array.isArray(file.nodes) && file.nodes.find(n=>n && n.id===section.id)) || section ]
+      : ((file && Array.isArray(file.nodes))
+          ? file.nodes.filter(n=>n && n.parentId===section.id && n.type==='review')
+          : kidsOf(section.id).filter(n=>n.type==='review'));
     const sched = scheduleMap[section.id] || {};
     const schedStages = Array.isArray(sched.stages)?sched.stages:[];
     /* この shot の工程名リストを取得（node.stages 優先、なければ root.stages / stageTemplates） */
     const projectStages = projectStageNames(section, root);
     const stages = kids.map(k=>{
-      const kind = classifyStage(k.name);
-      const label = stageLabel(kind, k.name);
-      const color = stageColor(kind, k.name, projectStages);
+      /* Simple B の場合、k は shot 自身。工程名は k.currentStage（未設定なら root.stages[0] か shot 名）。 */
+      const stageName = isSimpleBShot
+        ? (k.currentStage || (projectStages && projectStages[0]) || k.name)
+        : k.name;
+      const kind = classifyStage(stageName);
+      const label = stageLabel(kind, stageName);
+      const color = stageColor(kind, stageName, projectStages);
       const ss = schedStages.find(x=>x.stageId===k.id) || {};
       const plannedStart = ss.plannedStart ? parseIsoDateJst(ss.plannedStart) : null;
       const plannedEnd = ss.plannedEnd ? parseIsoDateJst(ss.plannedEnd) : null;

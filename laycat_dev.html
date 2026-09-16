@@ -3629,7 +3629,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.17.006';
+const APP_VERSION='2026.09.17.007';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8835,13 +8835,14 @@ function openAddModal(parentId,initialType,role){
     seqCb.onchange=()=>{seqFields.style.display=seqCb.checked?'flex':'none';nameLab.textContent=seqCb.checked?'ベース名（例: cut → cut010, cut020 …）':(cur?'名前 / ベース名（例: ショット01 / cut）':'プロジェクト名');updPrev()};
     inner.appendChild(seqTop);inner.appendChild(seqFields);inner.appendChild(prev);
     /* 作成する各フォルダ内の工程（親の設定を初期値に、その場で編集可）
-       ＋ プロジェクト設定で作った工程テンプレートから一発適用も可能 */
+       ＋ プロジェクト設定で作った工程テンプレートから一発適用も可能。
+       Simple B：工程を追加しなくても OK（省略時は「1 ショット＝1 ページ」の単一 review モードで作成される）。 */
     stgSection=el('div');
     stgSection.style.cssText='margin-top:14px;padding-top:14px;border-top:1px solid var(--border)';
     const _stgHead=el('div');_stgHead.style.cssText='font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:8px';
-    _stgHead.appendChild(document.createTextNode('⚙ 各フォルダ内に作成する工程'));
+    _stgHead.appendChild(document.createTextNode('⚙ 各フォルダ内に作成する工程（省略可）'));
     stgSection.appendChild(_stgHead);
-    stgSection.appendChild(el('div','form-label','（プロジェクトの工程テンプレートを一発適用するか、その場で追加／削除できます）'));
+    stgSection.appendChild(el('div','form-label','工程を追加しなければ、ショットは 1 ページに統合される新モデル（推奨）で作成されます。工程はプロジェクト設定の「工程セット」（root.stages）から後で切替可能。'));
     /* テンプレート適用プルダウン（プロジェクトルートの stageTemplates から拾う） */
     const _rootForTpl=cur?rootOf(cur):null;
     const _templates=_rootForTpl?projectStageTemplates(_rootForTpl):[];
@@ -8857,7 +8858,10 @@ function openAddModal(parentId,initialType,role){
       stgSection.appendChild(applyRow);
     }
     const stgWrap=el('div','step-grid');stgSection.appendChild(stgWrap);
-    let stgArr=(cur&&Array.isArray(cur.stages)?cur.stages.slice():[]).map(x=>typeof x==='string'?x:(x&&x.name)||'');
+    /* Simple B：デフォルトは工程なし（＝単一 review モードで作成）。親の stages を継承せず、
+       ユーザーがテンプレート適用や「＋ 工程を追加」で明示的に指定した時だけ旧モデル（section+
+       子 review）として作成する。 */
+    let stgArr=[];
     const redrawStg=()=>{
       stgWrap.innerHTML='';
       stgArr.forEach((nm,i)=>{
@@ -8902,13 +8906,23 @@ function openAddModal(parentId,initialType,role){
          フォールバックとして「これはエピソード」「これはショット」の印を残す。role/raw から確定できる場合のみ。 */
       const kindHint=(raw==='episode'||role==='episode')?'episode'
                     :((raw==='cut'||role==='cut'||(type==='section'&&role==='in-episode'))?'cut':null);
+      /* Simple B：ショット相当（wantStages=true）で工程が空なら、単一 review ノードとして作成。
+         工程が指定されていれば従来通り section+review 子。それ以外（エピソード・作業ページ）は type そのまま。 */
+      const simpleShot=(wantStages && stages.length===0);
+      const createType=simpleShot?'review':type;
       const createdIds=[];
       for(const nm of names){
-        const id=addNode(parentId,nm,names.length===1?descRow.f.value.trim():'',type);
+        const id=addNode(parentId,nm,names.length===1?descRow.f.value.trim():'',createType);
         createdIds.push(id);
         const nd=getNode(id);
         if(kindHint)nd.kind=kindHint;
-        if(stages.length){for(const st of stages)addNode(id,st,'','review');nd.stages=stages.slice()}
+        if(simpleShot){
+          /* 新モデル：currentStage の初期値を root.stages[0] に */
+          const _list=projStageList(rootOf(nd));
+          if(_list.length) nd.currentStage=_list[0];
+        }else if(stages.length){
+          for(const st of stages)addNode(id,st,'','review');nd.stages=stages.slice();
+        }
       }
       await persist();closeModal();if(parentId)state.expanded.add(parentId);render();resolveThumbs();
       if(names.length>1)toast(names.length+'件を作成しました');
