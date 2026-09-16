@@ -117,6 +117,17 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .sb-stage-progress .row .bar .fill{position:absolute;top:0;bottom:0;left:0;border-radius:3px}
 .sb-empty{color:var(--text3);font-size:11px;padding:6px 4px}
 
+/* LayCAT 進捗タブと同じドーナツ + 集計表（サイドバー用にコンパクト化） */
+.sb-donut-block{padding:0 4px;display:flex;flex-direction:column;gap:6px;align-items:center}
+.sb-donut-block canvas{display:block;max-width:100%}
+.sb-dtbl{width:100%;font-size:11px;border-collapse:collapse;margin-top:2px}
+.sb-dtbl td{padding:3px 4px;border-bottom:1px solid var(--border);vertical-align:middle}
+.sb-dtbl tr:last-child td{border-bottom:none}
+.sb-dtbl td.lbl{color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+.sb-dtbl td.lbl .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.sb-dtbl td.cnt{font-family:var(--font-code);color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
+.sb-dtbl td.pct{font-family:var(--font-code);color:var(--text3);text-align:right;font-variant-numeric:tabular-nums;font-size:10px}
+
 /* ステータス内訳（各ステータスにいくつのショットがあるか） */
 .sb-status-list{padding:0 4px;display:flex;flex-direction:column;gap:4px}
 .sb-status-list .row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);padding:3px 4px;border-radius:4px}
@@ -346,13 +357,22 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
     <div class="sb-cell"><div class="n">21<span class="u">日</span></div><div class="l">残</div></div>
   </div>
 
-  <div class="sidebar-label">工程進捗</div>
-  <div class="sb-stage-progress" id="sbStageProgress">
-    <div class="sb-empty">プロジェクトを選択</div>
+  <div class="sidebar-label">工程分布</div>
+  <div class="sb-donut-block" id="sbStageDonutBlock">
+    <canvas id="sbStageDonut" width="150" height="150"></canvas>
+    <table class="sb-dtbl" id="sbStageDonutTbl"></table>
+    <div class="sb-empty" id="sbStageDonutEmpty">プロジェクトを選択</div>
   </div>
 
-  <div class="sidebar-label">ステータス内訳</div>
-  <div class="sb-status-list" id="sbStatusList">
+  <div class="sidebar-label">ステータス分布</div>
+  <div class="sb-donut-block" id="sbStatusDonutBlock">
+    <canvas id="sbStatusDonut" width="150" height="150"></canvas>
+    <table class="sb-dtbl" id="sbStatusDonutTbl"></table>
+    <div class="sb-empty" id="sbStatusDonutEmpty">プロジェクトを選択</div>
+  </div>
+
+  <div class="sidebar-label">工程進捗（完了率）</div>
+  <div class="sb-stage-progress" id="sbStageProgress">
     <div class="sb-empty">プロジェクトを選択</div>
   </div>
 
@@ -509,7 +529,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.007';
+const APP_VERSION='2026.09.17.008';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1638,6 +1658,9 @@ function updateSidebar(){
   const daysLeft = DATA.timeline.end ? Math.max(0, Math.round((DATA.timeline.end - new Date())/86400000)) : 0;
   if(cells[3]) cells[3].innerHTML = `<div class="n">${daysLeft}<span class="u">日</span></div><div class="l">残</div>`;
 
+  /* ========== 分布ドーナツ（LayCAT の進捗タブと同じ semantics）========== */
+  renderStageDonut();
+  renderStatusDonut();
   /* ========== 工程進捗（工程ごとの完了率） ========== */
   renderStageProgress(root);
   /* ========== ステータス内訳（LayCAT の統計と同じ算出） ========== */
@@ -1646,6 +1669,116 @@ function updateSidebar(){
   renderStageList(root);
   /* ========== フィルタドロップダウン更新 ========== */
   renderFilters(root);
+}
+
+/* =========== ドーナツ描画（LayCAT drawDonut 相当） =========== */
+function resolveColor(c){
+  if(!c || typeof c !== 'string') return '#888';
+  const m = c.match(/var\((--[^)]+)\)/);
+  if(m){
+    const v = getComputedStyle(document.body).getPropertyValue(m[1]).trim();
+    return v || '#888';
+  }
+  return c;
+}
+function drawDonut(canvas, rows, total){
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const cx = W/2, cy = H/2, rO = Math.min(W,H)/2 - 4, rI = rO*0.6, START = -Math.PI/2;
+  const bg2 = getComputedStyle(document.body).getPropertyValue('--bg2').trim() || '#141416';
+  const text = getComputedStyle(document.body).getPropertyValue('--text').trim() || '#e8e8ec';
+  const text3 = getComputedStyle(document.body).getPropertyValue('--text3').trim() || '#8a8a9a';
+  if(!total){
+    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = rO - rI;
+    ctx.beginPath(); ctx.arc(cx, cy, (rO+rI)/2, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = text3; ctx.textAlign='center'; ctx.font='11px system-ui, sans-serif';
+    ctx.fillText('データなし', cx, cy+4);
+    return;
+  }
+  let a = START;
+  for(const r of rows){
+    if(!r.count) continue;
+    const frac = r.count / total;
+    const a2 = a + frac*Math.PI*2;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx, cy, rO, a, a2); ctx.closePath();
+    ctx.fillStyle = resolveColor(r.color);
+    ctx.fill();
+    a = a2;
+  }
+  /* 中央くり抜き */
+  ctx.beginPath(); ctx.arc(cx, cy, rI, 0, Math.PI*2);
+  ctx.fillStyle = bg2; ctx.fill();
+  /* 総数・ラベル */
+  ctx.fillStyle = text; ctx.textAlign='center';
+  ctx.font = '700 22px "Space Grotesk", "Noto Sans JP", system-ui, sans-serif';
+  ctx.fillText(String(total), cx, cy);
+  ctx.font = '10px "Noto Sans JP", system-ui, sans-serif'; ctx.fillStyle = text3;
+  ctx.fillText('ショット', cx, cy+14);
+}
+
+/* ショットごとの「現在の工程」（LayCAT 進捗タブと同 semantics）：
+   工程順で最後に status が set されている工程を採用。無ければ null（未着手）。 */
+function shotCurrentStage(shot){
+  const touched = shot.stages.filter(st => st.history && st.history.length && st.history.some(h=>h && h.to));
+  if(!touched.length) return null;
+  return touched[touched.length-1];
+}
+
+function renderStageDonut(){
+  const canvas = document.getElementById('sbStageDonut');
+  const tbl = document.getElementById('sbStageDonutTbl');
+  const empty = document.getElementById('sbStageDonutEmpty');
+  if(!canvas || !tbl || !empty) return;
+  /* stage 分布：各ショットの「現在の工程」をラベル別に集計 */
+  const byLabel = new Map();
+  let noneCount = 0;
+  for(const shot of DATA.shots){
+    const cur = shotCurrentStage(shot);
+    if(!cur){ noneCount++; continue; }
+    const key = cur.label || '?';
+    if(!byLabel.has(key)) byLabel.set(key, {id:key, label:key, color:cur.color, count:0});
+    byLabel.get(key).count++;
+  }
+  const rows = Array.from(byLabel.values());
+  if(noneCount) rows.push({id:'__none__', label:'未着手', color:'#5a5a6a', count:noneCount});
+  const total = DATA.shots.length;
+  if(!total){ empty.style.display='block'; canvas.style.display='none'; tbl.innerHTML=''; return; }
+  empty.style.display='none'; canvas.style.display='block';
+  drawDonut(canvas, rows, total);
+  tbl.innerHTML = rows.map(r=>{
+    const pct = total>0 ? Math.round(r.count/total*100) : 0;
+    return `<tr><td class="lbl"><span class="sw" style="background:${resolveColor(r.color)}"></span>${escapeHtml(r.label)}</td><td class="cnt">${r.count}</td><td class="pct">${pct}%</td></tr>`;
+  }).join('');
+}
+
+function renderStatusDonut(){
+  const canvas = document.getElementById('sbStatusDonut');
+  const tbl = document.getElementById('sbStatusDonutTbl');
+  const empty = document.getElementById('sbStatusDonutEmpty');
+  if(!canvas || !tbl || !empty) return;
+  const statuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
+  /* LayCAT と同じく「ショットの現在の工程の status」で集計 */
+  const rows = statuses.map(s=>({id:s.id, label:s.label||s.id, color:s.color||'#5a5a6a', count:0}));
+  const byId = Object.fromEntries(rows.map(r=>[r.id, r]));
+  let noneCount = 0;
+  for(const shot of DATA.shots){
+    const cur = shotCurrentStage(shot);
+    const sid = cur ? cur.currentStatus : null;
+    if(!sid){ noneCount++; continue; }
+    if(byId[sid]) byId[sid].count++;
+    else noneCount++;
+  }
+  if(noneCount) rows.push({id:'__none__', label:'未着手', color:'#5a5a6a', count:noneCount});
+  const total = DATA.shots.length;
+  if(!total){ empty.style.display='block'; canvas.style.display='none'; tbl.innerHTML=''; return; }
+  empty.style.display='none'; canvas.style.display='block';
+  drawDonut(canvas, rows, total);
+  tbl.innerHTML = rows.map(r=>{
+    const pct = total>0 ? Math.round(r.count/total*100) : 0;
+    return `<tr><td class="lbl"><span class="sw" style="background:${resolveColor(r.color)}"></span>${escapeHtml(r.label)}</td><td class="cnt">${r.count}</td><td class="pct">${pct}%</td></tr>`;
+  }).join('');
 }
 
 /* 工程進捗：各工程種類（layout/anim/...）ごとに、実績で完了したものの割合 */
