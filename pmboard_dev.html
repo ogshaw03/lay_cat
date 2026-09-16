@@ -173,7 +173,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-body{position:relative}
 /* コンパクト 1 行レイアウト：ショット名のみを表示して縦を締める。
    工程数・ロールアップ chip・工程バッジ・担当者バッジは default では非表示（tooltip で確認可）。 */
-.gantt-row{display:grid;grid-template-columns:220px 1fr;border-bottom:1px solid var(--border);min-height:26px}
+.gantt-row{display:grid;grid-template-columns:220px 1fr;border-bottom:1px solid var(--border);min-height:34px}
 .gantt-row:hover{background:rgba(255,255,255,.03)}
 .gantt-row .shot{padding:4px 12px;border-right:1px solid var(--border);display:flex;flex-direction:row;align-items:center;gap:6px;position:sticky;left:0;background:var(--bg2);z-index:2;overflow:hidden}
 .gantt-row:hover .shot{background:var(--bg3)}
@@ -190,11 +190,11 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .st-chip.plan{background:rgba(214,169,95,.13);border-color:rgba(214,169,95,.42);color:var(--amber)}
 .st-chip.noplan{background:var(--bg3);border-color:var(--border);color:var(--text3)}
 
-.gantt-row .track{position:relative;height:100%;padding:0;min-height:26px}
+.gantt-row .track{position:relative;height:100%;padding:0;min-height:34px}
 .gantt-row .track .day{position:absolute;top:0;bottom:0;border-right:1px solid rgba(255,255,255,.02)}
 .gantt-row .track .day.wknd{background:rgba(255,255,255,.015)}
-/* コンパクト行に合わせて plan/actual を 1 行内に上下スタック（各 9px 帯） */
-.gantt-row .track .seg-plan{position:absolute;top:3px;height:9px;border:1px dashed;border-radius:var(--radius2);overflow:visible;cursor:grab;user-select:none}
+/* コンパクト行に合わせて plan/actual を 1 行内に上下スタック（各 12px 帯） */
+.gantt-row .track .seg-plan{position:absolute;top:4px;height:12px;border:1px dashed;border-radius:var(--radius2);overflow:visible;cursor:grab;user-select:none}
 .gantt-row .track .seg-plan:hover{filter:brightness(1.4)}
 .gantt-row .track .seg-plan.dragging{cursor:grabbing;filter:brightness(1.6);z-index:5}
 /* プレースホルダ：予定未設定 → 破線＋薄い（ドラッグで実プランに変わる） */
@@ -209,11 +209,11 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* ドラッグ中のツールチップ */
 .drag-tip{position:fixed;z-index:1000;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius2);padding:6px 10px;font-size:11px;color:var(--text);font-family:var(--font-code);white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.5);pointer-events:none}
 .drag-tip .lbl{color:var(--text3);font-size:10px;margin-right:6px;letter-spacing:.5px}
-.gantt-row .track .seg-actual{position:absolute;top:14px;height:9px;border-radius:var(--radius2)}
+.gantt-row .track .seg-actual{position:absolute;top:18px;height:12px;border-radius:var(--radius2)}
 .gantt-row .track .seg-actual.wip{border-right:1px dashed rgba(255,255,255,.35)}
 .gantt-row .track .seg-actual.late{outline:1px solid rgba(224,106,106,.5)}
-.gantt-row .track .seg-actual .seg-actual-lbl{position:absolute;right:5px;top:0;bottom:0;display:flex;align-items:center;font-size:8px;color:#16161a;font-family:var(--font-code);font-weight:700;letter-spacing:.2px;white-space:nowrap}
-.gantt-row .track .milestone{position:absolute;top:8px;width:8px;height:8px;background:var(--amber);transform:rotate(45deg);z-index:3}
+.gantt-row .track .seg-actual .seg-actual-lbl{position:absolute;right:5px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;color:#16161a;font-family:var(--font-code);font-weight:700;letter-spacing:.2px;white-space:nowrap}
+.gantt-row .track .milestone{position:absolute;top:11px;width:10px;height:10px;background:var(--amber);transform:rotate(45deg);z-index:3}
 
 .gantt-today{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed var(--red);z-index:3;pointer-events:none}
 .gantt-today .lbl{position:absolute;top:2px;left:4px;font-size:9px;color:var(--red);font-family:var(--font-code);font-weight:700;letter-spacing:.5px;background:var(--bg);padding:1px 5px;border-radius:3px;border:1px solid rgba(224,106,106,.4)}
@@ -507,7 +507,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.002';
+const APP_VERSION='2026.09.17.003';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
