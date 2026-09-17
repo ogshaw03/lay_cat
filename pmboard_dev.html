@@ -395,6 +395,14 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
     <div class="sb-empty" id="sbStatusDonutEmpty">プロジェクトを選択</div>
   </div>
 
+  <div class="sidebar-label">担当者分布</div>
+  <div class="sb-donut-block" id="sbAssigneeDonutBlock">
+    <div class="sb-filter-note" id="sbAssigneeDonutLabel" style="display:none"></div>
+    <canvas id="sbAssigneeDonut" width="150" height="150"></canvas>
+    <table class="sb-dtbl" id="sbAssigneeDonutTbl"></table>
+    <div class="sb-empty" id="sbAssigneeDonutEmpty">プロジェクトを選択</div>
+  </div>
+
   <div class="sidebar-label">工程進捗（完了率）</div>
   <div class="sb-stage-progress" id="sbStageProgress">
     <div class="sb-empty">プロジェクトを選択</div>
@@ -552,7 +560,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.011';
+const APP_VERSION='2026.09.18.012';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2031,6 +2039,7 @@ function updateSidebar(){
   /* ========== 分布ドーナツ（LayCAT の進捗タブと同じ semantics）========== */
   renderStageDonut();
   renderStatusDonut();
+  renderAssigneeDonut();
   /* ========== 工程進捗（工程ごとの完了率） ========== */
   renderStageProgress(root);
   /* ========== ステータス内訳（LayCAT の統計と同じ算出） ========== */
@@ -2246,6 +2255,7 @@ function renderStageDonut(){
     else{ DATA.stageFilter = (DATA.stageFilter===row.id) ? null : row.id; }
     renderStageDonut();
     renderStatusDonut();
+    renderAssigneeDonut();
   };
   drawDonut(canvas, rows, total, {onPick, highlightId:activeId});
   tbl.innerHTML = rows.map(r=>{
@@ -2295,6 +2305,71 @@ function renderStatusDonut(){
     }else{
       label.style.display='none';
     }
+  }
+  if(!total){
+    empty.textContent = filter ? `工程「${filter}」に該当するショットがありません` : 'プロジェクトを選択';
+    empty.style.display='block'; canvas.style.display='none'; tbl.innerHTML='';
+    return;
+  }
+  empty.style.display='none'; canvas.style.display='block';
+  drawDonut(canvas, rows, total);
+  tbl.innerHTML = rows.map(r=>{
+    const pct = total>0 ? Math.round(r.count/total*100) : 0;
+    return `<tr><td class="lbl"><span class="sw" style="background:${resolveColor(r.color)}"></span>${escapeHtml(r.label)}</td><td class="cnt">${r.count}</td><td class="pct">${pct}%</td></tr>`;
+  }).join('');
+}
+
+/* 担当者分布ドーナツ：各ショットの「現在の工程」の assignee を集計。
+   ・stageFilter が指定されていれば、その工程を現在工程とするショットだけに絞り込み
+     （＝サイドバー上部の工程分布ドーナツクリックと連動）
+   ・メンバー色は root.members[i].color を優先、無ければ名前ハッシュのパレットを割当
+   ・assignee 未設定は「未割当」バケットに */
+function renderAssigneeDonut(){
+  const canvas = document.getElementById('sbAssigneeDonut');
+  const tbl = document.getElementById('sbAssigneeDonutTbl');
+  const empty = document.getElementById('sbAssigneeDonutEmpty');
+  const label = document.getElementById('sbAssigneeDonutLabel');
+  if(!canvas || !tbl || !empty) return;
+  const nodes = (DATA.project&&DATA.project.nodes)||[];
+  const root = nodes.find(n=>n.id===(DATA.project&&DATA.project.id)) || nodes.find(n=>!n.parentId);
+  const members = (root && Array.isArray(root.members)) ? root.members : [];
+  const memById = {}; for(const m of members){ if(m && m.id) memById[m.id]=m; }
+  /* 名前ハッシュでフォールバック色を決める */
+  const fallbackPalette = ['#4a90d9','#5fb878','#e8a838','#d9734a','#9b6dd6','#46c4b8','#d96d9e','#c5c043','#6dbcd6','#a68cff'];
+  const colorForMember = (id, name) => {
+    const m = memById[id];
+    if(m && m.color) return m.color;
+    let h=0; for(const c of (id||name||'?')) h+=c.charCodeAt(0);
+    return fallbackPalette[h % fallbackPalette.length];
+  };
+  const filter = DATA.stageFilter;
+  let filteredTotal = 0;
+  const byAsg = new Map(); /* id -> {id, label, color, count} */
+  let noneCount = 0;
+  for(const shot of DATA.shots){
+    const cur = shotCurrentStage(shot);
+    if(filter){
+      const key = cur ? (cur.stageName || cur.label || '?') : null;
+      if(key !== filter) continue;
+    }
+    filteredTotal++;
+    const asg = cur ? cur.assignee : null;
+    if(!asg){ noneCount++; continue; }
+    const key = String(asg);
+    if(!byAsg.has(key)){
+      const m = memById[asg];
+      const nm = (m && (m.name||m.id)) || asg;
+      byAsg.set(key, {id:key, label:nm, color:colorForMember(asg, nm), count:0});
+    }
+    byAsg.get(key).count++;
+  }
+  /* 名前でソート */
+  const rows = Array.from(byAsg.values()).sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''), 'ja'));
+  if(noneCount) rows.push({id:'__none__', label:'未割当', color:'#5a5a6a', count:noneCount});
+  const total = filteredTotal;
+  if(label){
+    if(filter){ label.textContent = `工程「${filter}」 ${total} ショット`; label.style.display=''; }
+    else { label.style.display='none'; }
   }
   if(!total){
     empty.textContent = filter ? `工程「${filter}」に該当するショットがありません` : 'プロジェクトを選択';
