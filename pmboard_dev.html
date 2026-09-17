@@ -163,8 +163,12 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .ptab.on .cnt{color:var(--text);border-color:var(--border2)}
 
 .content{flex:1;overflow:hidden;position:relative}
-.pane{position:absolute;inset:0;overflow:auto;padding:16px 20px;display:none}
+/* padding-top を pane 自体には持たせず、擬似要素でスペースを作る。
+   これで position:sticky な `.gantt-hdr` が padding-top 分の余白の上に
+   浮いてしまう（＝スクロール時に日付の上に空白が出る）現象を解消。 */
+.pane{position:absolute;inset:0;overflow:auto;padding:0 20px 16px;display:none}
 .pane.on{display:block}
+.pane.on::before{content:'';display:block;height:16px}
 
 /* サブタブ列（メインタブの一段下・スケジュールタブでのみ表示） */
 .sub-tabs{display:flex;gap:2px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
@@ -183,9 +187,15 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* =========== GANTT =========== */
 /* overflow:hidden / clip にすると `.gantt-hdr` の position:sticky が `.gantt` 自身に
    対して効いてしまい、`.pane` の縦スクロールで日付ヘッダが上に隠れる。visible にして
-   sticky を `.pane` に対して働かせる。角丸のはみ出しは content 側で自然に収まる。 */
-.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:relative}
-.gantt-hdr{display:grid;grid-template-columns:220px 1fr;background:var(--bg3);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+   sticky を `.pane` に対して働かせる。角丸のはみ出しは content 側で自然に収まる。
+   --shot-col-w：ショット列の幅（ユーザーがドラッグでリサイズ可能）。 */
+.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:relative;--shot-col-w:220px}
+.gantt-hdr{display:grid;grid-template-columns:var(--shot-col-w) 1fr;background:var(--bg3);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+.gantt-hdr .lbl{position:relative}
+/* ショット列と工程列の境界に置くリサイズハンドル。ヘッダ側だけに置くが、
+   全行の grid-template-columns が同じ変数を使うので、ドラッグで全行の幅が同時に変わる。 */
+.gantt-hdr .lbl .col-resizer{position:absolute;top:0;bottom:0;right:-4px;width:8px;cursor:col-resize;z-index:6}
+.gantt-hdr .lbl .col-resizer:hover,.gantt-hdr .lbl .col-resizer.resizing{background:linear-gradient(90deg,transparent 3px,rgba(255,255,255,.35) 3px 5px,transparent 5px)}
 .gantt-hdr .lbl{padding:11px 14px;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;border-right:1px solid var(--border)}
 .gantt-hdr .timeline{position:relative;overflow:hidden}
 .gantt-hdr .timeline .weeks{display:flex;font-family:var(--font-code);font-size:10px;color:var(--text3);letter-spacing:.5px;height:22px;align-items:center;border-bottom:1px solid var(--border)}
@@ -197,7 +207,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-body{position:relative}
 /* コンパクト 1 行レイアウト：ショット名のみを表示して縦を締める。
    工程数・ロールアップ chip・工程バッジ・担当者バッジは default では非表示（tooltip で確認可）。 */
-.gantt-row{display:grid;grid-template-columns:220px 1fr;border-bottom:1px solid var(--border);min-height:34px}
+.gantt-row{display:grid;grid-template-columns:var(--shot-col-w,220px) 1fr;border-bottom:1px solid var(--border);min-height:34px}
 .gantt-row:hover{background:rgba(255,255,255,.03)}
 .gantt-row .shot{padding:4px 12px;border-right:1px solid var(--border);display:flex;flex-direction:row;align-items:center;gap:6px;position:sticky;left:0;background:var(--bg2);z-index:2;overflow:hidden}
 .gantt-row:hover .shot{background:var(--bg3)}
@@ -459,7 +469,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
       <nav class="sub-tabs" id="subTabs"></nav>
       <div class="gantt">
         <div class="gantt-hdr">
-          <div class="lbl" id="ganttLeftLbl">Shot</div>
+          <div class="lbl" id="ganttLeftLbl">Shot<div class="col-resizer" id="shotColResizer" title="ドラッグでショット列の幅を変更"></div></div>
           <div class="timeline" id="timelineHdr"></div>
         </div>
         <div class="gantt-body" id="ganttBody"></div>
@@ -567,7 +577,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.014';
+const APP_VERSION='2026.09.18.015';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1252,13 +1262,17 @@ async function onAddCustomSchedule(){
   rebuildActiveView();
 }
 function rebuildActiveView(){
-  if(DATA.currentSubTab === 'shots'){
-    document.getElementById('ganttLeftLbl').textContent = 'Shot';
-    buildGantt();
-  }else{
-    document.getElementById('ganttLeftLbl').textContent = '工程';
-    buildCustomGantt(DATA.currentSubTab);
+  /* ラベルテキストのみ差し替え（子の .col-resizer を消さないよう TextNode を書き換え） */
+  const lbl = document.getElementById('ganttLeftLbl');
+  if(lbl){
+    const txt = DATA.currentSubTab === 'shots' ? 'Shot' : '工程';
+    /* 既存テキストノードを探して更新／無ければ先頭に挿入 */
+    let tn = null;
+    for(const n of lbl.childNodes){ if(n.nodeType===3){ tn=n; break; } }
+    if(tn) tn.nodeValue = txt; else lbl.insertBefore(document.createTextNode(txt), lbl.firstChild);
   }
+  if(DATA.currentSubTab === 'shots') buildGantt();
+  else buildCustomGantt(DATA.currentSubTab);
 }
 
 /* =========== Gantt =========== */
@@ -1451,9 +1465,10 @@ function buildGantt(){
   const wrapper = body.parentElement;
   const marker = document.createElement('div');
   marker.className='gantt-today';
-  /* 220px は .gantt-row のショット列固定幅。トラック幅 = 100% - 220px なので
-     todayIdx 番目の日は (100% - 220px) * todayIdx / days 分だけ右に来る。 */
-  marker.style.left = `calc(220px + (100% - 220px) * ${todayIdx} / ${DATA.timeline.days})`;
+  /* .gantt-row のショット列固定幅は CSS 変数 --shot-col-w（default 220px）で管理。
+     トラック幅 = 100% - var(--shot-col-w)。ユーザーがドラッグでリサイズしても
+     追従する。 */
+  marker.style.left = `calc(var(--shot-col-w, 220px) + (100% - var(--shot-col-w, 220px)) * ${todayIdx} / ${DATA.timeline.days})`;
   const p = jstParts(new Date());
   marker.innerHTML = `<div class="lbl">TODAY ${p.m}/${p.d}</div>`;
   wrapper.appendChild(marker);
@@ -1547,7 +1562,7 @@ function buildCustomGantt(scheduleId){
   const wrapper = body.parentElement;
   const marker = document.createElement('div');
   marker.className='gantt-today';
-  marker.style.left = `calc(220px + (100% - 220px) * ${todayIdx} / ${DATA.timeline.days})`;
+  marker.style.left = `calc(var(--shot-col-w, 220px) + (100% - var(--shot-col-w, 220px)) * ${todayIdx} / ${DATA.timeline.days})`;
   const pjt = jstParts(new Date());
   marker.innerHTML = `<div class="lbl">TODAY ${pjt.m}/${pjt.d}</div>`;
   wrapper.appendChild(marker);
@@ -2690,6 +2705,43 @@ populateProjectPicker();
 initScheduleDrag();
 bindFilterEvents();
 updateFolderUI();
+
+/* ショット列幅を localStorage から復元（無ければ 220px）＋ リサイザドラッグを配線 */
+(function initShotColResizer(){
+  const gantt = document.querySelector('.gantt');
+  if(!gantt) return;
+  const saved = parseInt(localStorage.getItem('pmboard_shotColW')||'0', 10);
+  if(saved && saved>=120 && saved<=520) gantt.style.setProperty('--shot-col-w', saved+'px');
+  const rz = document.getElementById('shotColResizer');
+  if(!rz) return;
+  rz.addEventListener('mousedown', e=>{
+    e.preventDefault(); e.stopPropagation();
+    rz.classList.add('resizing');
+    const hdr = document.querySelector('.gantt-hdr');
+    const hdrRect = hdr.getBoundingClientRect();
+    const startW = hdr.querySelector('.lbl').getBoundingClientRect().width;
+    const startX = e.clientX;
+    const onMove = ev=>{
+      const dx = ev.clientX - startX;
+      let w = Math.round(startW + dx);
+      if(w<120) w=120;
+      if(w>Math.min(520, hdrRect.width-120)) w=Math.min(520, hdrRect.width-120);
+      gantt.style.setProperty('--shot-col-w', w+'px');
+      /* TODAY マーカ再配置（描画済みだと left が古い値のまま残るので、再ビルドで反映） */
+    };
+    const onUp = ()=>{
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      rz.classList.remove('resizing');
+      const w = parseInt(gantt.style.getPropertyValue('--shot-col-w')||'220', 10);
+      try{ localStorage.setItem('pmboard_shotColW', String(w)); }catch(_){}
+      /* TODAY マーカを再計算するため再描画 */
+      if(DATA.currentSubTab==='shots') buildGantt(); else buildCustomGantt(DATA.currentSubTab);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+})();
 
 /* 最終更新表示（JST）と 1 時間ごとの自動リロード。
    実績バーは actualEnd=null（未完了）のとき「今日 JST」まで伸長するため、

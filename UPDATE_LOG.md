@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.015) **スクロール時の日付ヘッダ上の隙間解消 + ショット列の幅をドラッグでリサイズ可能に**：
+  - **日付ヘッダの上の隙間**：`.pane` の `padding:16px 20px` によって sticky が padding-top 分下がって浮いていた。padding を `0 20px 16px` に変更し、pane の擬似要素 `::before` で 16px スペースを描く（スクロールで一緒に流れて消える）。これで sticky ヘッダが pane の viewport top ぴったりに固定される。
+  - **ショット列リサイズ**：CSS 変数 `--shot-col-w`（default 220px）で列幅を管理。`.gantt-hdr` の `.lbl`（Shot ラベル）に `.col-resizer` を追加、ドラッグで CSS 変数を更新（120px〜520px）。TODAY マーカ計算も CSS 変数対応。設定は `localStorage['pmboard_shotColW']` に保存され、次回リロードで復元。
+  - APP_VERSION：2026.09.18.014 → 2026.09.18.015
+
 - (dev v2026.09.18.014) **pmboard からショットのステータス変更ができるように + 日付ヘッダのスクロール固定**：
   - **ステータス変更**：ショット行の「現在の工程」チップの隣に「現在のステータスチップ」（色付き pill）を追加。クリックで status メニュー → 選択で LayCAT と同じ `status/{stageId}.json`（v:1 スキーマ）に書き込み。書き込む source は `'pmboard'`、`history[]` を append、`_rev++`。メモリ側の `st.currentStatus` / `st.isDone` / `st.history` も同期更新して即再描画。
   - **未設定 → 未設定に戻す**メニュー項目もあり、null で書き戻せる。
