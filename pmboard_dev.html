@@ -560,7 +560,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.012';
+const APP_VERSION='2026.09.18.013';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2346,6 +2346,18 @@ function renderAssigneeDonut(){
   let filteredTotal = 0;
   const byAsg = new Map(); /* id -> {id, label, color, count} */
   let noneCount = 0;
+  /* ショットの「担当者」を優先度付きで解決：
+       1) 現在の工程の assignee（最も具体的）
+       2) shot section 自身の assignee（ショット単位で振っている場合）
+       3) 何らかの工程の assignee（工程ごとにばらばらでも拾う） */
+  const resolveShotAssignee = (shot, cur) => {
+    if(cur && cur.assignee) return cur.assignee;
+    if(shot.sectionNode && shot.sectionNode.assignee) return shot.sectionNode.assignee;
+    for(const st of (shot.stages||[])){
+      if(st && st.assignee) return st.assignee;
+    }
+    return null;
+  };
   for(const shot of DATA.shots){
     const cur = shotCurrentStage(shot);
     if(filter){
@@ -2353,7 +2365,7 @@ function renderAssigneeDonut(){
       if(key !== filter) continue;
     }
     filteredTotal++;
-    const asg = cur ? cur.assignee : null;
+    const asg = resolveShotAssignee(shot, cur);
     if(!asg){ noneCount++; continue; }
     const key = String(asg);
     if(!byAsg.has(key)){
@@ -2365,7 +2377,27 @@ function renderAssigneeDonut(){
   }
   /* 名前でソート */
   const rows = Array.from(byAsg.values()).sort((a,b)=>String(a.label||'').localeCompare(String(b.label||''), 'ja'));
-  if(noneCount) rows.push({id:'__none__', label:'未割当', color:'#5a5a6a', count:noneCount});
+  if(noneCount){
+    rows.push({id:'__none__', label:'未割当', color:'#5a5a6a', count:noneCount});
+    /* デバッグ：未割当と判定されたショット名の一覧を console に出す */
+    try{
+      const noneShots = [];
+      for(const shot of DATA.shots){
+        const cur = shotCurrentStage(shot);
+        if(filter){
+          const key = cur ? (cur.stageName || cur.label || '?') : null;
+          if(key !== filter) continue;
+        }
+        if(!resolveShotAssignee(shot, cur)){
+          noneShots.push({shot:shot.sectionNode.name, curStage:cur?(cur.stageName||cur.label):null,
+                          curAsg:cur?cur.assignee:null,
+                          sectionAsg:shot.sectionNode.assignee||null,
+                          stagesAsg:shot.stages.map(s=>({n:s.stageName||s.label, a:s.assignee||null}))});
+        }
+      }
+      console.log('[pmboard] unassigned shots:', noneShots);
+    }catch(_){}
+  }
   const total = filteredTotal;
   if(label){
     if(filter){ label.textContent = `工程「${filter}」 ${total} ショット`; label.style.display=''; }
