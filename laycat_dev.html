@@ -3629,7 +3629,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.002';
+const APP_VERSION='2026.09.18.003';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6781,6 +6781,20 @@ function renderReviewBody(s,cur,opts){
   /* 同ショット内に複数工程があればプルダウン、無ければテキストで工程名を表示。
      プルダウン選択で他工程ページへ遷移（現在の工程は selected 状態で引き継ぎ）。 */
   const shotSec=(cur.parentId&&getNode(cur.parentId))||null;
+  /* Auto-sync：この作業ページを開いた瞬間、ショット section の currentStage を
+     「今表示している工程名」に同期させる。プルダウン切替以外のナビゲーション（ツリークリック・
+     ハッシュ直リンク・go() 経由）でも一貫して「現在の工程 = プルダウンが指す工程」となる。
+     shotSec が「shot section」（type=section で直下子が全て review）のときのみ書き込む。 */
+  if(shotSec && shotSec.type==='section' && shotSec.currentStage!==cur.name){
+    const _kids=DB.nodes.filter(n=>n.parentId===shotSec.id);
+    if(_kids.length>=1 && _kids.every(k=>k.type==='review')){
+      const _prev=shotSec.currentStage||null;
+      shotSec.currentStage=cur.name;
+      if(!Array.isArray(shotSec.stageHistory)) shotSec.stageHistory=[];
+      shotSec.stageHistory.push({ts:new Date().toISOString(),by:currentUser(),from:_prev,to:cur.name,source:'view'});
+      try{persist()}catch(_){}
+    }
+  }
   const stageSwitcher=buildStageStripInline(shotSec,cur.id);
   const h1=el('h2','tt-proc');
   if(stageSwitcher){h1.appendChild(stageSwitcher)} else {h1.appendChild(document.createTextNode(cur.name))}

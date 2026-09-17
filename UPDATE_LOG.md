@@ -28,6 +28,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
   - 既存プロジェクトでもユーザー操作ゼロで LayCAT と同じ現在工程を pmboard が表示。
   - APP_VERSION：2026.09.18.001 → 2026.09.18.002
 
+- (dev v2026.09.18.003) **作業ページを開いた瞬間に `shot.currentStage` を自動同期**：プルダウンを切り替えずに、ツリー・ハッシュ直リンク・`go()` 経由で工程ページを開いただけの場合でも「プルダウンが指している工程 = 現在の工程」となるよう、`renderReviewBody` の冒頭で `shotSec.currentStage=cur.name` を自動書き込み。
+  - shot section（type=section＋直下子が全て review）のときのみ書き込み。無関係な section には触らない。
+  - 既に一致していれば何もしない（persist は走らない）。
+  - `stageHistory` に `source:'view'` を付けて監査記録。動画なしの既存プロジェクトで、閲覧しただけの工程がショットタブ／pmboard に反映される。
+  - APP_VERSION：2026.09.18.002 → 2026.09.18.003
+
 - (dev v2026.09.18.002) **LayCAT のショットタブ・進捗タブでも `currentStage` を最優先で参照**：v.001 でプルダウン切替時に `shot.currentStage` を書き込むようにしたが、LayCAT 側の集計関数（`progressData` / `renderProjShots` の `repOf` / `shotCurrentStage`）は従来通り動画時刻・status ベースで現在工程を決めていたため、プルダウンを変えてもショットタブの表示は変わらなかった。
   - **`progressData` の `perShot` 導出**：Priority 1 として `shot.currentStage` が指す子 review を最優先で採用。無ければ従来の動画時刻→status セット順のフォールバック。
   - **`renderProjShots` の `repOf`**：同様に Priority 1 で `shot.currentStage` を参照。
