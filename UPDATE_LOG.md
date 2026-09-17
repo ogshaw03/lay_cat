@@ -18,6 +18,16 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.007) **工程ソートを「プロジェクトの workflow 順（root.stages）」を最優先に切替 ＋ ページ更新時の前回プロジェクト自動復元**：
+  - **原因**：v.006 の `stageRankCmp` は LayCAT 本体の関数の完全ポートで、`lay*` / `anm*` の英字プレフィックス以外は「rank 2 の名前昇順」となる。日本語工程名（レイアウト・アニメ・コンポ…）や独自命名では順が期待と合わない。
+  - **`stageOrderCmp(a,b)` を新設**：
+    1. 両方が `root.stages[]` に含まれる → その配列 index で比較（＝ユーザーが設定した workflow 順そのまま）
+    2. 片方だけ含まれる → 含まれる方を先に
+    3. どちらも含まれない → `stageRankCmp` フォールバック
+  - サイドバー 4 箇所（工程分布ドーナツ表・工程進捗バー・工程設定リスト・フィルタ工程ドロップダウン）、`shotCurrentStage` の secondary 判定、`projStageColorMap` のパレット配布順を **全て `stageOrderCmp` に統一**。
+  - **前回プロジェクト自動復元**：`switchToProject()` で `localStorage['pmboard_lastPid']` に保存し、`populateProjectPicker` が URL 引数の次に優先で復元。ページ更新（F5）で直前のプロジェクトが開く。
+  - APP_VERSION：2026.09.18.006 → 2026.09.18.007
+
 - (dev v2026.09.18.006) **サイドバー各所の工程順を LayCAT `stageRankCmp` に統一**：
   - **工程分布ドーナツ表・工程進捗（完了率）バー・工程設定リスト（テンプレ無しフォールバック）・フィルタ「工程」ドロップダウン** の並び順を、いずれも `rows.sort((a,b)=>stageRankCmp(a,b))` に統一。
   - 以前は Map 挿入順（＝ショット反復順の初出）で並んでいたため、ANIM が LAY より先に来たり、案件によってバラバラだった。
