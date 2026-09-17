@@ -18,6 +18,14 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.020) **ズームでペイン幅への clamp を廃止し、常に「日数 × スケール px」で幅を決定**：
+  - **原因**：v.018 では `finalW = max(paneInner, targetPx)` としていたので、週／月モードで `targetPx < paneInner` の場合、pane 幅にクランプされて視覚的にデフォルト（週）と同じになっていた。console ログの `finalW: 1065` = paneInner に張り付いていた。
+  - **修正**：`finalW = shotColW + max(200, trackPx)` に変更。ペインより小さくなる時は右側に余白ができるが、その代わり週／月モードで **バーの見た目が実際に縮む**（bars は % ベースで .gantt の幅に追従）。
+  - 最小トラック 200px の下限を残し、`月モード × 短い timeline` で異常に細くなるのを防止。
+  - APP_VERSION：2026.09.18.019 → 2026.09.18.020
+
+- (dev v2026.09.18.019) **工程ズーム デバッグログ + window 公開**：applyGanttScale に console.log を仕込み、`window.applyGanttScale` として公開。原因特定用。 (2026.09.18.018 → 019)
+
 - (dev v2026.09.18.018) **ズームを CSS `max()` から JavaScript の inline pixel width に切替（確実に幅が変わるように）**：v.016〜v.017 は CSS の `min-width` / `width:max(100%, calc(...))` を使っていたが、環境によって幅が変化しない事象があった（原因不明・CSS 変数と `max()` の相互作用による可能性）。
   - **修正**：`applyGanttScale()` で `pane.clientWidth - 40px（padding 分）` と `shot-col-w + SCALE_PX × days` を比較し、大きい方を **pixel 値の `gantt.style.width` として直接設定**。CSS の間接参照を排除。
   - `window.resize` イベントでも幅を再計算するので、ウィンドウ幅変化にも追従。

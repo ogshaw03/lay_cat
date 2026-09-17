@@ -585,7 +585,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.019';
+const APP_VERSION='2026.09.18.020';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2673,13 +2673,13 @@ function applyGanttScale(scale, opts){
   const days = (DATA.timeline && DATA.timeline.days) || 30;
   const shotColW = parseInt(getComputedStyle(gantt).getPropertyValue('--shot-col-w')) || 220;
   const trackPx = SCALE_PX[scale] * days;
-  const targetPx = shotColW + trackPx;
-  const pane = gantt.closest('.pane');
-  const paneInner = pane ? (pane.clientWidth - 40 /* horizontal padding */) : 0;
-  const finalW = Math.max(paneInner, targetPx);
+  /* 常に「日数 × スケール px」で幅を決定。ペイン幅で clamp すると週／月モードが
+     視覚的にデフォルト（ペインフィット）と同じになってしまうため。
+     結果として：day は拡大（横スクロール発生）／month は縮小（右側に余白）／week は中間。
+     ただしトラック部分が極端に狭くならないよう、最小 200px は確保する。 */
+  const finalW = shotColW + Math.max(200, trackPx);
   gantt.style.width = finalW + 'px';
-  /* デバッグ：console で幅計算の中身を確認できるように */
-  try{ console.log('[pmboard] applyGanttScale', {scale, days, shotColW, trackPx, targetPx, paneInner, finalW, 'gantt.style.width': gantt.style.width}); }catch(_){}
+  try{ console.log('[pmboard] applyGanttScale', {scale, days, shotColW, trackPx, finalW, 'gantt.style.width': gantt.style.width}); }catch(_){}
   try{ localStorage.setItem('pmboard_scale', scale); }catch(_){}
   document.querySelectorAll('#scaleToggle button').forEach(x=>x.classList.toggle('on', x.dataset.scale===scale));
   if(rerender){
