@@ -548,7 +548,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.001';
+const APP_VERSION='2026.09.18.002';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -847,6 +847,13 @@ async function loadProjectData(){
       const kind = classifyStage(stageName);
       const label = stageLabel(kind, stageName);
       const color = stageColor(kind, stageName, projectStages);
+      /* LayCAT primary 判定用：この工程の最新動画アップロード時刻（ISO 文字列）。
+         shots/{id}.json（file）に versions[] が含まれるので、そこから抽出する。
+         allNodes（laycat.project.json）は骨格のみで versions が無いので使わない。 */
+      const versions = Array.isArray(k.versions) ? k.versions : [];
+      const latestVideoTime = versions.length
+        ? versions.map(v=>v && v.uploadedAt).filter(Boolean).sort().slice(-1)[0] || null
+        : null;
       const ss = schedStages.find(x=>x.stageId===k.id) || {};
       const plannedStart = ss.plannedStart ? parseIsoDateJst(ss.plannedStart) : null;
       const plannedEnd = ss.plannedEnd ? parseIsoDateJst(ss.plannedEnd) : null;
@@ -888,7 +895,7 @@ async function loadProjectData(){
       /* review node にも current status を反映（LayCAT の v:5 分離では node.status = status.json.status） */
       const assignee = k.assignee || null;
       const reviewer = k.reviewer || null;
-      return {reviewNode:k, stageName, kind, label, color, plannedStart, plannedEnd, actualStart, actualEnd, isDone, currentStatus, assignee, reviewer, history, workSegments};
+      return {reviewNode:k, stageName, kind, label, color, plannedStart, plannedEnd, actualStart, actualEnd, isDone, currentStatus, assignee, reviewer, history, workSegments, latestVideoTime};
     });
     shots.push({sectionNode:section, stages, milestones:(sched.milestones||[])});
   }
@@ -1867,14 +1874,12 @@ function stageRankCmp(a,b){
   const ra=stageRank(a), rb=stageRank(b);
   return ra[0]-rb[0] || (ra[1]<rb[1] ? -1 : ra[1]>rb[1] ? 1 : 0);
 }
-/* ショットの「現在の工程」判定 — 統一ルール：
-     Priority 1（明示指定）：`shot.sectionNode.currentStage` が設定されていれば、
-       stages 配列から stageName が一致する要素を採用。LayCAT の工程プルダウンで
-       ユーザーが選んだ結果がここに保存される（旧モデル・新モデル共通）。
-     Priority 2（フォールバック・LayCAT の secondary 判定）：
-       currentStage 未設定の場合、status がセットされた工程のうち
-       stageRankCmp で一番後（＝より進んだ工程）を採用。
-   これで pmboard の「現在の工程」は LayCAT のプルダウン選択と常に一致する。 */
+/* ショットの「現在の工程」判定 — LayCAT `progressData` と完全一致：
+     Priority 1（明示指定）：`shot.sectionNode.currentStage`（プルダウンでユーザーが最後に選んだ工程）。
+     Priority 2（LayCAT primary）：動画がある工程のうち、動画アップロード時刻が一番新しい工程。
+     Priority 3（LayCAT secondary）：status がセットされた工程のうち stageRankCmp で一番後の工程。
+   これで既存プロジェクトも「切り替え不要」で LayCAT のプルダウン表示（動画優先＋status ベース）と
+   常に一致する。 */
 function shotCurrentStage(shot){
   const stages = shot.stages||[];
   if(!stages.length) return null;
@@ -1884,7 +1889,16 @@ function shotCurrentStage(shot){
     const hit = stages.find(st => (st.stageName||st.label||'') === explicit);
     if(hit) return hit;
   }
-  /* Priority 2：status セット済みの工程のうち stageRankCmp で最後（LayCAT secondary） */
+  /* Priority 2：動画がある工程のうち動画時刻が最新のもの（LayCAT primary） */
+  const withVideo = stages.filter(st => st.latestVideoTime);
+  if(withVideo.length){
+    const sorted = withVideo.slice().sort((a,b)=>{
+      const ta=a.latestVideoTime||'', tb=b.latestVideoTime||'';
+      return ta<tb?-1:ta>tb?1:0;
+    });
+    return sorted[sorted.length-1];
+  }
+  /* Priority 3：status セット済みの工程のうち stageRankCmp で最後（LayCAT secondary） */
   const withStatus = stages.filter(st => st.currentStatus);
   if(!withStatus.length) return null;
   const sorted = withStatus.slice().sort((a,b)=>stageRankCmp(a.stageName||a.label||'', b.stageName||b.label||''));

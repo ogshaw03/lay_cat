@@ -18,6 +18,16 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.002) **pmboard に LayCAT primary 判定（動画時刻）を追加 — 既存プロジェクトも切り替え不要で一致**：
+  - **原因**：v.001 で LayCAT のプルダウン切替時に `sectionNode.currentStage` を書き込むようにしたが、既存プロジェクトで一度も工程切替をしていないショットは currentStage が未設定 → pmboard は secondary（status ベース）にフォールバック → LayCAT の primary（動画ベース）と一致しない事例があった。
+  - **修正**：pmboard の buildStages で `k.versions[]`（shots/{id}.json から取得）を走査し、`latestVideoTime`（最新 uploadedAt）を各工程に付与。
+  - **`shotCurrentStage` 判定順**を LayCAT `progressData` と完全同一に：
+    1. `shot.sectionNode.currentStage`（プルダウンで選択済み）
+    2. LayCAT primary：`latestVideoTime` があれば最新の工程
+    3. LayCAT secondary：status セット済みの工程のうち `stageRankCmp` で最後
+  - 既存プロジェクトでもユーザー操作ゼロで LayCAT と同じ現在工程を pmboard が表示。
+  - APP_VERSION：2026.09.18.001 → 2026.09.18.002
+
 - (dev v2026.09.18.001) **工程判別を「現在の工程プルダウン」で統一（LayCAT・pmboard 共通）**：LayCAT のヒューリスティック判定（動画時刻・stageRankCmp）と pmboard 側の判定が食い違うのを止めるため、ユーザーがプルダウンで最後に選んだ工程を「現在の工程」の Single Source of Truth に。
   - **LayCAT `switchStageInTab`**：工程プルダウン切替時、対象工程の親（＝shot section）に `currentStage=newStage.name` を書き込み、`stageHistory[{ts,by,from,to}]` にも 1 行追記。旧モデルショットも新モデルショットも同じフィールドで統一。
   - **pmboard `shotCurrentStage`**：Priority 1＝`shot.sectionNode.currentStage` を最優先で参照し、stages 配列から一致する要素を返す。Priority 2＝未設定なら LayCAT secondary（`stageRankCmp` で最後の status セット済み工程）にフォールバック。
