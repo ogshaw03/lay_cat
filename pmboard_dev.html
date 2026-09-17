@@ -189,13 +189,21 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
    対して効いてしまい、`.pane` の縦スクロールで日付ヘッダが上に隠れる。visible にして
    sticky を `.pane` に対して働かせる。角丸のはみ出しは content 側で自然に収まる。
    --shot-col-w：ショット列の幅（ユーザーがドラッグでリサイズ可能）。 */
-.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:relative;--shot-col-w:220px}
+.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:relative;--shot-col-w:220px;--track-min-w:0px}
+/* min-width：ショット列 + トラック最小幅 の合計。日/週/月 スケールで --track-min-w を膨らませる。 */
+.gantt-hdr,.gantt-body{min-width:calc(var(--shot-col-w) + var(--track-min-w))}
 .gantt-hdr{display:grid;grid-template-columns:var(--shot-col-w) 1fr;background:var(--bg3);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
-.gantt-hdr .lbl{position:relative}
+/* ヘッダの Shot ラベルも横スクロール時に左端に固定 */
+.gantt-hdr .lbl{position:sticky;left:0;background:var(--bg3);z-index:6}
 /* ショット列と工程列の境界に置くリサイズハンドル。ヘッダ側だけに置くが、
    全行の grid-template-columns が同じ変数を使うので、ドラッグで全行の幅が同時に変わる。 */
 .gantt-hdr .lbl .col-resizer{position:absolute;top:0;bottom:0;right:-4px;width:8px;cursor:col-resize;z-index:6}
 .gantt-hdr .lbl .col-resizer:hover,.gantt-hdr .lbl .col-resizer.resizing{background:linear-gradient(90deg,transparent 3px,rgba(255,255,255,.35) 3px 5px,transparent 5px)}
+/* 月スケール：日セルの数字は隠して幅を稼ぐ（週セルの MM/DD 見出しのみに） */
+.gantt[data-scale="month"] .gantt-hdr .timeline .days .d{font-size:0}
+.gantt[data-scale="month"] .gantt-hdr .timeline .days{height:6px}
+/* 日スケール：日セルを太めに表示（週見出しは自然に間隔広く） */
+.gantt[data-scale="day"] .gantt-hdr .timeline .days .d{font-size:10px}
 .gantt-hdr .lbl{padding:11px 14px;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;border-right:1px solid var(--border)}
 .gantt-hdr .timeline{position:relative;overflow:hidden}
 .gantt-hdr .timeline .weeks{display:flex;font-family:var(--font-code);font-size:10px;color:var(--text3);letter-spacing:.5px;height:22px;align-items:center;border-bottom:1px solid var(--border)}
@@ -577,7 +585,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.015';
+const APP_VERSION='2026.09.18.016';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2113,6 +2121,8 @@ async function loadAndRender(){
   }
   /* カスタムスケジュール（オリジナル工程セット）も並列読み込み */
   await loadCustomSchedules();
+  /* スケール（日/週/月）を反映（timeline.days が確定してから）— rerender は後続処理に任せる */
+  if(typeof applyGanttScale==='function') applyGanttScale(DATA.scale || 'week', {rerender:false});
   buildTimelineHdr();
   buildSubTabs();
   rebuildActiveView();
@@ -2648,12 +2658,45 @@ document.getElementById('tabs').addEventListener('click',e=>{
   b.classList.add('on');
   document.querySelector(`[data-pane="${b.dataset.tab}"]`).classList.add('on');
 });
+/* 日 / 週 / 月 のズーム：1 日あたりの px 幅を切り替えて `.gantt-hdr` / `.gantt-body` の
+   min-width を膨らませる。バーの %-based left/width はそのまま維持されるので、
+   トラック側は自動的に横スクロールで対応。ヘッダの日セル文字は月表示では隠す。
+   rerender=true でヘッダとバーを再描画（ユーザー操作時のみ true、初期ロード時は
+   loadAndRender の後続処理に任せて false）。 */
+const SCALE_PX = {day:40, week:20, month:8};
+function applyGanttScale(scale, opts){
+  opts = opts||{};
+  const rerender = opts.rerender!==false;
+  if(!SCALE_PX[scale]) scale='week';
+  DATA.scale = scale;
+  const gantt = document.querySelector('.gantt');
+  if(!gantt) return;
+  gantt.setAttribute('data-scale', scale);
+  const days = (DATA.timeline && DATA.timeline.days) || 30;
+  const trackPx = SCALE_PX[scale] * days;
+  gantt.style.setProperty('--track-min-w', trackPx + 'px');
+  try{ localStorage.setItem('pmboard_scale', scale); }catch(_){}
+  document.querySelectorAll('#scaleToggle button').forEach(x=>x.classList.toggle('on', x.dataset.scale===scale));
+  if(rerender){
+    buildTimelineHdr();
+    if(DATA.currentSubTab==='shots') buildGantt(); else buildCustomGantt(DATA.currentSubTab);
+  }
+}
 document.getElementById('scaleToggle').addEventListener('click',e=>{
   const b=e.target.closest('button[data-scale]');
   if(!b)return;
-  document.querySelectorAll('#scaleToggle button').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on');
+  applyGanttScale(b.dataset.scale);
 });
+/* 起動時にスケールを復元 */
+try{
+  const s = localStorage.getItem('pmboard_scale');
+  if(s && SCALE_PX[s]) {
+    document.querySelectorAll('#scaleToggle button').forEach(x=>x.classList.toggle('on', x.dataset.scale===s));
+    DATA.scale = s;
+  }else{
+    DATA.scale = 'week';
+  }
+}catch(_){ DATA.scale='week'; }
 document.getElementById('projSelect').addEventListener('change', e=>{
   const pid = e.target.value;
   if(pid) switchToProject(pid);

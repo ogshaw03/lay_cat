@@ -18,6 +18,17 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.016) **日 / 週 / 月 のズーム機能を実装**：
+  - ヘッダの「日 / 週 / 月」ボタンをクリックすると Gantt の 1 日あたり幅を切替：
+    - **日**：40px/day（詳細ビュー、1〜2 週間分にフォーカス）
+    - **週**：20px/day（デフォルト・従来）
+    - **月**：8px/day（月単位で全体を俯瞰）
+  - **実装**：CSS 変数 `--track-min-w = SCALE_PX × days` を `.gantt` にセットし、`.gantt-hdr` / `.gantt-body` の `min-width` を `calc(ショット列幅 + トラック最小幅)` に。バーの `left`/`width` は % ベースのままなのでコード変更なしで縮尺追従、はみ出しは `.pane` が横スクロール。
+  - **ヘッダ密度**：月モードは日セルの数字を非表示にして幅を稼ぐ（`data-scale="month"` セレクタで制御）。日モードは日セルの文字を大きめに。
+  - **ヘッダ Shot ラベルを sticky-left 化**：横スクロール時も左端に固定。
+  - **設定保存**：`localStorage['pmboard_scale']` に保存、次回リロードで復元。
+  - APP_VERSION：2026.09.18.015 → 2026.09.18.016
+
 - (dev v2026.09.18.015) **スクロール時の日付ヘッダ上の隙間解消 + ショット列の幅をドラッグでリサイズ可能に**：
   - **日付ヘッダの上の隙間**：`.pane` の `padding:16px 20px` によって sticky が padding-top 分下がって浮いていた。padding を `0 20px 16px` に変更し、pane の擬似要素 `::before` で 16px スペースを描く（スクロールで一緒に流れて消える）。これで sticky ヘッダが pane の viewport top ぴったりに固定される。
   - **ショット列リサイズ**：CSS 変数 `--shot-col-w`（default 220px）で列幅を管理。`.gantt-hdr` の `.lbl`（Shot ラベル）に `.col-resizer` を追加、ドラッグで CSS 変数を更新（120px〜520px）。TODAY マーカ計算も CSS 変数対応。設定は `localStorage['pmboard_shotColW']` に保存され、次回リロードで復元。
