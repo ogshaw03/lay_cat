@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.009) **工程ソートを `DATA.shots[i].stages` の並び（＝ショット行が既に正しく表示している順）を最優先に**：
+  - **原因**：v.008 まで `_buildStageOrderIndex` は `root.stages` / `stageTemplates` / `section.stages` を走査していたが、ユーザー指摘のとおり「ショットの列には正しい順で工程が出ている」＝ `DATA.shots[i].stages` の並びこそが真実の workflow 順だった。それを Priority 1 に据えるだけで最短で解決。
+  - **修正**：Priority 1 として **全ショットの `.stages` を先頭から走査し初出順で index を振る** ように変更。Priority 2 でプロジェクト設定系（root.stages / stageTemplates / section.stages）をフォールバック追記。
+  - **メモ更新**：`DATA.shots = shots` の直後に `invalidateStageOrderMemo()` / `invalidateStageColorsMemo()` を呼び、shots ベースの並びで再計算されるように。
+  - APP_VERSION：2026.09.18.008 → 2026.09.18.009
+
 - (dev v2026.09.18.008) **工程ソートの参照ソースを拡張（`root.stageTemplates` / 各 shot の `section.stages` も併用）**：
   - **原因**：v.007 の `stageOrderCmp` は `root.stages`（Simple B 用のプロジェクト共通工程セット）だけを参照していた。旧モデルの案件では `root.stages` が空のことが多く、代わりに `root.stageTemplates[0].stages` または各 shot section の `.stages` に工程順が入っている。そのため v.007 も実質フォールバック（`stageRankCmp`）に落ちて、日本語工程名は五十音順になっていた。
   - **修正**：`_buildStageOrderIndex()` を新設し、以下を「初出優先」で連結した名前→index マップを作る：
