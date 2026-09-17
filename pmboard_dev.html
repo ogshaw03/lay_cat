@@ -199,21 +199,11 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
    全行の grid-template-columns が同じ変数を使うので、ドラッグで全行の幅が同時に変わる。 */
 .gantt-hdr .lbl .col-resizer{position:absolute;top:0;bottom:0;right:-4px;width:8px;cursor:col-resize;z-index:6}
 .gantt-hdr .lbl .col-resizer:hover,.gantt-hdr .lbl .col-resizer.resizing{background:linear-gradient(90deg,transparent 3px,rgba(255,255,255,.35) 3px 5px,transparent 5px)}
-/* 月スケール：日セル数字を隠して幅を稼ぐ／行密度を上げて多くのショットが同時に見える */
+/* 月スケール：日セル数字を隠して幅を稼ぐ（週見出しは残す）。行密度は変えない。 */
 .gantt[data-scale="month"] .gantt-hdr .timeline .days .d{font-size:0}
 .gantt[data-scale="month"] .gantt-hdr .timeline .days{height:6px}
-.gantt[data-scale="month"] .gantt-row{min-height:22px}
-.gantt[data-scale="month"] .gantt-row .track{min-height:22px}
-.gantt[data-scale="month"] .gantt-row .track .seg-plan{top:2px;height:8px}
-.gantt[data-scale="month"] .gantt-row .track .seg-actual{top:12px;height:8px}
-.gantt[data-scale="month"] .gantt-row .track .milestone{top:8px;width:8px;height:8px}
-/* 日スケール：日セルを大きめに表示／行も広めに */
+/* 日スケール：日セルの数字を少し大きめに */
 .gantt[data-scale="day"] .gantt-hdr .timeline .days .d{font-size:11px}
-.gantt[data-scale="day"] .gantt-row{min-height:44px}
-.gantt[data-scale="day"] .gantt-row .track{min-height:44px}
-.gantt[data-scale="day"] .gantt-row .track .seg-plan{top:6px;height:14px}
-.gantt[data-scale="day"] .gantt-row .track .seg-actual{top:22px;height:14px}
-.gantt[data-scale="day"] .gantt-row .track .milestone{top:14px;width:12px;height:12px}
 .gantt-hdr .lbl{padding:11px 14px;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;border-right:1px solid var(--border)}
 .gantt-hdr .timeline{position:relative;overflow:hidden}
 .gantt-hdr .timeline .weeks{display:flex;font-family:var(--font-code);font-size:10px;color:var(--text3);letter-spacing:.5px;height:22px;align-items:center;border-bottom:1px solid var(--border)}
@@ -595,7 +585,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.021';
+const APP_VERSION='2026.09.18.022';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2680,19 +2670,27 @@ function applyGanttScale(scale, opts){
   const gantt = document.querySelector('.gantt');
   if(!gantt){ console.warn('[pmboard] applyGanttScale: .gantt not found'); return; }
   gantt.setAttribute('data-scale', scale);
-  const days = (DATA.timeline && DATA.timeline.days) || 30;
   const shotColW = parseInt(getComputedStyle(gantt).getPropertyValue('--shot-col-w')) || 220;
-  const trackPx = SCALE_PX[scale] * days;
-  const targetPx = shotColW + trackPx;
-  /* 幅の決定：ペイン幅を下限、targetPx が超える時のみ拡大（＝横スクロール）。
-     ペインより小さくして右側に余白を作らない（＝「ページの中で小さくなるだけ」を防止）。
-     視覚差は day モードの拡大＋横スクロール、および data-scale による行密度／
-     ヘッダ密度で表現する（月＝コンパクトな行、日＝大きな日ラベル）。 */
   const pane = gantt.closest('.pane');
-  const paneInner = pane ? (pane.clientWidth - 40) : 0;
-  const finalW = Math.max(paneInner, targetPx);
-  gantt.style.width = finalW + 'px';
-  try{ console.log('[pmboard] applyGanttScale', {scale, days, shotColW, trackPx, finalW, 'gantt.style.width': gantt.style.width}); }catch(_){}
+  const paneInner = pane ? (pane.clientWidth - 40 - shotColW) : 0; /* トラック側の使える幅 */
+  /* 元のタイムライン日数（データから自動計算されたもの）を保持しておき、scale 変更で
+     日付範囲を「延ばす」だけにする（データを削らないので実データは常に表示される）。 */
+  if(DATA.timeline){
+    if(!DATA.timeline._baseDays) DATA.timeline._baseDays = DATA.timeline.days;
+    if(!DATA.timeline._baseEnd) DATA.timeline._baseEnd = new Date(DATA.timeline.end.getTime());
+    const baseDays = DATA.timeline._baseDays;
+    const perDay = SCALE_PX[scale];
+    /* ペイン下限を満たすのに必要な日数 = paneInner / perDay。
+       baseDays より大きければ「タイムラインを未来に延ばして」ペインを埋める。
+       小さければ baseDays のまま → gantt が pane より広くなり横スクロール発生。 */
+    const paneDaysAtScale = Math.ceil(paneInner / perDay);
+    const effectiveDays = Math.max(baseDays, paneDaysAtScale);
+    DATA.timeline.days = effectiveDays;
+    DATA.timeline.end = new Date(DATA.timeline.start.getTime() + effectiveDays * 86400000);
+    const finalW = shotColW + effectiveDays * perDay;
+    gantt.style.width = finalW + 'px';
+    try{ console.log('[pmboard] applyGanttScale', {scale, baseDays, paneDaysAtScale, effectiveDays, perDay, finalW}); }catch(_){}
+  }
   try{ localStorage.setItem('pmboard_scale', scale); }catch(_){}
   document.querySelectorAll('#scaleToggle button').forEach(x=>x.classList.toggle('on', x.dataset.scale===scale));
   if(rerender){
