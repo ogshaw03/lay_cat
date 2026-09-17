@@ -552,7 +552,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.005';
+const APP_VERSION='2026.09.18.006';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2155,6 +2155,8 @@ function renderStageDonut(){
     byName.get(key).count++;
   }
   const rows = Array.from(byName.values());
+  /* LayCAT と同じ工程順（stageRankCmp）でソート：lay→anim→other, 同 rank は名前昇順。 */
+  rows.sort((a,b)=>stageRankCmp(a.id||a.label||'', b.id||b.label||''));
   if(noneCount) rows.push({id:'__none__', label:'未着手', color:'#5a5a6a', count:noneCount});
   const total = DATA.shots.length;
   if(!total){ empty.style.display='block'; canvas.style.display='none'; tbl.innerHTML=''; return; }
@@ -2237,17 +2239,19 @@ function renderStageProgress(root){
   if(!wrap) return;
   /* 全ショットの stage を stageName（生名）別に集計。ラベル（stageLabel の短縮）で keying すると
      長めの名前が同分類に畳まれて工程が「消える」ため、ここでは生名を keys にする。 */
-  const byName = new Map(); /* stageName → {label, color, total, done} */
+  const byName = new Map(); /* stageName → {name, label, color, total, done} */
   for(const shot of DATA.shots){
     for(const st of shot.stages){
       const key = st.stageName || st.label || '?';
-      if(!byName.has(key)) byName.set(key,{label:st.stageName||st.label||'?', color:st.color, total:0, done:0});
+      if(!byName.has(key)) byName.set(key,{name:key, label:st.stageName||st.label||'?', color:st.color, total:0, done:0});
       const rec = byName.get(key);
       rec.total++;
       if(st.isDone) rec.done++;
     }
   }
   const rows = Array.from(byName.values());
+  /* LayCAT と同じ工程順（stageRankCmp） */
+  rows.sort((a,b)=>stageRankCmp(a.name||a.label||'', b.name||b.label||''));
   if(!rows.length){ wrap.innerHTML='<div class="sb-empty">工程データなし</div>'; return; }
   wrap.innerHTML = rows.map(r=>{
     const pct = r.total>0 ? Math.round((r.done/r.total)*100) : 0;
@@ -2299,7 +2303,8 @@ function renderStageList(root){
       for(const st of shot.stages){ collected.add(st.reviewNode.name); }
     }
     if(!collected.size){ wrap.innerHTML='<div class="sb-empty">工程未設定</div>'; return; }
-    wrap.innerHTML = Array.from(collected).map((name,i)=>{
+    const sortedNames = Array.from(collected).sort((a,b)=>stageRankCmp(a,b));
+    wrap.innerHTML = sortedNames.map((name,i)=>{
       const kind = classifyStage(name);
       const color = stageColor(kind, name, []);
       return `<div class="row"><span class="idx">${i+1}</span><span class="swatch" style="background:${color}"></span><span class="nm">${escapeHtml(name)}</span></div>`;
@@ -2333,10 +2338,16 @@ function renderFilters(root){
     .slice()
     .sort((a,b)=>String(a.name||a.id||'').localeCompare(String(b.name||b.id||''), 'ja'));
   fltAssignee.innerHTML = '<option value="">すべて</option>' + members.map(m=>`<option value="${escapeHtml(m.id)}">${escapeHtml(m.name||m.id)}</option>`).join('');
-  /* 工程：ショットから集約した工程名 */
+  /* 工程：ショットから集約した工程名を LayCAT の stageRankCmp 順にソート */
   const stgSet = new Set();
-  for(const shot of DATA.shots){ for(const st of shot.stages){ stgSet.add(st.reviewNode.name); } }
-  fltStage.innerHTML = '<option value="">すべて</option>' + Array.from(stgSet).map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  for(const shot of DATA.shots){
+    for(const st of shot.stages){
+      const nm = st.stageName || st.reviewNode.name;
+      if(nm) stgSet.add(nm);
+    }
+  }
+  const stgList = Array.from(stgSet).sort((a,b)=>stageRankCmp(a,b));
+  fltStage.innerHTML = '<option value="">すべて</option>' + stgList.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
   /* ステータス：project.statuses */
   const statuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
   fltStatus.innerHTML = '<option value="">すべて</option>' + statuses.map(s=>`<option value="${escapeHtml(s.id)}">${escapeHtml(s.label||s.id)}</option>`).join('');
