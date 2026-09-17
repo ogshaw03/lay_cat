@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.001) **工程判別を「現在の工程プルダウン」で統一（LayCAT・pmboard 共通）**：LayCAT のヒューリスティック判定（動画時刻・stageRankCmp）と pmboard 側の判定が食い違うのを止めるため、ユーザーがプルダウンで最後に選んだ工程を「現在の工程」の Single Source of Truth に。
+  - **LayCAT `switchStageInTab`**：工程プルダウン切替時、対象工程の親（＝shot section）に `currentStage=newStage.name` を書き込み、`stageHistory[{ts,by,from,to}]` にも 1 行追記。旧モデルショットも新モデルショットも同じフィールドで統一。
+  - **pmboard `shotCurrentStage`**：Priority 1＝`shot.sectionNode.currentStage` を最優先で参照し、stages 配列から一致する要素を返す。Priority 2＝未設定なら LayCAT secondary（`stageRankCmp` で最後の status セット済み工程）にフォールバック。
+  - これにより、LayCAT で工程を切り替えた瞬間から pmboard 側の現在工程・工程分布ドーナツ・ステータス分布絞り込みが完全一致する。
+  - LayCAT APP_VERSION：2026.09.17.008 → 2026.09.18.001
+  - pmboard APP_VERSION：2026.09.17.019 → 2026.09.18.001
+
 - (dev v2026.09.17.008) **Simple B スコープ検出のバグ修正（pmboard 工程消失の原因）**：
   - **原因**：`buildStageStripInline` と統合ログの `stageSiblings` 抽出で `descendants(shot.id)` を使っていたため、Simple B ショットの親がエピソード／ルートの場合、その配下全ショット（無関係な review）を「兄弟工程」と誤検出。pmboard 側の Simple B ショット判定でも旧モデルショットの review 子まで拾ってしまい、工程が二重集計→一部が消えたように見えていた。
   - **修正 1**：`buildStageStripInline` の兄弟抽出を **shot 直下子だけ** に限定し、`shot.type==='section' で 直下子が全て review` を「shot section」として厳密判定。

@@ -3629,7 +3629,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.17.008';
+const APP_VERSION='2026.09.18.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6953,7 +6953,9 @@ function buildStageStripInline(shot,curReviewId){
 }
 /* 同ショット内の工程切替：タブを増やさず、現在のタブの中身だけを差し替える。
    「現在の工程」はタブの state.currentId で検知される（openTasks を置換）。
-   別ショットへの遷移や section→review の初回オープンは従来通り go() を経由。 */
+   別ショットへの遷移や section→review の初回オープンは従来通り go() を経由。
+   Simple B 互換：切替時にショット section の currentStage フィールドにも新工程名を保存し、
+   pmboard 側では「ユーザーが最後にプルダウンで選択した工程」を現在工程として扱えるように。 */
 function switchStageInTab(newId){
   const newNode=getNode(newId);
   if(!newNode||newNode.type!=='review'){go(newId);return}
@@ -6968,6 +6970,17 @@ function switchStageInTab(newId){
     state.currentId=newId;
     state.projTab='browse';
     state.reviewOpen=null;
+    /* ショット section（新旧レビューの親）に currentStage を書き込み → pmboard で参照される */
+    const parent=newNode.parentId?getNode(newNode.parentId):null;
+    if(parent){
+      const prev=parent.currentStage||null;
+      if(prev!==newNode.name){
+        parent.currentStage=newNode.name;
+        if(!Array.isArray(parent.stageHistory)) parent.stageHistory=[];
+        parent.stageHistory.push({ts:new Date().toISOString(),by:currentUser(),from:prev,to:newNode.name});
+        try{persist()}catch(_){}
+      }
+    }
     for(const n of pathOf(newId)) state.expanded.add(n.id);
     render();syncHash();autoRefresh();
   }else{

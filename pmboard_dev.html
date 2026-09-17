@@ -548,7 +548,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.019';
+const APP_VERSION='2026.09.18.001';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1867,16 +1867,24 @@ function stageRankCmp(a,b){
   const ra=stageRank(a), rb=stageRank(b);
   return ra[0]-rb[0] || (ra[1]<rb[1] ? -1 : ra[1]>rb[1] ? 1 : 0);
 }
-/* ショットの「現在の工程」判定 — LayCAT `progressData`（本体）と同 semantics：
-     Primary：最新動画がある工程 → 動画時刻の一番新しい工程を採用。
-             pmboard は動画時刻を持たないので、この判定は今のところ実装しない。
-     Secondary：動画が無い場合 → status がセットされた工程のうち、stageRankCmp で
-                一番後（＝より進んだ工程）を採用。
-   LayCAT 側でも動画が無いショットは secondary にフォールバックするので、
-   動画無しのショットは pmboard と LayCAT で完全一致する。 */
+/* ショットの「現在の工程」判定 — 統一ルール：
+     Priority 1（明示指定）：`shot.sectionNode.currentStage` が設定されていれば、
+       stages 配列から stageName が一致する要素を採用。LayCAT の工程プルダウンで
+       ユーザーが選んだ結果がここに保存される（旧モデル・新モデル共通）。
+     Priority 2（フォールバック・LayCAT の secondary 判定）：
+       currentStage 未設定の場合、status がセットされた工程のうち
+       stageRankCmp で一番後（＝より進んだ工程）を採用。
+   これで pmboard の「現在の工程」は LayCAT のプルダウン選択と常に一致する。 */
 function shotCurrentStage(shot){
   const stages = shot.stages||[];
   if(!stages.length) return null;
+  /* Priority 1：ユーザーがプルダウンで選択した明示的な currentStage */
+  const explicit = shot.sectionNode && shot.sectionNode.currentStage;
+  if(explicit){
+    const hit = stages.find(st => (st.stageName||st.label||'') === explicit);
+    if(hit) return hit;
+  }
+  /* Priority 2：status セット済みの工程のうち stageRankCmp で最後（LayCAT secondary） */
   const withStatus = stages.filter(st => st.currentStatus);
   if(!withStatus.length) return null;
   const sorted = withStatus.slice().sort((a,b)=>stageRankCmp(a.stageName||a.label||'', b.stageName||b.label||''));
