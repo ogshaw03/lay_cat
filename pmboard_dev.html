@@ -199,11 +199,21 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
    全行の grid-template-columns が同じ変数を使うので、ドラッグで全行の幅が同時に変わる。 */
 .gantt-hdr .lbl .col-resizer{position:absolute;top:0;bottom:0;right:-4px;width:8px;cursor:col-resize;z-index:6}
 .gantt-hdr .lbl .col-resizer:hover,.gantt-hdr .lbl .col-resizer.resizing{background:linear-gradient(90deg,transparent 3px,rgba(255,255,255,.35) 3px 5px,transparent 5px)}
-/* 月スケール：日セルの数字は隠して幅を稼ぐ（週セルの MM/DD 見出しのみに） */
+/* 月スケール：日セル数字を隠して幅を稼ぐ／行密度を上げて多くのショットが同時に見える */
 .gantt[data-scale="month"] .gantt-hdr .timeline .days .d{font-size:0}
 .gantt[data-scale="month"] .gantt-hdr .timeline .days{height:6px}
-/* 日スケール：日セルを太めに表示（週見出しは自然に間隔広く） */
-.gantt[data-scale="day"] .gantt-hdr .timeline .days .d{font-size:10px}
+.gantt[data-scale="month"] .gantt-row{min-height:22px}
+.gantt[data-scale="month"] .gantt-row .track{min-height:22px}
+.gantt[data-scale="month"] .gantt-row .track .seg-plan{top:2px;height:8px}
+.gantt[data-scale="month"] .gantt-row .track .seg-actual{top:12px;height:8px}
+.gantt[data-scale="month"] .gantt-row .track .milestone{top:8px;width:8px;height:8px}
+/* 日スケール：日セルを大きめに表示／行も広めに */
+.gantt[data-scale="day"] .gantt-hdr .timeline .days .d{font-size:11px}
+.gantt[data-scale="day"] .gantt-row{min-height:44px}
+.gantt[data-scale="day"] .gantt-row .track{min-height:44px}
+.gantt[data-scale="day"] .gantt-row .track .seg-plan{top:6px;height:14px}
+.gantt[data-scale="day"] .gantt-row .track .seg-actual{top:22px;height:14px}
+.gantt[data-scale="day"] .gantt-row .track .milestone{top:14px;width:12px;height:12px}
 .gantt-hdr .lbl{padding:11px 14px;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;border-right:1px solid var(--border)}
 .gantt-hdr .timeline{position:relative;overflow:hidden}
 .gantt-hdr .timeline .weeks{display:flex;font-family:var(--font-code);font-size:10px;color:var(--text3);letter-spacing:.5px;height:22px;align-items:center;border-bottom:1px solid var(--border)}
@@ -585,7 +595,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.020';
+const APP_VERSION='2026.09.18.021';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2673,11 +2683,14 @@ function applyGanttScale(scale, opts){
   const days = (DATA.timeline && DATA.timeline.days) || 30;
   const shotColW = parseInt(getComputedStyle(gantt).getPropertyValue('--shot-col-w')) || 220;
   const trackPx = SCALE_PX[scale] * days;
-  /* 常に「日数 × スケール px」で幅を決定。ペイン幅で clamp すると週／月モードが
-     視覚的にデフォルト（ペインフィット）と同じになってしまうため。
-     結果として：day は拡大（横スクロール発生）／month は縮小（右側に余白）／week は中間。
-     ただしトラック部分が極端に狭くならないよう、最小 200px は確保する。 */
-  const finalW = shotColW + Math.max(200, trackPx);
+  const targetPx = shotColW + trackPx;
+  /* 幅の決定：ペイン幅を下限、targetPx が超える時のみ拡大（＝横スクロール）。
+     ペインより小さくして右側に余白を作らない（＝「ページの中で小さくなるだけ」を防止）。
+     視覚差は day モードの拡大＋横スクロール、および data-scale による行密度／
+     ヘッダ密度で表現する（月＝コンパクトな行、日＝大きな日ラベル）。 */
+  const pane = gantt.closest('.pane');
+  const paneInner = pane ? (pane.clientWidth - 40) : 0;
+  const finalW = Math.max(paneInner, targetPx);
   gantt.style.width = finalW + 'px';
   try{ console.log('[pmboard] applyGanttScale', {scale, days, shotColW, trackPx, finalW, 'gantt.style.width': gantt.style.width}); }catch(_){}
   try{ localStorage.setItem('pmboard_scale', scale); }catch(_){}
