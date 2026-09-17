@@ -585,7 +585,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.018';
+const APP_VERSION='2026.09.18.019';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2668,17 +2668,18 @@ function applyGanttScale(scale, opts){
   if(!SCALE_PX[scale]) scale='week';
   DATA.scale = scale;
   const gantt = document.querySelector('.gantt');
-  if(!gantt) return;
+  if(!gantt){ console.warn('[pmboard] applyGanttScale: .gantt not found'); return; }
   gantt.setAttribute('data-scale', scale);
   const days = (DATA.timeline && DATA.timeline.days) || 30;
   const shotColW = parseInt(getComputedStyle(gantt).getPropertyValue('--shot-col-w')) || 220;
   const trackPx = SCALE_PX[scale] * days;
   const targetPx = shotColW + trackPx;
-  /* pane のクライアント幅（padding 込みの内側幅）を取得。gantt が狭い時はそちらに合わせる。 */
   const pane = gantt.closest('.pane');
   const paneInner = pane ? (pane.clientWidth - 40 /* horizontal padding */) : 0;
   const finalW = Math.max(paneInner, targetPx);
   gantt.style.width = finalW + 'px';
+  /* デバッグ：console で幅計算の中身を確認できるように */
+  try{ console.log('[pmboard] applyGanttScale', {scale, days, shotColW, trackPx, targetPx, paneInner, finalW, 'gantt.style.width': gantt.style.width}); }catch(_){}
   try{ localStorage.setItem('pmboard_scale', scale); }catch(_){}
   document.querySelectorAll('#scaleToggle button').forEach(x=>x.classList.toggle('on', x.dataset.scale===scale));
   if(rerender){
@@ -2686,6 +2687,8 @@ function applyGanttScale(scale, opts){
     if(DATA.currentSubTab==='shots') buildGantt(); else buildCustomGantt(DATA.currentSubTab);
   }
 }
+/* デバッグ用にグローバル公開（コンソールから applyGanttScale('day') 等が呼べる） */
+try{ window.applyGanttScale = applyGanttScale; }catch(_){}
 /* ウィンドウリサイズ時にも幅を再計算 */
 window.addEventListener('resize', ()=>{ if(DATA.scale && typeof applyGanttScale==='function') applyGanttScale(DATA.scale, {rerender:false}); });
 document.getElementById('scaleToggle').addEventListener('click',e=>{
