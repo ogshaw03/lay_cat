@@ -231,6 +231,8 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row .track .seg-plan{position:absolute;top:4px;height:12px;border:1px dashed;border-radius:var(--radius2);overflow:visible;cursor:grab;user-select:none}
 /* 選択中の予定バー：白い実線アウトラインで強調（Del / Ctrl+C / Ctrl+V の対象） */
 .gantt-row .track .seg-plan.selected{border-style:solid!important;outline:2px solid rgba(255,255,255,.85);outline-offset:1px;filter:brightness(1.15);z-index:4}
+/* 選択中のショット行（バー無し行への貼付ターゲット）：ショットセルに左枠アクセント */
+.gantt-row.row-selected .shot{background:var(--bg3);box-shadow:inset 3px 0 0 rgba(255,255,255,.7)}
 .gantt-row .track .seg-plan:hover{filter:brightness(1.4)}
 .gantt-row .track .seg-plan.dragging{cursor:grabbing;filter:brightness(1.6);z-index:5}
 /* プレースホルダ：予定未設定 → 破線＋薄い（ドラッグで実プランに変わる） */
@@ -550,7 +552,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.004';
+const APP_VERSION='2026.09.18.005';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1380,6 +1382,7 @@ function buildGantt(){
 
       const row = document.createElement('div');
       row.className='gantt-row';
+      row.dataset.shot = shot.sectionNode.id;
       /* tooltip：非表示にした情報（工程数・状態・工程種類）をショットセル hover で参照可能に */
       const stateWord = /done/.test(rollup)?'完了':/late/.test(rollup)?'遅延':/wip/.test(rollup)?'作業中':/noplan/.test(rollup)?'未計画':/plan/.test(rollup)?'計画中':'—';
       const tt = `${shot.sectionNode.name||''} — ${stages.length} 工程 / ${stateWord} / 現在：${curLabel}`;
@@ -1732,23 +1735,48 @@ function initScheduleDrag(){
     }catch(e){console.warn(e);}
   });
 
-  /* 選択状態の視覚反映：全 .seg-plan から .selected を外し、該当バーだけ付ける */
+  /* 選択状態の視覚反映：バー選択 or 行選択のどちらかを反映 */
   function applyPlanSelectionUi(){
-    const all = document.querySelectorAll('#ganttBody .seg-plan');
-    all.forEach(el=>el.classList.remove('selected'));
+    const allBars = document.querySelectorAll('#ganttBody .seg-plan');
+    allBars.forEach(el=>el.classList.remove('selected'));
+    const allRows = document.querySelectorAll('#ganttBody .gantt-row');
+    allRows.forEach(el=>el.classList.remove('row-selected'));
     const sel = DATA.selectedPlan;
     if(!sel) return;
-    for(const el of all){
-      const s=el.dataset.shot||null, g=el.dataset.stage||null, cs=el.dataset.custSch||null, ci=el.dataset.custItem||null;
-      if(s===sel.shotId && g===sel.stageId && cs===sel.custSchId && ci===sel.custItemId){ el.classList.add('selected'); break; }
+    if(sel.stageId||sel.custItemId){
+      /* バー選択：該当 .seg-plan にハイライト */
+      for(const el of allBars){
+        const s=el.dataset.shot||null, g=el.dataset.stage||null, cs=el.dataset.custSch||null, ci=el.dataset.custItem||null;
+        if(s===sel.shotId && g===sel.stageId && cs===sel.custSchId && ci===sel.custItemId){ el.classList.add('selected'); break; }
+      }
+    }else if(sel.shotId){
+      /* 行選択：該当 .gantt-row にハイライト */
+      const rows = document.querySelectorAll(`#ganttBody .gantt-row[data-shot="${CSS.escape(sel.shotId)}"]`);
+      rows.forEach(r=>r.classList.add('row-selected'));
     }
   }
   /* 全描画後に選択ハイライトを再適用（再ビルド時） */
   window._pmApplyPlanSelectionUi = applyPlanSelectionUi;
 
-  /* トラック外クリックで選択解除 */
+  /* 空トラック／ショットセルのクリックで「行選択」（バー無しショットへの貼付ターゲット）。
+     バーの上のクリックは既存の mousedown で選択トグルされるので、ここでは拾わない。 */
+  body.addEventListener('mousedown', e=>{
+    if(e.target.closest('.seg-plan')) return; /* バー選択に譲る */
+    if(e.target.closest('.handle,.milestone,.add-plan-btn,.plan-menu,button,select,input')) return;
+    const row = e.target.closest('.gantt-row');
+    if(!row) return;
+    const shotId = row.dataset.shot || null;
+    if(!shotId) return; /* シーングループ行など shot 属性が無い行は無視 */
+    const cur = DATA.selectedPlan;
+    const same = cur && cur.shotId===shotId && !cur.stageId && !cur.custItemId;
+    if(same){ DATA.selectedPlan=null; }
+    else { DATA.selectedPlan = {shotId, stageId:null, custSchId:null, custItemId:null}; }
+    applyPlanSelectionUi();
+  });
+
+  /* トラック／行の外側クリックで選択解除 */
   document.addEventListener('mousedown', e=>{
-    if(e.target.closest('.seg-plan')) return;
+    if(e.target.closest('#ganttBody')) return;
     if(e.target.closest('input,select,textarea,button,.plan-menu,.sb-dtbl,.sub-tabs')) return;
     if(DATA.selectedPlan){ DATA.selectedPlan=null; applyPlanSelectionUi(); }
   }, true);
@@ -1817,23 +1845,49 @@ function initScheduleDrag(){
     tip.style.left='50%'; tip.style.top='60px';
     setTimeout(()=>{tip.style.display='none'}, 1200);
   }
-  /* --- クリップボードを選択中のバーへ貼付（同じ日付範囲を上書き） --- */
+  /* --- クリップボードを選択中の対象へ貼付 ---
+     ・カスタムバー選択（sel.custItemId）→ そのカスタム item に上書き
+     ・ショットバー選択（sel.stageId）→ そのバーの stage に上書き
+     ・行選択（sel.stageId なし・sel.shotId のみ）→ clip.stageName と同名の stage を探して上書き。
+       まだ予定バーが無いショットにも貼付可能（新規 plannedStart/End をセット）。 */
   async function pasteToSelectedPlan(){
     const sel = DATA.selectedPlan; const clip = DATA.clipboardPlan;
     if(!sel||!clip) return;
-    if(sel.custSchId){
+    if(sel.custItemId){
       const sch = customById(sel.custSchId); if(!sch) return;
       const it = sch.items.find(x=>x.id===sel.custItemId); if(!it) return;
       it.plannedStart = new Date(clip.plannedStart.getTime());
       it.plannedEnd = new Date(clip.plannedEnd.getTime());
       await saveCustomSchedules();
       buildCustomGantt(sch.id);
-    }else{
-      const shot = DATA.shots.find(s=>s.sectionNode.id===sel.shotId); if(!shot) return;
-      const st = shot.stages.find(x=>x.reviewNode.id===sel.stageId); if(!st) return;
+      return;
+    }
+    if(sel.shotId){
+      const shot = DATA.shots.find(s=>s.sectionNode.id===sel.shotId);
+      if(!shot) return;
+      let st = null;
+      if(sel.stageId){
+        st = shot.stages.find(x=>x.reviewNode.id===sel.stageId);
+      }else if(clip.stageName){
+        /* 行選択：工程名一致で貼付先 stage を検索 */
+        st = shot.stages.find(x => (x.stageName||x.label||'') === clip.stageName);
+        if(!st){
+          /* 完全一致で見つからない場合は大文字小文字を無視して再検索 */
+          const target = clip.stageName.toLowerCase();
+          st = shot.stages.find(x => (x.stageName||x.label||'').toLowerCase() === target);
+        }
+      }
+      if(!st){
+        tip.innerHTML=`<div><span class="lbl">PASTE 不可</span>工程「${escapeHtml(clip.stageName||'?')}」がこのショットにありません</div>`;
+        tip.style.display='block'; tip.style.left='50%'; tip.style.top='60px';
+        setTimeout(()=>{tip.style.display='none'}, 1500);
+        return;
+      }
       st.plannedStart = new Date(clip.plannedStart.getTime());
       st.plannedEnd = new Date(clip.plannedEnd.getTime());
       await saveShotSchedule(shot);
+      /* 貼付後は「そのバー」を選択状態に切替 */
+      DATA.selectedPlan = {shotId: shot.sectionNode.id, stageId: st.reviewNode.id, custSchId:null, custItemId:null};
       buildGantt();
     }
   }
