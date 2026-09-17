@@ -3629,7 +3629,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.17.007';
+const APP_VERSION='2026.09.17.008';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6805,8 +6805,11 @@ function renderReviewBody(s,cur,opts){
   /* 同ショット内の全工程を統合表示。ストリーム構築時、2 通りの「出所」情報を持たせる：
        stageNode = そのアイテムを保有する review ノード（旧モデル・多工程フォルダ用の識別）
        stageName = v.stage / c.stage タグ（Simple B・単一 review + 工程タグ用）
-     バッジ表示は stageName を優先、無ければ stageNode.name をフォールバック。 */
-  const stageSiblings=shotSec?descendants(shotSec.id).filter(n=>n.type==='review'):[cur];
+     バッジ表示は stageName を優先、無ければ stageNode.name をフォールバック。
+     兄弟工程の抽出は「shot section の直下子だけ」に限定。Simple B ショットは兄弟なし＝自身のみ。 */
+  const _shotKids=shotSec?DB.nodes.filter(n=>n.parentId===shotSec.id):[];
+  const _isShotContainer=!!(shotSec && shotSec.type==='section' && _shotKids.length>=1 && _shotKids.every(k=>k.type==='review'));
+  const stageSiblings=_isShotContainer?_shotKids:[cur];
   const hasSiblings=stageSiblings.length>1;
   const curStageName=getShotCurrentStage(cur);
   const rootStagesArr=projStageList(rootOf(cur));
@@ -6894,17 +6897,22 @@ function buildStageStrip(shot,curReviewId){
 }
 /* 作業ページ左上：工程切替プルダウン。
    優先順位：
-     ・現ノード（review）が兄弟 review を 2 個以上持つ ＝ 旧モデル（フォルダ分け）
-       → 兄弟 review を列挙し switchStageInTab で切替（従来動作）
-     ・それ以外 ＝ 新モデル（単一 review ショット）
+     ・親（shot）が「shot section」（type=section で 子が全て review）＝ 旧モデル
+       → 兄弟 review を列挙し switchStageInTab で切替
+     ・それ以外 ＝ 新モデル（Simple B・単一 review ショット）
        → root.stages[] から現在工程を選択 → n.currentStage を書き換えて再描画。
-   root.stages が未設定なら null を返して非表示。 */
+   root.stages が未設定なら null を返して非表示。
+   NOTE：以前は `descendants(shot.id)` で再帰列挙していたため、Simple B ショットの親が
+   エピソード／ルートの場合、エピソード配下の全ショット（無関係な review）を「兄弟」と誤検出し
+   pmboard 側で工程が欠落する副作用が出ていた。ここでは shot の直下子だけに限定して判定する。 */
 function buildStageStripInline(shot,curReviewId){
   const cur=curReviewId?getNode(curReviewId):null;
   const root=cur?rootOf(cur):null;
   const stages=projStageList(root);
-  const siblings=shot?descendants(shot.id).filter(n=>n.type==='review'):[];
-  const useLegacy=siblings.length>=2;
+  const directKids=shot?DB.nodes.filter(n=>n.parentId===shot.id):[];
+  const isLegacyShotContainer=!!(shot && shot.type==='section' && directKids.length>=1 && directKids.every(k=>k.type==='review'));
+  const siblings=isLegacyShotContainer?directKids:[];
+  const useLegacy=isLegacyShotContainer && siblings.length>=2;
   if(useLegacy){
     /* --- 旧モデル：兄弟 review 列挙（従来動作） --- */
     const wrap=el('span','stage-strip stage-strip-inline');

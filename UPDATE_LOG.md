@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.17.008) **Simple B スコープ検出のバグ修正（pmboard 工程消失の原因）**：
+  - **原因**：`buildStageStripInline` と統合ログの `stageSiblings` 抽出で `descendants(shot.id)` を使っていたため、Simple B ショットの親がエピソード／ルートの場合、その配下全ショット（無関係な review）を「兄弟工程」と誤検出。pmboard 側の Simple B ショット判定でも旧モデルショットの review 子まで拾ってしまい、工程が二重集計→一部が消えたように見えていた。
+  - **修正 1**：`buildStageStripInline` の兄弟抽出を **shot 直下子だけ** に限定し、`shot.type==='section' で 直下子が全て review` を「shot section」として厳密判定。
+  - **修正 2**：統合ログの `stageSiblings` も同じロジックで shot 直下子に限定。Simple B ショットは自身のみ含む。
+  - **修正 3**：pmboard 側 `isSimpleShot` に「親が旧モデルショットなら除外」を追加。旧モデル review 子が Simple B と誤判定されないように。
+  - APP_VERSION：2026.09.17.007 → 2026.09.17.008
+
 - (dev v2026.09.17.007) **Simple B P5：ショット新規作成で工程フォルダ設定を省略可能に**：
   - ショット追加ダイアログの「⚙ 各フォルダ内に作成する工程」を **省略可** に変更。工程を追加しなければ、ショットは単一 `review` ノード（Simple B ショット）として作成される。
   - 作成時の初期 `currentStage` は `root.stages[0]`（プロジェクト共通の工程セット）が自動セット。
@@ -1978,6 +1985,9 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.09.17.016) **Simple B ショット判定の除外条件を追加（工程消失バグ修正）**：`isSimpleShot` に「親が旧モデルショット（section+review 子）なら false」を追加。旧モデルショットの review 子ノードが Simple B と誤判定され、pmboard のグラフから 1 工程消える原因を根絶。
+  - APP_VERSION：2026.09.17.015 → 2026.09.17.016
 
 - (dev v2026.09.17.015) **Simple B P6：pmboard を Simple B ショットに対応**：LayCAT の Simple B ショット（`type:'review'` + `currentStage`）を pmboard がロード・表示できるよう対応。
   - **shot 検出拡張**：`isLegacyShot`（section + review 子）に加え `isSimpleShot`（review + `currentStage` or `stageHistory`）を追加。両方を DATA.shots に取り込む。
