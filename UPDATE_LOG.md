@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.011) **フィルタ「工程」「ステータス」を「現在工程」ベースに変更（バーの絞込が効くように）**：
+  - **原因**：v.010 のデバッグログ確認で、ソート自体は機能していた（`['lay_pri', 'lay_anm', 'anm_sec']`）ことが判明。真の問題は **フィルタの semantics**：以前は `shot.stages.some(st => st.reviewNode.name === stage)` で「その工程を持つか」判定していたので、全ショットが同じ工程セットを持つ場合はどの工程を選んでも全通過してしまっていた。
+  - **修正**：フィルタを **shotCurrentStage() の現在工程一致** で判定するよう変更。工程分布ドーナツクリックの絞込と同じルールに統一。
+  - **ステータスフィルタも同修正**：`shot.stages.some(st => st.currentStatus === status)` → `shotCurrentStage(shot).currentStatus === status`。以前は他工程のステータスで通ってしまいステータス分布と食い違っていた。
+  - APP_VERSION：2026.09.18.010 → 2026.09.18.011
+
 - (dev v2026.09.18.010) **工程設定リストを DATA.shots ベースに切替 + デバッグログ追加**：
   - **原因調査**：v.009 でも「工程ソートが機能しない」というフィードバック。`renderStageList`（工程設定）は `projectStageNames()` を優先し、それが `root.stages` / `stageTemplates` を返した場合はそのまま表示（ソートなし）していた。root.stages がステールで実データと違う順の可能性。
   - **修正**：`renderStageList` を **常に DATA.shots からアグリゲート → `stageOrderCmp` でソート** に変更。projectStageNames は shots が空の時だけの最終フォールバック。

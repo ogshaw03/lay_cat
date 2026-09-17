@@ -552,7 +552,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.010';
+const APP_VERSION='2026.09.18.011';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1150,15 +1150,21 @@ function filterShots(shots){
       const has = shot.stages.some(st => st.assignee && String(st.assignee).toLowerCase()===key);
       if(!has) return false;
     }
-    /* 工程：ショットに指定工程名が存在するかどうか */
+    /* 工程：ショットの「現在の工程」が指定と一致するショットだけ通す。
+       以前は shot.stages.some(...) で「工程を持つか」判定していたが、全ショットが同じ工程セットを
+       持つケースでは全通過してしまい絞り込みが効かなかった。工程分布ドーナツクリックと同じ
+       「現在工程一致」semantics に統一。 */
     if(stage){
-      const has = shot.stages.some(st => st.reviewNode.name === stage);
-      if(!has) return false;
+      const cur = shotCurrentStage(shot);
+      const curName = cur ? (cur.stageName || cur.label || '') : null;
+      if(curName !== stage) return false;
     }
-    /* ステータス：少なくとも 1 工程の現在ステータスが一致 */
+    /* ステータス：ショットの「現在の工程」のステータスが指定と一致するショットだけ通す。
+       以前は shot.stages.some(...) だったので、他工程で該当ステータスがあれば通ってしまい
+       ステータス分布と食い違っていた。 */
     if(status){
-      const has = shot.stages.some(st => st.currentStatus === status);
-      if(!has) return false;
+      const cur = shotCurrentStage(shot);
+      if(!cur || cur.currentStatus !== status) return false;
     }
     return true;
   });
