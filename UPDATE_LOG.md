@@ -18,6 +18,15 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.004) **予定バーの選択・削除・コピペを実装**：
+  - **選択**：予定バーをクリック（＝ドラッグせずに mousedown→mouseup）で選択トグル。選択中は白い実線アウトライン＋輝度アップ。トラック外クリックで解除。
+  - **削除**：`Del`／`Backspace` キー → 選択中バーの `plannedStart/End` を null に戻し保存 → 再描画（未予定に戻る）。
+  - **コピー**：`Ctrl+C`（or `⌘+C`）→ 選択中バーの日付範囲（絶対日付）を `DATA.clipboardPlan` に保存。画面中央上にヒントを 1.2 秒表示。
+  - **ペースト**：`Ctrl+V`（or `⌘+V`）→ 他ショットの予定バーを選択してから貼付。同じ日付範囲を上書きして保存＆再描画。
+  - **ドラッグとの共存**：mousemove で 4px 以上動いた時だけドラッグ扱い、それ未満は「クリック」として選択トグル。今までのドラッグ編集は全部そのまま動作。
+  - ショット予定バー（`.seg-plan[data-shot]`）とカスタム予定バー（`.seg-plan[data-cust-*]`）両対応。
+  - APP_VERSION：2026.09.18.003 → 2026.09.18.004
+
 - (dev v2026.09.18.003) **pmboard の工程色を LayCAT 本体と完全統一**：
   - **原因**：pmboard は独自の 5 色 CSS 変数（`--st-layout` 等）＋分類ベース＋project順パレットで色付けしていたが、LayCAT 本体は `STAGE_COLOR_MAP`（4 固定キー）＋`STAGE_PALETTE`（8 色 hex）＋stageRank 順のプロジェクト内割当を使っており、両者の色が食い違っていた。
   - **修正**：LayCAT の `STAGE_COLOR_MAP` / `STAGE_PALETTE` / `stageColorFor` ロジックをそのまま pmboard に移植。

@@ -229,6 +229,8 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row .track .day.wknd{background:rgba(255,255,255,.015)}
 /* コンパクト行に合わせて plan/actual を 1 行内に上下スタック（各 12px 帯） */
 .gantt-row .track .seg-plan{position:absolute;top:4px;height:12px;border:1px dashed;border-radius:var(--radius2);overflow:visible;cursor:grab;user-select:none}
+/* 選択中の予定バー：白い実線アウトラインで強調（Del / Ctrl+C / Ctrl+V の対象） */
+.gantt-row .track .seg-plan.selected{border-style:solid!important;outline:2px solid rgba(255,255,255,.85);outline-offset:1px;filter:brightness(1.15);z-index:4}
 .gantt-row .track .seg-plan:hover{filter:brightness(1.4)}
 .gantt-row .track .seg-plan.dragging{cursor:grabbing;filter:brightness(1.6);z-index:5}
 /* プレースホルダ：予定未設定 → 破線＋薄い（ドラッグで実プランに変わる） */
@@ -548,7 +550,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.003';
+const APP_VERSION='2026.09.18.004';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -804,6 +806,8 @@ const DATA = {
   timeline: {start:null,end:null,days:0},
   loaded: false,
   stageFilter: null, /* サイドバー「工程分布」ドーナツ／表クリックで選ばれた工程名。null=絞込なし */
+  selectedPlan: null, /* 選択中の予定バー {shotId, stageId, custSchId?, custItemId?} */
+  clipboardPlan: null, /* Ctrl+C で保存した予定 {stageName, days:N} */
 };
 
 /* フィルタ状態：サイドバーのセレクタと連動 */
@@ -1403,6 +1407,7 @@ function buildGantt(){
   const p = jstParts(new Date());
   marker.innerHTML = `<div class="lbl">TODAY ${p.m}/${p.d}</div>`;
   wrapper.appendChild(marker);
+  if(typeof window._pmApplyPlanSelectionUi==='function') window._pmApplyPlanSelectionUi();
 }
 
 /* =========== カスタムスケジュール Gantt =========== */
@@ -1496,6 +1501,7 @@ function buildCustomGantt(scheduleId){
   const pjt = jstParts(new Date());
   marker.innerHTML = `<div class="lbl">TODAY ${pjt.m}/${pjt.d}</div>`;
   wrapper.appendChild(marker);
+  if(typeof window._pmApplyPlanSelectionUi==='function') window._pmApplyPlanSelectionUi();
 }
 
 /* カスタム工程を追加：色は STAGE_ORDER_COLORS を巡回で自動割当 */
@@ -1653,8 +1659,12 @@ function initScheduleDrag(){
     const mode = e.target.classList.contains('handle')
       ? (e.target.classList.contains('l')?'resize-l':'resize-r')
       : 'move';
-    drag = {seg, target, isCustom, custSchId:custSch, contextLabel, mode, startX:e.clientX,
-            origP1:dayIdx(target.plannedStart), origP2:dayIdx(target.plannedEnd), trackW};
+    drag = {seg, target, isCustom, custSchId:custSch, contextLabel, mode, startX:e.clientX, startY:e.clientY,
+            origP1:dayIdx(target.plannedStart), origP2:dayIdx(target.plannedEnd), trackW,
+            moved:false,
+            /* 選択判定用のメタ */
+            shotId: seg.dataset.shot||null, stageId: seg.dataset.stage||null,
+            custSchId2: custSch||null, custItemId: custItem||null};
     seg.classList.add('dragging');
     tip.style.display='block';
     e.preventDefault();
@@ -1663,6 +1673,10 @@ function initScheduleDrag(){
   window.addEventListener('mousemove', e=>{
     if(!drag) return;
     const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    /* 4px 以上動いたら drag と判定（それ未満は「クリック」扱いで選択トグル） */
+    if(!drag.moved && (Math.abs(dx)>4 || Math.abs(dy)>4)) drag.moved = true;
+    if(!drag.moved) return; /* 動かないうちは絶対に予定を書き換えない（うっかり移動防止） */
     const days = DATA.timeline.days;
     const dayShift = Math.round((dx/drag.trackW)*days);
     let p1 = drag.origP1, p2 = drag.origP2;
@@ -1694,18 +1708,135 @@ function initScheduleDrag(){
     tip.style.display='none';
     const d = drag;
     drag = null;
+    /* click（drag なし）→ 選択トグル。それ以外（drag あり）→ 保存 */
+    if(!d.moved){
+      const sel = DATA.selectedPlan;
+      const same = sel && sel.shotId===d.shotId && sel.stageId===d.stageId
+                       && sel.custSchId===d.custSchId2 && sel.custItemId===d.custItemId;
+      if(same){ DATA.selectedPlan = null; }
+      else {
+        DATA.selectedPlan = {shotId:d.shotId, stageId:d.stageId, custSchId:d.custSchId2, custItemId:d.custItemId};
+      }
+      applyPlanSelectionUi();
+      return;
+    }
     try{
       if(d.isCustom){
         await saveCustomSchedules();
         buildCustomGantt(d.custSchId);
       }else{
-        /* shot 側は drag.target が stage オブジェクト。所属 shot を逆引き */
         const shot = DATA.shots.find(s=>s.stages.some(x=>x===d.target));
         if(shot){ await saveShotSchedule(shot); }
         buildGantt();
       }
     }catch(e){console.warn(e);}
   });
+
+  /* 選択状態の視覚反映：全 .seg-plan から .selected を外し、該当バーだけ付ける */
+  function applyPlanSelectionUi(){
+    const all = document.querySelectorAll('#ganttBody .seg-plan');
+    all.forEach(el=>el.classList.remove('selected'));
+    const sel = DATA.selectedPlan;
+    if(!sel) return;
+    for(const el of all){
+      const s=el.dataset.shot||null, g=el.dataset.stage||null, cs=el.dataset.custSch||null, ci=el.dataset.custItem||null;
+      if(s===sel.shotId && g===sel.stageId && cs===sel.custSchId && ci===sel.custItemId){ el.classList.add('selected'); break; }
+    }
+  }
+  /* 全描画後に選択ハイライトを再適用（再ビルド時） */
+  window._pmApplyPlanSelectionUi = applyPlanSelectionUi;
+
+  /* トラック外クリックで選択解除 */
+  document.addEventListener('mousedown', e=>{
+    if(e.target.closest('.seg-plan')) return;
+    if(e.target.closest('input,select,textarea,button,.plan-menu,.sb-dtbl,.sub-tabs')) return;
+    if(DATA.selectedPlan){ DATA.selectedPlan=null; applyPlanSelectionUi(); }
+  }, true);
+
+  /* キーボード：Del=削除、Ctrl+C=コピー、Ctrl+V=ペースト */
+  document.addEventListener('keydown', async (e)=>{
+    /* 入力欄フォーカス中は無視 */
+    const t = e.target;
+    if(t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable)) return;
+    const isCtrl = e.ctrlKey||e.metaKey;
+    if(e.key==='Delete'||e.key==='Backspace'){
+      if(!DATA.selectedPlan) return;
+      e.preventDefault();
+      await deleteSelectedPlan();
+    }else if(isCtrl && (e.key==='c'||e.key==='C')){
+      if(!DATA.selectedPlan) return;
+      e.preventDefault();
+      copySelectedPlan();
+    }else if(isCtrl && (e.key==='v'||e.key==='V')){
+      if(!DATA.clipboardPlan||!DATA.selectedPlan) return;
+      e.preventDefault();
+      await pasteToSelectedPlan();
+    }
+  });
+
+  /* --- 選択中の予定を削除（plannedStart/End をクリア） --- */
+  async function deleteSelectedPlan(){
+    const sel = DATA.selectedPlan; if(!sel) return;
+    if(sel.custSchId){
+      const sch = customById(sel.custSchId); if(!sch) return;
+      const it = sch.items.find(x=>x.id===sel.custItemId); if(!it) return;
+      it.plannedStart=null; it.plannedEnd=null;
+      await saveCustomSchedules();
+      DATA.selectedPlan=null;
+      buildCustomGantt(sch.id);
+    }else{
+      const shot = DATA.shots.find(s=>s.sectionNode.id===sel.shotId); if(!shot) return;
+      const st = shot.stages.find(x=>x.reviewNode.id===sel.stageId); if(!st) return;
+      st.plannedStart=null; st.plannedEnd=null;
+      await saveShotSchedule(shot);
+      DATA.selectedPlan=null;
+      buildGantt();
+    }
+  }
+  /* --- 選択中の予定をクリップボードにコピー（日付は絶対値で保存し、貼付時にそのまま適用） --- */
+  function copySelectedPlan(){
+    const sel = DATA.selectedPlan; if(!sel) return;
+    let target=null, stageName=null;
+    if(sel.custSchId){
+      const sch = customById(sel.custSchId); if(!sch) return;
+      const it = sch.items.find(x=>x.id===sel.custItemId); if(!it||!it.plannedStart||!it.plannedEnd) return;
+      target = it; stageName = it.name;
+    }else{
+      const shot = DATA.shots.find(s=>s.sectionNode.id===sel.shotId); if(!shot) return;
+      const st = shot.stages.find(x=>x.reviewNode.id===sel.stageId); if(!st||!st.plannedStart||!st.plannedEnd) return;
+      target = st; stageName = st.stageName || st.label || null;
+    }
+    DATA.clipboardPlan = {
+      stageName,
+      plannedStart: new Date(target.plannedStart.getTime()),
+      plannedEnd: new Date(target.plannedEnd.getTime()),
+    };
+    /* ヒントを一瞬表示 */
+    tip.innerHTML=`<div><span class="lbl">COPY</span>${escapeHtml(stageName||'?')}：${fmtJstDate(target.plannedStart)} — ${fmtJstDate(target.plannedEnd)}</div>`;
+    tip.style.display='block';
+    tip.style.left='50%'; tip.style.top='60px';
+    setTimeout(()=>{tip.style.display='none'}, 1200);
+  }
+  /* --- クリップボードを選択中のバーへ貼付（同じ日付範囲を上書き） --- */
+  async function pasteToSelectedPlan(){
+    const sel = DATA.selectedPlan; const clip = DATA.clipboardPlan;
+    if(!sel||!clip) return;
+    if(sel.custSchId){
+      const sch = customById(sel.custSchId); if(!sch) return;
+      const it = sch.items.find(x=>x.id===sel.custItemId); if(!it) return;
+      it.plannedStart = new Date(clip.plannedStart.getTime());
+      it.plannedEnd = new Date(clip.plannedEnd.getTime());
+      await saveCustomSchedules();
+      buildCustomGantt(sch.id);
+    }else{
+      const shot = DATA.shots.find(s=>s.sectionNode.id===sel.shotId); if(!shot) return;
+      const st = shot.stages.find(x=>x.reviewNode.id===sel.stageId); if(!st) return;
+      st.plannedStart = new Date(clip.plannedStart.getTime());
+      st.plannedEnd = new Date(clip.plannedEnd.getTime());
+      await saveShotSchedule(shot);
+      buildGantt();
+    }
+  }
 }
 
 /* =========== 他タブ（Phase 2 で実装予定） =========== */
