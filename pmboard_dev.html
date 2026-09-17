@@ -189,9 +189,10 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
    対して効いてしまい、`.pane` の縦スクロールで日付ヘッダが上に隠れる。visible にして
    sticky を `.pane` に対して働かせる。角丸のはみ出しは content 側で自然に収まる。
    --shot-col-w：ショット列の幅（ユーザーがドラッグでリサイズ可能）。 */
-.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:relative;--shot-col-w:220px;--track-min-w:0px}
-/* min-width：ショット列 + トラック最小幅 の合計。日/週/月 スケールで --track-min-w を膨らませる。 */
-.gantt-hdr,.gantt-body{min-width:calc(var(--shot-col-w) + var(--track-min-w))}
+.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:relative;--shot-col-w:220px;--track-min-w:0px;width:max(100%,calc(var(--shot-col-w) + var(--track-min-w)))}
+/* 子要素は .gantt の幅を自動的に受け継ぐ（block-level）。
+   width: max(100%, ...) で通常はペインを埋め、日/週/月ズームで --track-min-w が
+   大きいときはその値まで拡大 → pane が横スクロール。 */
 .gantt-hdr{display:grid;grid-template-columns:var(--shot-col-w) 1fr;background:var(--bg3);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
 /* ヘッダの Shot ラベルも横スクロール時に左端に固定 */
 .gantt-hdr .lbl{position:sticky;left:0;background:var(--bg3);z-index:6}
@@ -585,7 +586,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.016';
+const APP_VERSION='2026.09.18.017';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
