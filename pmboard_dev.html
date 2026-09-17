@@ -548,7 +548,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.002';
+const APP_VERSION='2026.09.18.003';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -590,17 +590,62 @@ function classifyStage(name){
   }
   return 'unknown';
 }
-function stageColor(kind, name, projectStages){
-  /* 1) キーワード判定でヒット → 固定カラー（Layout/Anim/FX/Comp/Paint） */
-  if(STAGE_COLORS[kind]) return STAGE_COLORS[kind];
-  /* 2) プロジェクト工程配列にあれば、その順序でパレットから割当 */
-  if(Array.isArray(projectStages)&&projectStages.length){
-    const idx = projectStages.findIndex(x=>x===name);
-    if(idx>=0) return STAGE_ORDER_COLORS[idx%STAGE_ORDER_COLORS.length];
+/* LayCAT 本体の工程色ロジック完全ポート：
+     1) `root.stageColors[name]` — プロジェクト設定で手動指定した色（最優先）
+     2) `LC_STAGE_COLOR_MAP[key]` — 固定マップ（lay_pri／lay_anm／anm_pri／anm_sec）
+     3) `LC_STAGE_PALETTE` — プロジェクト内工程名を stageRank 順に並べて順番割当（重複回避）
+     4) フォールバック：名前 char code 和 % パレット長
+   これで LayCAT のショットタブ・進捗タブと pmboard のバー／ドーナツ／バッジが同じ色に。 */
+const LC_STAGE_COLOR_MAP = {lay_pri:'#4a90d9', lay_anm:'#5fb878', anm_pri:'#e8a838', anm_sec:'#d9734a'};
+const LC_STAGE_PALETTE = ['#4a90d9','#5fb878','#e8a838','#d9734a','#9b6dd6','#46c4b8','#d96d9e','#c5c043'];
+const LC_STAGE_GRAY = '#5a5a6a';
+let _stageColorMemo = null; /* {rootId, map:Map(name->color)} — 描画毎の再計算を回避 */
+function invalidateStageColorsMemo(){ _stageColorMemo = null; }
+function projStageColorMap(root){
+  if(!root) return new Map();
+  if(_stageColorMemo && _stageColorMemo.rootId===root.id) return _stageColorMemo.map;
+  /* LayCAT と同じ手順：プロジェクト内の全 review ノード名（＝旧モデルの工程名）と、
+     単一 review shot（Simple B）の currentStage を集約し、stageRankCmp で並べてパレット割当。
+     DATA.shots ではなく project.nodes を直接走査（loadProjectData 内から呼ばれる可能性があるため）。 */
+  const allNodes = (DATA.project && DATA.project.nodes) || [];
+  const names = [], seen = new Set();
+  for(const n of allNodes){
+    if(!n) continue;
+    if(n.type==='review' && n.name && !seen.has(n.name)){ seen.add(n.name); names.push(n.name); }
+    if(n.currentStage && !seen.has(n.currentStage)){ seen.add(n.currentStage); names.push(n.currentStage); }
   }
-  /* 3) 名前ハッシュベース フォールバック */
-  let h=0; for(const c of (name||'?')) h=(h*31+c.charCodeAt(0))|0;
-  return STAGE_FALLBACK_COLORS[Math.abs(h)%STAGE_FALLBACK_COLORS.length];
+  /* プロジェクト共通 root.stages にある工程も念のため取り込み（Simple B 用の工程セット） */
+  if(root && Array.isArray(root.stages)){
+    for(const nm of root.stages){ const s=typeof nm==='string'?nm:(nm&&nm.name); if(s && !seen.has(s)){ seen.add(s); names.push(s); } }
+  }
+  names.sort((a,b)=>stageRankCmp(a,b));
+  const manual = (root && root.stageColors) || null;
+  const map = new Map(); let pi = 0;
+  for(const nm of names){
+    if(manual && manual[nm]){ map.set(nm, manual[nm]); continue; } /* 手動指定 */
+    const key = nm.toLowerCase().split('/').pop();
+    if(LC_STAGE_COLOR_MAP[key]){ map.set(nm, LC_STAGE_COLOR_MAP[key]); }
+    else { map.set(nm, LC_STAGE_PALETTE[(pi++) % LC_STAGE_PALETTE.length]); }
+  }
+  _stageColorMemo = {rootId: root.id, map};
+  return map;
+}
+function stageColor(kind, name, projectStages){
+  if(!name) return LC_STAGE_GRAY;
+  /* Priority 1：LayCAT プロジェクト設定の stageColors[name]（手動） */
+  const root = DATA.project && (DATA.project.nodes||[]).find(n=>n.id===DATA.project.id);
+  if(root && root.stageColors && root.stageColors[name]) return root.stageColors[name];
+  /* Priority 2：LC_STAGE_COLOR_MAP（lay_pri 等の固定キー） */
+  const key = name.toLowerCase().split('/').pop();
+  if(LC_STAGE_COLOR_MAP[key]) return LC_STAGE_COLOR_MAP[key];
+  /* Priority 3：プロジェクト内の工程色マップから引く（LayCAT 全タブで色が揃う） */
+  if(root){
+    const m = projStageColorMap(root);
+    if(m.has(name)) return m.get(name);
+  }
+  /* Priority 4：名前 char code 和 % PALETTE でフォールバック */
+  let h = 0; for(const c of name.toLowerCase()) h += c.charCodeAt(0);
+  return LC_STAGE_PALETTE[h % LC_STAGE_PALETTE.length];
 }
 function stageLabel(kind, name){
   /* LayCAT の工程名をそのまま表示（LAY / ANM / CP など短縮された名前が多いのでそのまま出せる） */
@@ -775,6 +820,7 @@ async function loadProjectData(){
   if(!proj) proj = await storage.readJson('layna.project.json');
   if(!proj) return {ok:false, err:'laycat.project.json が見つかりません。LayCAT で開いたプロジェクトフォルダを選択してください。'};
   DATA.project = proj;
+  invalidateStageColorsMemo(); /* プロジェクト再読み込みで工程色キャッシュをリセット */
 
   const allNodes = Array.isArray(proj.nodes)?proj.nodes:[];
   const nodeById = new Map(allNodes.map(n=>[n.id,n]));

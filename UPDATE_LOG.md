@@ -18,6 +18,16 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.003) **pmboard の工程色を LayCAT 本体と完全統一**：
+  - **原因**：pmboard は独自の 5 色 CSS 変数（`--st-layout` 等）＋分類ベース＋project順パレットで色付けしていたが、LayCAT 本体は `STAGE_COLOR_MAP`（4 固定キー）＋`STAGE_PALETTE`（8 色 hex）＋stageRank 順のプロジェクト内割当を使っており、両者の色が食い違っていた。
+  - **修正**：LayCAT の `STAGE_COLOR_MAP` / `STAGE_PALETTE` / `stageColorFor` ロジックをそのまま pmboard に移植。
+    1. `root.stageColors[name]` 手動指定（最優先）
+    2. `LC_STAGE_COLOR_MAP[key]`（lay_pri / lay_anm / anm_pri / anm_sec の 4 固定）
+    3. プロジェクト内の全工程名（review ノード名＋currentStage＋root.stages）を stageRank 順に並べて `LC_STAGE_PALETTE` を順番割当（重複回避）
+    4. フォールバック：名前 char code 和 % パレット長
+  - `projStageColorMap` に memo（rootId ベース）＋ロード毎に `invalidateStageColorsMemo` を呼び出し。
+  - APP_VERSION：2026.09.18.002 → 2026.09.18.003
+
 - (dev v2026.09.18.002) **pmboard に LayCAT primary 判定（動画時刻）を追加 — 既存プロジェクトも切り替え不要で一致**：
   - **原因**：v.001 で LayCAT のプルダウン切替時に `sectionNode.currentStage` を書き込むようにしたが、既存プロジェクトで一度も工程切替をしていないショットは currentStage が未設定 → pmboard は secondary（status ベース）にフォールバック → LayCAT の primary（動画ベース）と一致しない事例があった。
   - **修正**：pmboard の buildStages で `k.versions[]`（shots/{id}.json から取得）を走査し、`latestVideoTime`（最新 uploadedAt）を各工程に付与。
