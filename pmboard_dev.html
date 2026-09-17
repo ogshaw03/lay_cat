@@ -181,7 +181,10 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .custom-add-item:hover{color:var(--text);border-color:var(--accent2)}
 
 /* =========== GANTT =========== */
-.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;position:relative}
+/* overflow:hidden / clip にすると `.gantt-hdr` の position:sticky が `.gantt` 自身に
+   対して効いてしまい、`.pane` の縦スクロールで日付ヘッダが上に隠れる。visible にして
+   sticky を `.pane` に対して働かせる。角丸のはみ出しは content 側で自然に収まる。 */
+.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:relative}
 .gantt-hdr{display:grid;grid-template-columns:220px 1fr;background:var(--bg3);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
 .gantt-hdr .lbl{padding:11px 14px;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;border-right:1px solid var(--border)}
 .gantt-hdr .timeline{position:relative;overflow:hidden}
@@ -204,6 +207,10 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* 未予定の工程を追加する「＋」ボタン。ショットセル末尾に小さく表示 */
 .gantt-row .shot .add-plan-btn{flex-shrink:0;background:transparent;border:1px dashed var(--border2);color:var(--text3);width:18px;height:18px;border-radius:4px;font-size:12px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-family:var(--font-head);padding:0}
 .gantt-row .shot .add-plan-btn:hover{color:var(--text);border-color:var(--text2);background:var(--bg3)}
+/* 現在のステータス変更チップ：クリックで status メニュー */
+.gantt-row .shot .shot-status{flex-shrink:0;font-size:10px;font-weight:600;padding:1px 7px;border-radius:9px;color:#16161a;letter-spacing:.2px;cursor:pointer;white-space:nowrap;font-family:var(--font-head);border:1px solid transparent}
+.gantt-row .shot .shot-status.empty{background:transparent;color:var(--text3);border-color:var(--border2)}
+.gantt-row .shot .shot-status:hover{filter:brightness(1.15);outline:1px solid rgba(255,255,255,.4)}
 /* 予定追加のポップアップメニュー */
 .plan-menu{position:fixed;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius2);padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.5);z-index:1000;min-width:180px;max-height:60vh;overflow-y:auto}
 .plan-menu .item{display:flex;align-items:center;gap:8px;padding:5px 10px;font-size:12px;color:var(--text);cursor:pointer;border-radius:4px;white-space:nowrap}
@@ -560,7 +567,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.013';
+const APP_VERSION='2026.09.18.014';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1413,10 +1420,23 @@ function buildGantt(){
       /* tooltip：非表示にした情報（工程数・状態・工程種類）をショットセル hover で参照可能に */
       const stateWord = /done/.test(rollup)?'完了':/late/.test(rollup)?'遅延':/wip/.test(rollup)?'作業中':/noplan/.test(rollup)?'未計画':/plan/.test(rollup)?'計画中':'—';
       const tt = `${shot.sectionNode.name||''} — ${stages.length} 工程 / ${stateWord} / 現在：${curLabel}`;
+      /* 現在のステータスチップ：クリックでステータスメニュー → LayCAT の status/*.json に書き込み。
+         curStage が無いショット（＝現在工程が未特定）は書き込み対象が決まらないので非表示。 */
+      let statusChip = '';
+      if(curStage && curStage.reviewNode){
+        const projStatuses = (DATA.project && DATA.project.statuses) || [];
+        const curSt = projStatuses.find(s=>s.id===curStage.currentStatus);
+        if(curSt){
+          statusChip = `<span class="shot-status" data-shot="${shot.sectionNode.id}" data-stage="${curStage.reviewNode.id}" style="background:${resolveColor(curSt.color||'#5a5a6a')}" title="ステータスを変更">${escapeHtml(curSt.label||curSt.id)}</span>`;
+        }else{
+          statusChip = `<span class="shot-status empty" data-shot="${shot.sectionNode.id}" data-stage="${curStage.reviewNode.id}" title="ステータスを設定">未設定</span>`;
+        }
+      }
       row.innerHTML = `
         <div class="shot" title="${escapeHtml(tt)}">
           <div class="id">${escapeHtml(shot.sectionNode.name||shot.sectionNode.id.slice(-8))}</div>
           <div class="cur-stage"><span class="dot" style="background:${curColor}"></span>${escapeHtml(curLabel)}</div>
+          ${statusChip}
           ${addBtn}
           <div class="name">${stages.length} 工程</div>
           <div class="meta">${rollup}${asgBadges.length?`<span class="asg-badges">${asgBadges.join('')}</span>`:''}</div>
@@ -1630,7 +1650,75 @@ document.addEventListener('click', e=>{
   /* メニュー外クリック → 閉じる */
   if(!e.target.closest('.plan-menu')) closePlanMenu();
 });
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closePlanMenu(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closePlanMenu(); closeStatusMenu(); } });
+
+/* ================= ショット行の「現在のステータス」チップ + 変更メニュー =================
+   pmboard から LayCAT のショット（現在の工程）ステータスを変更できるようにする。
+   書き込み先は LayCAT と同じ `status/{stageId}.json`（v:1 スキーマ互換）。 */
+function showStatusMenu(chip){
+  closePlanMenu(); closeStatusMenu();
+  const shotId = chip.dataset.shot, stageId = chip.dataset.stage;
+  const statuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
+  if(!statuses.length) return;
+  const menu = document.createElement('div');
+  menu.className = 'plan-menu status-menu';
+  menu.dataset.shot = shotId; menu.dataset.stage = stageId;
+  const hdr = `<div class="hdr">ステータスを選択</div>`;
+  const items = statuses.map(s=>`<div class="item" data-status-id="${escapeHtml(s.id)}"><span class="dot" style="background:${resolveColor(s.color||'#5a5a6a')}"></span><span class="lbl">${escapeHtml(s.label||s.id)}</span></div>`).join('');
+  const clearItem = `<div class="item" data-status-id=""><span class="dot" style="background:#5a5a6a;opacity:.5"></span><span class="lbl">未設定に戻す</span></div>`;
+  menu.innerHTML = hdr + items + clearItem;
+  document.body.appendChild(menu);
+  const rect = chip.getBoundingClientRect();
+  menu.style.top = (rect.bottom + 4) + 'px';
+  menu.style.left = rect.left + 'px';
+  const mrect = menu.getBoundingClientRect();
+  if(mrect.right > window.innerWidth - 8) menu.style.left = (window.innerWidth - mrect.width - 8) + 'px';
+  if(mrect.bottom > window.innerHeight - 8) menu.style.top = (rect.top - mrect.height - 4) + 'px';
+}
+function closeStatusMenu(){
+  document.querySelectorAll('.status-menu').forEach(m=>m.remove());
+}
+async function applyStatusChange(item){
+  const menu = item.closest('.status-menu');
+  if(!menu) return;
+  const shotId = menu.dataset.shot, stageId = menu.dataset.stage;
+  const newStatus = item.dataset.statusId || null;
+  const shot = DATA.shots.find(s=>s.sectionNode.id===shotId);
+  if(!shot){ closeStatusMenu(); return; }
+  const st = shot.stages.find(x=>x.reviewNode.id===stageId);
+  if(!st){ closeStatusMenu(); return; }
+  const prev = st.currentStatus || null;
+  if(prev === newStatus){ closeStatusMenu(); return; }
+  const sid = st.reviewNode.id;
+  try{
+    const existing = await storage.readJson(`status/${sid}.json`);
+    const nowTs = new Date().toISOString();
+    const me = null; /* pmboard は現ユーザー特定情報を持たないので null */
+    const history = Array.isArray(existing && existing.history) ? existing.history.slice() : [];
+    history.push({ts:nowTs, by:me, from:prev, to:newStatus, source:'pmboard'});
+    const rev = ((existing && existing._rev)|0) + 1;
+    const file = {v:1, shotId:sid, status:newStatus, updatedAt:nowTs, updatedBy:me, source:'pmboard', history, _rev:rev};
+    await storage.writeJson(`status/${sid}.json`, file);
+  }catch(e){ console.warn('[pmboard] status write failed', e); }
+  /* メモリ側も更新 */
+  st.currentStatus = newStatus;
+  const projStatuses = (DATA.project && DATA.project.statuses) || [];
+  st.isDone = isStatusDone(newStatus, projStatuses);
+  /* 監査履歴も反映（実績バー再計算用） */
+  st.history = st.history || [];
+  st.history.push({ts:new Date().toISOString(), from:prev, to:newStatus, source:'pmboard'});
+  closeStatusMenu();
+  /* 再描画：ガント + サイドバー */
+  buildGantt();
+  updateSidebar();
+}
+document.addEventListener('click', e=>{
+  const chip = e.target.closest('.shot-status');
+  if(chip){ e.stopPropagation(); showStatusMenu(chip); return; }
+  const item = e.target.closest('.status-menu .item');
+  if(item){ applyStatusChange(item); return; }
+  if(!e.target.closest('.status-menu') && !e.target.closest('.shot-status')) closeStatusMenu();
+});
 
 /* =========== ドラッグ編集（実データ保存） =========== */
 function initScheduleDrag(){
