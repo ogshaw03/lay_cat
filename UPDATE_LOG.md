@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.018) **ズームを CSS `max()` から JavaScript の inline pixel width に切替（確実に幅が変わるように）**：v.016〜v.017 は CSS の `min-width` / `width:max(100%, calc(...))` を使っていたが、環境によって幅が変化しない事象があった（原因不明・CSS 変数と `max()` の相互作用による可能性）。
+  - **修正**：`applyGanttScale()` で `pane.clientWidth - 40px（padding 分）` と `shot-col-w + SCALE_PX × days` を比較し、大きい方を **pixel 値の `gantt.style.width` として直接設定**。CSS の間接参照を排除。
+  - `window.resize` イベントでも幅を再計算するので、ウィンドウ幅変化にも追従。
+  - APP_VERSION：2026.09.18.017 → 2026.09.18.018
+
 - (dev v2026.09.18.017) **ズームが効かなかった問題を修正（min-width の適用先変更）**：v.016 は `.gantt-hdr` と `.gantt-body` の 2 箇所に `min-width` を付けていたが、ブラウザによってはグリッドコンテナへの min-width が期待どおりに拡張されず、日／週／月を押しても実際の幅が変わらなかった（ヘッダの文字サイズだけ変化）。
   - **修正**：`.gantt` 自身に `width: max(100%, calc(var(--shot-col-w) + var(--track-min-w)))` を設定。子要素（.gantt-hdr / .gantt-body / .gantt-row）はブロック要素として自動追従。
   - APP_VERSION：2026.09.18.016 → 2026.09.18.017

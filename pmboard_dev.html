@@ -189,10 +189,9 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
    対して効いてしまい、`.pane` の縦スクロールで日付ヘッダが上に隠れる。visible にして
    sticky を `.pane` に対して働かせる。角丸のはみ出しは content 側で自然に収まる。
    --shot-col-w：ショット列の幅（ユーザーがドラッグでリサイズ可能）。 */
-.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:relative;--shot-col-w:220px;--track-min-w:0px;width:max(100%,calc(var(--shot-col-w) + var(--track-min-w)))}
-/* 子要素は .gantt の幅を自動的に受け継ぐ（block-level）。
-   width: max(100%, ...) で通常はペインを埋め、日/週/月ズームで --track-min-w が
-   大きいときはその値まで拡大 → pane が横スクロール。 */
+.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:relative;--shot-col-w:220px}
+/* .gantt 自身の width は applyGanttScale() が pane のクライアント幅と
+   （shot-col-w + SCALE_PX × days）を比較して inline style で決める。 */
 .gantt-hdr{display:grid;grid-template-columns:var(--shot-col-w) 1fr;background:var(--bg3);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
 /* ヘッダの Shot ラベルも横スクロール時に左端に固定 */
 .gantt-hdr .lbl{position:sticky;left:0;background:var(--bg3);z-index:6}
@@ -586,7 +585,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.017';
+const APP_VERSION='2026.09.18.018';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2659,11 +2658,9 @@ document.getElementById('tabs').addEventListener('click',e=>{
   b.classList.add('on');
   document.querySelector(`[data-pane="${b.dataset.tab}"]`).classList.add('on');
 });
-/* 日 / 週 / 月 のズーム：1 日あたりの px 幅を切り替えて `.gantt-hdr` / `.gantt-body` の
-   min-width を膨らませる。バーの %-based left/width はそのまま維持されるので、
-   トラック側は自動的に横スクロールで対応。ヘッダの日セル文字は月表示では隠す。
-   rerender=true でヘッダとバーを再描画（ユーザー操作時のみ true、初期ロード時は
-   loadAndRender の後続処理に任せて false）。 */
+/* 日 / 週 / 月 のズーム：1 日あたりの px 幅を切り替えて .gantt の width を pixel で設定。
+   ペインより小さければペイン幅を採用（隙間を作らない）。大きければ横スクロール発生。
+   バーの %-based left/width はそのまま維持されるので、コード変更なしで縮尺に追従。 */
 const SCALE_PX = {day:40, week:20, month:8};
 function applyGanttScale(scale, opts){
   opts = opts||{};
@@ -2674,8 +2671,14 @@ function applyGanttScale(scale, opts){
   if(!gantt) return;
   gantt.setAttribute('data-scale', scale);
   const days = (DATA.timeline && DATA.timeline.days) || 30;
+  const shotColW = parseInt(getComputedStyle(gantt).getPropertyValue('--shot-col-w')) || 220;
   const trackPx = SCALE_PX[scale] * days;
-  gantt.style.setProperty('--track-min-w', trackPx + 'px');
+  const targetPx = shotColW + trackPx;
+  /* pane のクライアント幅（padding 込みの内側幅）を取得。gantt が狭い時はそちらに合わせる。 */
+  const pane = gantt.closest('.pane');
+  const paneInner = pane ? (pane.clientWidth - 40 /* horizontal padding */) : 0;
+  const finalW = Math.max(paneInner, targetPx);
+  gantt.style.width = finalW + 'px';
   try{ localStorage.setItem('pmboard_scale', scale); }catch(_){}
   document.querySelectorAll('#scaleToggle button').forEach(x=>x.classList.toggle('on', x.dataset.scale===scale));
   if(rerender){
@@ -2683,6 +2686,8 @@ function applyGanttScale(scale, opts){
     if(DATA.currentSubTab==='shots') buildGantt(); else buildCustomGantt(DATA.currentSubTab);
   }
 }
+/* ウィンドウリサイズ時にも幅を再計算 */
+window.addEventListener('resize', ()=>{ if(DATA.scale && typeof applyGanttScale==='function') applyGanttScale(DATA.scale, {rerender:false}); });
 document.getElementById('scaleToggle').addEventListener('click',e=>{
   const b=e.target.closest('button[data-scale]');
   if(!b)return;
