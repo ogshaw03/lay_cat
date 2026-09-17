@@ -552,7 +552,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.007';
+const APP_VERSION='2026.09.18.008';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -836,6 +836,7 @@ async function loadProjectData(){
   if(!proj) return {ok:false, err:'laycat.project.json が見つかりません。LayCAT で開いたプロジェクトフォルダを選択してください。'};
   DATA.project = proj;
   invalidateStageColorsMemo(); /* プロジェクト再読み込みで工程色キャッシュをリセット */
+  invalidateStageOrderMemo();  /* 工程順キャッシュも同時にリセット */
 
   const allNodes = Array.isArray(proj.nodes)?proj.nodes:[];
   const nodeById = new Map(allNodes.map(n=>[n.id,n]));
@@ -2119,13 +2120,46 @@ function stageRankCmp(a,b){
   return ra[0]-rb[0] || (ra[1]<rb[1] ? -1 : ra[1]>rb[1] ? 1 : 0);
 }
 /* プロジェクトのワークフロー順で工程を並べる比較関数。
-   root.stages[] の順（＝ユーザーがプロジェクト設定で並べた工程順）を最優先。
-   root.stages に無い工程は末尾に落とし、その中で LayCAT の stageRankCmp を使う。
-   これで日本語工程名（レイアウト・アニメ・コンポ…）でも正しい順に並ぶ。 */
+   LayCAT が使う複数のソース（root.stages / root.stageTemplates[0].stages /
+   各 shot section の .stages）を「初出優先」で連結してマスター順を作り、
+   それに含まれない工程だけ stageRankCmp フォールバックする。
+   日本語工程名（レイアウト・アニメ・コンポ…）や独自命名でも期待通りに並ぶ。 */
+let _stageOrderMemo = null; /* {rootId, order: {name: index}} */
+function invalidateStageOrderMemo(){ _stageOrderMemo = null; }
+function _buildStageOrderIndex(){
+  const proj = DATA.project;
+  const root = proj && (proj.nodes||[]).find(n=>n.id===proj.id);
+  if(!root) return {};
+  if(_stageOrderMemo && _stageOrderMemo.rootId===root.id) return _stageOrderMemo.order;
+  const seen = new Set();
+  const order = {};
+  let idx = 0;
+  const push = arr => {
+    if(!Array.isArray(arr)) return;
+    for(const x of arr){
+      const nm = typeof x==='string' ? x : (x && x.name);
+      if(nm && !seen.has(nm)){ seen.add(nm); order[nm] = idx++; }
+    }
+  };
+  /* 1) プロジェクト共通の工程セット（Simple B 前提） */
+  push(root.stages);
+  /* 2) 工程テンプレート（旧モデルで stages が section 単位に散らばっている場合の中央定義） */
+  if(Array.isArray(root.stageTemplates)){
+    for(const t of root.stageTemplates){
+      if(t && Array.isArray(t.stages)) push(t.stages);
+    }
+  }
+  /* 3) 各 shot section の .stages（ショット追加時に指定された工程順）を初出順で取り込み */
+  for(const n of (proj.nodes||[])){
+    if(n && n.type==='section' && Array.isArray(n.stages)) push(n.stages);
+  }
+  _stageOrderMemo = {rootId: root.id, order};
+  return order;
+}
 function stageOrderCmp(a,b){
-  const root = DATA.project && (DATA.project.nodes||[]).find(n=>n.id===DATA.project.id);
-  const list = (root && Array.isArray(root.stages)) ? root.stages.map(x=>typeof x==='string'?x:(x&&x.name)||'') : [];
-  const ia = list.indexOf(a), ib = list.indexOf(b);
+  const order = _buildStageOrderIndex();
+  const ia = (a in order) ? order[a] : -1;
+  const ib = (b in order) ? order[b] : -1;
   if(ia>=0 && ib>=0) return ia - ib;
   if(ia>=0) return -1;
   if(ib>=0) return 1;

@@ -18,6 +18,16 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.008) **工程ソートの参照ソースを拡張（`root.stageTemplates` / 各 shot の `section.stages` も併用）**：
+  - **原因**：v.007 の `stageOrderCmp` は `root.stages`（Simple B 用のプロジェクト共通工程セット）だけを参照していた。旧モデルの案件では `root.stages` が空のことが多く、代わりに `root.stageTemplates[0].stages` または各 shot section の `.stages` に工程順が入っている。そのため v.007 も実質フォールバック（`stageRankCmp`）に落ちて、日本語工程名は五十音順になっていた。
+  - **修正**：`_buildStageOrderIndex()` を新設し、以下を「初出優先」で連結した名前→index マップを作る：
+    1. `root.stages`（Simple B）
+    2. `root.stageTemplates[i].stages`（旧モデルの工程テンプレ）
+    3. 各 `type:section` ノードの `.stages`（ショット追加時に定義された工程順）
+  - `stageOrderCmp` はこのインデックスで比較。含まれない工程だけ `stageRankCmp` フォールバック。
+  - rootId ベースでメモ化し、`loadProjectData` で自動リセット。
+  - APP_VERSION：2026.09.18.007 → 2026.09.18.008
+
 - (dev v2026.09.18.007) **工程ソートを「プロジェクトの workflow 順（root.stages）」を最優先に切替 ＋ ページ更新時の前回プロジェクト自動復元**：
   - **原因**：v.006 の `stageRankCmp` は LayCAT 本体の関数の完全ポートで、`lay*` / `anm*` の英字プレフィックス以外は「rank 2 の名前昇順」となる。日本語工程名（レイアウト・アニメ・コンポ…）や独自命名では順が期待と合わない。
   - **`stageOrderCmp(a,b)` を新設**：
