@@ -130,6 +130,13 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .sb-dtbl td.lbl .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .sb-dtbl td.cnt{font-family:var(--font-code);color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
 .sb-dtbl td.pct{font-family:var(--font-code);color:var(--text3);text-align:right;font-variant-numeric:tabular-nums;font-size:10px}
+/* クリックで下のステータス分布を絞り込める工程行のスタイル */
+.sb-dtbl tr.pickable{cursor:pointer}
+.sb-dtbl tr.pickable:hover td{background:var(--bg3)}
+.sb-dtbl tr.pickable.active td{background:var(--bg3);color:var(--text)}
+.sb-dtbl tr.pickable.active td.lbl{font-weight:700}
+/* 「工程 X のステータス分布」を示す小ラベル */
+.sb-filter-note{font-size:10px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 8px;letter-spacing:.3px;text-align:center;width:100%}
 
 /* ステータス内訳（各ステータスにいくつのショットがあるか） */
 .sb-status-list{padding:0 4px;display:flex;flex-direction:column;gap:4px}
@@ -378,6 +385,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 
   <div class="sidebar-label">ステータス分布</div>
   <div class="sb-donut-block" id="sbStatusDonutBlock">
+    <div class="sb-filter-note" id="sbStatusDonutLabel" style="display:none"></div>
     <canvas id="sbStatusDonut" width="150" height="150"></canvas>
     <table class="sb-dtbl" id="sbStatusDonutTbl"></table>
     <div class="sb-empty" id="sbStatusDonutEmpty">プロジェクトを選択</div>
@@ -540,7 +548,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.018';
+const APP_VERSION='2026.09.17.019';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -750,6 +758,7 @@ const DATA = {
   currentSubTab: 'shots', /* 'shots' | scheduleId */
   timeline: {start:null,end:null,days:0},
   loaded: false,
+  stageFilter: null, /* サイドバー「工程分布」ドーナツ／表クリックで選ばれた工程名。null=絞込なし */
 };
 
 /* フィルタ状態：サイドバーのセレクタと連動 */
@@ -1781,8 +1790,11 @@ function resolveColor(c){
   }
   return c;
 }
-function drawDonut(canvas, rows, total){
+function drawDonut(canvas, rows, total, opts){
   if(!canvas) return;
+  opts=opts||{};
+  const onPick=typeof opts.onPick==='function' ? opts.onPick : null;
+  const highlightId=opts.highlightId||null; /* 非該当スライスを暗く表示するための ID */
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0,0,W,H);
@@ -1790,11 +1802,13 @@ function drawDonut(canvas, rows, total){
   const bg2 = getComputedStyle(document.body).getPropertyValue('--bg2').trim() || '#141416';
   const text = getComputedStyle(document.body).getPropertyValue('--text').trim() || '#e8e8ec';
   const text3 = getComputedStyle(document.body).getPropertyValue('--text3').trim() || '#8a8a9a';
+  const segs=[]; /* クリック判定用の [{row, a1, a2}] */
   if(!total){
     ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = rO - rI;
     ctx.beginPath(); ctx.arc(cx, cy, (rO+rI)/2, 0, Math.PI*2); ctx.stroke();
     ctx.fillStyle = text3; ctx.textAlign='center'; ctx.font='11px system-ui, sans-serif';
     ctx.fillText('データなし', cx, cy+4);
+    canvas.onclick=null; canvas.style.cursor='default';
     return;
   }
   let a = START;
@@ -1804,7 +1818,10 @@ function drawDonut(canvas, rows, total){
     const a2 = a + frac*Math.PI*2;
     ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx, cy, rO, a, a2); ctx.closePath();
     ctx.fillStyle = resolveColor(r.color);
+    ctx.globalAlpha = (highlightId && r.id!==highlightId) ? 0.25 : 1.0;
     ctx.fill();
+    ctx.globalAlpha = 1.0;
+    segs.push({row:r, a1:a, a2});
     a = a2;
   }
   /* 中央くり抜き */
@@ -1816,6 +1833,24 @@ function drawDonut(canvas, rows, total){
   ctx.fillText(String(total), cx, cy);
   ctx.font = '10px "Noto Sans JP", system-ui, sans-serif'; ctx.fillStyle = text3;
   ctx.fillText('ショット', cx, cy+14);
+  /* クリック判定：canvas は CSS で max-width:100% でスケールされ得るので rect スケールを補正 */
+  if(onPick){
+    canvas.style.cursor='pointer';
+    canvas.onclick=(e)=>{
+      const rect=canvas.getBoundingClientRect();
+      const sx=canvas.width/(rect.width||1), sy=canvas.height/(rect.height||1);
+      const x=(e.clientX-rect.left)*sx - cx;
+      const y=(e.clientY-rect.top)*sy - cy;
+      const dist=Math.hypot(x,y);
+      if(dist<rI||dist>rO) return;
+      let ca=Math.atan2(y,x);
+      while(ca<START) ca+=Math.PI*2;
+      while(ca>=START+Math.PI*2) ca-=Math.PI*2;
+      for(const s of segs){ if(ca>=s.a1 && ca<s.a2){ onPick(s.row); return } }
+    };
+  }else{
+    canvas.onclick=null; canvas.style.cursor='default';
+  }
 }
 
 /* 工程名の rank（LayCAT `stageRank` の完全ポート）：
@@ -1871,33 +1906,70 @@ function renderStageDonut(){
   const total = DATA.shots.length;
   if(!total){ empty.style.display='block'; canvas.style.display='none'; tbl.innerHTML=''; return; }
   empty.style.display='none'; canvas.style.display='block';
-  drawDonut(canvas, rows, total);
+  /* クリックハンドラ：ドーナツやテーブル行を押すと、その工程で下の「ステータス分布」を絞り込む。
+     同じ行を再度押す or 「未着手」を押すと解除。「未着手」自体はステータス絞り込みの対象にしない。 */
+  const activeId = DATA.stageFilter;
+  const onPick=(row)=>{
+    if(!row) return;
+    if(row.id==='__none__'){ DATA.stageFilter=null; }
+    else{ DATA.stageFilter = (DATA.stageFilter===row.id) ? null : row.id; }
+    renderStageDonut();
+    renderStatusDonut();
+  };
+  drawDonut(canvas, rows, total, {onPick, highlightId:activeId});
   tbl.innerHTML = rows.map(r=>{
     const pct = total>0 ? Math.round(r.count/total*100) : 0;
-    return `<tr><td class="lbl"><span class="sw" style="background:${resolveColor(r.color)}"></span>${escapeHtml(r.label)}</td><td class="cnt">${r.count}</td><td class="pct">${pct}%</td></tr>`;
+    const on = (r.id===activeId) ? ' active' : '';
+    return `<tr class="pickable${on}" data-stage-id="${escapeHtml(r.id)}"><td class="lbl"><span class="sw" style="background:${resolveColor(r.color)}"></span>${escapeHtml(r.label)}</td><td class="cnt">${r.count}</td><td class="pct">${pct}%</td></tr>`;
   }).join('');
+  /* テーブル行クリックも同じ挙動 */
+  tbl.querySelectorAll('tr.pickable').forEach(tr=>{
+    tr.onclick=()=>{const id=tr.dataset.stageId; const row=rows.find(x=>x.id===id); onPick(row);};
+  });
 }
 
 function renderStatusDonut(){
   const canvas = document.getElementById('sbStatusDonut');
   const tbl = document.getElementById('sbStatusDonutTbl');
   const empty = document.getElementById('sbStatusDonutEmpty');
+  const label = document.getElementById('sbStatusDonutLabel');
   if(!canvas || !tbl || !empty) return;
   const statuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
-  /* LayCAT と同じく「ショットの現在の工程の status」で集計 */
   const rows = statuses.map(s=>({id:s.id, label:s.label||s.id, color:s.color||'#5a5a6a', count:0}));
   const byId = Object.fromEntries(rows.map(r=>[r.id, r]));
+  /* stageFilter が指定されていれば「その工程を現在工程とするショット」だけを集計に含める。
+     未指定なら従来通り全ショット。 */
+  const filter = DATA.stageFilter;
+  let filteredTotal = 0;
   let noneCount = 0;
   for(const shot of DATA.shots){
     const cur = shotCurrentStage(shot);
+    if(filter){
+      const key = cur ? (cur.stageName || cur.label || '?') : null;
+      if(key !== filter) continue;
+    }
+    filteredTotal++;
     const sid = cur ? cur.currentStatus : null;
     if(!sid){ noneCount++; continue; }
     if(byId[sid]) byId[sid].count++;
     else noneCount++;
   }
   if(noneCount) rows.push({id:'__none__', label:'未着手', color:'#5a5a6a', count:noneCount});
-  const total = DATA.shots.length;
-  if(!total){ empty.style.display='block'; canvas.style.display='none'; tbl.innerHTML=''; return; }
+  const total = filteredTotal;
+  /* ラベル更新：絞り込み中は「工程: X」と N/total を出す */
+  if(label){
+    if(filter){
+      label.textContent = `工程「${filter}」 ${total} ショット`;
+      label.style.display='';
+    }else{
+      label.style.display='none';
+    }
+  }
+  if(!total){
+    empty.textContent = filter ? `工程「${filter}」に該当するショットがありません` : 'プロジェクトを選択';
+    empty.style.display='block'; canvas.style.display='none'; tbl.innerHTML='';
+    return;
+  }
   empty.style.display='none'; canvas.style.display='block';
   drawDonut(canvas, rows, total);
   tbl.innerHTML = rows.map(r=>{

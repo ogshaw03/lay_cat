@@ -1986,6 +1986,13 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.17.019) **工程分布ドーナツクリックでステータス分布を絞り込み**：セカンダリ工程のショットで OK ／ リテイクの比率を確認したい、というニーズに対応。
+  - **工程分布ドーナツ／集計表**：スライスや行をクリックすると `DATA.stageFilter` にその工程名が入り、選択されたスライスだけがハイライト（他はアルファ 0.25）、行も active クラスで強調表示。同じ行を再クリックで解除、他の工程をクリックで切替。
+  - **ステータス分布ドーナツ**：`DATA.stageFilter` が指定されているとき、その工程を「現在工程」とするショットだけに絞って集計・描画。集計は selected 工程のショット数を分母にした割合で表示。
+  - **絞り込みラベル**：ステータス分布ドーナツの上に「工程「X」 N ショット」の小ラベルを表示（絞込中のみ）。
+  - **drawDonut 拡張**：`opts.onPick` コールバックとクリック判定（角度＋半径ヒットテスト）、`opts.highlightId` で非該当スライスを薄く描画する機能を追加。canvas の CSS スケール（`max-width:100%` による縮小表示）にも対応（`getBoundingClientRect()` からスケール倍率を計算）。
+  - APP_VERSION：2026.09.17.018 → 2026.09.17.019
+
 - (dev v2026.09.17.018) **「現在の工程」判定を LayCAT `progressData` の secondary 判定に完全ポート**：
   - **原因**：pmboard の v.017 まで、`shotCurrentStage` は「WIP → 全完了 → 次未完了」の workflow ベース判定を使っていた。しかし LayCAT 本体は、動画が無いショットで **secondary 判定**（`stageRankCmp` で並べたときに最後に `status !== 'empty'` になっている工程）を採用しており、両者が食い違っていた。動画がまだ無いショット（多数）で pmboard 側の現在工程が LayCAT と一致しない事象が発生。
   - **修正**：`stageRank` / `stageRankCmp` を LayCAT からポート（lay/layout 系 →0、anm/anim 系 →1、その他 →2、同 rank は名前昇順）。`shotCurrentStage` を **「currentStatus がある工程のうち stageRankCmp で一番後」** に置き換え。動画が無いショットは LayCAT と完全一致する（LayCAT 側でも動画無しは secondary にフォールバックするため）。
