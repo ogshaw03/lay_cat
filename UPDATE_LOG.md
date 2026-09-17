@@ -1986,6 +1986,12 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.17.018) **「現在の工程」判定を LayCAT `progressData` の secondary 判定に完全ポート**：
+  - **原因**：pmboard の v.017 まで、`shotCurrentStage` は「WIP → 全完了 → 次未完了」の workflow ベース判定を使っていた。しかし LayCAT 本体は、動画が無いショットで **secondary 判定**（`stageRankCmp` で並べたときに最後に `status !== 'empty'` になっている工程）を採用しており、両者が食い違っていた。動画がまだ無いショット（多数）で pmboard 側の現在工程が LayCAT と一致しない事象が発生。
+  - **修正**：`stageRank` / `stageRankCmp` を LayCAT からポート（lay/layout 系 →0、anm/anim 系 →1、その他 →2、同 rank は名前昇順）。`shotCurrentStage` を **「currentStatus がある工程のうち stageRankCmp で一番後」** に置き換え。動画が無いショットは LayCAT と完全一致する（LayCAT 側でも動画無しは secondary にフォールバックするため）。
+  - **未実装（今後）**：Primary 判定（動画時刻ベース）は pmboard が動画情報を読まない現状では実装できない。将来 versions[] を pmboard 側でも読むよう拡張したら実装可能。
+  - APP_VERSION：2026.09.17.017 → 2026.09.17.018
+
 - (dev v2026.09.17.017) **工程検知の 2 重の不一致を修正**：
   - **原因 1**：ガント行の「現在の工程」（WIP → allDone → 次未完了 の優先順）と、サイドバー工程分布ドーナツで使う `shotCurrentStage`（＝工程順で最後に触れた工程）が食い違っており、同じショットに対して 2 箇所で違う工程が「現在」と表示されていた。
   - **原因 2**：工程分布ドーナツ・工程進捗バーが `st.label`（`stageLabel(kind, name)` の短縮表示）で集計 keying していたため、「レイアウト作業」「レイアウト調整」などの同分類・6 文字超の名前が同一 label に畳まれ、グラフから工程が「消えたように」見えていた。

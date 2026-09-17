@@ -540,7 +540,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.17.017';
+const APP_VERSION='2026.09.17.018';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1818,23 +1818,34 @@ function drawDonut(canvas, rows, total){
   ctx.fillText('ショット', cx, cy+14);
 }
 
-/* ショットの「現在の工程」判定（ガント行の curStage と統一）：
-     1) WIP（着手済み・未完了）があれば、最も新しく着手された工程
-     2) 全工程完了 → 最後の工程を返す（＝「完了」表示用）
-     3) それ以外 → 最初の未完了工程（次にやる工程）
-     4) stages が空なら null
-   以前は「工程順で最後に status がセットされた工程」だったので、行の curStage と
-   食い違い、工程分布ドーナツの現在工程が実態とズレていた。 */
+/* 工程名の rank（LayCAT `stageRank` の完全ポート）：
+   lay/layout 系 → 0、anm/anim 系 → 1、それ以外 → 2。同 rank は名前昇順。 */
+function stageRank(name){
+  const low=(name||'').toLowerCase();
+  let r;
+  if(low.startsWith('lay')||low.startsWith('layout')) r=0;
+  else if(low.startsWith('anm')||low.startsWith('anim')) r=1;
+  else r=2;
+  return [r, low];
+}
+function stageRankCmp(a,b){
+  const ra=stageRank(a), rb=stageRank(b);
+  return ra[0]-rb[0] || (ra[1]<rb[1] ? -1 : ra[1]>rb[1] ? 1 : 0);
+}
+/* ショットの「現在の工程」判定 — LayCAT `progressData`（本体）と同 semantics：
+     Primary：最新動画がある工程 → 動画時刻の一番新しい工程を採用。
+             pmboard は動画時刻を持たないので、この判定は今のところ実装しない。
+     Secondary：動画が無い場合 → status がセットされた工程のうち、stageRankCmp で
+                一番後（＝より進んだ工程）を採用。
+   LayCAT 側でも動画が無いショットは secondary にフォールバックするので、
+   動画無しのショットは pmboard と LayCAT で完全一致する。 */
 function shotCurrentStage(shot){
   const stages = shot.stages||[];
   if(!stages.length) return null;
-  const wips = stages.filter(st=>st.actualStart && !st.isDone);
-  if(wips.length){
-    wips.sort((a,b)=>b.actualStart-a.actualStart);
-    return wips[0];
-  }
-  if(stages.every(st=>st.isDone)) return stages[stages.length-1];
-  return stages.find(st=>!st.isDone) || null;
+  const withStatus = stages.filter(st => st.currentStatus);
+  if(!withStatus.length) return null;
+  const sorted = withStatus.slice().sort((a,b)=>stageRankCmp(a.stageName||a.label||'', b.stageName||b.label||''));
+  return sorted[sorted.length-1];
 }
 
 function renderStageDonut(){
