@@ -585,7 +585,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.023';
+const APP_VERSION='2026.09.18.024';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2043,20 +2043,20 @@ function buildOtherTabsPlaceholder(){
   if(eff){
     eff.innerHTML = `
       <div class="grid-4" id="effStatCards">
-        <div class="stat-card"><div class="l">総稼働時間</div><div class="n">—</div><div class="d">読み込み待ち</div></div>
+        <div class="stat-card"><div class="l">総稼働日数</div><div class="n">—</div><div class="d">読み込み待ち</div></div>
         <div class="stat-card"><div class="l">平均 per shot</div><div class="n">—</div><div class="d"></div></div>
         <div class="stat-card"><div class="l">最長ショット</div><div class="n">—</div><div class="d"></div></div>
         <div class="stat-card"><div class="l">ショット数</div><div class="n">—</div><div class="d"></div></div>
       </div>
       <div class="panel">
-        <h4>ショット別稼働時間（長い順）</h4>
-        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／クライアント待ち／完了系を除く）にあった期間の合計。冗長度合いの高いショットが上位に来ます。</div>
+        <h4>ショット別稼働日数（長い順）</h4>
+        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／クライアント待ち／完了系を除く）にあった期間を日単位で合計。冗長度合いの高いショットが上位に来ます。</div>
         <div class="effort-list" id="effortList"></div>
       </div>`;
   }
 }
-/* 工数計算：全ショットの全 workSegment を舐めて時間を合算。
-   ステータス履歴の作業区間（isWorkStatus）の秒数を積算。単位は「時間」（1日=24h）。 */
+/* 工数計算：全ショットの全 workSegment を舐めて期間を合算。
+   ステータス履歴の作業区間（isWorkStatus）を秒数で積算し、日単位に換算して表示。 */
 function renderEffortPane(){
   const eff = document.querySelector('.pane[data-pane="effort"]');
   if(!eff) return;
@@ -2074,42 +2074,43 @@ function renderEffortPane(){
         if(d > 0){ totalMs += d; segs++; }
       }
     }
-    const hours = totalMs / 3600000;
+    const days = totalMs / 86400000;
     const cur = shotCurrentStage(shot);
     rows.push({
       shotId: shot.sectionNode.id,
       name: shot.sectionNode.name || shot.sectionNode.id.slice(-8),
-      hours, segs,
+      days, segs,
       stageName: cur ? (cur.stageName || cur.label || '?') : '—',
       stageColor: cur ? cur.color : '#5a5a6a',
       status: cur ? cur.currentStatus : null,
     });
   }
-  /* 時間降順ソート */
-  rows.sort((a,b)=>b.hours - a.hours);
+  /* 日数降順ソート */
+  rows.sort((a,b)=>b.days - a.days);
   /* 統計値 */
-  const total = rows.reduce((s,r)=>s+r.hours, 0);
-  const active = rows.filter(r=>r.hours>0);
+  const total = rows.reduce((s,r)=>s+r.days, 0);
+  const active = rows.filter(r=>r.days>0);
   const avg = active.length ? total / active.length : 0;
-  const max = rows.length ? rows[0] : {hours:0, name:'—'};
+  const max = rows.length ? rows[0] : {days:0, name:'—'};
   /* stat cards 更新 */
   const cards = eff.querySelectorAll('#effStatCards .stat-card');
-  const fmtHours = h => (h<1 ? h.toFixed(1) : h.toFixed(1));
-  if(cards[0]) cards[0].innerHTML = `<div class="l">総稼働時間</div><div class="n">${fmtHours(total)}<span class="u">h</span></div><div class="d">${active.length}/${rows.length} ショットが稼働中or完了</div>`;
-  if(cards[1]) cards[1].innerHTML = `<div class="l">平均 per shot</div><div class="n">${fmtHours(avg)}<span class="u">h</span></div><div class="d">稼働ショット平均</div>`;
-  if(cards[2]) cards[2].innerHTML = `<div class="l">最長ショット</div><div class="n">${fmtHours(max.hours)}<span class="u">h</span></div><div class="d">${escapeHtml(max.name||'—')}</div>`;
+  /* 1日未満は小数1桁、それ以上も小数1桁で統一（"何日動いてるか" を見るのが目的） */
+  const fmtDays = d => d.toFixed(1);
+  if(cards[0]) cards[0].innerHTML = `<div class="l">総稼働日数</div><div class="n">${fmtDays(total)}<span class="u">日</span></div><div class="d">${active.length}/${rows.length} ショットが稼働中or完了</div>`;
+  if(cards[1]) cards[1].innerHTML = `<div class="l">平均 per shot</div><div class="n">${fmtDays(avg)}<span class="u">日</span></div><div class="d">稼働ショット平均</div>`;
+  if(cards[2]) cards[2].innerHTML = `<div class="l">最長ショット</div><div class="n">${fmtDays(max.days)}<span class="u">日</span></div><div class="d">${escapeHtml(max.name||'—')}</div>`;
   if(cards[3]) cards[3].innerHTML = `<div class="l">ショット数</div><div class="n">${rows.length}</div><div class="d">プロジェクト全体</div>`;
   /* リスト */
   const list = eff.querySelector('#effortList');
   if(!list) return;
   if(!rows.length){ list.innerHTML='<div class="sb-empty">プロジェクトを選択してください</div>'; return; }
-  const topHours = rows[0].hours || 1;
+  const topDays = rows[0].days || 1;
   list.innerHTML = rows.map(r=>{
-    const pct = topHours>0 ? Math.max(2, Math.round(r.hours/topHours*100)) : 0;
+    const pct = topDays>0 ? Math.max(2, Math.round(r.days/topDays*100)) : 0;
     return `<div class="row">
       <div class="l">${escapeHtml(r.name)} <span style="color:${resolveColor(r.stageColor)};font-size:10px;font-family:var(--font-head);margin-left:6px">${escapeHtml(r.stageName)}</span></div>
       <div class="bar"><div class="fill" style="width:${pct}%"></div></div>
-      <div class="n">${fmtHours(r.hours)}<span class="u">h</span></div>
+      <div class="n">${fmtDays(r.days)}<span class="u">日</span></div>
     </div>`;
   }).join('');
 }
