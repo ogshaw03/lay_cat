@@ -552,7 +552,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.009';
+const APP_VERSION='2026.09.18.010';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2361,31 +2361,31 @@ function renderStatusList(root){
   wrap.innerHTML = noneRow + rows;
 }
 
-/* 工程設定：プロジェクトが定義している工程テンプレートを表示 */
+/* 工程設定：実際のショットに使われている工程を、ショット列の並びで表示する。
+   以前は projectStageNames（root.stages / stageTemplates）を優先していたが、これらが
+   ステールで「ショット列の順」と食い違うケースがあったため、常に DATA.shots からアグリゲート。
+   ソート順は _buildStageOrderIndex（Priority 1＝shot.stages 順）ベース。 */
 function renderStageList(root){
   const wrap = document.getElementById('sbStageList');
   if(!wrap) return;
-  const projStages = projectStageNames(null, root);
-  if(!projStages.length){
-    /* テンプレートなし → 実際のショットから工程名を集約 */
-    const collected = new Set();
-    for(const shot of DATA.shots){
-      for(const st of shot.stages){ collected.add(st.reviewNode.name); }
-    }
-    if(!collected.size){ wrap.innerHTML='<div class="sb-empty">工程未設定</div>'; return; }
-    const sortedNames = Array.from(collected).sort((a,b)=>stageOrderCmp(a,b));
-    wrap.innerHTML = sortedNames.map((name,i)=>{
-      const kind = classifyStage(name);
-      const color = stageColor(kind, name, []);
-      return `<div class="row"><span class="idx">${i+1}</span><span class="swatch" style="background:${color}"></span><span class="nm">${escapeHtml(name)}</span></div>`;
-    }).join('');
-    return;
+  const collected = new Set();
+  for(const shot of (DATA.shots||[])){
+    for(const st of (shot.stages||[])){ const nm=st.stageName||(st.reviewNode&&st.reviewNode.name); if(nm) collected.add(nm); }
   }
-  wrap.innerHTML = projStages.map((name,i)=>{
+  /* shots にひとつも stages が無い場合のみ、プロジェクト設定にフォールバック */
+  if(!collected.size){
+    const projStages = projectStageNames(null, root);
+    if(!projStages.length){ wrap.innerHTML='<div class="sb-empty">工程未設定</div>'; return; }
+    for(const nm of projStages) collected.add(nm);
+  }
+  const sortedNames = Array.from(collected).sort((a,b)=>stageOrderCmp(a,b));
+  wrap.innerHTML = sortedNames.map((name,i)=>{
     const kind = classifyStage(name);
-    const color = stageColor(kind, name, projStages);
+    const color = stageColor(kind, name, sortedNames);
     return `<div class="row"><span class="idx">${i+1}</span><span class="swatch" style="background:${color}"></span><span class="nm">${escapeHtml(name)}</span></div>`;
   }).join('');
+  /* デバッグ用（コンソール確認用）：現在の工程順とインデックス表を出力 */
+  try{ console.log('[pmboard] stage order:', sortedNames, '  index map:', _buildStageOrderIndex()); }catch(_){}
 }
 
 /* フィルタドロップダウンをプロジェクトの実データから生成 */

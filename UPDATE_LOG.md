@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.010) **工程設定リストを DATA.shots ベースに切替 + デバッグログ追加**：
+  - **原因調査**：v.009 でも「工程ソートが機能しない」というフィードバック。`renderStageList`（工程設定）は `projectStageNames()` を優先し、それが `root.stages` / `stageTemplates` を返した場合はそのまま表示（ソートなし）していた。root.stages がステールで実データと違う順の可能性。
+  - **修正**：`renderStageList` を **常に DATA.shots からアグリゲート → `stageOrderCmp` でソート** に変更。projectStageNames は shots が空の時だけの最終フォールバック。
+  - **デバッグログ追加**：`console.log('[pmboard] stage order:', sortedNames, ...)` を出すので、ブラウザ Devtools の Console でどの順に並んでいるかが確認できる（実データと比較して食い違いを特定するため）。
+  - APP_VERSION：2026.09.18.009 → 2026.09.18.010
+
 - (dev v2026.09.18.009) **工程ソートを `DATA.shots[i].stages` の並び（＝ショット行が既に正しく表示している順）を最優先に**：
   - **原因**：v.008 まで `_buildStageOrderIndex` は `root.stages` / `stageTemplates` / `section.stages` を走査していたが、ユーザー指摘のとおり「ショットの列には正しい順で工程が出ている」＝ `DATA.shots[i].stages` の並びこそが真実の workflow 順だった。それを Priority 1 に据えるだけで最短で解決。
   - **修正**：Priority 1 として **全ショットの `.stages` を先頭から走査し初出順で index を振る** ように変更。Priority 2 でプロジェクト設定系（root.stages / stageTemplates / section.stages）をフォールバック追記。
