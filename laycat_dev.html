@@ -3629,7 +3629,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.001';
+const APP_VERSION='2026.09.18.002';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5897,6 +5897,11 @@ function renderProjShots(main,cur){
      `childrenOf` は既に工程設定（section.stages）順に並んでいるので、そのまま利用して
      stageRankCmp による再ソートは行わない（ユーザ定義順を尊重）。 */
   const repOf=(sh,lv)=>{
+    /* Priority 1（明示指定）：ショット section の currentStage（プルダウンで最後に選んだ工程） */
+    if(sh && sh.currentStage){
+      const hit=childrenOf(sh.id).find(n=>n.type==='review'&&n.name===sh.currentStage);
+      if(hit) return hit;
+    }
     if(lv)return lv.node;                       /* 動画があればその工程 */
     if(sh.type==='review')return sh;            /* ショット自身がレビュー */
     const stages=childrenOf(sh.id).filter(n=>n.type==='review');
@@ -12737,8 +12742,18 @@ function stageBadgeColor(node){if(!node||roleOf(node)!=='stage')return STAGE_GRA
 function latestVideoTimeUnder(nodeId){let best=null,hadVideo=false;const ns=[getNode(nodeId),...descendants(nodeId)];for(const n of ns)if(n)for(const v of (n.versions||[]))if(v.type==='video'){hadVideo=true;const t=v.uploadedAt||'';if(t&&(best===null||t>best))best=t}return best!=null?best:(hadVideo?'0000-00-00':null);/* uploadedAt欠落動画しか無い場合も「動画あり」を表すsentinelを返し、動画なし(null)と区別する */}
 /* ショットの工程一覧（直下フォルダ＝工程）。time は各工程配下の最新動画時刻 */
 function shotStages(shot){return childrenOf(shot.id).map(st=>({name:st.name,node:st,time:latestVideoTimeUnder(st.id)}));}
-/* ショットの現在工程 = 最も新しい動画が上がっている工程（Pipeline _shot_latest の media 分岐相当） */
-function shotCurrentStage(shot){const withVid=shotStages(shot).filter(s=>s.time);if(!withVid.length)return null;withVid.sort((a,b)=>a.time<b.time?-1:a.time>b.time?1:0);return withVid[withVid.length-1].name;}
+/* ショットの現在工程：
+     Priority 1：ショット section の currentStage（プルダウンで最後に選んだ工程）
+     Priority 2：最も新しい動画が上がっている工程（Pipeline _shot_latest の media 分岐相当） */
+function shotCurrentStage(shot){
+  if(shot && shot.currentStage){
+    const s=childrenOf(shot.id).find(x=>x.name===shot.currentStage);
+    if(s) return s.name;
+  }
+  const withVid=shotStages(shot).filter(s=>s.time);if(!withVid.length)return null;
+  withVid.sort((a,b)=>a.time<b.time?-1:a.time>b.time?1:0);
+  return withVid[withVid.length-1].name;
+}
 /* 「ショット親」候補 = 孫を持つノード（＝直下がショット、その下が工程）。無ければルート */
 function shotParentCandidates(){const c=DB.nodes.filter(n=>childrenOf(n.id).some(ch=>childrenOf(ch.id).length>0));return c.length?c:DB.nodes.filter(n=>!n.parentId);}
 /* ノード配下の最新動画バージョン（{v,node,t}／なければnull） */
@@ -12752,8 +12767,18 @@ function progressData(parentIds,tab,filterFn){
   const statuses=projStatuses(parent||shots[0]||{});
   const perShot=shots.map(shot=>{
     const stages=childrenOf(shot.id).map(st=>({node:st,time:latestVideoTimeUnder(st.id)}));
-    const withVid=stages.filter(s=>s.time).sort((a,b)=>a.time<b.time?-1:a.time>b.time?1:0);
-    let curNode=withVid.length?withVid[withVid.length-1].node:null;
+    /* Priority 1（明示指定）：ショット section に currentStage が保存されていれば、
+       それに一致する工程子を最優先で採用。プルダウンでユーザーが最後に選んだ工程が
+       ショットタブ・進捗タブ・pmboard に一貫して反映される。 */
+    let curNode=null;
+    if(shot && shot.currentStage){
+      const hit=stages.find(s=>s.node && s.node.name===shot.currentStage);
+      if(hit) curNode=hit.node;
+    }
+    if(!curNode){
+      const withVid=stages.filter(s=>s.time).sort((a,b)=>a.time<b.time?-1:a.time>b.time?1:0);
+      if(withVid.length) curNode=withVid[withVid.length-1].node;
+    }
     /* 動画がまだ無くても、ステータスを設定した工程があればそれを現在ノードにする（作業中・オミット等の状態を進捗に反映）。
        複数あれば工程順で後ろ（＝より進んだ工程）を採用。 */
     if(!curNode){const ws=childrenOf(shot.id).filter(n=>n.type==='review'&&n.status&&n.status!=='empty');if(ws.length)curNode=ws.sort((a,b)=>stageRankCmp(a.name,b.name))[ws.length-1];}

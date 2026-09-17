@@ -28,6 +28,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
   - 既存プロジェクトでもユーザー操作ゼロで LayCAT と同じ現在工程を pmboard が表示。
   - APP_VERSION：2026.09.18.001 → 2026.09.18.002
 
+- (dev v2026.09.18.002) **LayCAT のショットタブ・進捗タブでも `currentStage` を最優先で参照**：v.001 でプルダウン切替時に `shot.currentStage` を書き込むようにしたが、LayCAT 側の集計関数（`progressData` / `renderProjShots` の `repOf` / `shotCurrentStage`）は従来通り動画時刻・status ベースで現在工程を決めていたため、プルダウンを変えてもショットタブの表示は変わらなかった。
+  - **`progressData` の `perShot` 導出**：Priority 1 として `shot.currentStage` が指す子 review を最優先で採用。無ければ従来の動画時刻→status セット順のフォールバック。
+  - **`renderProjShots` の `repOf`**：同様に Priority 1 で `shot.currentStage` を参照。
+  - **`shotCurrentStage`（LayCAT 内のユーティリティ）**：Priority 1 で `shot.currentStage` を参照。
+  - これでプルダウン → 保存 → ショットタブ・進捗タブ・pmboard の 3 箇所全部が同じ工程を表示。
+  - APP_VERSION：2026.09.18.001 → 2026.09.18.002
+
 - (dev v2026.09.18.001) **工程判別を「現在の工程プルダウン」で統一（LayCAT・pmboard 共通）**：LayCAT のヒューリスティック判定（動画時刻・stageRankCmp）と pmboard 側の判定が食い違うのを止めるため、ユーザーがプルダウンで最後に選んだ工程を「現在の工程」の Single Source of Truth に。
   - **LayCAT `switchStageInTab`**：工程プルダウン切替時、対象工程の親（＝shot section）に `currentStage=newStage.name` を書き込み、`stageHistory[{ts,by,from,to}]` にも 1 行追記。旧モデルショットも新モデルショットも同じフィールドで統一。
   - **pmboard `shotCurrentStage`**：Priority 1＝`shot.sectionNode.currentStage` を最優先で参照し、stages 配列から一致する要素を返す。Priority 2＝未設定なら LayCAT secondary（`stageRankCmp` で最後の status セット済み工程）にフォールバック。
