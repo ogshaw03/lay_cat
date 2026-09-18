@@ -219,10 +219,11 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row:hover{background:rgba(255,255,255,.03)}
 .gantt-row .shot{padding:4px 12px;border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:stretch;gap:2px;position:sticky;left:0;background:var(--bg2);z-index:2;overflow:hidden;justify-content:center}
 .gantt-row .shot .shot-top{display:flex;flex-direction:row;align-items:center;gap:6px;min-width:0}
-/* v.026：SHOT 列に「メモ」行を追加。1 行 truncated＋末尾 …。クリックで編集モーダル。 */
-.gantt-row .shot .shot-memo{font-family:var(--font-body);font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;padding:1px 2px;border-radius:4px;min-width:0}
-.gantt-row .shot .shot-memo:hover{background:var(--bg3);color:var(--text2)}
-.gantt-row .shot .shot-memo.empty{color:var(--border2);font-style:italic}
+/* v.026：SHOT 列に「メモ」行を追加。1 行 truncated＋末尾 …。クリックで編集モーダル。
+   v.027：文字が薄すぎるとの指摘で色をコントラスト強めに（--text 直・empty も --text3）。 */
+.gantt-row .shot .shot-memo{font-family:var(--font-body);font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;padding:1px 2px;border-radius:4px;min-width:0}
+.gantt-row .shot .shot-memo:hover{background:var(--bg3)}
+.gantt-row .shot .shot-memo.empty{color:var(--text3);font-style:italic}
 /* メモ編集モーダル */
 .memo-modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center}
 .memo-modal-box{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;min-width:420px;max-width:80vw;display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
@@ -596,7 +597,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.026';
+const APP_VERSION='2026.09.18.027';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。

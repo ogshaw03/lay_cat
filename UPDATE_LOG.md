@@ -2264,6 +2264,8 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.027) **SHOT 列のメモの文字色が薄すぎる件を修正**：`.shot-memo` の色を `var(--text3)` → `var(--text)`、font-size を 11 → 12px。空状態は `var(--border2)` → `var(--text3)` でイタリック維持。可読性を優先。APP_VERSION：2026.09.18.026 → 2026.09.18.027
+
 - (dev v2026.09.18.026) **SHOT 列に「メモ」行を追加**（進行メモ・注意事項）：
   - **表示**：SHOT 列を 2 段レイアウトに変更（`.shot-top` に既存の名前/工程/status/工程数/rollup/…、下段に `.shot-memo`）。メモは 1 行 truncated＋末尾 `…`（`text-overflow:ellipsis`）。空のときは薄い placeholder テキストで「クリックでメモを追加」を表示。
   - **列幅**：`--shot-col-w` デフォルトを 220px → 300px に。既存 localStorage で保存済みの幅はそのまま（ユーザー設定を尊重）。
