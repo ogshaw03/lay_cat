@@ -18,6 +18,10 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.019) **REEL タイムラインを中ボタンドラッグで横スクロール可能に**：
+  - REEL 下部のクリップタイル帯（`.tlwrap`）を「タイムライン」と呼称。中クリック（button===1）押下 → mouse move で `scrollLeft` を更新するドラッグスクロールを実装。押下時 `preventDefault` で Windows のオートスクロールカーソルを抑止、`auxclick` も抑制。押下中は `cursor:grabbing` に切替。
+  - APP_VERSION：2026.09.19.018 → 2026.09.19.019
+
 - (dev v2026.09.19.018) **REEL 側の Shot メニューにも「全ショット通し確認」項目を追加**：
   - v.017 ではショットタブのヘッダにボタンを置いたが、REEL 画面を開いたまま追加もしたいというユーザー要望。
   - REEL iframe 内 Shot メニューに `▶ 全ショットを通し確認（最新動画を追加）` を追加。押下で `reelUI.projectId` から `rootOf` してその root を `reelAddAllShots` に渡す。プロジェクト束縛が無い場合はトースト警告。

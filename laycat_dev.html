@@ -3672,7 +3672,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.018';
+const APP_VERSION='2026.09.19.019';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -16258,6 +16258,36 @@ function openReel(){
   const ph=ce(d,'div','ph');track.appendChild(ph);
   tlwrap.appendChild(ruler);tlwrap.appendChild(track);
   maincol.appendChild(tlwrap);
+  /* v.019：タイムライン（クリップタイルが並ぶ帯）を中ボタンドラッグで横スクロール。
+     押下＝スクロールモード開始、ドラッグ量に応じて scrollLeft を更新、離す／iframe 外へ出るで終了。
+     ブラウザの中クリック自動スクロールが割り込まないよう mousedown で preventDefault。 */
+  (function attachMiddleScroll(){
+    let dragging=false, startX=0, startScroll=0;
+    tlwrap.addEventListener('mousedown', ev=>{
+      if(ev.button!==1)return;                     /* 中ボタンのみ反応 */
+      ev.preventDefault();                          /* Windows のオートスクロールカーソル抑止 */
+      dragging=true;
+      startX=ev.clientX;
+      startScroll=tlwrap.scrollLeft;
+      tlwrap.style.cursor='grabbing';
+      tlwrap.style.userSelect='none';
+    });
+    const move=ev=>{
+      if(!dragging)return;
+      tlwrap.scrollLeft=startScroll-(ev.clientX-startX);
+    };
+    const end=()=>{
+      if(!dragging)return;
+      dragging=false;
+      tlwrap.style.cursor='';
+      tlwrap.style.userSelect='';
+    };
+    d.addEventListener('mousemove', move);
+    d.addEventListener('mouseup', ev=>{ if(ev.button===1) end(); });
+    d.addEventListener('mouseleave', end);
+    /* auxclick は中クリック単発でリンク扱いになるケース抑止（念のため） */
+    tlwrap.addEventListener('auxclick', ev=>{ if(ev.button===1) ev.preventDefault(); });
+  })();
   Object.assign(reelUI,{d,video,empty,track,ruler,ph,play,time,totalLab,loopBtn,cur:0});
   /* 再生ロジック */
   const cs=()=>reelUI.clips;
