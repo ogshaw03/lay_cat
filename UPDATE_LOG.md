@@ -2264,6 +2264,13 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.026) **SHOT 列に「メモ」行を追加**（進行メモ・注意事項）：
+  - **表示**：SHOT 列を 2 段レイアウトに変更（`.shot-top` に既存の名前/工程/status/工程数/rollup/…、下段に `.shot-memo`）。メモは 1 行 truncated＋末尾 `…`（`text-overflow:ellipsis`）。空のときは薄い placeholder テキストで「クリックでメモを追加」を表示。
+  - **列幅**：`--shot-col-w` デフォルトを 220px → 300px に。既存 localStorage で保存済みの幅はそのまま（ユーザー設定を尊重）。
+  - **編集**：メモをクリック → 中央にフローティングモーダル（`.memo-modal-*`）。textarea＋保存／キャンセル。Ctrl+Enter で保存、Esc でキャンセル。オーバーレイクリックでキャンセル。
+  - **保存**：`notes/{shotSectionId}.json`（v:1、`{v,shotId,memo,updatedAt,source:'pmboard',_rev}`）に書き込み。`buildData` の並列読込に `notes/*.json` を追加し `shot.memo` に流し込む。LayCAT 側は同ファイルを読まない前提（pmboard 内メモ）。
+  - APP_VERSION：2026.09.18.025 → 2026.09.18.026
+
 - (dev v2026.09.18.025) **ショット単位ステータスへの対応（LayCAT dev v.014 と対）**：
   - **背景**：LayCAT 側で「1 ショット 1 ステータス」に統一。ショット section にも `status/{sectionId}.json` が書かれるようになった。pmboard 側でも同じ値をショットのステータスとして扱う。
   - **データ層**：`buildData` で `statusMap[section.id]` をショットに取り込み、`shot.shotStatus` / `shot.shotStatusHistory` / `shot.shotIsDone` として保持。存在しないショットは従来どおり currentStage の値にフォールバック。

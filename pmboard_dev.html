@@ -189,7 +189,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
    対して効いてしまい、`.pane` の縦スクロールで日付ヘッダが上に隠れる。visible にして
    sticky を `.pane` に対して働かせる。角丸のはみ出しは content 側で自然に収まる。
    --shot-col-w：ショット列の幅（ユーザーがドラッグでリサイズ可能）。 */
-.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:relative;--shot-col-w:220px}
+.gantt{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:visible;position:relative;--shot-col-w:300px}
 /* .gantt 自身の width は applyGanttScale() が pane のクライアント幅と
    （shot-col-w + SCALE_PX × days）を比較して inline style で決める。 */
 .gantt-hdr{display:grid;grid-template-columns:var(--shot-col-w) 1fr;background:var(--bg3);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
@@ -217,7 +217,18 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
    工程数・ロールアップ chip・工程バッジ・担当者バッジは default では非表示（tooltip で確認可）。 */
 .gantt-row{display:grid;grid-template-columns:var(--shot-col-w,220px) 1fr;border-bottom:1px solid var(--border);min-height:34px}
 .gantt-row:hover{background:rgba(255,255,255,.03)}
-.gantt-row .shot{padding:4px 12px;border-right:1px solid var(--border);display:flex;flex-direction:row;align-items:center;gap:6px;position:sticky;left:0;background:var(--bg2);z-index:2;overflow:hidden}
+.gantt-row .shot{padding:4px 12px;border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:stretch;gap:2px;position:sticky;left:0;background:var(--bg2);z-index:2;overflow:hidden;justify-content:center}
+.gantt-row .shot .shot-top{display:flex;flex-direction:row;align-items:center;gap:6px;min-width:0}
+/* v.026：SHOT 列に「メモ」行を追加。1 行 truncated＋末尾 …。クリックで編集モーダル。 */
+.gantt-row .shot .shot-memo{font-family:var(--font-body);font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;padding:1px 2px;border-radius:4px;min-width:0}
+.gantt-row .shot .shot-memo:hover{background:var(--bg3);color:var(--text2)}
+.gantt-row .shot .shot-memo.empty{color:var(--border2);font-style:italic}
+/* メモ編集モーダル */
+.memo-modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center}
+.memo-modal-box{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;min-width:420px;max-width:80vw;display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.memo-modal-title{font-family:var(--font-head);font-weight:800;color:var(--text);font-size:14px}
+.memo-modal-ta{width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-body);font-size:13px;resize:vertical;min-height:120px;box-sizing:border-box}
+.memo-modal-btns{display:flex;justify-content:flex-end;gap:8px}
 .gantt-row:hover .shot{background:var(--bg3)}
 .gantt-row .shot .id{font-family:var(--font-code);font-size:12px;font-weight:700;color:var(--text);letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
 .gantt-row .shot .cur-stage{font-size:10px;color:var(--text2);white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px;font-family:var(--font-head);letter-spacing:.3px}
@@ -585,7 +596,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.025';
+const APP_VERSION='2026.09.18.026';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -920,6 +931,18 @@ async function loadProjectData(){
     if(f && f.shotId) scheduleMap[f.shotId] = f;
   }));
 
+  /* v.026：notes/*.json（ショットごとのメモ）を読み込む。SHOT 列のメモ表示に使う。 */
+  let notesNames = [];
+  try{ notesNames = await storage.listDir('notes'); }catch(_){}
+  const notesMap = {};
+  await Promise.all((notesNames||[]).map(async name=>{
+    if(!name.endsWith('.json')) return;
+    try{
+      const f = await storage.readJson(`notes/${name}`);
+      if(f && f.shotId) notesMap[f.shotId] = f;
+    }catch(_){}
+  }));
+
   const shots = [];
   for(const {section, file} of shotFiles){
     /* Simple B（section.type==='review'）は section 自体を工程とみなす。
@@ -999,7 +1022,10 @@ async function loadProjectData(){
     const shotStatus = shotSf ? (shotSf.status || null) : null;
     const shotStatusHistory = (shotSf && Array.isArray(shotSf.history)) ? shotSf.history : [];
     const shotIsDone = shotStatus ? isStatusDone(shotStatus, projStatuses) : false;
-    shots.push({sectionNode:section, stages, milestones:(sched.milestones||[]), shotStatus, shotStatusHistory, shotIsDone});
+    /* v.026：SHOT 列に表示するメモ。notes/{sectionId}.json から拾う。無ければ空。 */
+    const memoFile = notesMap[section.id] || null;
+    const memo = memoFile ? (memoFile.memo || '') : '';
+    shots.push({sectionNode:section, stages, milestones:(sched.milestones||[]), shotStatus, shotStatusHistory, shotIsDone, memo});
   }
   DATA.shots = shots;
   /* DATA.shots が更新されたので、shots ベースの工程順キャッシュを再計算対象にする */
@@ -1466,15 +1492,22 @@ function buildGantt(){
       }else if(curStage || shot.sectionNode){
         statusChip = `<span class="shot-status empty" data-shot="${shot.sectionNode.id}" data-stage="${stageIdAttr}" title="ステータスを設定">未設定</span>`;
       }
+      /* v.026：SHOT 列に「メモ」行を追加。1 行 truncated＋末尾 …、クリックで編集モーダル。 */
+      const memoText = shot.memo || '';
+      const memoCls = memoText ? 'shot-memo' : 'shot-memo empty';
+      const memoDisplay = memoText || 'クリックでメモを追加';
       row.innerHTML = `
         <div class="shot" title="${escapeHtml(tt)}">
-          <div class="id">${escapeHtml(shot.sectionNode.name||shot.sectionNode.id.slice(-8))}</div>
-          <div class="cur-stage"><span class="dot" style="background:${curColor}"></span>${escapeHtml(curLabel)}</div>
-          ${statusChip}
-          ${addBtn}
-          <div class="name">${stages.length} 工程</div>
-          <div class="meta">${rollup}${asgBadges.length?`<span class="asg-badges">${asgBadges.join('')}</span>`:''}</div>
-          <div class="stbadges">${stageBadges}</div>
+          <div class="shot-top">
+            <div class="id">${escapeHtml(shot.sectionNode.name||shot.sectionNode.id.slice(-8))}</div>
+            <div class="cur-stage"><span class="dot" style="background:${curColor}"></span>${escapeHtml(curLabel)}</div>
+            ${statusChip}
+            ${addBtn}
+            <div class="name">${stages.length} 工程</div>
+            <div class="meta">${rollup}${asgBadges.length?`<span class="asg-badges">${asgBadges.join('')}</span>`:''}</div>
+            <div class="stbadges">${stageBadges}</div>
+          </div>
+          <div class="${memoCls}" data-shot="${shot.sectionNode.id}" title="${escapeHtml(memoText||'メモを追加')}">${escapeHtml(memoDisplay)}</div>
         </div>
         <div class="track">${track.join('')}</div>
       `;
@@ -1753,7 +1786,70 @@ document.addEventListener('click', e=>{
   const item = e.target.closest('.status-menu .item');
   if(item){ applyStatusChange(item); return; }
   if(!e.target.closest('.status-menu') && !e.target.closest('.shot-status')) closeStatusMenu();
+  /* v.026：SHOT 列のメモをクリック → 編集モーダル */
+  const memoEl = e.target.closest('.shot-memo');
+  if(memoEl){
+    e.stopPropagation();
+    const shotId = memoEl.dataset.shot;
+    const shot = DATA.shots.find(s=>s.sectionNode.id===shotId);
+    if(shot) openShotMemoModal(shot);
+  }
 });
+/* ================= ショットメモ 編集モーダル =================
+   SHOT 列に「メモ」を追加。notes/{shotSectionId}.json に保存。 */
+function openShotMemoModal(shot){
+  /* 既存モーダルがあれば閉じる */
+  document.querySelectorAll('.memo-modal-ov').forEach(m=>m.remove());
+  const overlay = document.createElement('div');
+  overlay.className = 'memo-modal-ov';
+  const box = document.createElement('div');
+  box.className = 'memo-modal-box';
+  const title = document.createElement('div');
+  title.className = 'memo-modal-title';
+  title.textContent = 'メモ — ' + (shot.sectionNode.name || shot.sectionNode.id.slice(-8));
+  box.appendChild(title);
+  const ta = document.createElement('textarea');
+  ta.className = 'memo-modal-ta';
+  ta.value = shot.memo || '';
+  ta.placeholder = '進行メモ・注意事項などを自由に記入…';
+  box.appendChild(ta);
+  const btns = document.createElement('div');
+  btns.className = 'memo-modal-btns';
+  const cancel = document.createElement('button');
+  cancel.className = 'btn btn-ghost btn-sm';
+  cancel.textContent = 'キャンセル';
+  cancel.onclick = ()=>overlay.remove();
+  btns.appendChild(cancel);
+  const save = document.createElement('button');
+  save.className = 'btn btn-primary btn-sm';
+  save.textContent = '保存';
+  save.onclick = async ()=>{
+    const val = ta.value;
+    shot.memo = val;
+    try{ await saveShotMemo(shot); }catch(err){ console.warn('[pmboard] saveShotMemo failed', err); }
+    overlay.remove();
+    buildGantt();
+  };
+  btns.appendChild(save);
+  box.appendChild(btns);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', ev=>{ if(ev.target===overlay) overlay.remove(); });
+  document.addEventListener('keydown', function esc(ev){
+    if(ev.key==='Escape'){ overlay.remove(); document.removeEventListener('keydown', esc); }
+    else if(ev.key==='Enter' && (ev.ctrlKey || ev.metaKey)){ save.click(); document.removeEventListener('keydown', esc); }
+  });
+  setTimeout(()=>{ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 0);
+}
+async function saveShotMemo(shot){
+  const sid = shot.sectionNode.id;
+  const nowTs = new Date().toISOString();
+  let existing = null;
+  try{ existing = await storage.readJson(`notes/${sid}.json`); }catch(_){}
+  const rev = ((existing && existing._rev)|0) + 1;
+  const file = { v:1, shotId:sid, memo: shot.memo||'', updatedAt: nowTs, source:'pmboard', _rev: rev };
+  await storage.writeJson(`notes/${sid}.json`, file);
+}
 
 /* =========== ドラッグ編集（実データ保存） =========== */
 function initScheduleDrag(){
