@@ -3672,7 +3672,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.022';
+const APP_VERSION='2026.09.19.023';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3721,20 +3721,9 @@ function toastIn(targetDoc,m,ms){
     setTimeout(()=>{try{t.remove()}catch(_){}},ms||2400);
   }catch(_){}
 }
-/* 動画の初回再生時にタブ／サイトミュート解除ヒントを 1 回だけ表示（ページ読み込みごとに 1 回） */
-let _tabMuteHintShown=false;
-function _maybeShowTabMuteHint(targetWin){
-  if(_tabMuteHintShown)return;
-  _tabMuteHintShown=true;
-  const msg='🔊 音が出ないときは、タブを右クリック →「サイトのミュートを解除」でオンにできます';
-  try{
-    if(targetWin&&targetWin.document&&targetWin!==window){
-      toastIn(targetWin.document,msg,3600);
-    }
-    /* メインウィンドウにも同時に出す（REEL のポップアップから呼ばれた場合でも見えるように） */
-    toastIn(document,msg,3600);
-  }catch(_){}
-}
+/* v.023：音が出ないときのミュート解除ヒント警告は撤去（ユーザー要望）。
+   関数本体は no-op に。既存の呼び出し箇所（fb ビューア／REEL）は残るが何もトーストは出ない。 */
+function _maybeShowTabMuteHint(){ /* no-op — 警告表示を停止 */ }
 /* 動画のデコード失敗（未対応コーデック）時にユーザーへ明示する。error.code 3=DECODE / 4=SRC_NOT_SUPPORTED のみ対象（ネットワーク要因の誤爆を防ぐ）。Maya書き出しのAnimation/ProRes等はブラウザで再生不可。
    アップロード直後の src 差し替え・R2 URL 解決タイミングで一過性の code=4 が起きて誤爆する対策として、
    (a) src が空のときは無視、(b) 一度でも loadedmetadata/canplay が来たら誤爆と判定して既存 badge も除去、
