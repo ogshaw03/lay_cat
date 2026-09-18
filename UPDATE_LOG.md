@@ -18,6 +18,16 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.006) **アセットタブを新設**（プロジェクトタブ「ショット」の右）：
+  - **用途**：3D モデル・素材などの外部アセットを LayCAT 側で登録し、どのショットで使うかを紐付ける。
+  - **データモデル**：`root.assets = [{id,name,folderPath,thumb,memo,usedInShots,createdAt,updatedAt}]` を新設。ショット側にも `shot.assets = [assetId]` を持たせ、双方向で同期（`assetLink` / `assetUnlink` / `deleteAsset` で常に両側を更新）。
+  - **保存方針**：**アセット実体は LayCAT プロジェクトフォルダに含めない**。`folderPath` に外部フォルダの絶対パスをテキストで保持するだけ。サムネのみ既存の `storage.putMedia('thumbnails',...)` 経路に流し、他 thumb と同じ `resolveThumbs` で表示。
+  - **UI**（アセットタブ）：ショットタブと同じ `pm-grid` / `pm-tile` を流用。ヘッダに件数チップ＋「＋ アセット追加」ボタン。タイル本体クリックで詳細ドロワーを開く。空状態は「アセットがありません。右上の "＋ アセット追加" から作成してください。」
+  - **詳細（右スライドドロワー）**：`kind:'asset'` を追加し、`buildDrawerShell` を再利用。名前（インライン編集）／サムネ（画像アップロード・削除）／フォルダパス（テキスト＋コピー）／メモ（textarea）／使用ショット（チップ表示、× で解除、プルダウンで追加）。`fillDrawer` に asset 分岐を追加。
+  - **タブ配線**：`VALID_TABS` に `'assets'` を追加（`buildProjectTabsHead` / hash パーサ / 検証 3 箇所）、タブ配列の `ショット` の右に `['assets','アセット']` を挿入。`renderProjectHome` のルーティングに `renderProjAssets` 分岐を追加。
+  - **URL ハッシュ同期**：v.006 段階では詳細ドロワーの hash 保存は未対応（asset kind は syncHash 側に未接続）。タブ選択の hash 同期は既存 `VALID_TABS` 経由で自動対応。
+  - APP_VERSION：2026.09.18.005 → 2026.09.18.006
+
 - (dev v2026.09.18.005) **hotfix：v.004 でヘッダ書き換えを追加した際、同じ関数内で既に宣言済みの `_shotKids` を再宣言してしまい `SyntaxError: Identifier '_shotKids' has already been declared` で全画面が真っ白になる不具合を修正**。新規変数を `_hdrShotKids` / `_hdrIsLegacyContainer` / `_hdrShotName` にリネームして衝突解消。挙動は v.004 と同じ。
 
 - (dev v2026.09.18.004) **作業ページ左上のヘッダを「ショット名 + 現在工程プルダウン」に再構成**：
