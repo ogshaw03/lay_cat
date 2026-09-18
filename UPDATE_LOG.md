@@ -2309,6 +2309,13 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.033) **SHOT 列を 1 行レイアウトに戻し、メモをショット名の右に inline 配置**：
+  - **背景**：v.026 でメモを 2 段目に配置したが、行高が嵩んで見づらいというユーザー要望。
+  - **HTML**：`.shot-top` ラッパーを撤去。子要素を直接 `.shot` に並べる順に変更：`id → shot-memo → cur-stage → status → +ボタン`。
+  - **CSS**：`.shot` を `flex-direction:row` に戻す。`.id` は `flex:0 1 auto; max-width:110px`（メモにスペースを譲る）、`.shot-memo` は `flex:1 1 auto; white-space:nowrap; text-overflow:ellipsis`（残り幅を取って 1 行 truncated）。編集中は `.editing` で `white-space:pre-wrap` に戻して折返し・上下伸長を許可。
+  - **プレースホルダ**：空状態は「メモ…」に短縮。
+  - APP_VERSION：2026.09.19.032 → 2026.09.19.033
+
 - (dev v2026.09.19.032) **v.031 の判定を LayCAT と完全一致させる（ユーザー環境で日数が減らなかった件の是正）**：
   - **原因**：v.031 の `isStatusDone` は `label==='完了'` の**完全一致**しかしていなかった。LayCAT 本体は `/完了|承認|上がり|フィックス|オミット|ok\b|omit|done|fix|approve|complete/i` の**正規表現部分一致**で判定するので、プロジェクトのステータス名が「承認」「OK」「上がり」等の場合 pmboard 側だけ作業日数に混入し続けていた。
   - **修正 A**：`isStatusDone` を LayCAT の `isDoneStatus` と完全一致させる（上記正規表現）。
