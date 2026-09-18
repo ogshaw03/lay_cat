@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.013) **ログ右上の工程バッジ（現在工程）の文字が背景と同色で見えない不具合を修正**：
+  - **原因**：CSS で `.log-stg-badge.cur{background:currentColor;color:var(--bg)!important}` としていたが、`currentColor` は上書き後の `color` を参照する（`!important` の `color:var(--bg)` に置き換わった後の値）ため、背景も文字も同じ暗色（`var(--bg)`）になっていた。
+  - **修正**：CSS 側の色指定を廃止し、JS 側で inline に `if(isCurrent){badge.style.background=color;badge.style.color='var(--bg)'}` と明示セット。他工程は従来どおり枠のみ＋工程色文字。
+  - APP_VERSION：2026.09.18.012 → 2026.09.18.013
+
 - (dev v2026.09.18.012) **ログの工程バッジのクリック（switchStageInTab による別工程ページへの差替）を廃止**：
   - **背景**：バッジをクリックすると別工程ページに差し替わり、スクロール位置が保持されて中途半端な位置に見える不便があった。ユーザー要望で「工程ページに飛ぶ動線」を消すことに。
   - **修正**：`if(hasSiblings){ badge.onclick=... }` ブロックを削除。CSS の `.log-stg-badge` から `cursor:pointer` を外し `pointer-events:none` を追加してホバーもクリックも起きないように。バッジは表示のみで機能を持たないラベルに。
