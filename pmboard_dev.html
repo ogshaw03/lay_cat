@@ -598,7 +598,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.19.031';
+const APP_VERSION='2026.09.19.032';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -710,14 +710,14 @@ function stageLabel(kind, name){
 const DONE_LABEL = '完了';
 const PENDING_LABEL = '未着手';
 function isStatusDone(statusId, projStatuses){
-  if(!statusId) return false;
-  /* v.031（A：LayCAT の isDoneStatus と挙動一致）：id==='approved' / 'omit' も完了扱い。
-     LayCAT 側はデフォルト完了系（承認・オミット）を id で判定するので pmboard もそれに合わせる。 */
+  if(!statusId || statusId==='empty') return false;
+  /* v.031/v.032：LayCAT `isDoneStatus` と完全一致させる。
+     id 一致（approved/omit）＋ ラベルへの正規表現マッチ（完了系の慣用ワード）で判定。 */
   if(statusId === 'approved' || statusId === 'omit') return true;
   if(!Array.isArray(projStatuses)) return false;
   const st = projStatuses.find(x=>x&&x.id===statusId);
   if(!st) return false;
-  return (st.label||'').trim() === DONE_LABEL;
+  return /完了|承認|上がり|フィックス|オミット|ok\b|omit|done|fix|approve|complete/i.test(st.label||'');
 }
 function isStatusPending(statusId, projStatuses){
   if(!statusId) return true;
@@ -735,16 +735,22 @@ function isStatusClientWait(statusId, projStatuses){
   const st = projStatuses.find(x=>x&&x.id===statusId);
   return !!(st && st.clientWait === true);
 }
-/* v.031（B）：チェック待ち判定。ステータス設定で `checkWait:true` が立っている、
-   あるいはラベルが「チェック待ち」に一致するステータスを対象。この期間は
-   ディレクターチェック待ちで作業自体は止まっているとみなし、実績・工数から除外する。 */
+/* v.031/v.032：チェック待ち判定を LayCAT の isAwaitingCheck と一致させる。
+   ・完了系（done）は無条件で false（先頭ステータスが完了系のときに誤判定しない）
+   ・プロジェクトで `checkWait:true` が明示指定されているステータスがあれば、その集合で判定
+   ・明示指定が無い旧データは 'pending' id / 先頭ステータスをチェック待ち扱い（LayCAT の後方互換）
+   ・上記でカバーできない場合の追加緩和として、ラベル「チェック待ち」の完全一致も救う */
 function isStatusCheckWait(statusId, projStatuses){
-  if(!statusId) return false;
+  if(!statusId || statusId==='empty') return false;
   if(!Array.isArray(projStatuses)) return false;
+  if(isStatusDone(statusId, projStatuses)) return false;
+  const explicit = projStatuses.filter(s => s && s.checkWait === true);
+  if(explicit.length) return explicit.some(s => s && s.id === statusId);
+  if(statusId === 'pending') return true;
+  if(projStatuses.length && statusId === projStatuses[0].id) return true;
   const st = projStatuses.find(x=>x&&x.id===statusId);
-  if(!st) return false;
-  if(st.checkWait === true) return true;
-  return (st.label||'').trim() === 'チェック待ち';
+  if(st && (st.label||'').trim() === 'チェック待ち') return true;
+  return false;
 }
 
 /* =========== ストレージ（LayCAT の IDB / localStorage を共有） =========== */
