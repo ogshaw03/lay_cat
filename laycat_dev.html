@@ -3672,7 +3672,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.016';
+const APP_VERSION='2026.09.19.017';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5901,6 +5901,11 @@ function renderProjShots(main,cur){
   const mkBtn=(mode,svg,title)=>{const b=el('button','sv-sw-btn'+(state.shotsView===mode?' on':''));b.type='button';b.innerHTML=svg;b.title=title;b.onclick=()=>{if(state.shotsView!==mode){state.shotsView=mode;try{localStorage.setItem('layna_shotsView',mode)}catch(_){}renderBody();resolveThumbs()}};return b;};
   seg.appendChild(mkBtn('grid',ICON_GRID,'グリッド表示'));seg.appendChild(mkBtn('list',ICON_LIST,'縦並び表示'));
   head.appendChild(seg);
+  /* v.017：全ショットの最新動画をショット順に REEL に並べる（全体確認用） */
+  const reelAllBtn=el('button','btn btn-primary btn-sm','▶ 全ショットを REEL で通し確認');
+  reelAllBtn.title='プロジェクト内の全ショットの最新動画をショット順で REEL に並べます（全体確認用）';
+  reelAllBtn.onclick=()=>reelAddAllShots(cur);
+  head.appendChild(reelAllBtn);
   main.appendChild(head);
   /* 選択中のショットを REEL に追加するツールバー（選択が有るときのみ表示）
      sticky アンカーで包むことで、初回表示時にタイルが下にずれるのを防止（アンカー height:0） */
@@ -16903,6 +16908,22 @@ async function reelAddSelectedShots(){
   }
   toast('REEL に '+added+' 件追加'+(skipped?'（'+skipped+' 件はスキップ）':''));
   state.shotSel=null;renderBody();resolveThumbs();
+}
+/* v.017：プロジェクト内の全ショットの「最新動画」をショット順に一括で REEL に並べる。
+   全体確認用。shotsOf(root) の並び（プロジェクトのショットタブと同じ）を保ち、
+   動画のあるショットのみクリップ化する（動画なしは静かにスキップ）。 */
+async function reelAddAllShots(root){
+  if(!root)return;
+  const shots=shotsOf(root);
+  if(!shots.length){toast('ショットがありません');return}
+  openReel();if(!reelAlive())return;
+  let added=0,skipped=0;
+  for(const sh of shots){
+    const lv=latestVideoVersionUnder(sh.id);
+    if(!lv||lv.v.type!=='video'){skipped++;continue}
+    await reelAddClip(lv.node,lv.v);added++;
+  }
+  toast('REEL に '+added+' 件追加（全体確認）'+(skipped?'／動画なし '+skipped+' 件はスキップ':''));
 }
 /* 保存済みリールを開く（動画タイルの 🎞 リール名 ボタンから） */
 async function openReelFromSaved(reelId){
