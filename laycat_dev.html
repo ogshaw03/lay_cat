@@ -2226,7 +2226,15 @@ const storage={
               const data=JSON.parse(txt);
               const pid=data&&data.id;
               const pname=(data&&data.name)||name;
-              if(pid)found.push({id:pid,name:pname,folderPath:[...parts,name].join('/'),folderName:name});
+              /* v.030：メンバー抽出。project.json のトップに root.members があるケースと、
+                 nodes[] に root ノードが入って members を持つケースの両方を拾う（LayCAT 内部モデル互換）。 */
+              let members=[];
+              if(Array.isArray(data&&data.members))members=data.members;
+              else if(Array.isArray(data&&data.nodes)){
+                const rootN=data.nodes.find(n=>n&&n.id===pid&&Array.isArray(n.members));
+                if(rootN)members=rootN.members;
+              }
+              if(pid)found.push({id:pid,name:pname,folderPath:[...parts,name].join('/'),folderName:name,members});
             }catch(_){}
             continue; /* project root フォルダの中はもう掘らない */
           }
@@ -3767,7 +3775,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.029';
+const APP_VERSION='2026.09.19.030';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6995,10 +7003,30 @@ async function _renderSharedProjectsSection(host){
   host.appendChild(listWrap);
   let items=[];
   try{items=await storage.scanRootProjects()}catch(_){items=[]}
+  /* v.030：自分がメンバーとして追加されているプロジェクトのみに絞り込む。
+     識別は authUser.email（優先）＋ 表示名の完全一致。member.active===false は除外。
+     参加済み（REG にあるプロジェクト）は自分がすでに関わっているとみなし常に表示。 */
+  const _meEmail=((authUser&&authUser.email)||'').toLowerCase();
+  const _meName=(currentUser()||'').trim();
+  const _isMe=(m)=>{
+    if(!m||m.active===false)return false;
+    const id=String(m.id||'').toLowerCase();
+    if(_meEmail&&id===_meEmail)return true;
+    const nm=(m.name||'').trim();
+    if(_meName&&_meName!=='anonymous'&&nm===_meName)return true;
+    return false;
+  };
+  const joinedIds=new Set(Array.isArray(REG)?REG.map(e=>e&&e.id).filter(Boolean):[]);
+  items=items.filter(it=>{
+    if(joinedIds.has(it.id))return true; /* 参加済みは常に見せる */
+    return Array.isArray(it.members)&&it.members.some(_isMe);
+  });
   listWrap.innerHTML='';
   if(!items.length){
     const em=el('div');em.style.cssText='color:var(--text3);font-size:12px';
-    em.textContent='配下に LayCAT プロジェクトが見つかりませんでした。';
+    em.textContent=(_meEmail||_meName)
+      ? '自分がメンバーとして追加された LayCAT プロジェクトはありません（オーナーにメンバー追加を依頼してください）。'
+      : '共有配下にプロジェクトがありません。または、あなたの識別（ログインメール／表示名）が未設定です。';
     listWrap.appendChild(em);
     return;
   }
