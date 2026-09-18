@@ -3672,7 +3672,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.023';
+const APP_VERSION='2026.09.19.024';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -15402,6 +15402,22 @@ function openReel(){
     if(ftlZoom>FTL_ZOOM_MAX)ftlZoom=FTL_ZOOM_MAX;
     const visible=Math.max(1, GT_full/ftlZoom);
     ftlStart=_ftlClampStart(ftlStart, visible, GT_full);
+    /* v.024：再生中のプレイヘッド追従。
+       ズーム中に再生バーが可視範囲を出たら、ftlStart をずらして再生バーを画面内に維持する。
+       ・スクラブ／パン中は自動追従を止める（ユーザーの意図と衝突するため）。
+       ・再生中に右端を越えた → 「ページ送り」：ftlStart=playFrame-visible*0.05 で先頭寄せ
+       ・再生中に左端より前 → 同様に少し先頭に来るよう合わせる（seek で戻したとき等） */
+    (function _followPlayheadIfPlaying(){
+      if(ftlZoom<=FTL_ZOOM_MIN)return;                 /* 全体表示なら追従不要 */
+      if(RV.scrub||_ftlPan)return;                     /* ユーザー操作中は触らない */
+      if(!video||video.paused)return;                  /* 再生中のみ */
+      const playFrame=gOffset(reelUI.cur)+dispF();
+      if(playFrame>=ftlStart+visible){
+        ftlStart=_ftlClampStart(playFrame-visible*0.05, visible, GT_full);
+      }else if(playFrame<ftlStart){
+        ftlStart=_ftlClampStart(playFrame-visible*0.05, visible, GT_full);
+      }
+    })();
     const fw=W/visible;
     /* v.021：グローバルフレーム g → 画面 X の変換（ftlStart オフセット反映） */
     const _gx=g=>(g-ftlStart)*fw;
