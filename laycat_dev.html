@@ -522,7 +522,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 /* 工程バッジ：統合表示時に各アイテムがどの工程のものかを示す（右上に配置）。
    現在の工程は塗り、他工程は枠のみ＋クリックでその工程ページへ遷移。
    区別はバッジのみで行い、動画自体は透過しない（＝暗くしない）。 */
-.log-item .log-stg-badge{position:absolute;top:8px;right:8px;z-index:2;font-family:var(--font-head);font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:6px;border:1px solid;background:var(--bg2);cursor:pointer;user-select:none;text-transform:uppercase}
+.log-item .log-stg-badge{position:absolute;top:8px;right:8px;z-index:2;font-family:var(--font-head);font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:6px;border:1px solid;background:var(--bg2);user-select:none;text-transform:uppercase;pointer-events:none}
 /* 工程バッジがある行だけ log-head の右パディングを拡げ、⬇ アノテ込み書出／🗑 ゴミ箱と重ならないように */
 .log-item:has(.log-stg-badge) .log-head{padding-right:96px}
 .log-item .log-stg-badge.cur{background:currentColor;color:var(--bg)!important}
@@ -3637,7 +3637,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.011';
+const APP_VERSION='2026.09.18.012';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7140,10 +7140,9 @@ function renderReviewBody(s,cur,opts){
       badge.style.borderColor=color;badge.style.color=color;
       badge.textContent=label;
       badge.title='工程：'+label+(isCurrent?'（現在）':'');
-      if(hasSiblings){
-        badge.title+='／クリックでこの工程ページへ';
-        badge.onclick=(e)=>{e.stopPropagation();if(it.stageNode.id!==cur.id)switchStageInTab(it.stageNode.id)};
-      }
+      /* v.012：工程バッジのクリック（switchStageInTab）は廃止。
+         クリックすると別工程ページに差し替わりスクロールが中途半端な位置になる不便があり、
+         ユーザー要望で「工程ページに飛ぶ動線」を消したため。バッジは表示のみで機能を持たない。 */
       itemEl.insertBefore(badge,itemEl.firstChild);
     }
     log.appendChild(itemEl);
