@@ -717,8 +717,16 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
    通常の .ss-sel は 12px/max 180px だが、h1 内では 18px/max 260px にして
    工程名テキストと同じ視覚重量になるように。 */
 .stage-strip-inline{display:inline-flex;align-items:center}
-.stage-strip-inline .ss-sel{font-size:18px;font-weight:700;font-family:var(--font-code);letter-spacing:.2px;min-width:140px;max-width:260px;padding:3px 8px;background:transparent;border-color:var(--border2)}
-.stage-strip-inline .ss-sel:hover{background:var(--bg3)}
+/* 背景は常に非透過（--bg2）で塗る：以前 transparent + :hover のみ着色にしていたため
+   プルダウンを開いてカーソルを一度外へ出すと、Windows Chrome が select のデフォルト
+   （白）を透過越しに露出させて "白抜け" して見えた。全状態で明示的に背景を持たせる。 */
+.stage-strip-inline .ss-sel{font-size:18px;font-weight:700;font-family:var(--font-code);letter-spacing:.2px;min-width:140px;max-width:260px;padding:3px 8px;background:var(--bg2);border-color:var(--border2);color:var(--text)}
+.stage-strip-inline .ss-sel:hover,
+.stage-strip-inline .ss-sel:focus,
+.stage-strip-inline .ss-sel:active{background:var(--bg3);border-color:var(--accent);color:var(--text)}
+/* ショット名テキスト（プルダウンの左に配置） */
+.task-topbar .tt-shot-name{font-family:var(--font-code);font-size:20px;font-weight:800;letter-spacing:.4px;color:var(--text);white-space:nowrap}
+.task-topbar .tt-stage-name{font-family:var(--font-code);font-size:18px;font-weight:700;color:var(--text2);white-space:nowrap;padding:3px 8px;border:1px solid var(--border);border-radius:7px;background:var(--bg2)}
 /* ステータス切替プルダウン（フルページのヘッダ・右側スライドのヘッダ共通） */
 .status-pick{display:flex;align-items:center;gap:6px}
 .status-pick .sp-lab{font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text3);text-transform:uppercase;white-space:nowrap}
@@ -3629,7 +3637,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.003';
+const APP_VERSION='2026.09.18.004';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6797,7 +6805,22 @@ function renderReviewBody(s,cur,opts){
   }
   const stageSwitcher=buildStageStripInline(shotSec,cur.id);
   const h1=el('h2','tt-proc');
-  if(stageSwitcher){h1.appendChild(stageSwitcher)} else {h1.appendChild(document.createTextNode(cur.name))}
+  /* ショット名 → 現在工程プルダウン、の並びで見出しを構成。
+     shotSec がレガシー shot container（type=section で直下が全て review）ならその名前がショット名。
+     Simple B（cur 自身がショット＝ review）では cur.name がショット名。
+     プルダウンが無いケース（工程 1 つのみ）は工程名テキストを併記する。 */
+  const _shotKids=shotSec?DB.nodes.filter(n=>n.parentId===shotSec.id):[];
+  const _isLegacyContainer=!!(shotSec && shotSec.type==='section' && _shotKids.length>=1 && _shotKids.every(k=>k.type==='review'));
+  const _shotName=_isLegacyContainer?shotSec.name:cur.name;
+  h1.appendChild(el('span','tt-shot-name',_shotName));
+  if(stageSwitcher){
+    h1.appendChild(stageSwitcher);
+  }else{
+    const _stageOnly=_isLegacyContainer?cur.name:(getShotCurrentStage(cur)||'');
+    if(_stageOnly && _stageOnly!==_shotName){
+      h1.appendChild(el('span','tt-stage-name',_stageOnly));
+    }
+  }
   const tst=stInfo(cur);const tbg=el('span','badge',tst.label);tbg.style.background=hexA(tst.color,.18);tbg.style.color=tst.color;h1.appendChild(tbg);
   {const rl=roleOf(cur);const m=ROLE_META[rl]||ROLE_META.task;h1.appendChild(elIco('span','type-chip role-'+rl,m.ico,m.label));}
   topbar.appendChild(h1);
@@ -6939,8 +6962,9 @@ function buildStageStripInline(shot,curReviewId){
     sel.title='この工程をクリックして切替（同じタブで切替）';
     for(const r of siblings){
       const o=document.createElement('option');o.value=r.id;
-      const st=stInfo(r);
-      o.textContent=r.name+' — '+st.label;
+      /* 工程名のみ表示。ステータスラベル（作業中／リテイク等）はプルダウン外の
+         ステータスバッジ／プルダウンで別途表示されるので、ここでは冗長。 */
+      o.textContent=r.name;
       if(r.id===curReviewId)o.selected=true;
       sel.appendChild(o);
     }
