@@ -2162,13 +2162,92 @@ const storage={
         if(perm!=='granted'){this._pendingGrant.add(projectId);h=null;}
       }catch(_){h=null}
     }
-    if(h){this.projHandles.set(projectId,h);this._pendingGrant.delete(projectId);}
-    return h;
+    if(h){this.projHandles.set(projectId,h);this._pendingGrant.delete(projectId);return h;}
+    /* v.029：per-project handle が無ければ、共有トップから REG.folderPath でフォールバック解決。
+       root handle さえ granted なら、共有配下のプロジェクトはこの経路で開ける。 */
+    try{
+      const reg=Array.isArray(REG)?REG.find(e=>e&&e.id===projectId):null;
+      if(reg&&reg.folderPath){
+        const derived=await this._resolveFromRoot(reg.folderPath);
+        if(derived){this.projHandles.set(projectId,derived);this._pendingGrant.delete(projectId);return derived;}
+      }
+    }catch(_){}
+    return null;
   },
   /* フォルダが設定済みか（handle が idb にあるか）。保存失敗時の localStorage フォールバック可否判定に使う */
-  async hasFolderConfigured(projectId){if(!projectId)return false;if(this.projHandles.get(projectId))return true;try{return !!(await idbGet('handles','proj_'+projectId))}catch(_){return false}},
+  async hasFolderConfigured(projectId){
+    if(!projectId)return false;
+    if(this.projHandles.get(projectId))return true;
+    try{if(await idbGet('handles','proj_'+projectId))return true}catch(_){}
+    /* v.029：共有トップ + REG.folderPath で解決可能なら設定済み扱い */
+    try{
+      const reg=Array.isArray(REG)?REG.find(e=>e&&e.id===projectId):null;
+      if(reg&&reg.folderPath&&await this.getRootHandle())return true;
+    }catch(_){}
+    return false;
+  },
   async setProjRoot(projectId,handle){await idbPut('handles','proj_'+projectId,handle);this.projHandles.set(projectId,handle);this._pendingGrant.delete(projectId);},
   async clearProjRoot(projectId){try{await idbDel('handles','proj_'+projectId)}catch(_){}this.projHandles.set(projectId,null);this._pendingGrant.delete(projectId);},
+  /* v.029：共有トップフォルダ（1 個だけ IDB に保存）。この配下の任意位置に置かれた LayCAT
+     プロジェクトフォルダを、個別に picker で許可することなく root handle 経由で開けるようにする。
+     REG エントリに folderPath（トップからの相対パス）が入っていれば、projRoot のフォールバックで
+     root + folderPath → 該当ディレクトリ handle を解決する。 */
+  _rootHandle:null,
+  async getRootHandle(interactive){
+    if(this._rootHandle)return this._rootHandle;
+    let h=null;try{h=await idbGet('handles','root_top')}catch(_){}
+    if(h){
+      try{
+        let perm=await h.queryPermission({mode:'readwrite'});
+        if(perm!=='granted'&&interactive)perm=await h.requestPermission({mode:'readwrite'});
+        if(perm!=='granted')h=null;
+      }catch(_){h=null}
+    }
+    if(h)this._rootHandle=h;
+    return h;
+  },
+  async setRootHandle(handle){await idbPut('handles','root_top',handle);this._rootHandle=handle;},
+  async clearRootHandle(){try{await idbDel('handles','root_top')}catch(_){}this._rootHandle=null;},
+  /* トップ配下を任意深さで走査し、`laycat.project.json` を持つフォルダを列挙する。
+     見つかったフォルダ自身は project root として扱い、その中は掘らない。深さは 5 まで（安全弁）。 */
+  async scanRootProjects(){
+    const root=await this.getRootHandle();if(!root)return [];
+    const found=[];
+    const walk=async(dir,parts,depth)=>{
+      if(depth>5)return;
+      try{
+        for await(const [name,entry] of dir.entries()){
+          if(!entry||entry.kind!=='directory')continue;
+          let fh=null;
+          try{fh=await entry.getFileHandle('laycat.project.json')}catch(_){}
+          if(fh){
+            try{
+              const txt=await(await fh.getFile()).text();
+              const data=JSON.parse(txt);
+              const pid=data&&data.id;
+              const pname=(data&&data.name)||name;
+              if(pid)found.push({id:pid,name:pname,folderPath:[...parts,name].join('/'),folderName:name});
+            }catch(_){}
+            continue; /* project root フォルダの中はもう掘らない */
+          }
+          try{await walk(entry,[...parts,name],depth+1)}catch(_){}
+        }
+      }catch(_){}
+    };
+    await walk(root,[],0);
+    return found;
+  },
+  /* トップからの相対パスをたどって DirectoryHandle を返す。無ければ null。 */
+  async _resolveFromRoot(folderPath){
+    const root=await this.getRootHandle();if(!root)return null;
+    if(!folderPath)return null;
+    let dir=root;
+    for(const part of String(folderPath).split('/')){
+      if(!part)continue;
+      try{dir=await dir.getDirectoryHandle(part)}catch(_){return null}
+    }
+    return dir;
+  },
   /* ===== ストレージ方針 =====
      ・IndexedDB は「フォルダの鍵（handles）」の保持のみに使用（ブラウザ仕様上ここにしか保存できない）
      ・個人設定/接続一覧/プロジェクトのメタデータ（軽量JSON）→ localStorage
@@ -3688,7 +3767,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.028';
+const APP_VERSION='2026.09.19.029';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6843,12 +6922,23 @@ function renderHome(s){
   const wrap=el('div','home-screen');
   const head=el('div','home-hd');
   head.appendChild(el('div','ht','プロジェクト'));
-  head.appendChild(el('div','hs','使用するプロジェクトを選択・新規作成、または既存プロジェクトのフォルダを接続'));
+  head.appendChild(el('div','hs','使用するプロジェクトを選択・新規作成、または共有フォルダから参加'));
   const hacts=el('div','home-acts');
-  const conBtn=el('button','btn btn-ghost btn-sm','⇄ プロジェクトに接続');conBtn.title='参加可能な R2 プロジェクト一覧から選ぶ、または共有フォルダを開いて接続';conBtn.onclick=()=>openConnectModal();hacts.appendChild(conBtn);
+  /* v.029：共有トップフォルダの設定（1 回だけ）。設定済みならフォルダ名表示＋変更／解除。 */
+  const sharedBtn=el('button','btn btn-ghost btn-sm','🔗 共有フォルダ…');
+  sharedBtn.title='LayCAT プロジェクトが格納された共有トップフォルダを一度だけ指定。配下のプロジェクトはそのまま参加できます。';
+  sharedBtn.onclick=()=>openSharedRootModal();
+  hacts.appendChild(sharedBtn);
+  const conBtn=el('button','btn btn-ghost btn-sm','⇄ プロジェクトに接続');conBtn.title='参加可能な R2 プロジェクト一覧から選ぶ、または個別フォルダを開いて接続';conBtn.onclick=()=>openConnectModal();hacts.appendChild(conBtn);
   const newBtn=el('button','btn btn-primary btn-sm','＋ 新規プロジェクト');newBtn.onclick=()=>openProjectModal();hacts.appendChild(newBtn);
   head.appendChild(hacts);
   wrap.appendChild(head);
+  /* --- v.029：共有フォルダ配下の「参加可能プロジェクト」セクション --- */
+  const sharedSec=el('div','home-shared');
+  sharedSec.style.cssText='margin-bottom:18px';
+  wrap.appendChild(sharedSec);
+  _renderSharedProjectsSection(sharedSec);
+  /* --- 既存プロジェクトのタイル --- */
   const grid=el('div','proj-grid');
   for(const r of roots){
     const card=el('div','proj-card');
@@ -6875,6 +6965,111 @@ function renderHome(s){
   if(!roots.length)grid.appendChild(el('div','proj-empty','まだプロジェクトがありません。右上の「＋ プロジェクト」から作成してください。'));
   wrap.appendChild(grid);
   s.appendChild(wrap);
+}
+/* v.029：共有フォルダ配下の「参加可能プロジェクト」セクション描画。 */
+async function _renderSharedProjectsSection(host){
+  host.innerHTML='';
+  const root=await storage.getRootHandle();
+  const hd=el('div');hd.style.cssText='display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap';
+  const lb=el('span');lb.style.cssText='font-family:var(--font-head);font-weight:800;font-size:14px;color:var(--text);letter-spacing:.3px';
+  lb.textContent='共有フォルダ配下のプロジェクト';
+  hd.appendChild(lb);
+  if(!root){
+    const sub=el('span');sub.style.cssText='font-size:12px;color:var(--text3)';
+    sub.textContent='共有トップフォルダが未設定です。右上「🔗 共有フォルダ…」から一度だけ指定してください。';
+    hd.appendChild(sub);
+    host.appendChild(hd);
+    return;
+  }
+  const chip=el('span');chip.style.cssText='font-family:var(--font-code);font-size:11px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:2px 8px';
+  chip.textContent='📁 '+(root.name||'（トップ）');
+  hd.appendChild(chip);
+  const rescan=el('button','btn btn-ghost btn-sm','再スキャン');
+  rescan.onclick=()=>_renderSharedProjectsSection(host);
+  hd.appendChild(rescan);
+  host.appendChild(hd);
+  const listWrap=el('div');listWrap.style.cssText='display:flex;flex-direction:column;gap:6px';
+  const loading=el('div');loading.style.cssText='color:var(--text3);font-size:12px';
+  loading.textContent='スキャン中…';
+  listWrap.appendChild(loading);
+  host.appendChild(listWrap);
+  let items=[];
+  try{items=await storage.scanRootProjects()}catch(_){items=[]}
+  listWrap.innerHTML='';
+  if(!items.length){
+    const em=el('div');em.style.cssText='color:var(--text3);font-size:12px';
+    em.textContent='配下に LayCAT プロジェクトが見つかりませんでした。';
+    listWrap.appendChild(em);
+    return;
+  }
+  for(const it of items){
+    const joined=Array.isArray(REG)&&REG.some(e=>e&&e.id===it.id);
+    const row=el('div');row.style.cssText='display:flex;align-items:center;gap:10px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px';
+    const info=el('div');info.style.cssText='flex:1;min-width:0';
+    const nm=el('div');nm.style.cssText='font-family:var(--font-head);font-weight:700;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    nm.textContent=it.name;
+    const pth=el('div');pth.style.cssText='font-family:var(--font-code);font-size:10px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    pth.textContent=it.folderPath;
+    info.appendChild(nm);info.appendChild(pth);
+    row.appendChild(info);
+    if(joined){
+      const badge=el('span');badge.style.cssText='font-family:var(--font-code);font-size:10px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:2px 8px';
+      badge.textContent='参加済み';
+      row.appendChild(badge);
+      const open=el('button','btn btn-ghost btn-sm','開く');
+      open.onclick=()=>go(it.id);
+      row.appendChild(open);
+    }else{
+      const join=el('button','btn btn-primary btn-sm','参加する');
+      join.onclick=async()=>{
+        join.disabled=true;join.textContent='参加中…';
+        try{
+          REG.push({id:it.id,name:it.name,folderPath:it.folderPath,folderName:it.folderName});
+          await storage.saveRegistry(REG);
+          /* プロジェクトデータをフォルダから読み込んで DB に取り込む */
+          try{
+            const data=await storage.readProjectData(it.id,{recordShotRev:true});
+            if(data&&Array.isArray(data.nodes)){
+              for(const n of data.nodes){if(n&&n.id&&!DB.nodes.some(x=>x.id===n.id))DB.nodes.push(n)}
+              try{normalizeNodes()}catch(_){}
+              try{seedProjBaseline(it.id)}catch(_){}
+            }
+          }catch(_){}
+          try{await persist()}catch(_){}
+          toast('プロジェクト「'+it.name+'」に参加しました');
+          render();resolveThumbs();
+        }catch(err){
+          try{console.warn('[laycat] join failed',err)}catch(_){}
+          toast('参加に失敗しました');
+          join.disabled=false;join.textContent='参加する';
+        }
+      };
+      row.appendChild(join);
+    }
+    listWrap.appendChild(row);
+  }
+}
+/* v.029：共有トップフォルダの設定モーダル。picker で選択 → IDB 保存 → ホームを再描画。 */
+async function openSharedRootModal(){
+  if(!storage.supportsFolder()){alert('このブラウザは File System Access API に対応していません（Chrome/Edge をご利用ください）');return}
+  const current=await storage.getRootHandle();
+  const msg=current
+    ? '現在の共有フォルダ：「'+(current.name||'（不明）')+'」\n\n変更・解除しますか？\n[OK]=変更（別のフォルダを選択）／[キャンセル]=閉じる'
+    : '共有トップフォルダを指定します。配下のプロジェクトが自動列挙されます。\n\n[OK]=フォルダ選択に進む／[キャンセル]=閉じる';
+  if(!confirm(msg))return;
+  let handle=null;
+  try{handle=await window.showDirectoryPicker({mode:'readwrite'})}catch(_){return}
+  if(!handle)return;
+  try{
+    const perm=await handle.requestPermission({mode:'readwrite'});
+    if(perm!=='granted'){alert('読み書き権限が得られませんでした');return}
+    await storage.setRootHandle(handle);
+    toast('共有フォルダを設定しました：'+handle.name);
+    render();
+  }catch(err){
+    try{console.warn('[laycat] setRootHandle failed',err)}catch(_){}
+    alert('設定に失敗しました');
+  }
 }
 
 /* セクションページ（子項目タイルのみ・動画追加不可）。cur は非nullのセクション/検索中のルート */

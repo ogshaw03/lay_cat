@@ -18,6 +18,21 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.029) **共有トップフォルダ 1 回指定で配下の全プロジェクトに参加可能に**（Phase 1）：
+  - **背景**：これまで案件ごとに File System Access API で picker → 権限許可が必要だった。共有ネットワークドライブ運用に切替えて、トップを 1 回だけ指定すれば配下の全 LayCAT プロジェクトを自動列挙できるようにしたい、というユーザー要望。
+  - **storage 拡張**：
+    - `getRootHandle(interactive)` / `setRootHandle(h)` / `clearRootHandle()` — IDB `handles/root_top` に 1 個だけ保存。
+    - `scanRootProjects()` — トップ配下を任意深さ（最大 5）で走査し、`laycat.project.json` を持つフォルダを列挙。id/name/folderPath/folderName を返す。project root フォルダの中はそれ以上掘らない。
+    - `_resolveFromRoot(folderPath)` — トップから相対パスを辿って DirectoryHandle を解決。
+    - `projRoot(pid)` に**フォールバック追加**：per-project handle が無いとき `REG.folderPath` を使って共有トップから解決。既存 per-project handle 経路は無変更。
+    - `hasFolderConfigured(pid)` も共有経路を認識するよう拡張。
+  - **REG スキーマ拡張**：エントリに `{folderPath, folderName}` を追加（既存エントリは無くても動く）。
+  - **ホーム画面 UI**：
+    - 右上に「🔗 共有フォルダ…」ボタン。picker → IDB 保存。再クリックで変更確認。
+    - 「共有フォルダ配下のプロジェクト」セクションを追加。トップ設定済みなら `scanRootProjects` の結果を行表示。各行「参加する」で REG 追加＋プロジェクトデータ読込。参加済みは「参加済み」バッジ＋「開く」。
+  - **既存フローとの共存**：個別 handle 登録のプロジェクトは従来どおり動作、共有経由は並列に有効。プロジェクト新規作成時に共有トップ配下のどこに置くかを指定する UI は Phase 2 で対応予定。
+  - APP_VERSION：2026.09.19.028 → 2026.09.19.029
+
 - (dev v2026.09.19.028) **ショットページ右カラムの順序を「使用アセット → PMMEMO → NOTE」に変更**（ユーザー要望）。APP_VERSION：2026.09.19.027 → 2026.09.19.028
 
 - (dev v2026.09.19.027) **メッセージ／動画に付く工程バッジがヘッダのプルダウン選択と一致しない不具合を修正**：
