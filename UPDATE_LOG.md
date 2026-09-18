@@ -2264,6 +2264,8 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.030) **工程バッジの内容を左寄せに変更**：`.cur-stage` の `justify-content:flex-end` → `flex-start`。色マーク＋工程名が先頭に揃うようにして、ラベル長でマークが右にズレて見える件を解消。APP_VERSION：2026.09.18.029 → 2026.09.18.030
+
 - (dev v2026.09.18.029) **工程バッジとステータスチップを固定幅にして位置を揃える**：
   - **原因**：ステータスラベルの文字数（例：`OK` vs `チェック待ち`）で `.shot-status` の実幅が変わり、隣接する `.cur-stage`（工程バッジ）の X 座標が行ごとにズレていた。
   - **修正**：`.shot-status { min-width: 88px; text-align: center }` で常にチップ幅を一定に。合わせて `.cur-stage { min-width: 80px; justify-content: flex-end }` で工程バッジも固定幅・右寄せ内容にし、ラベルの短長で並びが崩れないように統一。

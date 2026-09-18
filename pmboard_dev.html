@@ -229,8 +229,9 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row .shot .shot-memo.editing{white-space:pre-wrap;overflow:visible;text-overflow:clip;background:var(--bg3);box-shadow:inset 0 0 0 1px var(--accent);color:var(--text);cursor:text;min-height:1.4em;word-break:break-word}
 .gantt-row:hover .shot{background:var(--bg3)}
 .gantt-row .shot .id{font-family:var(--font-code);font-size:12px;font-weight:700;color:var(--text);letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
-/* v.029：工程バッジも固定幅（min-width）に。ラベル短くても常に一定幅で右寄せに揃える。 */
-.gantt-row .shot .cur-stage{font-size:10px;color:var(--text2);white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px;font-family:var(--font-head);letter-spacing:.3px;min-width:80px;justify-content:flex-end}
+/* v.029：工程バッジも固定幅（min-width）に。
+   v.030：内容は左寄せに変更（色マーク＋工程名を先頭に揃える。ラベル長でマークがズレて見える件を解消）。 */
+.gantt-row .shot .cur-stage{font-size:10px;color:var(--text2);white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px;font-family:var(--font-head);letter-spacing:.3px;min-width:80px;justify-content:flex-start}
 .gantt-row .shot .cur-stage .dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
 /* 未予定の工程を追加する「＋」ボタン。ショットセル末尾に小さく表示 */
 .gantt-row .shot .add-plan-btn{flex-shrink:0;background:transparent;border:1px dashed var(--border2);color:var(--text3);width:18px;height:18px;border-radius:4px;font-size:12px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-family:var(--font-head);padding:0}
@@ -597,7 +598,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.029';
+const APP_VERSION='2026.09.18.030';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
