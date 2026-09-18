@@ -585,7 +585,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.024';
+const APP_VERSION='2026.09.18.025';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -992,7 +992,14 @@ async function loadProjectData(){
       const reviewer = k.reviewer || null;
       return {reviewNode:k, stageName, kind, label, color, plannedStart, plannedEnd, actualStart, actualEnd, isDone, currentStatus, assignee, reviewer, history, workSegments, latestVideoTime};
     });
-    shots.push({sectionNode:section, stages, milestones:(sched.milestones||[])});
+    /* v.025：ショット単位ステータス。LayCAT dev v.014 でショット section 自身にも
+       status/{sectionId}.json が書かれるようになった。存在すればそちらを優先し、
+       無ければ従来どおり currentStage の工程ステータスにフォールバック。 */
+    const shotSf = statusMap[section.id] || null;
+    const shotStatus = shotSf ? (shotSf.status || null) : null;
+    const shotStatusHistory = (shotSf && Array.isArray(shotSf.history)) ? shotSf.history : [];
+    const shotIsDone = shotStatus ? isStatusDone(shotStatus, projStatuses) : false;
+    shots.push({sectionNode:section, stages, milestones:(sched.milestones||[]), shotStatus, shotStatusHistory, shotIsDone});
   }
   DATA.shots = shots;
   /* DATA.shots が更新されたので、shots ベースの工程順キャッシュを再計算対象にする */
@@ -1442,17 +1449,22 @@ function buildGantt(){
       /* tooltip：非表示にした情報（工程数・状態・工程種類）をショットセル hover で参照可能に */
       const stateWord = /done/.test(rollup)?'完了':/late/.test(rollup)?'遅延':/wip/.test(rollup)?'作業中':/noplan/.test(rollup)?'未計画':/plan/.test(rollup)?'計画中':'—';
       const tt = `${shot.sectionNode.name||''} — ${stages.length} 工程 / ${stateWord} / 現在：${curLabel}`;
-      /* 現在のステータスチップ：クリックでステータスメニュー → LayCAT の status/*.json に書き込み。
-         curStage が無いショット（＝現在工程が未特定）は書き込み対象が決まらないので非表示。 */
+      /* v.025：現在のステータスチップ。表示値は shotEffectiveStatus（ショット section 直属 status を最優先、
+         無ければ現在工程 の currentStatus にフォールバック）。書込先はショット section の id で統一
+         （data-shot=書込先／data-stage は互換のため現在工程 id を残しておく）。 */
       let statusChip = '';
-      if(curStage && curStage.reviewNode){
-        const projStatuses = (DATA.project && DATA.project.statuses) || [];
-        const curSt = projStatuses.find(s=>s.id===curStage.currentStatus);
+      const shotEffStatus = (shot.shotStatus != null) ? shot.shotStatus : (curStage ? curStage.currentStatus : null);
+      const projStatuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
+      const stageIdAttr = (curStage && curStage.reviewNode) ? curStage.reviewNode.id : shot.sectionNode.id;
+      if(shotEffStatus){
+        const curSt = projStatuses.find(s=>s.id===shotEffStatus);
         if(curSt){
-          statusChip = `<span class="shot-status" data-shot="${shot.sectionNode.id}" data-stage="${curStage.reviewNode.id}" style="background:${resolveColor(curSt.color||'#5a5a6a')}" title="ステータスを変更">${escapeHtml(curSt.label||curSt.id)}</span>`;
+          statusChip = `<span class="shot-status" data-shot="${shot.sectionNode.id}" data-stage="${stageIdAttr}" style="background:${resolveColor(curSt.color||'#5a5a6a')}" title="ステータスを変更">${escapeHtml(curSt.label||curSt.id)}</span>`;
         }else{
-          statusChip = `<span class="shot-status empty" data-shot="${shot.sectionNode.id}" data-stage="${curStage.reviewNode.id}" title="ステータスを設定">未設定</span>`;
+          statusChip = `<span class="shot-status empty" data-shot="${shot.sectionNode.id}" data-stage="${stageIdAttr}" title="ステータスを設定">未設定</span>`;
         }
+      }else if(curStage || shot.sectionNode){
+        statusChip = `<span class="shot-status empty" data-shot="${shot.sectionNode.id}" data-stage="${stageIdAttr}" title="ステータスを設定">未設定</span>`;
       }
       row.innerHTML = `
         <div class="shot" title="${escapeHtml(tt)}">
@@ -1704,15 +1716,16 @@ function closeStatusMenu(){
 async function applyStatusChange(item){
   const menu = item.closest('.status-menu');
   if(!menu) return;
-  const shotId = menu.dataset.shot, stageId = menu.dataset.stage;
+  const shotId = menu.dataset.shot;
   const newStatus = item.dataset.statusId || null;
   const shot = DATA.shots.find(s=>s.sectionNode.id===shotId);
   if(!shot){ closeStatusMenu(); return; }
-  const st = shot.stages.find(x=>x.reviewNode.id===stageId);
-  if(!st){ closeStatusMenu(); return; }
-  const prev = st.currentStatus || null;
+  const prev = (shot.shotStatus != null) ? shot.shotStatus : null;
   if(prev === newStatus){ closeStatusMenu(); return; }
-  const sid = st.reviewNode.id;
+  /* v.025：書込先は「ショット section の id」に統一。1 ショット 1 ステータス方針で、
+     `status/{shotSectionId}.json` に書く（Simple B なら section.id === review.id で従来どおり）。
+     旧 `status/{reviewId}.json` は残置。 */
+  const sid = shot.sectionNode.id;
   try{
     const existing = await storage.readJson(`status/${sid}.json`);
     const nowTs = new Date().toISOString();
@@ -1723,13 +1736,12 @@ async function applyStatusChange(item){
     const file = {v:1, shotId:sid, status:newStatus, updatedAt:nowTs, updatedBy:me, source:'pmboard', history, _rev:rev};
     await storage.writeJson(`status/${sid}.json`, file);
   }catch(e){ console.warn('[pmboard] status write failed', e); }
-  /* メモリ側も更新 */
-  st.currentStatus = newStatus;
+  /* メモリ側も更新（shot 単位の値のみ。stage 単位は残置＝旧ファイルとの整合のため。） */
   const projStatuses = (DATA.project && DATA.project.statuses) || [];
-  st.isDone = isStatusDone(newStatus, projStatuses);
-  /* 監査履歴も反映（実績バー再計算用） */
-  st.history = st.history || [];
-  st.history.push({ts:new Date().toISOString(), from:prev, to:newStatus, source:'pmboard'});
+  shot.shotStatus = newStatus;
+  shot.shotIsDone = newStatus ? isStatusDone(newStatus, projStatuses) : false;
+  shot.shotStatusHistory = shot.shotStatusHistory || [];
+  shot.shotStatusHistory.push({ts:new Date().toISOString(), from:prev, to:newStatus, source:'pmboard'});
   closeStatusMenu();
   /* 再描画：ガント + サイドバー */
   buildGantt();
@@ -2082,7 +2094,8 @@ function renderEffortPane(){
       days, segs,
       stageName: cur ? (cur.stageName || cur.label || '?') : '—',
       stageColor: cur ? cur.color : '#5a5a6a',
-      status: cur ? cur.currentStatus : null,
+      /* v.025：ショット単位ステータス優先。無ければ現在工程 currentStatus にフォールバック。 */
+      status: (shot.shotStatus != null) ? shot.shotStatus : (cur ? cur.currentStatus : null),
     });
   }
   /* 日数降順ソート */
@@ -2479,7 +2492,8 @@ function renderStatusDonut(){
       if(key !== filter) continue;
     }
     filteredTotal++;
-    const sid = cur ? cur.currentStatus : null;
+    /* v.025：ステータス表示はショット単位（shot.shotStatus）を最優先。無ければ現在工程 currentStatus にフォールバック。 */
+    const sid = (shot.shotStatus != null) ? shot.shotStatus : (cur ? cur.currentStatus : null);
     if(!sid){ noneCount++; continue; }
     if(byId[sid]) byId[sid].count++;
     else noneCount++;

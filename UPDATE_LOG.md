@@ -2249,6 +2249,13 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.025) **ショット単位ステータスへの対応（LayCAT dev v.014 と対）**：
+  - **背景**：LayCAT 側で「1 ショット 1 ステータス」に統一。ショット section にも `status/{sectionId}.json` が書かれるようになった。pmboard 側でも同じ値をショットのステータスとして扱う。
+  - **データ層**：`buildData` で `statusMap[section.id]` をショットに取り込み、`shot.shotStatus` / `shot.shotStatusHistory` / `shot.shotIsDone` として保持。存在しないショットは従来どおり currentStage の値にフォールバック。
+  - **表示層**：ガント行のステータスチップ／サイドバーのステータス分布ドーナツ／工数タブの status フィールドで `shot.shotStatus ?? cur.currentStatus` の順に解決。
+  - **書込層**：`applyStatusChange` の書込先 `sid` を `st.reviewNode.id` → `shot.sectionNode.id` に変更。Simple B は section.id === review.id なので従来どおり、レガシー multi-stage はショット section の status ファイルに書き込む。旧 `status/{reviewId}.json` は残置（読取フォールバック用）。メモリ更新も `shot.shotStatus` 側に切替（stage の currentStatus は残置）。
+  - APP_VERSION：2026.09.18.024 → 2026.09.18.025
+
 - (dev v2026.09.17.019) **工程分布ドーナツクリックでステータス分布を絞り込み**：セカンダリ工程のショットで OK ／ リテイクの比率を確認したい、というニーズに対応。
   - **工程分布ドーナツ／集計表**：スライスや行をクリックすると `DATA.stageFilter` にその工程名が入り、選択されたスライスだけがハイライト（他はアルファ 0.25）、行も active クラスで強調表示。同じ行を再クリックで解除、他の工程をクリックで切替。
   - **ステータス分布ドーナツ**：`DATA.stageFilter` が指定されているとき、その工程を「現在工程」とするショットだけに絞って集計・描画。集計は selected 工程のショット数を分母にした割合で表示。
