@@ -3637,7 +3637,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.004';
+const APP_VERSION='2026.09.18.005';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6809,15 +6809,15 @@ function renderReviewBody(s,cur,opts){
      shotSec がレガシー shot container（type=section で直下が全て review）ならその名前がショット名。
      Simple B（cur 自身がショット＝ review）では cur.name がショット名。
      プルダウンが無いケース（工程 1 つのみ）は工程名テキストを併記する。 */
-  const _shotKids=shotSec?DB.nodes.filter(n=>n.parentId===shotSec.id):[];
-  const _isLegacyContainer=!!(shotSec && shotSec.type==='section' && _shotKids.length>=1 && _shotKids.every(k=>k.type==='review'));
-  const _shotName=_isLegacyContainer?shotSec.name:cur.name;
-  h1.appendChild(el('span','tt-shot-name',_shotName));
+  const _hdrShotKids=shotSec?DB.nodes.filter(n=>n.parentId===shotSec.id):[];
+  const _hdrIsLegacyContainer=!!(shotSec && shotSec.type==='section' && _hdrShotKids.length>=1 && _hdrShotKids.every(k=>k.type==='review'));
+  const _hdrShotName=_hdrIsLegacyContainer?shotSec.name:cur.name;
+  h1.appendChild(el('span','tt-shot-name',_hdrShotName));
   if(stageSwitcher){
     h1.appendChild(stageSwitcher);
   }else{
-    const _stageOnly=_isLegacyContainer?cur.name:(getShotCurrentStage(cur)||'');
-    if(_stageOnly && _stageOnly!==_shotName){
+    const _stageOnly=_hdrIsLegacyContainer?cur.name:(getShotCurrentStage(cur)||'');
+    if(_stageOnly && _stageOnly!==_hdrShotName){
       h1.appendChild(el('span','tt-stage-name',_stageOnly));
     }
   }
