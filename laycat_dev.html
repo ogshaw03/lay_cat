@@ -3688,7 +3688,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.027';
+const APP_VERSION='2026.09.19.028';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7363,12 +7363,12 @@ function renderReviewBody(s,cur,opts){
   const trn=el('button','btn btn-ghost btn-sm','設定');trn.onclick=()=>openRename(cur);topbar.appendChild(trn);
   const tdel=el('button','btn btn-danger btn-sm','削除');tdel.onclick=()=>deleteNode(cur);topbar.appendChild(tdel);
   s.appendChild(topbar);
-  /* 右カラム：上から「PMMEMO（pmboard の SHOT メモ）」→「使用アセット」→「NOTE」の順に表示（inDrawer 時はスキップ）。
+  /* 右カラム：上から「使用アセット」→「PMMEMO（pmboard の SHOT メモ）」→「NOTE」の順に表示（inDrawer 時はスキップ）。
      ショットノードは legacy shot container なら shotSec、それ以外（Simple B）は cur 自身。 */
   if(noteCol){
     const _shotForAssets=_hdrIsLegacyContainer?shotSec:cur;
-    if(_shotForAssets)buildShotPmMemoPane(noteCol,_shotForAssets,rootOf(cur));
     if(_shotForAssets)buildShotAssetsPane(noteCol,_shotForAssets,rootOf(cur));
+    if(_shotForAssets)buildShotPmMemoPane(noteCol,_shotForAssets,rootOf(cur));
     buildTaskNotePane(noteCol,cur);
   }
   s.appendChild(shotCommentInput(cur)); /* 上部：独立コメントの入力欄のみ */
