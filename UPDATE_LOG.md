@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.026) **PMMEMO を「ショットページ内での操作」でも再読込するように**：
+  - v.025 では初期表示（render 時）だけで、NOTE 入力・動画再生など render を伴わない操作では PMMEMO が最新化されなかった。
+  - `buildShotPmMemoPane` に `#scroll` の `pointerdown` / `keydown` リスナーと `visibilitychange`（visible）リスナーを追加。300ms debounce で `notes/{sid}.json` を再読込。パネルが DOM から外れたら次回イベントでリスナー自動解除。
+  - APP_VERSION：2026.09.19.025 → 2026.09.19.026
+
 - (dev v2026.09.19.025) **ショットページ右カラムに PMMEMO 欄を追加**（pmboard の SHOT メモを読取表示）：
   - **背景**：pmboard で書いた SHOT メモを LayCAT のショットページからも見られるようにしたい、というユーザー要望。
   - **配置**：右カラムの上から「**PMMEMO → 使用アセット → NOTE**」の順に。`buildShotPmMemoPane(container,shot,root)` を実装。

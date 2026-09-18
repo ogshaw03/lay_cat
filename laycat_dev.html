@@ -3672,7 +3672,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.025';
+const APP_VERSION='2026.09.19.026';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6377,11 +6377,36 @@ function buildShotPmMemoPane(container,shot,root){
   wrap.appendChild(body);
   container.appendChild(wrap);
   const _emptyView=()=>{body.textContent='（メモは未記入）';body.style.color='var(--text3)';body.style.fontStyle='italic'};
-  _loadShotPmMemo(root.id,shot.id).then(f=>{
-    const memo=(f&&typeof f.memo==='string')?f.memo.trim():'';
-    if(memo){body.textContent=memo;body.style.color='var(--text)';body.style.fontStyle=''}
-    else _emptyView();
-  }).catch(_emptyView);
+  const refresh=()=>{
+    _loadShotPmMemo(root.id,shot.id).then(f=>{
+      const memo=(f&&typeof f.memo==='string')?f.memo.trim():'';
+      if(memo){body.textContent=memo;body.style.color='var(--text)';body.style.fontStyle=''}
+      else _emptyView();
+    }).catch(_emptyView);
+  };
+  refresh(); /* 初期表示 */
+  /* v.026：ショットページ上で何かしらの操作があったら PMMEMO を再読込。
+     ・ページ内 click / keydown（NOTE 入力・動画クリック含む）でトリガー
+     ・タブに戻った瞬間（visibilitychange → visible）にもトリガー
+     全て debounce 300ms。パネルが DOM から外れたら自動でリスナー解除。 */
+  const scroll=document.getElementById('scroll')||document.body;
+  let _timer=0;
+  const kick=()=>{clearTimeout(_timer);_timer=setTimeout(refresh,300)};
+  const onAct=()=>{
+    if(!document.body.contains(wrap)){
+      scroll.removeEventListener('pointerdown',onAct);
+      scroll.removeEventListener('keydown',onAct);
+      return;
+    }
+    kick();
+  };
+  const onVis=()=>{
+    if(!document.body.contains(wrap)){document.removeEventListener('visibilitychange',onVis);return}
+    if(document.visibilityState==='visible')kick();
+  };
+  scroll.addEventListener('pointerdown',onAct);
+  scroll.addEventListener('keydown',onAct);
+  document.addEventListener('visibilitychange',onVis);
 }
 /* アセット詳細ドロワー（レビュー／サブミットと同じ右スライドを使い回し） */
 function openAssetDrawer(assetId){
