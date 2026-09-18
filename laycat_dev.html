@@ -3672,7 +3672,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.017';
+const APP_VERSION='2026.09.19.018';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -16716,6 +16716,13 @@ function openReel(){
   const shotItem=(label,fn)=>{const it=ce(d,'div','item');it.appendChild(ce(d,'span',null,label));it.onclick=e=>{e.stopPropagation();closeMenu();fn()};shotDD.appendChild(it);return it};
   shotItem('ショットを読み込み',()=>{buildShotList();rside.style.display=''});
   shotItem('リストを更新',()=>{buildShotList();rside.style.display=''});
+  shotDD.appendChild(ce(d,'div','sep'));
+  /* v.018：REEL 側からも「全ショットの最新動画をショット順に一括追加（通し確認用）」を呼べるように */
+  shotItem('▶ 全ショットを通し確認（最新動画を追加）',()=>{
+    const rt=reelUI.projectId?getNode(reelUI.projectId):null;
+    if(!rt){try{toast('リールがプロジェクトに束縛されていません')}catch(_){};return}
+    reelAddAllShots(rt);
+  });
   shotDD.appendChild(ce(d,'div','sep'));
   shotItem('リストを閉じる',()=>{rside.style.display='none'});
   shotMi.onclick=e=>{e.stopPropagation();const willOpen=!shotDD.classList.contains('show');closeMenu();if(willOpen){shotMi.classList.add('open');shotDD.classList.add('show')}};
