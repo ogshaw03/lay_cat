@@ -18,6 +18,14 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.025) **ショットページ右カラムに PMMEMO 欄を追加**（pmboard の SHOT メモを読取表示）：
+  - **背景**：pmboard で書いた SHOT メモを LayCAT のショットページからも見られるようにしたい、というユーザー要望。
+  - **配置**：右カラムの上から「**PMMEMO → 使用アセット → NOTE**」の順に。`buildShotPmMemoPane(container,shot,root)` を実装。
+  - **データ**：`notes/{shotSectionId}.json`（pmboard v.026 で導入したファイル）を `_loadShotPmMemo` で非同期読取り。memo フィールドを `white-space:pre-wrap` で表示。空／未記入時は「（メモは未記入）」のイタリック薄色 placeholder。
+  - **編集**：LayCAT 側は **閲覧のみ**（書込みは pmboard 側に集約、双方の書込み競合を避ける）。
+  - **shot ノード解決**：既存の `_hdrIsLegacyContainer` を再利用（レガシー shot section なら shotSec、Simple B なら cur 自身）。pmboard 側 `saveShotMemo` は shot section の id で書くので、この解決で一致する。
+  - APP_VERSION：2026.09.19.024 → 2026.09.19.025
+
 - (dev v2026.09.19.024) **REEL タイムスライダのズーム中、再生バーが範囲外に出たら追従スクロール**：
   - **背景**：v.021 で `.ftl` にホイールズームを入れたが、拡大したまま再生していると再生バーが可視範囲を出て見えなくなる。追いかけて欲しいというユーザー要望。
   - **実装**：`drawFTL` 冒頭で「ズーム中 かつ 再生中 かつ スクラブ／パン中でない」ときに、プレイヘッド `gOffset(reelUI.cur)+dispF()` の位置を判定。右端を超えていたら `ftlStart=playFrame-visible*0.05` で先頭寄せ（ページ送り）。左端より前なら同様に頭を合わせる（seek で戻したときも自然に追従）。
