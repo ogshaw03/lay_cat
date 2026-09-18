@@ -3672,7 +3672,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.020';
+const APP_VERSION='2026.09.19.021';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14828,6 +14828,15 @@ function openReel(){
   maincol.appendChild(fbar);
   const ftlWrap=ce(d,'div','ftlwrap');const ftl=ce(d,'canvas','ftl');ftlWrap.appendChild(ftl);
   maincol.appendChild(ftlWrap);
+  /* v.021：タイムスライダ（.ftl）のズーム状態。
+     ftlZoom=1 で全体表示、大きいほど拡大。ftlStart は左端に来るグローバルフレーム位置。
+     マウスホイール（中ボタンくるくる）で ftl 上で回すと、カーソル位置を中心に拡大／縮小する。 */
+  let ftlZoom=1, ftlStart=0;
+  const FTL_ZOOM_MIN=1, FTL_ZOOM_MAX=40;
+  const _ftlClampStart=(start,visible,total)=>{
+    if(total<=visible)return 0;
+    return Math.max(0, Math.min(total-visible, start));
+  };
   /* レイヤーパネル（FBと同じ） */
   const layersPanel=ce(d,'div','fb-layers');layersPanel.style.display='none'; /* 既定は非表示（右のレイヤーパネル） */
   layersPanel.appendChild(ce(d,'div','fb-layers-head','レイヤー'));
@@ -15398,67 +15407,103 @@ function openReel(){
     ftl.width=W;ftl.height=46;const H=46;
     const ctx=ftl.getContext('2d');ctx.fillStyle='#141416';ctx.fillRect(0,0,W,H);
     const cs=reelUI.clips;if(!cs.length)return;
-    const GT=gTotal();const fw=W/GT;
+    /* v.021：ズーム対応。GT_full=全長、visible=可視フレーム数、ftlStart=左端の全体フレーム位置。 */
+    const GT_full=gTotal();
+    if(ftlZoom<FTL_ZOOM_MIN)ftlZoom=FTL_ZOOM_MIN;
+    if(ftlZoom>FTL_ZOOM_MAX)ftlZoom=FTL_ZOOM_MAX;
+    const visible=Math.max(1, GT_full/ftlZoom);
+    ftlStart=_ftlClampStart(ftlStart, visible, GT_full);
+    const fw=W/visible;
+    /* v.021：グローバルフレーム g → 画面 X の変換（ftlStart オフセット反映） */
+    const _gx=g=>(g-ftlStart)*fw;
     let off=0;
     cs.forEach((c,i)=>{
-      const cf=clipFrames(c);const x0=off*fw;
+      const cf=clipFrames(c);const x0=_gx(off);
       if(i%2){ctx.fillStyle='rgba(255,255,255,.035)';ctx.fillRect(x0,0,cf*fw,H)}
       /* クリップ境界と名前 */
       ctx.strokeStyle='rgba(96,165,255,.55)';ctx.beginPath();ctx.moveTo(Math.round(x0)+.5,0);ctx.lineTo(Math.round(x0)+.5,H);ctx.stroke();
       ctx.fillStyle=i===reelUI.cur?'#e8e8ec':'rgba(255,255,255,.4)';ctx.font='9px monospace';
       ctx.fillText((i+1)+'. '+c.name.slice(0,16),x0+3,8);
       /* 各動画のフレーム目盛り */
-      if(fw>=2.5){ctx.strokeStyle='rgba(255,255,255,.12)';ctx.beginPath();for(let f=0;f<cf;f++){const x=Math.round((off+f)*fw)+.5;ctx.moveTo(x,H-9);ctx.lineTo(x,H)}ctx.stroke()}
+      if(fw>=2.5){ctx.strokeStyle='rgba(255,255,255,.12)';ctx.beginPath();for(let f=0;f<cf;f++){const x=Math.round(_gx(off+f))+.5;ctx.moveTo(x,H-9);ctx.lineTo(x,H)}ctx.stroke()}
       const fps=clipFPS(c);let step=fps;while(step*fw<40)step*=2;
       ctx.strokeStyle='rgba(255,255,255,.35)';ctx.fillStyle='rgba(255,255,255,.5)';ctx.beginPath();
-      for(let f=0;f<cf;f+=step){const x=Math.round((off+f)*fw)+.5;ctx.moveTo(x,H-14);ctx.lineTo(x,H);ctx.fillText(String(f),x+2,H-16)}
+      for(let f=0;f<cf;f+=step){const x=Math.round(_gx(off+f))+.5;ctx.moveTo(x,H-14);ctx.lineTo(x,H);ctx.fillText(String(f),x+2,H-16)}
       ctx.stroke();
       /* マーカー（各クリップのレビューノート） */
       const vv=vOf(c);
       if(vv)for(const n of vv.review.notes){
-        if(n.frame==null)continue;const gx=(off+n.frame)*fw;
+        if(n.frame==null)continue;const gx=_gx(off+n.frame);
         if(n.drawing&&n.drawing.length){ctx.fillStyle='#e08a4a';ctx.fillRect(gx,10,Math.max(2.5,fw*(parseInt(n.dur)||1)),5)}
         else{
-          /* コメントのみ（drawing なし）は赤い菱形。中心 gx（フレーム左端）でプレイヘッド／目盛りと揃える。
-             アノテ窓 drawTimeline と同じ意匠、REEL の複数クリップ連結でも識別性を確保。 */
+          /* コメントのみ（drawing なし）は赤い菱形。中心 gx（フレーム左端）でプレイヘッド／目盛りと揃える。 */
           ctx.fillStyle='#ff5a5a';
           ctx.beginPath();ctx.moveTo(gx,9);ctx.lineTo(gx+4,12.5);ctx.lineTo(gx,16);ctx.lineTo(gx-4,12.5);ctx.closePath();ctx.fill();
         }
       }
       off+=cf;
     });
-    /* 未記入(pending)マーカー：全クリップ分をそれぞれの位置に描画（跨いでも消えない） */
+    /* 未記入(pending)マーカー */
     const pdur=parseInt(durS.value)||1;
     ctx.fillStyle='rgba(224,138,74,.5)';
     let poff=0;
     cs.forEach(c=>{
-      for(const p of (c.pending||[]))if(p.f!=null)ctx.fillRect((poff+p.f)*fw,10,Math.max(2.5,fw*pdur),5);
+      for(const p of (c.pending||[]))if(p.f!=null)ctx.fillRect(_gx(poff+p.f),10,Math.max(2.5,fw*pdur),5);
       poff+=clipFrames(c);
     });
-    /* 記入済み(未送信/drafts)マーカー：記入後もマーカーが消えないように描画 */
+    /* 記入済み(未送信/drafts)マーカー */
     let doff=0;ctx.fillStyle='rgba(224,166,58,.9)';
     cs.forEach(c=>{
-      for(const n of (c.drafts||[]))if(n.frame!=null)ctx.fillRect((doff+n.frame)*fw,10,Math.max(2.5,fw*(parseInt(n.dur)||1)),5);
+      for(const n of (c.drafts||[]))if(n.frame!=null)ctx.fillRect(_gx(doff+n.frame),10,Math.max(2.5,fw*(parseInt(n.dur)||1)),5);
       doff+=clipFrames(c);
     });
-    /* キャッシュ済み（デコード済み・遅延なしで表示できる）クリップ範囲を最下部に細い青ライン表示 */
+    /* キャッシュ済み範囲 */
     let coff=0;ctx.fillStyle='#3b82f6';
-    cs.forEach(c=>{const cf=clipFrames(c);if(isCached(c.url))ctx.fillRect(Math.round(coff*fw),H-1.5,Math.max(2,cf*fw),1.5);coff+=cf});
-    /* 再生範囲ハイライト（グローバルフレーム番号ベース） */
+    cs.forEach(c=>{const cf=clipFrames(c);if(isCached(c.url))ctx.fillRect(Math.round(_gx(coff)),H-1.5,Math.max(2,cf*fw),1.5);coff+=cf});
+    /* 再生範囲ハイライト */
     if(RV.rangeIn!=null&&RV.rangeOut!=null&&RV.rangeOut>RV.rangeIn){
-      ctx.fillStyle='rgba(96,165,255,.18)';ctx.fillRect(RV.rangeIn*fw,0,(RV.rangeOut-RV.rangeIn)*fw,H);
-      ctx.fillStyle='#5cc7ef';ctx.fillRect(RV.rangeIn*fw-1,0,2,H);ctx.fillRect(RV.rangeOut*fw-1,0,2,H);
+      ctx.fillStyle='rgba(96,165,255,.18)';ctx.fillRect(_gx(RV.rangeIn),0,(RV.rangeOut-RV.rangeIn)*fw,H);
+      ctx.fillStyle='#5cc7ef';ctx.fillRect(_gx(RV.rangeIn)-1,0,2,H);ctx.fillRect(_gx(RV.rangeOut)-1,0,2,H);
     }else{
-      if(RV.rangeIn!=null){ctx.fillStyle='rgba(92,199,239,.7)';ctx.fillRect(RV.rangeIn*fw-1,0,2,H)}
-      if(RV.rangeOut!=null){ctx.fillStyle='rgba(92,199,239,.7)';ctx.fillRect(RV.rangeOut*fw-1,0,2,H)}
+      if(RV.rangeIn!=null){ctx.fillStyle='rgba(92,199,239,.7)';ctx.fillRect(_gx(RV.rangeIn)-1,0,2,H)}
+      if(RV.rangeOut!=null){ctx.fillStyle='rgba(92,199,239,.7)';ctx.fillRect(_gx(RV.rangeOut)-1,0,2,H)}
     }
-    /* プレイヘッド（全体位置。fbビューアと揃えるためフレーム開始位置に描画） */
+    /* プレイヘッド */
     const co=gOffset(reelUI.cur);
-    const x=(co+dispF())*fw;
+    const x=_gx(co+dispF());
     ctx.fillStyle='#fff';ctx.fillRect(x-1,0,2,H);
   }
-  /* スクラブ：全体フレーム→クリップ跨ぎで自動切替 */
-  const gFromX=e=>{const r=ftl.getBoundingClientRect();return Math.max(0,Math.min(gTotal()-1,Math.floor((e.clientX-r.left)/r.width*gTotal())))};
+  /* スクラブ：全体フレーム→クリップ跨ぎで自動切替（v.021：ズーム対応。可視範囲 [ftlStart, ftlStart+visible)） */
+  const gFromX=e=>{
+    const r=ftl.getBoundingClientRect();
+    const GT_full=gTotal();
+    const visible=Math.max(1, GT_full/(ftlZoom||1));
+    const gf=ftlStart+((e.clientX-r.left)/r.width)*visible;
+    return Math.max(0, Math.min(GT_full-1, Math.floor(gf)));
+  };
+  /* v.021：ホイールでタイムスライダをズーム（カーソル位置が中心）。中ボタンのくるくる操作。 */
+  ftl.addEventListener('wheel', ev=>{
+    ev.preventDefault();
+    const r=ftl.getBoundingClientRect();
+    const cursorX=ev.clientX-r.left;
+    const W=r.width;
+    const GT_full=gTotal();
+    const prevZoom=ftlZoom;
+    const prevVisible=Math.max(1, GT_full/prevZoom);
+    const cursorFrame=ftlStart+(cursorX/W)*prevVisible;
+    /* wheel up (deltaY<0) = ズームイン、down = ズームアウト */
+    const factor=ev.deltaY<0?1.2:1/1.2;
+    let nz=prevZoom*factor;
+    if(nz<FTL_ZOOM_MIN)nz=FTL_ZOOM_MIN;
+    if(nz>FTL_ZOOM_MAX)nz=FTL_ZOOM_MAX;
+    if(nz===prevZoom)return;
+    ftlZoom=nz;
+    const newVisible=Math.max(1, GT_full/ftlZoom);
+    ftlStart=_ftlClampStart(cursorFrame-(cursorX/W)*newVisible, newVisible, GT_full);
+    drawFTL();
+  }, {passive:false});
+  /* ダブルクリックでズームをリセット（全体表示に戻す） */
+  ftl.addEventListener('dblclick', ()=>{ ftlZoom=1; ftlStart=0; drawFTL(); });
   function gSeek(gf){
     const cs=reelUI.clips;if(!cs.length)return;
     let idx=0,off=0;
