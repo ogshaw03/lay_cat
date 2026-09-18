@@ -3672,7 +3672,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.021';
+const APP_VERSION='2026.09.19.022';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -15512,9 +15512,42 @@ function openReel(){
     if(idx!==reelUI.cur){RV.scrubT=RV.scrub?lf:RV.scrubT;reelUI.cur=idx;RV.pendSeek=lf;reelUI.loadCur(false)} /* 跨ぐ瞬間に目的フレームを確定しプレイヘッドの飛びを防ぐ */
     else{RV.scrubT=RV.scrub?lf:RV.scrubT;seekRTr(lf)}
   }
-  ftl.onpointerdown=e=>{RV.scrub=true;ftl.setPointerCapture(e.pointerId);video.pause();const gf=gFromX(e);RV.scrubT=-1;gSeek(gf);RV.last=-1};
-  ftl.onpointermove=e=>{if(!RV.scrub)return;gSeek(gFromX(e));RV.last=-1};
-  ftl.onpointerup=()=>{RV.scrub=false;RV.scrubT=-1;RV.last=-1};
+  /* v.022：中ボタン（button===1）ドラッグで、ズーム中のタイムスライダを横パンできるようにする。
+     左ボタン（button===0）は従来どおりスクラブ。 */
+  let _ftlPan=null;
+  ftl.onpointerdown=e=>{
+    if(e.button===1){
+      e.preventDefault();
+      _ftlPan={startX:e.clientX, startFtlStart:ftlStart};
+      try{ftl.setPointerCapture(e.pointerId)}catch(_){}
+      ftl.style.cursor='grabbing';
+      return;
+    }
+    RV.scrub=true;ftl.setPointerCapture(e.pointerId);video.pause();const gf=gFromX(e);RV.scrubT=-1;gSeek(gf);RV.last=-1;
+  };
+  ftl.onpointermove=e=>{
+    if(_ftlPan){
+      const r=ftl.getBoundingClientRect();
+      const GT_full=gTotal();
+      const visible=Math.max(1, GT_full/(ftlZoom||1));
+      const dx=e.clientX-_ftlPan.startX;
+      ftlStart=_ftlClampStart(_ftlPan.startFtlStart-(dx/r.width)*visible, visible, GT_full);
+      drawFTL();
+      return;
+    }
+    if(!RV.scrub)return;gSeek(gFromX(e));RV.last=-1;
+  };
+  ftl.onpointerup=e=>{
+    if(_ftlPan){
+      _ftlPan=null;
+      ftl.style.cursor='';
+      try{ftl.releasePointerCapture(e.pointerId)}catch(_){}
+      return;
+    }
+    RV.scrub=false;RV.scrubT=-1;RV.last=-1;
+  };
+  /* Windows の中クリックオートスクロールを抑止（.ftl 上でも安全に中ボタンドラッグを取れるよう） */
+  ftl.addEventListener('auxclick', ev=>{ if(ev.button===1) ev.preventDefault(); });
   /* ツール */
   function setRTool(t){RV.tool=t;drawB.classList.toggle('on',t==='draw');eraseB.classList.toggle('on',t==='erase');headB.classList.toggle('on',t==='head');shapeB.classList.toggle('on',t==='shape');lassoB.classList.toggle('on',t==='lasso');mannB.classList.toggle('on',t==='mann');if(t!=='head'){rHeadActive=null;rHeadDrag=null}if(t!=='shape'){rShapeDraft=null}if(t!=='lasso'){try{reelLassoClearSelection()}catch(_){}}if(t!=='mann'){reelSelectedMann=null;reelMannDrag=null;reelMannHoverAxis=null}anno.style.pointerEvents=t?'auto':'none';anno.style.cursor=t?'crosshair':'';/* v.017: draw/erase でも crosshair 維持（Parsec 等リモート接続時のラグ回避） */if(t!=='draw'&&t!=='erase'){try{szRing.style.display='none'}catch(_){}}if(t){RZ.hand=false;handB.classList.remove('on');stage.style.cursor='';video.pause()}try{rebuildRSizeSel()}catch(_){}}
   /* 初期化：ツール未選択でも一覧を作っておく（disable 状態） */
