@@ -3637,7 +3637,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.007';
+const APP_VERSION='2026.09.18.008';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6232,9 +6232,11 @@ function fillAssetDrawer(){
         const ref=await storage.putMedia('thumbnails',newId('media')+ext,f,{projectId:root.id});
         if(ref){
           a.thumb=ref;a.updatedAt=nowIso();
-          const u=await storage.getURL(ref);if(u)thumbBox.style.backgroundImage='url("'+u+'")';
           try{await persist()}catch(_){}
-          fillAssetDrawer();
+          /* タイル（アセットタブ／ショットページの使用アセットパネル）にも即反映させるため
+             render() を呼ぶ。renderBody が state.drawer を検知して fillAssetDrawer も再実行する
+             ので、右スライドは開いたまま新しいサムネで再構築される。 */
+          render();
         }
       }catch(_){}
     };
@@ -6243,7 +6245,7 @@ function fillAssetDrawer(){
   thumbActs.appendChild(thumbUp);
   if(a.thumb){
     const rm=el('button','btn btn-ghost btn-sm','削除');
-    rm.onclick=async()=>{a.thumb=null;a.updatedAt=nowIso();try{await persist()}catch(_){}fillAssetDrawer()};
+    rm.onclick=async()=>{a.thumb=null;a.updatedAt=nowIso();try{await persist()}catch(_){}render()};
     thumbActs.appendChild(rm);
   }
   thumbWrap.appendChild(thumbActs);
@@ -6278,7 +6280,7 @@ function fillAssetDrawer(){
     const x=el('button');x.type='button';x.textContent='×';
     x.style.cssText='border:0;background:transparent;color:var(--text3);cursor:pointer;font-size:14px;padding:0 6px;line-height:1';
     x.title='紐付けを解除';
-    x.onclick=async()=>{assetUnlink(root,a.id,sh.id);try{await persist()}catch(_){}fillAssetDrawer()};
+    x.onclick=async()=>{assetUnlink(root,a.id,sh.id);try{await persist()}catch(_){}render()};
     chip.appendChild(x);
     chipWrap.appendChild(chip);
   }
@@ -6295,7 +6297,7 @@ function fillAssetDrawer(){
   sel.onchange=async()=>{
     const sid=sel.value;if(!sid)return;
     assetLink(root,a.id,sid);try{await persist()}catch(_){}
-    fillAssetDrawer();
+    render();
   };
   addRow.appendChild(sel);
   body.appendChild(addRow);
