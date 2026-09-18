@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.027) **メッセージ／動画に付く工程バッジがヘッダのプルダウン選択と一致しない不具合を修正**：
+  - **症状**：レガシー multi-stage ショットでメッセージ送信・動画アップロードすると、常に先頭工程（例：LAY）のバッジが付き、ヘッダのプルダウン（例：anm_sec）と食い違っていた。
+  - **原因**：投稿／アップロード時のタグ付けが `getShotCurrentStage(cur)` を呼んでいたが、レガシーでは `currentStage` は shot section にしか無いため review 側では未定義 → `root.stages[0]` にフォールバックしていた。
+  - **修正**：新ヘルパ `getShotStageForTag(cur)` を追加。レガシー shot container なら `cur.name`（今表示している review 名＝現在工程）、Simple B なら `getShotCurrentStage(cur)` を返すよう場合分け。`shotCommentInput` の投稿処理と upload の 3 か所（`version.stage` / upload comment `_cm.stage` / 連番 upload の `version.stage`）を `getShotStageForTag` に差し替え。
+  - APP_VERSION：2026.09.19.026 → 2026.09.19.027
+
 - (dev v2026.09.19.026) **PMMEMO を「ショットページ内での操作」でも再読込するように**：
   - v.025 では初期表示（render 時）だけで、NOTE 入力・動画再生など render を伴わない操作では PMMEMO が最新化されなかった。
   - `buildShotPmMemoPane` に `#scroll` の `pointerdown` / `keydown` リスナーと `visibilitychange`（visible）リスナーを追加。300ms debounce で `notes/{sid}.json` を再読込。パネルが DOM から外れたら次回イベントでリスナー自動解除。

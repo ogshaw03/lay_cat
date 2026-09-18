@@ -3137,6 +3137,22 @@ function getShotCurrentStage(n){
   const list = projStageList(rootOf(n));
   return list.length ? list[0] : null;
 }
+/* v.027：新規アップロード／メッセージ投稿時に付与する「現在工程タグ」を、
+   レガシー multi-stage と Simple B の双方で正しく解決するヘルパ。
+   ・レガシー shot container（section 直下が全て review）：cur は今表示中の review そのもの
+     ＝ 工程プルダウンで選ばれている工程なので `cur.name` を返す。
+   ・Simple B（review 型ショット）：`cur.currentStage`（無ければ root.stages[0]）を返す。
+   これで、メッセージや動画に付くバッジがヘッダ上のプルダウン選択と常に一致する。 */
+function getShotStageForTag(cur){
+  if(!cur) return null;
+  const shotSec = cur.parentId ? getNode(cur.parentId) : null;
+  if(shotSec && shotSec.type==='section'){
+    const kids = DB.nodes.filter(n=>n.parentId===shotSec.id);
+    const isLegacyContainer = kids.length>=1 && kids.every(k=>k.type==='review');
+    if(isLegacyContainer) return cur.name || null;
+  }
+  return getShotCurrentStage(cur);
+}
 /* 現在工程を書き換えて履歴に追記。無変更なら noop。 */
 function setShotCurrentStage(n, newStage){
   if(!n || !newStage) return false;
@@ -3672,7 +3688,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.026';
+const APP_VERSION='2026.09.19.027';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6973,8 +6989,9 @@ function shotCommentInput(cur){
     const txt=(ta.value||'').trim();if(!txt)return;
     const mn=extractMentions(txt,rootOf(cur),ta._mentions);
     const _cm={id:newId('sc'),author:currentUser(),text:txt,time:nowIso(),mentions:mn};
-    /* Simple B：コメント投稿時点の工程をタグ付け */
-    {const _st=getShotCurrentStage(cur); if(_st) _cm.stage=_st}
+    /* v.027：コメント投稿時点の工程をタグ付け。レガシー multi-stage でも Simple B でも、
+       ヘッダのプルダウン選択（＝画面上の現在工程）と一致する値を getShotStageForTag で解決。 */
+    {const _st=getShotStageForTag(cur); if(_st) _cm.stage=_st}
     (cur.comments=cur.comments||[]).push(_cm);
     ta.value='';ta._mentions=[];await persist();render();resolveThumbs()
   }; /* サイドバー・ヘッダ含めて再描画（他の書き込み系操作と揃える） */
@@ -10694,8 +10711,9 @@ async function uploadVersion(node,file,ui,opts){
     /* 名前：入力があればそれ、空欄なら動画のタイトル（拡張子なしのファイル名） */
     const vname=(opts.name&&opts.name.trim())||file.name.replace(/\.[^.]+$/,'');
     const version={id:newId('ver'),name:vname,type:isVideo?'video':'image',file:mediaRef,thumb:thumbRef,uploadedBy:currentUser(),uploadedAt:nowIso(),review:{status:'pending',notes:[]}};
-    /* Simple B：アップロード時点の「その工程」を version に紐付ける（未定義環境では省略） */
-    {const _st=getShotCurrentStage(node); if(_st) version.stage=_st}
+    /* v.027：アップロード時点の「その工程」を version に紐付ける。レガシー・Simple B いずれも
+       ヘッダのプルダウン選択と一致するよう getShotStageForTag で解決。 */
+    {const _st=getShotStageForTag(node); if(_st) version.stage=_st}
     /* サイレント・アップロード：チェック依頼通知を出さない設定（アップロードモーダルの
        「チェック担当者に通知を送る」☑ が OFF のとき）。通知スキャナで版ごとにスキップする。 */
     if(opts.notify===false)version.noNotify=true;
@@ -10767,10 +10785,10 @@ async function uploadExrSequence(node,seq,ui,opts){
       uploadedBy:currentUser(),uploadedAt:nowIso(),
       review:{status:'pending',notes:[]}
     };
-    {const _st=getShotCurrentStage(node); if(_st) version.stage=_st}
+    {const _st=getShotStageForTag(node); if(_st) version.stage=_st}
     if(opts.comment&&opts.comment.trim()){
       const _cm={id:newId('sc'),author:currentUser(),text:opts.comment.trim(),time:nowIso(),kind:'upload'};
-      const _st=getShotCurrentStage(node); if(_st) _cm.stage=_st;
+      const _st=getShotStageForTag(node); if(_st) _cm.stage=_st;
       (node.comments=node.comments||[]).push(_cm);
     }
     if(opts.notify===false)version.noNotify=true;
