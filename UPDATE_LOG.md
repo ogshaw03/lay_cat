@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.020) **REEL タイムラインをマウスホイール（中ボタンくるくる）で横スクロール**：
+  - v.019 は中ボタン **ドラッグ** で実装したが、ユーザー要望は「くるくる（ホイール）」だったので変更。
+  - `.tlwrap` の `wheel` イベントで `deltaY` を `scrollLeft` に流し込む（`Math.abs(dy)>Math.abs(dx)` のときのみ縦→横変換、水平方向 delta 主体のトラックパッド操作は既定挙動保持）。`preventDefault` 用に `{passive:false}`。
+  - 中クリック自体は Windows のオートスクロールカーソル抑止のため `mousedown` / `auxclick` で `preventDefault`。
+  - v.019 の中ボタンドラッグロジックは撤去。
+  - APP_VERSION：2026.09.19.019 → 2026.09.19.020
+
 - (dev v2026.09.19.019) **REEL タイムラインを中ボタンドラッグで横スクロール可能に**：
   - REEL 下部のクリップタイル帯（`.tlwrap`）を「タイムライン」と呼称。中クリック（button===1）押下 → mouse move で `scrollLeft` を更新するドラッグスクロールを実装。押下時 `preventDefault` で Windows のオートスクロールカーソルを抑止、`auxclick` も抑制。押下中は `cursor:grabbing` に切替。
   - APP_VERSION：2026.09.19.018 → 2026.09.19.019
