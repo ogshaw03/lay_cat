@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.015) **他ユーザーの status 変更が autoRefresh で反映されない不具合を修正**（F5 が必要だった件）：
+  - **原因**：`refreshFromFolders` → `readProjectData` 内で `_hydrateStatuses` が `remote.nodes[*].status` を最新 status.json から埋め直しているが、続く `_unionRemoteIntoDB` の scalar マージループが status キーを意図的に除外（v.056 D-5 の「status.json が権威源」との判断）。この設計だと F5（`loadProject` で parsed が DB になる経路）でしか status が反映されない。
+  - **修正**：`refreshFromFolders` の `clean` 分岐で、`remote.nodes` → `DB.nodes` へ status を明示的に同期する処理を追加。null/'' への「未着手戻し」も authoritative なので remote 側にキーがあれば尊重、remote 側でキーが消えていれば DB も未着手に戻す。
+  - **影響**：ショット単位ステータス（v.014）／レガシー review ステータスの両方で、他ユーザー変更が autoRefresh の 30 秒ポーリング（またはタブ復帰時）で反映されるようになる。
+  - APP_VERSION：2026.09.18.014 → 2026.09.18.015
+
 - (dev v2026.09.18.014) **ステータスを「ショット単位」に統一（レガシー multi-stage ショットも 1 ショット 1 ステータスに）**：
   - **方針**：ショットは 1 個のステータスで管理。工程ごとに分けない。「そのショットは 1 つなので工程で分ける必要がない」というユーザー方針。
   - **データレイヤ**：既存の `status/{sid}.json` 分離を維持（shot.json 埋め込みには戻さない）。レガシー shot section も同スキーマで `status/{shotSectionId}.json` を持てるように。`nodeStatus(node)` にショット section の明示 status 短絡を追加（`if(node.type==='section'&&node.status)return node.status`）→ 子（review 工程）の集約より優先。

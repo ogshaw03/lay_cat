@@ -3672,7 +3672,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.014';
+const APP_VERSION='2026.09.18.015';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4256,6 +4256,33 @@ async function refreshFromFolders(){
        これで v071 の副作用（他ユーザーの status 変更が自動反映されない）が正常時のみ解消される
        ＝「rollback 時は守る、正常時は同期する」の両立。 */
     try{_unionRemoteIntoDB(e.id,remote,{preferRemote:clean,remoteAuthoritative:clean})}catch(_){}
+    /* v.015 修正：他ユーザーが変更した status を DB に反映する。
+       readProjectData 内で `_hydrateStatuses` が `remote.nodes[*].status` を最新 status.json で
+       埋め直しているが、続く `_unionRemoteIntoDB` の scalar マージループは status キーを
+       意図的に除外している（v.056 D-5：「status.json が権威源」との判断で除外）。
+       この設計だと F5（loadProject → parsed が DB になる経路）でしか status が反映されず、
+       autoRefresh 経由での他ユーザー変更が「操作しても取り込まれない」現象になっていた。
+       ここで `clean` 時に限り remote.nodes → DB.nodes へ status を明示的に同期。
+       null/'' への「未着手戻し」も remote 側がキーを持てば尊重する（authoritative なので）。 */
+    if(clean){
+      const remoteById=new Map();
+      for(const rn of (remote.nodes||[]))if(rn&&rn.id)remoteById.set(rn.id,rn);
+      for(const ex of DB.nodes){
+        if(rootOfId(ex)!==e.id)continue;
+        const rn=remoteById.get(ex.id);if(!rn)continue;
+        const rHas=Object.prototype.hasOwnProperty.call(rn,'status');
+        const rs=(rn.status==null||rn.status==='')?null:rn.status;
+        const ls=(ex.status==null||ex.status==='')?null:ex.status;
+        if(rHas){
+          if(rs!==ls){
+            if(rs==null)delete ex.status; else ex.status=rs;
+          }
+        }else if(ls!=null){
+          /* remote 側で status キーが消えている（status.json が empty/削除）→ DB も未着手に戻す */
+          delete ex.status;
+        }
+      }
+    }
     if(clean){
       /* clean 時は remote に存在しないノード（相手の削除）を local からも除去して同期。
          ただし「baseline に無かったノード（＝直近で自分が追加、まだ remote に伝播しきってない可能性）」は削除しない
