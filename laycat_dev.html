@@ -523,6 +523,8 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
    現在の工程は塗り、他工程は枠のみ＋クリックでその工程ページへ遷移。
    他工程アイテム自体は .other-stage で少し透過して視認性を下げる。 */
 .log-item .log-stg-badge{position:absolute;top:8px;right:8px;z-index:2;font-family:var(--font-head);font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:6px;border:1px solid;background:var(--bg2);cursor:pointer;user-select:none;text-transform:uppercase}
+/* 工程バッジがある行だけ log-head の右パディングを拡げ、⬇ アノテ込み書出／🗑 ゴミ箱と重ならないように */
+.log-item:has(.log-stg-badge) .log-head{padding-right:96px}
 .log-item .log-stg-badge.cur{background:currentColor;color:var(--bg)!important}
 .log-item .log-stg-badge.cur::first-letter{color:var(--bg)}
 .log-item.other-stage{opacity:.72}
@@ -3637,7 +3639,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.009';
+const APP_VERSION='2026.09.18.010';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
