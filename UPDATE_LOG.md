@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.032) **hotfix：`renderTreeNode` で `node.versions` が undefined のとき `TypeError: Cannot read properties of undefined (reading 'length')` で全画面が起動失敗する不具合**：
+  - **症状**：boot → applyHash → render → renderSidebar → renderTreeNode の経路で「起動に失敗しました: Cannot read properties of undefined (reading 'length')」がトースト表示され、動画も UI も何も出ない。
+  - **原因**：review 型ノードで `.versions` が初期化されないケース（旧データ・v.029 系の参加処理で読み込んだノード等）があり、renderTreeNode の `node.versions.length` が undefined 参照でクラッシュしていた。
+  - **修正 A（表示側の防御）**：`renderTreeNode` を `Array.isArray(node.versions)` チェックしてから `.length` を読むように変更。undefined でも 0 として扱い、クラッシュしない。
+  - **修正 B（正規化）**：`normalizeNodes` で `n.type==='review'` のノードに対し `n.versions=[]` と `n.comments=[]` を必ず配列で保証。以降の全経路（読込・マージ・破損データ）で安全側に初期化。
+  - APP_VERSION：2026.09.19.031 → 2026.09.19.032
+
 - (dev v2026.09.19.031) **v.029／v.030 の「共有トップ 1 回指定・参加可能プロジェクト一覧」機能を revert**：
   - **理由**：ネットワークドライブを IP 直指定（`\\192.###.###.###\...`）で picker に渡すと Windows が「このプログラムを使用してこの場所を開けません」で拒否。ドライブレター割当を強いる運用は本来の "picker 不要化" の趣旨と噛み合わないため、機能ごと撤収。
   - **revert 対象**：storage の `getRootHandle` / `setRootHandle` / `clearRootHandle` / `scanRootProjects` / `_resolveFromRoot`、`projRoot` と `hasFolderConfigured` のフォールバック追加、REG エントリの `folderPath` / `folderName` 追加、ホーム画面の「🔗 共有フォルダ…」ボタンと「共有フォルダ配下のプロジェクト」セクション、`openSharedRootModal`、`_renderSharedProjectsSection`、member 抽出／フィルタロジック。すべて v.028 の状態に戻す。

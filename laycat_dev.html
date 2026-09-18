@@ -3688,7 +3688,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.031';
+const APP_VERSION='2026.09.19.032';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3904,6 +3904,14 @@ function _pruneTombstones(){let cut='';try{cut=new Date(Date.now()-14*864e5).toI
 function normalizeNodes(){
   _pruneTombstones();_applyTombstones(); /* #5: 期限切れtombstoneを掃除し、削除済みノードの復活を除去 */
   for(const n of DB.nodes)if(!n.type)n.type=(n.versions&&n.versions.length)?'review':'section';
+  /* v.032：review ノードに versions/comments が無いと renderTreeNode 等の `.length` 参照で落ちる。
+     どの経路（読込・マージ・破損データ）でも安全側に初期化。 */
+  for(const n of DB.nodes){
+    if(n.type==='review'){
+      if(!Array.isArray(n.versions))n.versions=[];
+      if(!Array.isArray(n.comments))n.comments=[];
+    }
+  }
   /* 動画があっても未判定なら「未着手」のまま（アップロード＝自動でチェック待ちにしない）。
      過去に付いた判定（OK/リテイク/NG/オミット）だけをノードステータスへ引き継ぐ。 */
   /* v:5 status 分離：status/{sid}.json が権威源のショットは、明示クリアも尊重するため
@@ -5063,7 +5071,10 @@ function renderTreeNode(container,node,depth,filt){
   const rl=roleOf(node);
   const ico=icoEl((ROLE_META[rl]&&ROLE_META[rl].ico)||(node.type==='review'?'film':'folder'));ico.style.flexShrink='0';ico.classList.add('role-ico','role-'+rl);ico.setAttribute('title',ROLE_META[rl]?ROLE_META[rl].label:'');row.appendChild(ico);
   row.appendChild(el('span','tree-name',node.name));
-  if(node.type==='review'&&node.versions.length)row.appendChild(el('span','tree-badge','▶'+node.versions.length));
+  /* v.032：node.versions が undefined でも落ちないよう防御。壊れた review ノード（versions 未初期化）が
+     入っていたとき、renderTreeNode で `node.versions.length` を読んで TypeError で全画面表示不能になっていた件を修正。 */
+  const _vlen=(node.type==='review'&&Array.isArray(node.versions))?node.versions.length:0;
+  if(_vlen)row.appendChild(el('span','tree-badge','▶'+_vlen));
   else if(kids.length){const tb=elIco('span','tree-badge','folder',String(kids.length));row.appendChild(tb)}
   row.onclick=()=>go(node.id);
   container.appendChild(row);
