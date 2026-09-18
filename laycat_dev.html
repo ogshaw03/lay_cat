@@ -3672,7 +3672,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.015';
+const APP_VERSION='2026.09.18.016';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6135,9 +6135,42 @@ function getAssets(root){return Array.isArray(root&&root.assets)?root.assets:[]}
 function getAsset(root,id){return getAssets(root).find(a=>a.id===id)||null}
 function ensureAssetsList(root){if(!Array.isArray(root.assets))root.assets=[]}
 function ensureShotAssetsList(shot){if(!Array.isArray(shot.assets))shot.assets=[]}
+/* v.016：アセットカテゴリ（ユーザー定義）。
+   root.assetCategories = [{id,name}] の配列。順序＝表示順。asset.categoryId で参照。
+   カテゴリを持たないアセットは「未分類」セクションにまとめる。 */
+function getAssetCategories(root){return Array.isArray(root&&root.assetCategories)?root.assetCategories:[]}
+function getAssetCategory(root,id){return getAssetCategories(root).find(c=>c.id===id)||null}
+function ensureAssetCategoriesList(root){if(!Array.isArray(root.assetCategories))root.assetCategories=[]}
+function createAssetCategory(root,name){
+  ensureAssetCategoriesList(root);
+  const nm=(name||'').trim()||'新規カテゴリ';
+  const c={id:newId('acat'),name:nm};
+  root.assetCategories.push(c);
+  return c;
+}
+function renameAssetCategory(root,id,name){
+  const c=getAssetCategory(root,id);if(!c)return false;
+  const nm=(name||'').trim();if(!nm)return false;
+  c.name=nm;return true;
+}
+function deleteAssetCategory(root,id){
+  const c=getAssetCategory(root,id);if(!c)return false;
+  root.assetCategories=getAssetCategories(root).filter(x=>x.id!==id);
+  /* 削除されたカテゴリを参照していたアセットは未分類扱いに */
+  for(const a of getAssets(root))if(a.categoryId===id)a.categoryId=null;
+  return true;
+}
+function moveAssetCategory(root,id,dir){
+  const list=getAssetCategories(root);
+  const idx=list.findIndex(c=>c.id===id);if(idx<0)return false;
+  const to=idx+(dir<0?-1:1);
+  if(to<0||to>=list.length)return false;
+  const tmp=list[idx];list[idx]=list[to];list[to]=tmp;
+  return true;
+}
 function createAsset(root){
   ensureAssetsList(root);
-  const a={id:newId('asset'),name:'新規アセット',folderPath:'',thumb:null,memo:'',usedInShots:[],createdAt:nowIso(),updatedAt:nowIso()};
+  const a={id:newId('asset'),name:'新規アセット',folderPath:'',thumb:null,memo:'',usedInShots:[],categoryId:null,createdAt:nowIso(),updatedAt:nowIso()};
   root.assets.push(a);
   return a;
 }
@@ -6167,12 +6200,24 @@ function assetUnlink(root,assetId,shotId){
 /* アセットタブ本体：タイル + ヘッダ + 「＋ アセット追加」 */
 function renderProjAssets(main,root){
   const assets=getAssets(root);
+  const cats=getAssetCategories(root);
   const head=el('div','pm-h');head.style.cssText='display:flex;align-items:center;gap:12px;flex-wrap:wrap';
   const cnt=el('span','pm-shot-count',assets.length+' アセット');
   cnt.style.cssText='font-family:var(--font-code);font-weight:700;font-size:13px;color:var(--text);background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:2px 10px;font-variant-numeric:tabular-nums';
   head.appendChild(cnt);
-  head.appendChild(el('span',null,'アセット — 3D モデル・素材などをショットと紐付け'));
+  head.appendChild(el('span',null,'アセット — カテゴリごとに分類'));
   const sp=el('div');sp.style.flex='1';head.appendChild(sp);
+  /* ＋ カテゴリ追加 */
+  const addCat=el('button','btn btn-ghost btn-sm','＋ カテゴリ追加');
+  addCat.onclick=async()=>{
+    const nm=(prompt('新しいカテゴリ名を入力してください（例：キャラクター）')||'').trim();
+    if(!nm)return;
+    createAssetCategory(root,nm);
+    try{await persist()}catch(_){}
+    render();
+  };
+  head.appendChild(addCat);
+  /* ＋ アセット追加 */
   const addBtn=el('button','btn btn-primary btn-sm','＋ アセット追加');
   addBtn.onclick=async()=>{
     const a=createAsset(root);
@@ -6182,35 +6227,90 @@ function renderProjAssets(main,root){
   };
   head.appendChild(addBtn);
   main.appendChild(head);
-  if(!assets.length){
-    main.appendChild(el('div','pm-empty','アセットがありません。右上の「＋ アセット追加」から作成してください。'));
+  if(!assets.length&&!cats.length){
+    main.appendChild(el('div','pm-empty','アセットがありません。右上の「＋ アセット追加」から作成、あるいは「＋ カテゴリ追加」で分類を追加してください。'));
     return;
   }
-  const grid=el('div','pm-grid');
-  for(const a of assets){
-    const tile=el('div','pm-tile');
-    tile.dataset.aid=a.id;
-    const th=el('div','th');
-    if(a.thumb){const img=el('img');img.dataset.ref=a.thumb;th.appendChild(img)}
-    else th.appendChild(thumbPh());
-    tile.appendChild(th);
-    const bd=el('div','bd');
-    bd.appendChild(el('div','nm',a.name||'(名称未設定)'));
-    const cntU=(a.usedInShots||[]).filter(id=>getNode(id)).length;
-    const mt=el('div','mt');
-    mt.appendChild(el('span','pth',cntU?('使用: '+cntU+' ショット'):'未使用'));
-    bd.appendChild(mt);
-    if(a.folderPath){
-      const pth=el('div','mt');
-      const ps=el('span','pth',a.folderPath);ps.style.cssText='font-family:var(--font-code);font-size:10px;color:var(--text3);word-break:break-all';
-      pth.appendChild(ps);
-      bd.appendChild(pth);
-    }
-    tile.appendChild(bd);
-    tile.onclick=()=>openAssetDrawer(a.id);
-    grid.appendChild(tile);
+  /* カテゴリ順にセクション化 + 最後に「未分類」 */
+  const groups=[];
+  for(const c of cats){
+    groups.push({cat:c, name:c.name, id:c.id, list:assets.filter(a=>a.categoryId===c.id)});
   }
-  main.appendChild(grid);
+  const uncategorized=assets.filter(a=>!a.categoryId||!cats.some(c=>c.id===a.categoryId));
+  if(uncategorized.length||!cats.length){
+    groups.push({cat:null, name:'未分類', id:null, list:uncategorized});
+  }
+  for(let gi=0; gi<groups.length; gi++){
+    const g=groups[gi];
+    /* --- カテゴリ見出しバー（区切り線＋名前＋件数＋操作） --- */
+    const sec=el('div','asset-cat-sec');sec.style.cssText='margin-top:'+(gi===0?'0':'26px');
+    const bar=el('div','asset-cat-bar');
+    bar.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:12px';
+    const nmSp=el('span');nmSp.style.cssText='font-family:var(--font-head);font-weight:800;font-size:16px;color:var(--text)';nmSp.textContent=g.name;
+    bar.appendChild(nmSp);
+    const cntSp=el('span');cntSp.style.cssText='font-family:var(--font-code);font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums';cntSp.textContent='('+g.list.length+')';
+    bar.appendChild(cntSp);
+    const sp2=el('div');sp2.style.flex='1';bar.appendChild(sp2);
+    if(g.cat){
+      /* ユーザー定義カテゴリ：名前変更・並び替え・削除ボタン */
+      const ren=el('button','btn btn-ghost btn-sm','名前変更');
+      ren.onclick=async()=>{
+        const nm=(prompt('新しいカテゴリ名', g.cat.name)||'').trim();
+        if(!nm||nm===g.cat.name)return;
+        renameAssetCategory(root,g.cat.id,nm);
+        try{await persist()}catch(_){} render();
+      };
+      bar.appendChild(ren);
+      const up=el('button','btn btn-ghost btn-sm','↑');up.title='上へ';
+      up.onclick=async()=>{moveAssetCategory(root,g.cat.id,-1);try{await persist()}catch(_){} render()};
+      bar.appendChild(up);
+      const dn=el('button','btn btn-ghost btn-sm','↓');dn.title='下へ';
+      dn.onclick=async()=>{moveAssetCategory(root,g.cat.id,+1);try{await persist()}catch(_){} render()};
+      bar.appendChild(dn);
+      const del=el('button','btn btn-ghost btn-sm','削除');del.title='カテゴリを削除（配下のアセットは未分類に）';
+      del.onclick=async()=>{
+        if(!confirm('カテゴリ「'+g.cat.name+'」を削除しますか？\n配下のアセット '+g.list.length+' 件は「未分類」に移ります（アセット自体は消えません）。'))return;
+        deleteAssetCategory(root,g.cat.id);
+        try{await persist()}catch(_){} render();
+      };
+      bar.appendChild(del);
+    }
+    sec.appendChild(bar);
+    if(!g.list.length){
+      const em=el('div');em.style.cssText='color:var(--text3);font-size:12px;padding:4px 0 8px';
+      em.textContent=g.cat?'このカテゴリにはまだアセットがありません。':'カテゴリ未指定のアセットはありません。';
+      sec.appendChild(em);
+    }else{
+      const grid=el('div','pm-grid');
+      for(const a of g.list) grid.appendChild(_buildAssetTile(a,root));
+      sec.appendChild(grid);
+    }
+    main.appendChild(sec);
+  }
+}
+/* アセットタイル 1 枚を組み立てる（renderProjAssets の分類化で再利用） */
+function _buildAssetTile(a,root){
+  const tile=el('div','pm-tile');
+  tile.dataset.aid=a.id;
+  const th=el('div','th');
+  if(a.thumb){const img=el('img');img.dataset.ref=a.thumb;th.appendChild(img)}
+  else th.appendChild(thumbPh());
+  tile.appendChild(th);
+  const bd=el('div','bd');
+  bd.appendChild(el('div','nm',a.name||'(名称未設定)'));
+  const cntU=(a.usedInShots||[]).filter(id=>getNode(id)).length;
+  const mt=el('div','mt');
+  mt.appendChild(el('span','pth',cntU?('使用: '+cntU+' ショット'):'未使用'));
+  bd.appendChild(mt);
+  if(a.folderPath){
+    const pth=el('div','mt');
+    const ps=el('span','pth',a.folderPath);ps.style.cssText='font-family:var(--font-code);font-size:10px;color:var(--text3);word-break:break-all';
+    pth.appendChild(ps);
+    bd.appendChild(pth);
+  }
+  tile.appendChild(bd);
+  tile.onclick=()=>openAssetDrawer(a.id);
+  return tile;
 }
 /* ショットページ（buildFullReviewPage）右カラム：NOTE の上に表示する
    「このショットで使用するアセット」パネル。サムネ小＋アセット名を横スクロールしないタイル状で表示。
@@ -6289,6 +6389,31 @@ function fillAssetDrawer(){
   nameIn.oninput=()=>{a.name=nameIn.value;a.updatedAt=nowIso();back._t.textContent=a.name||'(名称未設定)'};
   nameIn.onblur=async()=>{try{await persist()}catch(_){}};
   body.appendChild(nameIn);
+  /* --- カテゴリ --- */
+  body.appendChild(el('div','section-label','カテゴリ'));
+  const catRow=el('div');catRow.style.cssText='display:flex;gap:6px;align-items:center';
+  const catSel=el('select');
+  catSel.style.cssText='flex:1;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-body);font-size:13px';
+  const _cats=getAssetCategories(root);
+  {const o=document.createElement('option');o.value='';o.textContent='（未分類）';if(!a.categoryId||!_cats.some(c=>c.id===a.categoryId))o.selected=true;catSel.appendChild(o)}
+  for(const c of _cats){const o=document.createElement('option');o.value=c.id;o.textContent=c.name;if(a.categoryId===c.id)o.selected=true;catSel.appendChild(o)}
+  {const o=document.createElement('option');o.value='__new__';o.textContent='＋ 新規カテゴリを作成…';catSel.appendChild(o)}
+  catSel.onchange=async()=>{
+    if(catSel.value==='__new__'){
+      const nm=(prompt('新しいカテゴリ名を入力してください')||'').trim();
+      if(!nm){catSel.value=a.categoryId||'';return}
+      const nc=createAssetCategory(root,nm);
+      a.categoryId=nc.id;a.updatedAt=nowIso();
+      try{await persist()}catch(_){}
+      render();
+      return;
+    }
+    a.categoryId=catSel.value||null;a.updatedAt=nowIso();
+    try{await persist()}catch(_){}
+    render();
+  };
+  catRow.appendChild(catSel);
+  body.appendChild(catRow);
   /* --- サムネ --- */
   body.appendChild(el('div','section-label','サムネ'));
   const thumbWrap=el('div');thumbWrap.style.cssText='display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap';

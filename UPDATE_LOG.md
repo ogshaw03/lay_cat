@@ -18,6 +18,15 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.016) **アセットタブにユーザー定義カテゴリを追加**（キャラ／BG／プロップなど自由に分類）：
+  - **データ**：`root.assetCategories = [{id,name}]` を新設。順序＝表示順。`asset.categoryId` でアセットが参照する。カテゴリ未指定・削除済みカテゴリを参照するアセットは「未分類」セクションに集約。
+  - **タイル表示**：カテゴリごとにセクション化。見出しバー（カテゴリ名＋件数＋操作）と `border-bottom` の区切り線で視覚的に分離。空カテゴリも表示（プレースホルダ）。
+  - **カテゴリ操作**：セクション見出しに「名前変更／↑／↓／削除」ボタン。削除時は配下アセットが未分類に移動（アセット自体は消えない）。並び替えは配列順を直接操作。ヘッダ右に「＋ カテゴリ追加」を追加（prompt で名前入力）。
+  - **詳細ドロワー**：「名前」の下に「カテゴリ」プルダウンを追加。既存カテゴリ／未分類／「＋ 新規カテゴリを作成…」の 3 種。プルダウンから直接新規作成もできる。
+  - **ヘルパ**：`getAssetCategories` / `getAssetCategory` / `createAssetCategory` / `renameAssetCategory` / `deleteAssetCategory` / `moveAssetCategory` を追加。`createAsset` に `categoryId:null` を初期セット。既存アセットは categoryId が無いので自動的に「未分類」表示。
+  - **タイル生成の共通化**：以前インラインだったタイル DOM 組立を `_buildAssetTile(a,root)` に切り出し。
+  - APP_VERSION：2026.09.18.015 → 2026.09.18.016
+
 - (dev v2026.09.18.015) **他ユーザーの status 変更が autoRefresh で反映されない不具合を修正**（F5 が必要だった件）：
   - **原因**：`refreshFromFolders` → `readProjectData` 内で `_hydrateStatuses` が `remote.nodes[*].status` を最新 status.json から埋め直しているが、続く `_unionRemoteIntoDB` の scalar マージループが status キーを意図的に除外（v.056 D-5 の「status.json が権威源」との判断）。この設計だと F5（`loadProject` で parsed が DB になる経路）でしか status が反映されない。
   - **修正**：`refreshFromFolders` の `clean` 分岐で、`remote.nodes` → `DB.nodes` へ status を明示的に同期する処理を追加。null/'' への「未着手戻し」も authoritative なので remote 側にキーがあれば尊重、remote 側でキーが消えていれば DB も未着手に戻す。
