@@ -2264,6 +2264,11 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.029) **工程バッジとステータスチップを固定幅にして位置を揃える**：
+  - **原因**：ステータスラベルの文字数（例：`OK` vs `チェック待ち`）で `.shot-status` の実幅が変わり、隣接する `.cur-stage`（工程バッジ）の X 座標が行ごとにズレていた。
+  - **修正**：`.shot-status { min-width: 88px; text-align: center }` で常にチップ幅を一定に。合わせて `.cur-stage { min-width: 80px; justify-content: flex-end }` で工程バッジも固定幅・右寄せ内容にし、ラベルの短長で並びが崩れないように統一。
+  - APP_VERSION：2026.09.18.028 → 2026.09.18.029
+
 - (dev v2026.09.18.028) **SHOT 列のメモをモーダルからインライン編集に変更**：
   - **背景**：モーダル開閉が煩わしいので、メモをクリックしてその場で直接入力したい、というユーザー要望。
   - **編集**：メモをクリック → `contenteditable="plaintext-only"` で inline 編集開始。編集中は truncation を外して折返し表示（`.editing` クラスで `white-space:pre-wrap;overflow:visible`）＋アクセントカラーの内側枠でフォーカス強調。

@@ -229,13 +229,16 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row .shot .shot-memo.editing{white-space:pre-wrap;overflow:visible;text-overflow:clip;background:var(--bg3);box-shadow:inset 0 0 0 1px var(--accent);color:var(--text);cursor:text;min-height:1.4em;word-break:break-word}
 .gantt-row:hover .shot{background:var(--bg3)}
 .gantt-row .shot .id{font-family:var(--font-code);font-size:12px;font-weight:700;color:var(--text);letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
-.gantt-row .shot .cur-stage{font-size:10px;color:var(--text2);white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px;font-family:var(--font-head);letter-spacing:.3px}
+/* v.029：工程バッジも固定幅（min-width）に。ラベル短くても常に一定幅で右寄せに揃える。 */
+.gantt-row .shot .cur-stage{font-size:10px;color:var(--text2);white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px;font-family:var(--font-head);letter-spacing:.3px;min-width:80px;justify-content:flex-end}
 .gantt-row .shot .cur-stage .dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
 /* 未予定の工程を追加する「＋」ボタン。ショットセル末尾に小さく表示 */
 .gantt-row .shot .add-plan-btn{flex-shrink:0;background:transparent;border:1px dashed var(--border2);color:var(--text3);width:18px;height:18px;border-radius:4px;font-size:12px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-family:var(--font-head);padding:0}
 .gantt-row .shot .add-plan-btn:hover{color:var(--text);border-color:var(--text2);background:var(--bg3)}
 /* 現在のステータス変更チップ：クリックで status メニュー */
-.gantt-row .shot .shot-status{flex-shrink:0;font-size:10px;font-weight:600;padding:1px 7px;border-radius:9px;color:#16161a;letter-spacing:.2px;cursor:pointer;white-space:nowrap;font-family:var(--font-head);border:1px solid transparent}
+/* v.029：ステータスチップを固定幅（min-width）に。ラベル長で工程バッジ位置がずれる件を解消。
+   ラベル短くても余白で埋め、常にチップ幅を一定に。text-align:center で内容中央寄せ。 */
+.gantt-row .shot .shot-status{flex-shrink:0;font-size:10px;font-weight:600;padding:1px 7px;border-radius:9px;color:#16161a;letter-spacing:.2px;cursor:pointer;white-space:nowrap;font-family:var(--font-head);border:1px solid transparent;min-width:88px;text-align:center;box-sizing:border-box}
 .gantt-row .shot .shot-status.empty{background:transparent;color:var(--text3);border-color:var(--border2)}
 .gantt-row .shot .shot-status:hover{filter:brightness(1.15);outline:1px solid rgba(255,255,255,.4)}
 /* 予定追加のポップアップメニュー */
@@ -594,7 +597,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.028';
+const APP_VERSION='2026.09.18.029';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
