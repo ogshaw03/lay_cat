@@ -18,6 +18,14 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.033) **shot.json 保存時にデータ損失防止ガード（A）と自動バックアップ（B）を追加**（v.029/v.030 事故の再発防止・コード級フェイルセーフ）：
+  - **背景**：v.029/v.030 で `persist()` が全 REG プロジェクトの shot.json を空 versions で上書きし、動画メタ・FB・レビュー履歴を全消失させた事故を受け、CLAUDE.md／メモリの運用ルールだけでなくコード側にも物理的な安全網を追加。
+  - **A. `_shotSaveGuardWarn(pid,sid,newFile)`**：`_saveShotWithLock` の書込み直前で、既存 shot.json の各 review ノードと新ペイロードを比較。`versions.length` が減少（特に N>0 → 0）または review 自体が消えている場合は **書込みを拒否**。console.error + toast で通知。呼び出し元には `{ok:false, guardBlocked:true, warnings:[...]}` を返す。
+  - **B. `_shotSaveBackup(pid,sid)`**：`_saveShotWithLock` の書込み直前に、既存 shot.json 全体を `shots/backup/{sid}.bak.json` にコピー。1 shot 1 ファイル（毎回上書き）で容量非圧迫、直前の書込み前状態が常に手元にある。事故時は `.bak.json` を手動リネームすれば復旧可能。ベストエフォート（バックアップ失敗しても save 本体は続行）。
+  - **配置**：`_saveShotWithLock` の 3-way マージ後 → nextRev 決定後 → **ガード（A）**→ 通過なら**バックアップ（B）**→ `storage.saveShot` の順。
+  - **影響範囲**：既存の正常な保存フローには影響なし（versions が保持される限り透過）。書込み拒否は明示的なデータ損失を伴う save のみ発火。
+  - APP_VERSION：2026.09.19.032 → 2026.09.19.033
+
 - (dev v2026.09.19.032) **hotfix：`renderTreeNode` で `node.versions` が undefined のとき `TypeError: Cannot read properties of undefined (reading 'length')` で全画面が起動失敗する不具合**：
   - **症状**：boot → applyHash → render → renderSidebar → renderTreeNode の経路で「起動に失敗しました: Cannot read properties of undefined (reading 'length')」がトースト表示され、動画も UI も何も出ない。
   - **原因**：review 型ノードで `.versions` が初期化されないケース（旧データ・v.029 系の参加処理で読み込んだノード等）があり、renderTreeNode の `node.versions.length` が undefined 参照でクラッシュしていた。

@@ -3283,6 +3283,40 @@ function _applySubmitFileIntoDB(pid,submit){
 }
 /* Phase 3：楽観ロック付きショット保存。リモートを読み _rev が進んでいたら 3-way マージ → 書き込み。
    戻り値：{ok:bool, merged:bool} */
+/* v.033：shot.json 保存時のデータ損失防止ガード（A）と自動バックアップ（B）。
+   v.029/v.030 の「参加する」フローで persist が空 versions で shot.json を上書きし、
+   全動画メタが失われた事故の再発防止。両方とも既存の書込みフローに透過的に挿入する。 */
+async function _shotSaveGuardWarn(pid,sid,newFile){
+  /* A：既存 shot.json に versions がある review が、新ペイロードで空／消失している場合を検出。
+     戻り値：{ok:true} なら通す、{ok:false, warnings:[...]} なら書込みを拒否する。
+     "意図的な全削除"（node 自体が削除された・意図的な reset）は現時点の実装フローには存在しないので、
+     versions が 0 → 0 以外の shrink は全て事故扱い。将来意図的な shrink を許すなら opts.allowShrink を追加。 */
+  let existing=null;try{existing=await storage.loadShot(pid,sid)}catch(_){}
+  if(!existing||!Array.isArray(existing.nodes))return {ok:true};
+  const newNodes=Array.isArray(newFile&&newFile.nodes)?newFile.nodes:[];
+  const warnings=[];
+  for(const oldN of existing.nodes){
+    if(!oldN||oldN.type!=='review')continue;
+    const oldVCount=Array.isArray(oldN.versions)?oldN.versions.length:0;
+    if(oldVCount===0)continue;
+    const newN=newNodes.find(x=>x&&x.id===oldN.id);
+    if(!newN){warnings.push({id:oldN.id,name:oldN.name,reason:'review node removed from save',oldVCount,newVCount:'(missing)'});continue}
+    const newVCount=Array.isArray(newN.versions)?newN.versions.length:0;
+    if(newVCount<oldVCount){warnings.push({id:oldN.id,name:oldN.name,reason:'versions shrunk',oldVCount,newVCount})}
+  }
+  return {ok:warnings.length===0,warnings};
+}
+async function _shotSaveBackup(pid,sid){
+  /* B：書込み前の一世代バックアップ。shots/backup/{sid}.bak.json に最新の "書き込む直前" 状態を保存。
+     1 shot 1 ファイル（毎回上書き）で容量は増えない。事故が起きた場合、この .bak.json を shots/{sid}.json に
+     手動リネーム／コピーすれば直前の状態に戻せる。ベストエフォート（失敗しても save 本体は続行）。 */
+  try{
+    const existing=await storage.loadShot(pid,sid);
+    if(!existing)return;
+    const ph=await storage.projRoot(pid);if(!ph)return;
+    await storage._write(()=>storage._subdir('shots/backup',ph,true),sid+'.bak.json',JSON.stringify(existing,null,2));
+  }catch(_){}
+}
 async function _saveShotWithLock(pid,sid,fileBody){
   const bucket=_revBucket(pid).shots;
   const knownRev=bucket[sid]|0;
@@ -3313,6 +3347,17 @@ async function _saveShotWithLock(pid,sid,fileBody){
   }
   const nextRev=Math.max(knownRev,remoteRev)+1;
   const out={v:1,shotId:sid,nodes:outNodes,_rev:nextRev};
+  /* v.033 ガード（A）：versions を潰す書込みは拒否。事故防止のフェイルセーフ。 */
+  try{
+    const guard=await _shotSaveGuardWarn(pid,sid,out);
+    if(!guard.ok){
+      try{console.error('[laycat] _saveShotWithLock GUARD: refusing save that would lose versions',{pid,sid,warnings:guard.warnings})}catch(_){}
+      try{toast('shot.json 書込みガード発動：versions が失われる保存を拒否しました（コンソール確認）',5000)}catch(_){}
+      return {ok:false,merged:false,body:null,guardBlocked:true,warnings:guard.warnings};
+    }
+  }catch(_){}
+  /* v.033 バックアップ（B）：書込み直前の状態を shots/backup/{sid}.bak.json に退避 */
+  try{await _shotSaveBackup(pid,sid)}catch(_){}
   const ok=await storage.saveShot(pid,sid,out);
   if(ok!==false)bucket[sid]=nextRev;
   return {ok:ok!==false,merged,body:{v:1,shotId:sid,nodes:outNodes}};
@@ -3688,7 +3733,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.032';
+const APP_VERSION='2026.09.19.033';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
