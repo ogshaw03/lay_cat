@@ -598,7 +598,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.030';
+const APP_VERSION='2026.09.19.031';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -711,6 +711,9 @@ const DONE_LABEL = '完了';
 const PENDING_LABEL = '未着手';
 function isStatusDone(statusId, projStatuses){
   if(!statusId) return false;
+  /* v.031（A：LayCAT の isDoneStatus と挙動一致）：id==='approved' / 'omit' も完了扱い。
+     LayCAT 側はデフォルト完了系（承認・オミット）を id で判定するので pmboard もそれに合わせる。 */
+  if(statusId === 'approved' || statusId === 'omit') return true;
   if(!Array.isArray(projStatuses)) return false;
   const st = projStatuses.find(x=>x&&x.id===statusId);
   if(!st) return false;
@@ -731,6 +734,17 @@ function isStatusClientWait(statusId, projStatuses){
   if(!Array.isArray(projStatuses)) return false;
   const st = projStatuses.find(x=>x&&x.id===statusId);
   return !!(st && st.clientWait === true);
+}
+/* v.031（B）：チェック待ち判定。ステータス設定で `checkWait:true` が立っている、
+   あるいはラベルが「チェック待ち」に一致するステータスを対象。この期間は
+   ディレクターチェック待ちで作業自体は止まっているとみなし、実績・工数から除外する。 */
+function isStatusCheckWait(statusId, projStatuses){
+  if(!statusId) return false;
+  if(!Array.isArray(projStatuses)) return false;
+  const st = projStatuses.find(x=>x&&x.id===statusId);
+  if(!st) return false;
+  if(st.checkWait === true) return true;
+  return (st.label||'').trim() === 'チェック待ち';
 }
 
 /* =========== ストレージ（LayCAT の IDB / localStorage を共有） =========== */
@@ -990,8 +1004,11 @@ async function loadProjectData(){
         /* history をタイムスタンプ順に走査して work セグメントを構築。
            work 状態 = pending でも clientWait でも done でもない状態。 */
         const events = history.slice().filter(h=>h && h.ts).sort((a,b)=> new Date(a.ts) - new Date(b.ts));
+        /* v.031：作業中の定義から「チェック待ち」も除外（ディレクターチェック待ち＝作業は止まっている）。
+           あわせて isStatusDone が id==='approved'/'omit' も完了扱いにするので、オミットや承認済みも自然に除外される。 */
         const isWorkStatus = sid => sid && !isStatusPending(sid, projStatuses)
                                           && !isStatusClientWait(sid, projStatuses)
+                                          && !isStatusCheckWait(sid, projStatuses)
                                           && !isStatusDone(sid, projStatuses);
         let openStart = null;
         for(const h of events){
@@ -2173,7 +2190,7 @@ function buildOtherTabsPlaceholder(){
       </div>
       <div class="panel">
         <h4>ショット別稼働日数（長い順）</h4>
-        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／クライアント待ち／完了系を除く）にあった期間を日単位で合計。冗長度合いの高いショットが上位に来ます。</div>
+        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）にあった期間を日単位で合計。冗長度合いの高いショットが上位に来ます。</div>
         <div class="effort-list" id="effortList"></div>
       </div>`;
   }
