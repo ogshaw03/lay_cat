@@ -18,6 +18,15 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.014) **ステータスを「ショット単位」に統一（レガシー multi-stage ショットも 1 ショット 1 ステータスに）**：
+  - **方針**：ショットは 1 個のステータスで管理。工程ごとに分けない。「そのショットは 1 つなので工程で分ける必要がない」というユーザー方針。
+  - **データレイヤ**：既存の `status/{sid}.json` 分離を維持（shot.json 埋め込みには戻さない）。レガシー shot section も同スキーマで `status/{shotSectionId}.json` を持てるように。`nodeStatus(node)` にショット section の明示 status 短絡を追加（`if(node.type==='section'&&node.status)return node.status`）→ 子（review 工程）の集約より優先。
+  - **書込パス**：`buildFullReviewPage` のヘッダ・ステータスプルダウンの対象を、`_hdrIsLegacyContainer ? shotSec : cur` に変更。ショットタブのタイル／リストのステータスバッジ／インラインプルダウンも `sh`（ショット自身）を対象に統一。
+  - **マイグレーション**：起動時に `_migrateShotLevelStatusFromCurrentStage(pid)` を実行。各レガシーショットについて `sh.status` が未設定なら、`sh.currentStage` が指す工程 review の status を setStatus 経由でショット section 側にコピー（audit source: `migrate-shot-level`）。currentStage 未設定や現工程未着手は skip（副作用なし・idempotent）。件数分だけトーストで通知。
+  - **旧 `status/{reviewId}.json` の扱い**：残置（読取フォールバック用）。後日別ステップで削除する予定（β 方針）。
+  - **pmboard 側**：この変更で LayCAT 側は 1 ショット 1 ステータスになるが、pmboard 側の表示は未対応。pmboard の hydrate はショット section の status もそのまま `.status` に載るため、既存の nodeStatus 系がショット section を読むように pmboard を追加更新する必要がある（別途相談）。
+  - APP_VERSION：2026.09.18.013 → 2026.09.18.014
+
 - (dev v2026.09.18.013) **ログ右上の工程バッジ（現在工程）の文字が背景と同色で見えない不具合を修正**：
   - **原因**：CSS で `.log-stg-badge.cur{background:currentColor;color:var(--bg)!important}` としていたが、`currentColor` は上書き後の `color` を参照する（`!important` の `color:var(--bg)` に置き換わった後の値）ため、背景も文字も同じ暗色（`var(--bg)`）になっていた。
   - **修正**：CSS 側の色指定を廃止し、JS 側で inline に `if(isCurrent){badge.style.background=color;badge.style.color='var(--bg)'}` と明示セット。他工程は従来どおり枠のみ＋工程色文字。

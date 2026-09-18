@@ -2929,6 +2929,37 @@ async function setStatus(node,newStatus,source){
    フォールバック復元値も v:5 に取り込まれる（旧データでも正しい "見えている値" が保存される）。
    R2 プロジェクトは対象外（saveStatus が false を返してスキップ）。
    既に status.json がある shot は skip（idempotent・複数回実行しても副作用なし）。 */
+/* v.014：レガシー multi-stage ショットのステータスを「ショット単位」に持ち替えるマイグレ。
+   各レガシー shot section について、まだ section 自身に status が無ければ、
+   `section.currentStage` が指す工程 review の status をショット section へコピー
+   （setStatus 経由で status/{shotSectionId}.json を新規作成・audit log にも source:migrate-shot-level で残す）。
+   旧 status/{reviewId}.json は残置（読取フォールバック用）。あとで別ステップで削除する予定。
+   R2 プロジェクトは saveStatus が false を返すので自動 skip。 */
+async function _migrateShotLevelStatusFromCurrentStage(pid){
+  try{
+    if(storage._backend(pid)==='r2')return 0;
+    if(!DB||!Array.isArray(DB.nodes))return 0;
+    const allNodes=DB.nodes;
+    const legacyShots=allNodes.filter(n=>_isShotNodeForSave(n,allNodes)&&rootOfId(n)===pid);
+    if(!legacyShots.length)return 0;
+    let migrated=0;
+    for(const sh of legacyShots){
+      /* 既にショット section 側に status がある（過去のマイグレ or ユーザー明示設定）→ skip */
+      if(sh.status)continue;
+      const curName=sh.currentStage;
+      if(!curName)continue; /* currentStage 未設定 → ユーザーが工程を選ぶまで保留 */
+      const cur=childrenOf(sh.id).find(k=>k.type==='review'&&k.name===curName);
+      if(!cur)continue;
+      const st=cur.status;
+      if(!st)continue; /* 現工程が未着手 → コピーする値なし（未着手のまま） */
+      try{
+        await setStatus(sh,st,'migrate-shot-level');
+        migrated++;
+      }catch(_){}
+    }
+    return migrated;
+  }catch(_){return 0}
+}
 async function _migrateV5Statuses(pid){
   try{
     if(storage._backend(pid)==='r2')return 0;
@@ -3587,6 +3618,9 @@ function nodeStatus(node){
     if(node.status)return node.status;                 /* 明示ステータスがあれば動画の有無に関わらず反映（オミット等、動画なしでもステータスを持てる） */
     return 'empty';                                    /* 動画があっても未設定なら「未着手」（アップ直後は自動でチェック待ちにしない） */
   }
+  /* v.014：レガシー multi-stage shot section にショット単位の明示 status があれば短絡返す。
+     "1 ショット 1 ステータス" ポリシー（工程別に持たない）。子（review 工程）の集約より優先。 */
+  if(node.type==='section'&&node.status)return node.status;
   const ch=childrenOf(node.id);
   if(!ch.length)return 'empty';
   const all=ch.map(nodeStatus);
@@ -3638,7 +3672,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.013';
+const APP_VERSION='2026.09.18.014';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3813,6 +3847,14 @@ async function boot(){
           try{strippedShots+=await _cleanupShotJsonStatuses(e.id)}catch(_){}
         }
         if(strippedShots>0)try{console.log('[laycat v:5] shot.json の inline status を計 '+strippedShots+' ファイルからクリーンアップ')}catch(_){}
+        /* v.014：レガシー multi-stage ショットのステータスをショット単位に昇格するマイグレ。
+           1 ショット 1 ステータス方針。まだ section 側に status が無いレガシーショットに対し、
+           currentStage が指す工程の現ステータスをショット side にコピー。旧 status/{reviewId}.json は残置。 */
+        let shotLevelMig=0;
+        for(const e of REG){
+          try{shotLevelMig+=await _migrateShotLevelStatusFromCurrentStage(e.id)}catch(_){}
+        }
+        if(shotLevelMig>0){try{toast('ショット単位ステータスに移行しました（'+shotLevelMig+' 件）')}catch(_){}}
       }catch(_){}
     },400);
   }
@@ -5956,8 +5998,11 @@ function renderProjShots(main,cur){
     if(rep){
       const badges=el('div','mt');
       const stg=el('span','pm-badge',rep.name);stg.style.background=lv?stageBadgeColor(rep):hexA(stageBadgeColor(rep),.45);badges.appendChild(stg);
-      /* ステータスバッジ：動画があるか、明示ステータスがあるときのみ表示。無いなら「未着手」小バッジ。 */
-      if(lv||nodeStatus(rep)!=='empty'){const si=stInfo(rep);const stB=el('span','pm-badge',si.label);stB.style.background=si.color;badges.appendChild(stB);}
+      /* v.014：ステータスは「ショット単位」で判定。sh 自体の nodeStatus を使う（
+         レガシー shot section なら section 自身の .status、Simple B は sh=review 自身）。
+         動画有りか明示ステータス有りのとき色付きバッジ、それ以外は「未着手」小バッジ。 */
+      const _shSt=nodeStatus(sh);
+      if(lv||_shSt!=='empty'){const si=stInfo(sh);const stB=el('span','pm-badge',si.label);stB.style.background=si.color;badges.appendChild(stB);}
       else{const stB=el('span','pm-badge','未着手');stB.style.background=STAGE_GRAY;badges.appendChild(stB);}
       bd.appendChild(badges);
     }
@@ -6007,7 +6052,8 @@ function renderProjShots(main,cur){
     it.appendChild(th);
     it.appendChild(el('span','shot-row-nm',sh.name)); /* ショット名 */
     if(rep){const stg=el('span','tl-stage',rep.name);stg.style.background=lv?stageBadgeColor(rep):hexA(stageBadgeColor(rep),.45);it.appendChild(stg);} /* 工程（全工程未着手なら先頭工程を控えめ色で表示） */
-    if(rep){const spc=buildStatusSelect(rep);spc.onclick=e=>e.stopPropagation();it.appendChild(spc);} /* ステータスをその場で変更 */
+    /* v.014：ステータスはショット単位。buildStatusSelect の対象を sh に統一（レガシー shot section も Simple B review もそのまま渡す）。 */
+    {const spc=buildStatusSelect(sh);spc.onclick=e=>e.stopPropagation();it.appendChild(spc);}
     const ab=rep?taskAssignBadges(rep):null;if(ab)it.appendChild(ab); /* 作業/チェック担当 */
     it.appendChild(el('span','shot-row-meta',lv?('最新 '+lv.v.name):'動画なし'));
     return it;
@@ -7075,11 +7121,15 @@ function renderReviewBody(s,cur,opts){
       h1.appendChild(el('span','tt-stage-name',_stageOnly));
     }
   }
-  const tst=stInfo(cur);const tbg=el('span','badge',tst.label);tbg.style.background=hexA(tst.color,.18);tbg.style.color=tst.color;h1.appendChild(tbg);
+  /* v.014：ショット単位ステータス。レガシー container ならショット section を、
+     それ以外（Simple B）は cur 自身をステータスの対象にする（＝1 ショット 1 ステータス）。
+     バッジ表示・プルダウン書込みの両方で同じ対象を使う。 */
+  const _statusTarget=_hdrIsLegacyContainer?shotSec:cur;
+  const tst=stInfo(_statusTarget);const tbg=el('span','badge',tst.label);tbg.style.background=hexA(tst.color,.18);tbg.style.color=tst.color;h1.appendChild(tbg);
   {const rl=roleOf(cur);const m=ROLE_META[rl]||ROLE_META.task;h1.appendChild(elIco('span','type-chip role-'+rl,m.ico,m.label));}
   topbar.appendChild(h1);
   topbar.appendChild(el('div','spacer')); /* ステータス切替・担当・設定・削除は画面右側へ */
-  topbar.appendChild(buildStatusSelect(cur)); /* ステータス切替プルダウン（動画が無くても常に変更可＝オミット等に対応） */
+  topbar.appendChild(buildStatusSelect(_statusTarget)); /* ステータス切替プルダウン（ショット単位。動画無し・オミット等でも変更可） */
   /* 作業者・チェック者：設定UIから出して 設定ボタンの左に横並びで編集（検索付きプルダウン） */
   if(projectMembers(rootOf(cur)).filter(m=>m.active!==false).length){
     topbar.appendChild(taskAssignTopPicker(cur,'assignee','作業'));
