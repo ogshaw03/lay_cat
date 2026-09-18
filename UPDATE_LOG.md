@@ -2264,6 +2264,15 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.028) **SHOT 列のメモをモーダルからインライン編集に変更**：
+  - **背景**：モーダル開閉が煩わしいので、メモをクリックしてその場で直接入力したい、というユーザー要望。
+  - **編集**：メモをクリック → `contenteditable="plaintext-only"` で inline 編集開始。編集中は truncation を外して折返し表示（`.editing` クラスで `white-space:pre-wrap;overflow:visible`）＋アクセントカラーの内側枠でフォーカス強調。
+  - **確定**：Enter（単独）／blur で保存。Shift/Ctrl/Cmd+Enter で改行。Esc でキャンセル（元の値に戻す）。変更なしなら書込みスキップ。
+  - **保存**：既存の `saveShotMemo(shot)` を流用（`notes/{shotSectionId}.json`、v:1 スキーマ、`_rev` 単調増加）。
+  - **空状態**：`.shot-memo:empty:not(.editing)::before` で薄い placeholder 「クリックでメモを追加」を表示。編集中は非表示。
+  - **モーダル関連 CSS／JS 削除**：`.memo-modal-*` / `openShotMemoModal` を撤去。
+  - APP_VERSION：2026.09.18.027 → 2026.09.18.028
+
 - (dev v2026.09.18.027) **SHOT 列のメモの文字色が薄すぎる件を修正**：`.shot-memo` の色を `var(--text3)` → `var(--text)`、font-size を 11 → 12px。空状態は `var(--border2)` → `var(--text3)` でイタリック維持。可読性を優先。APP_VERSION：2026.09.18.026 → 2026.09.18.027
 
 - (dev v2026.09.18.026) **SHOT 列に「メモ」行を追加**（進行メモ・注意事項）：

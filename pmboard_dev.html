@@ -219,17 +219,14 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row:hover{background:rgba(255,255,255,.03)}
 .gantt-row .shot{padding:4px 12px;border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:stretch;gap:2px;position:sticky;left:0;background:var(--bg2);z-index:2;overflow:hidden;justify-content:center}
 .gantt-row .shot .shot-top{display:flex;flex-direction:row;align-items:center;gap:6px;min-width:0}
-/* v.026：SHOT 列に「メモ」行を追加。1 行 truncated＋末尾 …。クリックで編集モーダル。
-   v.027：文字が薄すぎるとの指摘で色をコントラスト強めに（--text 直・empty も --text3）。 */
-.gantt-row .shot .shot-memo{font-family:var(--font-body);font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;padding:1px 2px;border-radius:4px;min-width:0}
+/* v.026／v.028：SHOT 列の「メモ」行。通常は 1 行 truncated＋末尾 …。
+   クリックで inline に編集（contentEditable）。編集中は truncation を外して複数行折返し表示。 */
+.gantt-row .shot .shot-memo{font-family:var(--font-body);font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;padding:1px 4px;border-radius:4px;min-width:0;outline:none}
 .gantt-row .shot .shot-memo:hover{background:var(--bg3)}
-.gantt-row .shot .shot-memo.empty{color:var(--text3);font-style:italic}
-/* メモ編集モーダル */
-.memo-modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center}
-.memo-modal-box{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;min-width:420px;max-width:80vw;display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
-.memo-modal-title{font-family:var(--font-head);font-weight:800;color:var(--text);font-size:14px}
-.memo-modal-ta{width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-body);font-size:13px;resize:vertical;min-height:120px;box-sizing:border-box}
-.memo-modal-btns{display:flex;justify-content:flex-end;gap:8px}
+/* 空状態のプレースホルダ（値が空のときのみ ::before で表示）。編集中は非表示。 */
+.gantt-row .shot .shot-memo:empty:not(.editing)::before{content:'クリックでメモを追加';color:var(--text3);font-style:italic}
+/* 編集中：折返し表示・アウトラインで枠を強調・行高解放 */
+.gantt-row .shot .shot-memo.editing{white-space:pre-wrap;overflow:visible;text-overflow:clip;background:var(--bg3);box-shadow:inset 0 0 0 1px var(--accent);color:var(--text);cursor:text;min-height:1.4em;word-break:break-word}
 .gantt-row:hover .shot{background:var(--bg3)}
 .gantt-row .shot .id{font-family:var(--font-code);font-size:12px;font-weight:700;color:var(--text);letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
 .gantt-row .shot .cur-stage{font-size:10px;color:var(--text2);white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px;font-family:var(--font-head);letter-spacing:.3px}
@@ -597,7 +594,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.18.027';
+const APP_VERSION='2026.09.18.028';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1493,10 +1490,9 @@ function buildGantt(){
       }else if(curStage || shot.sectionNode){
         statusChip = `<span class="shot-status empty" data-shot="${shot.sectionNode.id}" data-stage="${stageIdAttr}" title="ステータスを設定">未設定</span>`;
       }
-      /* v.026：SHOT 列に「メモ」行を追加。1 行 truncated＋末尾 …、クリックで編集モーダル。 */
+      /* v.026／v.028：SHOT 列の「メモ」行。通常は 1 行 truncated、クリックで inline 編集。
+         空のときは要素を empty にして CSS :empty::before でプレースホルダを出す。 */
       const memoText = shot.memo || '';
-      const memoCls = memoText ? 'shot-memo' : 'shot-memo empty';
-      const memoDisplay = memoText || 'クリックでメモを追加';
       row.innerHTML = `
         <div class="shot" title="${escapeHtml(tt)}">
           <div class="shot-top">
@@ -1508,7 +1504,7 @@ function buildGantt(){
             <div class="meta">${rollup}${asgBadges.length?`<span class="asg-badges">${asgBadges.join('')}</span>`:''}</div>
             <div class="stbadges">${stageBadges}</div>
           </div>
-          <div class="${memoCls}" data-shot="${shot.sectionNode.id}" title="${escapeHtml(memoText||'メモを追加')}">${escapeHtml(memoDisplay)}</div>
+          <div class="shot-memo" data-shot="${shot.sectionNode.id}" title="${escapeHtml(memoText||'クリックでメモを追加')}">${escapeHtml(memoText)}</div>
         </div>
         <div class="track">${track.join('')}</div>
       `;
@@ -1787,60 +1783,74 @@ document.addEventListener('click', e=>{
   const item = e.target.closest('.status-menu .item');
   if(item){ applyStatusChange(item); return; }
   if(!e.target.closest('.status-menu') && !e.target.closest('.shot-status')) closeStatusMenu();
-  /* v.026：SHOT 列のメモをクリック → 編集モーダル */
+  /* v.028：SHOT 列のメモをクリック → その場で inline 編集開始（contentEditable） */
   const memoEl = e.target.closest('.shot-memo');
-  if(memoEl){
+  if(memoEl && !memoEl.classList.contains('editing')){
     e.stopPropagation();
-    const shotId = memoEl.dataset.shot;
-    const shot = DATA.shots.find(s=>s.sectionNode.id===shotId);
-    if(shot) openShotMemoModal(shot);
+    startShotMemoEdit(memoEl);
   }
 });
-/* ================= ショットメモ 編集モーダル =================
-   SHOT 列に「メモ」を追加。notes/{shotSectionId}.json に保存。 */
-function openShotMemoModal(shot){
-  /* 既存モーダルがあれば閉じる */
-  document.querySelectorAll('.memo-modal-ov').forEach(m=>m.remove());
-  const overlay = document.createElement('div');
-  overlay.className = 'memo-modal-ov';
-  const box = document.createElement('div');
-  box.className = 'memo-modal-box';
-  const title = document.createElement('div');
-  title.className = 'memo-modal-title';
-  title.textContent = 'メモ — ' + (shot.sectionNode.name || shot.sectionNode.id.slice(-8));
-  box.appendChild(title);
-  const ta = document.createElement('textarea');
-  ta.className = 'memo-modal-ta';
-  ta.value = shot.memo || '';
-  ta.placeholder = '進行メモ・注意事項などを自由に記入…';
-  box.appendChild(ta);
-  const btns = document.createElement('div');
-  btns.className = 'memo-modal-btns';
-  const cancel = document.createElement('button');
-  cancel.className = 'btn btn-ghost btn-sm';
-  cancel.textContent = 'キャンセル';
-  cancel.onclick = ()=>overlay.remove();
-  btns.appendChild(cancel);
-  const save = document.createElement('button');
-  save.className = 'btn btn-primary btn-sm';
-  save.textContent = '保存';
-  save.onclick = async ()=>{
-    const val = ta.value;
+/* ================= ショットメモ inline 編集 =================
+   SHOT 列の .shot-memo をクリック→ contentEditable=true で直接編集開始。
+   blur / Enter で保存、Esc でキャンセル（元の値に戻す）。
+   保存先は notes/{shotSectionId}.json（v:1 スキーマ）。 */
+function startShotMemoEdit(memoEl){
+  const shotId = memoEl.dataset.shot;
+  const shot = DATA.shots.find(s=>s.sectionNode.id===shotId);
+  if(!shot) return;
+  const original = shot.memo || '';
+  /* プレースホルダ用の空状態から編集開始できるよう、textContent は shot.memo を素直に表示 */
+  memoEl.textContent = original;
+  memoEl.classList.add('editing');
+  memoEl.setAttribute('contenteditable', 'plaintext-only');
+  memoEl.setAttribute('spellcheck', 'false');
+  /* カーソルを末尾へ */
+  setTimeout(()=>{
+    memoEl.focus();
+    try{
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(memoEl);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }catch(_){}
+  }, 0);
+  let cancelled = false;
+  const finish = async ()=>{
+    memoEl.removeEventListener('blur', onBlur);
+    memoEl.removeEventListener('keydown', onKey);
+    memoEl.classList.remove('editing');
+    memoEl.removeAttribute('contenteditable');
+    memoEl.removeAttribute('spellcheck');
+    if(cancelled){
+      memoEl.textContent = original;
+      memoEl.title = original || 'クリックでメモを追加';
+      return;
+    }
+    const val = memoEl.textContent.replace(/ /g,' ');
+    if(val === original){
+      /* 変化なしなら書込みスキップ */
+      memoEl.textContent = val;
+      memoEl.title = val || 'クリックでメモを追加';
+      return;
+    }
     shot.memo = val;
+    memoEl.textContent = val;
+    memoEl.title = val || 'クリックでメモを追加';
     try{ await saveShotMemo(shot); }catch(err){ console.warn('[pmboard] saveShotMemo failed', err); }
-    overlay.remove();
-    buildGantt();
   };
-  btns.appendChild(save);
-  box.appendChild(btns);
-  overlay.appendChild(box);
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click', ev=>{ if(ev.target===overlay) overlay.remove(); });
-  document.addEventListener('keydown', function esc(ev){
-    if(ev.key==='Escape'){ overlay.remove(); document.removeEventListener('keydown', esc); }
-    else if(ev.key==='Enter' && (ev.ctrlKey || ev.metaKey)){ save.click(); document.removeEventListener('keydown', esc); }
-  });
-  setTimeout(()=>{ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 0);
+  const onBlur = ()=>{ finish(); };
+  const onKey = (ev)=>{
+    if(ev.key === 'Escape'){ ev.preventDefault(); cancelled = true; memoEl.blur(); }
+    else if(ev.key === 'Enter' && !ev.shiftKey && !ev.ctrlKey && !ev.metaKey){
+      /* Enter 単独で確定・blur（Shift/Ctrl/Cmd+Enter で改行） */
+      ev.preventDefault();
+      memoEl.blur();
+    }
+  };
+  memoEl.addEventListener('blur', onBlur);
+  memoEl.addEventListener('keydown', onKey);
 }
 async function saveShotMemo(shot){
   const sid = shot.sectionNode.id;
