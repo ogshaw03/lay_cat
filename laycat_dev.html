@@ -3637,7 +3637,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.006';
+const APP_VERSION='2026.09.18.007';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6138,6 +6138,48 @@ function renderProjAssets(main,root){
   }
   main.appendChild(grid);
 }
+/* ショットページ（buildFullReviewPage）右カラム：NOTE の上に表示する
+   「このショットで使用するアセット」パネル。サムネ小＋アセット名を横スクロールしないタイル状で表示。
+   タイルクリックで該当アセットの詳細ドロワーを開く。ここではリンク編集は行わず、
+   紐付け操作は「アセットタブ側」で完結させる（責務を分ける）。 */
+function buildShotAssetsPane(container,shot,root){
+  if(!shot||!root)return;
+  const linkedIds=Array.isArray(shot.assets)?shot.assets:[];
+  const assets=linkedIds.map(id=>getAsset(root,id)).filter(Boolean);
+  const wrap=el('div','shot-assets-pane');
+  wrap.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px';
+  const head=el('div');head.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px';
+  const lb=el('span');lb.style.cssText='font-family:var(--font-head);font-weight:800;font-size:13px;color:var(--text)';lb.textContent='🧩 使用アセット';
+  head.appendChild(lb);
+  const cnt=el('span');cnt.style.cssText='font-family:var(--font-code);font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums';cnt.textContent='('+assets.length+')';
+  head.appendChild(cnt);
+  wrap.appendChild(head);
+  if(!assets.length){
+    const em=el('div');em.style.cssText='font-size:12px;color:var(--text3)';
+    em.textContent='紐付けなし。アセットタブから設定できます。';
+    wrap.appendChild(em);
+    container.appendChild(wrap);
+    return;
+  }
+  const grid=el('div','shot-assets-grid');
+  grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px';
+  for(const a of assets){
+    const tile=el('div');tile.style.cssText='background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer;transition:transform .12s ease,border-color .12s ease';
+    tile.title=a.name+(a.folderPath?'\n'+a.folderPath:'');
+    tile.onmouseenter=()=>{tile.style.borderColor='var(--accent)'};
+    tile.onmouseleave=()=>{tile.style.borderColor='var(--border)'};
+    const th=el('div');th.style.cssText='width:100%;aspect-ratio:16/9;background:var(--bg4,#1a1a1f) center/cover no-repeat';
+    if(a.thumb)storage.getURL(a.thumb).then(u=>{if(u)th.style.backgroundImage='url("'+u+'")'});
+    tile.appendChild(th);
+    const nm=el('div');nm.style.cssText='padding:4px 6px 6px;font-family:var(--font-code);font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3';
+    nm.textContent=a.name||'(名称未設定)';
+    tile.appendChild(nm);
+    tile.onclick=()=>openAssetDrawer(a.id);
+    grid.appendChild(tile);
+  }
+  wrap.appendChild(grid);
+  container.appendChild(wrap);
+}
 /* アセット詳細ドロワー（レビュー／サブミットと同じ右スライドを使い回し） */
 function openAssetDrawer(assetId){
   const key=activeTabKey();const dr={kind:'asset',id:assetId,tab:key};
@@ -7045,8 +7087,13 @@ function renderReviewBody(s,cur,opts){
   const trn=el('button','btn btn-ghost btn-sm','設定');trn.onclick=()=>openRename(cur);topbar.appendChild(trn);
   const tdel=el('button','btn btn-danger btn-sm','削除');tdel.onclick=()=>deleteNode(cur);topbar.appendChild(tdel);
   s.appendChild(topbar);
-  /* 右カラムに NOTE パネルを構築（inDrawer 時はスキップ） */
-  if(noteCol)buildTaskNotePane(noteCol,cur);
+  /* 右カラム：NOTE の上に「このショットで使用するアセット」パネルを表示（inDrawer 時はスキップ）。
+     ショットノードは legacy shot container なら shotSec、それ以外（Simple B）は cur 自身。 */
+  if(noteCol){
+    const _shotForAssets=_hdrIsLegacyContainer?shotSec:cur;
+    if(_shotForAssets)buildShotAssetsPane(noteCol,_shotForAssets,rootOf(cur));
+    buildTaskNotePane(noteCol,cur);
+  }
   s.appendChild(shotCommentInput(cur)); /* 上部：独立コメントの入力欄のみ */
   const ll=el('div','section-label');ll.appendChild(el('span',null,'動画FBログ / ディレクターチェック'));
   s.appendChild(ll);

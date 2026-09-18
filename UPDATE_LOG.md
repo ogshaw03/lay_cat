@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.18.007) **ショットページ右カラム（NOTE の上）に「使用アセット」パネルを追加**：
+  - **UI**：`buildShotAssetsPane(container,shot,root)` を実装。`shot.assets[]` の各アセットをサムネ 16:9 タイル＋名前で `auto-fill minmax(88px,1fr)` グリッド表示。件数バッジ付きヘッダ「🧩 使用アセット (n)」。空状態は「紐付けなし。アセットタブから設定できます。」
+  - **タイル動作**：クリックで `openAssetDrawer(a.id)` → 右スライドでアセット詳細を開く。紐付け編集はアセットタブ側に集約し、ショットページ側は閲覧＋詳細遷移のみ（責務分離）。
+  - **配線**：`buildFullReviewPage` の `if(noteCol){ buildTaskNotePane(...) }` 直前に、shot ノード（legacy container なら shotSec、Simple B なら cur）を渡して `buildShotAssetsPane` を呼ぶ。
+  - APP_VERSION：2026.09.18.006 → 2026.09.18.007
+
 - (dev v2026.09.18.006) **アセットタブを新設**（プロジェクトタブ「ショット」の右）：
   - **用途**：3D モデル・素材などの外部アセットを LayCAT 側で登録し、どのショットで使うかを紐付ける。
   - **データモデル**：`root.assets = [{id,name,folderPath,thumb,memo,usedInShots,createdAt,updatedAt}]` を新設。ショット側にも `shot.assets = [assetId]` を持たせ、双方向で同期（`assetLink` / `assetUnlink` / `deleteAsset` で常に両側を更新）。
