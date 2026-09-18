@@ -3637,7 +3637,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.18.008';
+const APP_VERSION='2026.09.18.009';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6149,7 +6149,7 @@ function buildShotAssetsPane(container,shot,root){
   const wrap=el('div','shot-assets-pane');
   wrap.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px';
   const head=el('div');head.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px';
-  const lb=el('span');lb.style.cssText='font-family:var(--font-head);font-weight:800;font-size:13px;color:var(--text)';lb.textContent='🧩 使用アセット';
+  const lb=el('span');lb.style.cssText='font-family:var(--font-head);font-weight:800;font-size:13px;color:var(--text)';lb.textContent='使用アセット';
   head.appendChild(lb);
   const cnt=el('span');cnt.style.cssText='font-family:var(--font-code);font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums';cnt.textContent='('+assets.length+')';
   head.appendChild(cnt);
