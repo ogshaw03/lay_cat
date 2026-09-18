@@ -18,27 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-- (dev v2026.09.19.030) **共有配下のプロジェクト一覧を「自分がメンバー登録されているもの」のみに絞る**：
-  - **背景**：共有トップ配下は他部署の案件も含めた全プロジェクトが並ぶので、参加候補は自分が member として登録されているものだけにしたい、というユーザー要望。
-  - **抽出**：`scanRootProjects` に `members` 抽出を追加（`project.json` 直下 or `nodes[].members` の root ノード側から拾う）。
-  - **フィルタ**：`authUser.email`（優先）と `currentUser()` の表示名で member を照合。`m.active===false` は除外。参加済みのプロジェクト（REG 済み）は常に表示（誤って member から外れても既参加は保護）。
-  - **空状態**：自分が member 未登録なら「オーナーにメンバー追加を依頼してください」の案内文。
-  - APP_VERSION：2026.09.19.029 → 2026.09.19.030
-
-- (dev v2026.09.19.029) **共有トップフォルダ 1 回指定で配下の全プロジェクトに参加可能に**（Phase 1）：
-  - **背景**：これまで案件ごとに File System Access API で picker → 権限許可が必要だった。共有ネットワークドライブ運用に切替えて、トップを 1 回だけ指定すれば配下の全 LayCAT プロジェクトを自動列挙できるようにしたい、というユーザー要望。
-  - **storage 拡張**：
-    - `getRootHandle(interactive)` / `setRootHandle(h)` / `clearRootHandle()` — IDB `handles/root_top` に 1 個だけ保存。
-    - `scanRootProjects()` — トップ配下を任意深さ（最大 5）で走査し、`laycat.project.json` を持つフォルダを列挙。id/name/folderPath/folderName を返す。project root フォルダの中はそれ以上掘らない。
-    - `_resolveFromRoot(folderPath)` — トップから相対パスを辿って DirectoryHandle を解決。
-    - `projRoot(pid)` に**フォールバック追加**：per-project handle が無いとき `REG.folderPath` を使って共有トップから解決。既存 per-project handle 経路は無変更。
-    - `hasFolderConfigured(pid)` も共有経路を認識するよう拡張。
-  - **REG スキーマ拡張**：エントリに `{folderPath, folderName}` を追加（既存エントリは無くても動く）。
-  - **ホーム画面 UI**：
-    - 右上に「🔗 共有フォルダ…」ボタン。picker → IDB 保存。再クリックで変更確認。
-    - 「共有フォルダ配下のプロジェクト」セクションを追加。トップ設定済みなら `scanRootProjects` の結果を行表示。各行「参加する」で REG 追加＋プロジェクトデータ読込。参加済みは「参加済み」バッジ＋「開く」。
-  - **既存フローとの共存**：個別 handle 登録のプロジェクトは従来どおり動作、共有経由は並列に有効。プロジェクト新規作成時に共有トップ配下のどこに置くかを指定する UI は Phase 2 で対応予定。
-  - APP_VERSION：2026.09.19.028 → 2026.09.19.029
+- (dev v2026.09.19.031) **v.029／v.030 の「共有トップ 1 回指定・参加可能プロジェクト一覧」機能を revert**：
+  - **理由**：ネットワークドライブを IP 直指定（`\\192.###.###.###\...`）で picker に渡すと Windows が「このプログラムを使用してこの場所を開けません」で拒否。ドライブレター割当を強いる運用は本来の "picker 不要化" の趣旨と噛み合わないため、機能ごと撤収。
+  - **revert 対象**：storage の `getRootHandle` / `setRootHandle` / `clearRootHandle` / `scanRootProjects` / `_resolveFromRoot`、`projRoot` と `hasFolderConfigured` のフォールバック追加、REG エントリの `folderPath` / `folderName` 追加、ホーム画面の「🔗 共有フォルダ…」ボタンと「共有フォルダ配下のプロジェクト」セクション、`openSharedRootModal`、`_renderSharedProjectsSection`、member 抽出／フィルタロジック。すべて v.028 の状態に戻す。
+  - **副作用なし**：v.028 以前のプロジェクトデータや REG は無変更。既存の個別 handle 登録は影響を受けない。IDB `handles/root_top` が過去に保存されていた場合は無害な残置（今後の read はされない）。
+  - APP_VERSION：2026.09.19.030 → 2026.09.19.031
 
 - (dev v2026.09.19.028) **ショットページ右カラムの順序を「使用アセット → PMMEMO → NOTE」に変更**（ユーザー要望）。APP_VERSION：2026.09.19.027 → 2026.09.19.028
 
