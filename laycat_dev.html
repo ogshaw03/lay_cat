@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.041';
+const APP_VERSION='2026.09.19.042';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6815,12 +6815,14 @@ function renderProjProgress(main,cur){
   info.appendChild(el('label',null,'表示するフォルダ：'));
   const sel=el('select');
   sel.style.cssText='padding:4px 10px;font-size:12px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;min-width:220px;max-width:520px';
-  /* root（プロジェクト直下）＋ 全ての section 型子孫を階層インデント付きで列挙 */
+  /* root（プロジェクト直下）＋ 全ての section 型子孫を階層インデント付きで列挙。
+     v.042：レガシー shot container（section 直下が全て review = 実質ショットページ扱い）は
+     フォルダとみなさず除外。純粋な "フォルダ" のみプルダウンに出す。 */
   const _folderOptions=[];
   _folderOptions.push({id:cur.id,label:'プロジェクト直下（'+cur.name+'）',depth:0});
+  const _isShotSection=(n)=>{const kids=childrenOf(n.id);return kids.length>=1&&kids.every(k=>k.type==='review')};
   (function walk(pid,depth){
-    const kids=childrenOf(pid).filter(n=>n.type==='section');
-    /* 子（フォルダ）を alphabetical / 元順序で並べる。ユーザーが tree で見る順序に合わせる。 */
+    const kids=childrenOf(pid).filter(n=>n.type==='section'&&!_isShotSection(n));
     for(const k of kids){
       _folderOptions.push({id:k.id,label:'　'.repeat(depth+1)+'└ '+k.name,depth:depth+1});
       walk(k.id,depth+1);
