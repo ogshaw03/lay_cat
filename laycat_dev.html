@@ -3764,7 +3764,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.021';
+const APP_VERSION='2026.09.20.022';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11331,6 +11331,8 @@ async function uploadVersion(node,file,ui,opts){
       const _cm={id:newId('sc'),author:currentUser(),text:opts.comment.trim(),time:nowIso(),kind:'upload'};
       const _st=getShotCurrentStage(node); if(_st) _cm.stage=_st;
       (node.comments=node.comments||[]).push(_cm);
+      /* v.022：アノテ窓のコメント欄でこのアップロード時コメントを一番上に表示するため id を版に紐付け */
+      version.uploadCommentId=_cm.id;
     }
     node.versions.push(version);if(thumbRef)node.thumbnail=thumbRef;
     /* アップロード時に自動でステータスを「チェック待ち」（プロジェクトの先頭ステータス）に設定。
@@ -11397,6 +11399,7 @@ async function uploadExrSequence(node,seq,ui,opts){
       const _cm={id:newId('sc'),author:currentUser(),text:opts.comment.trim(),time:nowIso(),kind:'upload'};
       const _st=getShotStageForTag(node); if(_st) _cm.stage=_st;
       (node.comments=node.comments||[]).push(_cm);
+      version.uploadCommentId=_cm.id;
     }
     if(opts.notify===false)version.noNotify=true;
     node.versions.push(version);if(thumbRef)node.thumbnail=thumbRef;
@@ -13613,10 +13616,27 @@ function openReview(nodeId,versionId,opts){
   }
   function renderNotes(scrollEnd){
     list.innerHTML='';
+    /* v.022：アップロード時のコメント（version.uploadCommentId 経由で node.comments から解決）を
+       アノテ窓のコメント欄の一番上に「📤 アップロード時のメッセージ」として表示。 */
+    const uc=v.uploadCommentId?((node.comments||[]).find(c=>c&&c.id===v.uploadCommentId)):null;
+    if(uc&&uc.text){
+      const wrap=el('div','log-note upload-comment');
+      wrap.style.cssText='background:linear-gradient(rgba(126,203,255,.08),transparent);border-left:3px solid #7ecbff;padding:8px 10px 8px 12px;margin-bottom:2px';
+      const meta=el('div','m');
+      const tag=el('span','who');tag.textContent='📤 アップロード時 — '+(uc.author||'');
+      meta.appendChild(tag);
+      const time=el('span','t2');time.style.cssText='margin-left:8px;font-size:11px;color:var(--text3);font-family:var(--font-code)';
+      try{time.textContent=(new Date(uc.time)).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}catch(_){time.textContent=uc.time||''}
+      meta.appendChild(time);
+      wrap.appendChild(meta);
+      const txt=el('div','t');try{renderMentionText(txt,uc.text,rootOf(node))}catch(_){txt.textContent=uc.text||''}
+      wrap.appendChild(txt);
+      list.appendChild(wrap);
+    }
     /* シンクスケッチ風：フレーム順ソート（frame 昇順、frame 無しは末尾） */
     const shown=v.review.notes.filter(n=>!noteEmbedOnly(n)).slice()
       .sort((a,b)=>(((a.frame==null?1e9:a.frame))-((b.frame==null?1e9:b.frame)))||String(a.time||'').localeCompare(String(b.time||'')));
-    if(!shown.length&&!drafts.length)list.appendChild(el('div','log-empty-note','コメントはまだありません。'));
+    if(!shown.length&&!drafts.length&&!uc)list.appendChild(el('div','log-empty-note','コメントはまだありません。'));
     const refresh=async()=>{await persist();renderNotes();drawAll();drawTimeline()};
     const shotForNote={fileRef:v.file,fps:v.fps||24,isVideo};
     for(const n of shown)list.appendChild(noteBlock(v,n,{refresh,onSeek:isVideo?seekFrame:null,shot:shotForNote}));
