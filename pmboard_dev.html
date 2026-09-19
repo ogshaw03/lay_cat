@@ -594,7 +594,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.20.009';
+const APP_VERSION='2026.09.20.010';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1571,8 +1571,9 @@ function drawGanttMilestones(wrapper){
     line.style.cssText='position:absolute;top:0;bottom:0;width:0;border-left:2px dashed #7ecbff;pointer-events:none;z-index:6;left:calc(var(--shot-col-w,220px) + (100% - var(--shot-col-w,220px)) * '+idx+' / '+days+')';
     const lb=document.createElement('div');
     lb.className='lbl';
-    lb.style.cssText='position:absolute;top:0;left:4px;background:transparent;color:var(--text2);border:0;padding:1px 4px;font-size:10px;font-weight:700;white-space:nowrap;pointer-events:auto;font-family:var(--font-head);cursor:pointer';
-    lb.innerHTML='<span style="filter:grayscale(1) contrast(.85);opacity:.75">📌</span> '+(m.text||'').slice(0,60).replace(/[<&>]/g,c=>({'<':'&lt;','&':'&amp;','>':'&gt;'}[c]));
+    /* v.010：文字が小さくて読みづらかったため font-size を拡大＋濃色化。 */
+    lb.style.cssText='position:absolute;top:2px;left:6px;background:transparent;color:var(--text);border:0;padding:0 4px;font-size:13px;font-weight:700;white-space:nowrap;pointer-events:auto;font-family:var(--font-head);cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.55)';
+    lb.innerHTML='<span style="filter:grayscale(1) contrast(.85);opacity:.85;font-size:14px">📌</span> '+(m.text||'').slice(0,80).replace(/[<&>]/g,c=>({'<':'&lt;','&':'&amp;','>':'&gt;'}[c]));
     lb.title='クリックで編集';
     lb.addEventListener('click',(ev)=>{ev.stopPropagation();openMilestoneEditPopup(m,lb)});
     line.appendChild(lb);
