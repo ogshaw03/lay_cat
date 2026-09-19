@@ -257,16 +257,24 @@ service cloud.firestore {
     // ===== 共通ヘルパ =====
     function signedIn() { return request.auth != null; }
 
-    // アクセス設定（未作成なら空扱い）。運営の判定に使う
-    // ※ 2026-07-24 に「管理者(adminEmails)」ロールを廃止。運営 or メンバーの 2 択に統一。
+    // アクセス設定（未作成なら空扱い）。運営／管理者の判定に使う。
+    // 2026-09-20：役職を「運営(operatorEmails) / 管理者(adminEmails) / メンバー(allowedEmails)」の 3 段階に復活。
     function cfgData() {
       return exists(/databases/$(database)/documents/laynaAccess/config)
         ? get(/databases/$(database)/documents/laynaAccess/config).data
         : {};
     }
+    // 運営（最高権限）：メンテ・お知らせ・招待・監査などの管理系
     function isStaff() {
       return signedIn() &&
         request.auth.token.email in cfgData().get('operatorEmails', []);
+    }
+    // 運営 or 管理者：アクセス管理コンソールの設定編集（メンバー追加／権限変更／許可ドメイン）
+    function isConfigEditor() {
+      return signedIn() && (
+        request.auth.token.email in cfgData().get('operatorEmails', []) ||
+        request.auth.token.email in cfgData().get('adminEmails', [])
+      );
     }
 
     // 本体/コンソールが使うメールキー（emailを小文字化し記号を _ に）。
@@ -281,11 +289,11 @@ service cloud.firestore {
         .affectedKeys().hasOnly([myKey()]);
     }
 
-    // ===== アクセス設定（読取=認証者／編集=運営のみ） =====
+    // ===== アクセス設定（読取=認証者／編集=運営 or 管理者） =====
     match /laynaAccess/config {
       allow read:           if signedIn();          // 本体が許可判定のため読む
       allow create:         if signedIn();          // 初回ブートストラップ（作成者を運営に）
-      allow update:         if isStaff();
+      allow update:         if isConfigEditor();    // 運営 or 管理者
       allow delete:         if false;
     }
 
@@ -371,12 +379,13 @@ function tiers(data){
   const domains=arr(data.allowedDomains).map(d=>String(d).replace(/^@/,''));
   return {operators,admins,members,domains};
 }
+/* 運営のみ（メンテ・お知らせ・招待・監査など） */
 function isEditor(){ if(!cfg)return true; const t=tiers(cfg); return t.operators.map(lc).includes(lc(me.email)); }
-/* 2026-09-20：管理者（adminEmails）もコンソールを閲覧できるように isAdmin を追加。
-   管理者は「アクセス管理」と「許可ドメイン」のカードは見られるが、運営専用（data-op-only）
-   のカード（監査ログ・認証・メンテ・お知らせ・招待リンク・セットアップ・R2 再構築）は非表示。
-   isEditor() は引き続き運営のみで、編集系ボタンは全て非活性のまま。 */
+/* 2026-09-20：管理者もコンソールを閲覧＋アクセス管理／許可ドメインの編集ができる。
+   運営専用（data-op-only）のカード（監査ログ・認証・メンテ・お知らせ・招待リンク・セットアップ・R2 再構築）は非表示。
+   isConfigEditor() = 運営 OR 管理者。アクセス管理／ドメイン編集はこれで判定。 */
 function isAdmin(){ if(!cfg)return true; const t=tiers(cfg); const em=lc(me.email); return t.operators.map(lc).includes(em)||(t.admins||[]).map(lc).includes(em); }
+function isConfigEditor(){ return isAdmin(); }
 /* 監査ログは運営（operatorEmails）のみアクセス可。
    ※ 2026-07-24 「管理者(adminEmails)」廃止後は isEditor と同義（運営 = editor = auditor）。 */
 function isAuditor(){ return isEditor(); }
@@ -521,7 +530,7 @@ function paint(){
 
   const q=lc(query.trim());
   const flt=a=>q?a.filter(e=>lc(e).includes(q)):a;
-  const editor=isEditor();
+  const editor=isConfigEditor();
 
   const idHtml=(email,self)=>{const nm=nameOf(email);return nm?`<span class="u-name">${escH(nm)}${self}</span><span class="u-mail">${escH(email)}</span>`:`<span class="u-name">${escH(email)}${self}</span>`;};
   const mkRow=(email,role,btns)=>{
@@ -608,7 +617,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 <div class="sub-label">ドメイン許可でログイン中（明示登録なし・許可ドメインに一致するアカウント）</div><div class="u-list" id="awDomUserList"></div>
 </body></html>`;
 function openAccessWindow(){
-  if(!cfg||!isEditor()){ notify('運営のみ操作できます'); return; }
+  if(!cfg||!isConfigEditor()){ notify('運営／管理者のみ操作できます'); return; }
   if(accessWin&&!accessWin.closed){ accessWin.focus(); paintAccessWin(); return; }
   accessWin=window.open('','laycat_access','width=780,height=880');
   if(!accessWin){ notify('ポップアップがブロックされました。ポップアップを許可してから再度お試しください。'); return; }
@@ -626,7 +635,7 @@ function paintAccessWin(){
   const {operators,admins,members,domains}=tiers(cfg);
   const q=lc((accessQuery||'').trim());
   const flt=a=>q?a.filter(e=>lc(e).includes(q)):a;
-  const editor=isEditor();
+  const editor=isConfigEditor();
   const idHtml=(email,self)=>{const nm=nameOf(email);return nm?`<span class="u-name">${escH(nm)}${self}</span><span class="u-mail">${escH(email)}</span>`:`<span class="u-name">${escH(email)}${self}</span>`;};
   const mkRow=(email,role,btns)=>{
     const self=(me&&email===me.email)?'（あなた）':'';
@@ -761,7 +770,7 @@ async function readConfig(){const snap=await getDoc(doc(db,...CFG_PATH));return 
 const roleLabel={operator:'運営',admin:'管理者',member:'メンバー',remove:'削除'};
 async function setRole(email,target){
   email=lc(email);
-  if(!isEditor())return notify('運営のみ実行できます');
+  if(!isConfigEditor())return notify('運営／管理者のみ実行できます');
   /* 有効な target：operator / admin / member / remove */
   if(!['operator','admin','member','remove'].includes(target))return;
   const data=await readConfig();
@@ -793,7 +802,7 @@ async function setRole(email,target){
 }
 
 async function addUser(){
-  if(!isEditor())return awNotify('運営のみ実行できます');
+  if(!isConfigEditor())return awNotify('運営／管理者のみ実行できます');
   const eEl=(accessWin&&!accessWin.closed)?accessWin.document.getElementById('awAddEmail'):null;
   const rEl=(accessWin&&!accessWin.closed)?accessWin.document.getElementById('awAddRole'):null;
   const email=lc(((eEl&&eEl.value)||'').trim());
@@ -807,7 +816,7 @@ async function addUser(){
 }
 
 async function addDomain(){
-  if(!isEditor())return notify('運営のみ実行できます');
+  if(!isConfigEditor())return notify('運営／管理者のみ実行できます');
   const dom=lc(($('domInput').value||'').trim().replace(/^@/,''));
   if(!dom)return notify('ドメインを入力してください');
   const data=await readConfig();
@@ -818,7 +827,7 @@ async function addDomain(){
   catch(e){notify('失敗: '+e.message)}
 }
 async function removeDomain(dom){
-  if(!isEditor())return notify('運営のみ実行できます');
+  if(!isConfigEditor())return notify('運営／管理者のみ実行できます');
   if(!confirm('@'+dom+' を削除しますか？'))return;
   const data=await readConfig();
   const domains=arr(data.allowedDomains).filter(d=>lc(String(d).replace(/^@/,''))!==lc(dom));
