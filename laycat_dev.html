@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.007';
+const APP_VERSION='2026.09.20.008';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14422,11 +14422,13 @@ async function exportAnnotated(clipList,exportOpts){
   const recorder=new MediaRecorder(canvasStream,{mimeType,videoBitsPerSecond:12_000_000,audioBitsPerSecond:128_000});
   const chunks=[];
   recorder.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data)};
+  /* v.008：アノテを含めるかどうかのフラグ（既定 true）。false のときは焼き込みをスキップし素の動画を REC。 */
+  const withAnnotations=!(exportOpts&&exportOpts.annotations===false);
   /* 進捗 UI */
   const ov=el('div');
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9600;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;gap:16px;padding:24px';
   const title=el('div');title.style.cssText='font-size:16px;font-weight:700';
-  title.textContent='⬇ アノテ込み書き出し中 — '+(exportOpts.title||'');
+  title.textContent='⬇ 書き出し中'+(withAnnotations?'（アノテ込み）':'（アノテ無し）')+' — '+(exportOpts.title||'');
   const status=el('div');status.style.cssText='font-size:13px;color:#aaa;font-family:var(--font-code)';
   status.textContent='準備中...';
   const bar=el('div');bar.style.cssText='width:min(480px,80vw);height:8px;background:#222;border-radius:4px;overflow:hidden';
@@ -14453,16 +14455,18 @@ async function exportAnnotated(clipList,exportOpts){
     const clip=clips[curIdx];if(!clip)return;
     const av=activeVid();
     try{ctx.drawImage(av,0,0,W,H)}catch(_){}
-    const notes=(clip.v.review&&clip.v.review.notes)||[];
     const fps=(clip.v.fps||24);
     const t=(mediaTime!=null)?mediaTime:(av.currentTime||0);
     _lastMediaTime=t;
-    const f=Math.round(t*fps);
-    for(const n of notes){
-      if(!n||!n.drawing||!n.drawing.length||n.frame==null)continue;
-      const dur=parseInt(n.dur)||1;
-      if(f>=n.frame&&f<n.frame+dur){
-        try{paintStrokeList(ctx,W,H,n.drawing,1)}catch(_){}
+    if(withAnnotations){
+      const notes=(clip.v.review&&clip.v.review.notes)||[];
+      const f=Math.round(t*fps);
+      for(const n of notes){
+        if(!n||!n.drawing||!n.drawing.length||n.frame==null)continue;
+        const dur=parseInt(n.dur)||1;
+        if(f>=n.frame&&f<n.frame+dur){
+          try{paintStrokeList(ctx,W,H,n.drawing,1)}catch(_){}
+        }
       }
     }
     /* 進捗表示 */
@@ -14564,7 +14568,7 @@ async function exportAnnotated(clipList,exportOpts){
 async function exportAnnotatedVersion(node,v){
   return exportAnnotated([{node,v}],{title:(v&&v.name)||'',filename:((v&&v.name)||'video').replace(/[^\w\-.]/g,'_')+'_annotated'});
 }
-async function exportAnnotatedReelClips(reelClips){
+async function exportAnnotatedReelClips(reelClips,opts){
   const list=[];
   for(const c of (reelClips||[])){
     const n=c&&c.nodeId?getNode(c.nodeId):null;if(!n)continue;
@@ -14572,7 +14576,12 @@ async function exportAnnotatedReelClips(reelClips){
     list.push({node:n,v});
   }
   if(!list.length){toast('REEL に書き出せる動画クリップがありません');return}
-  return exportAnnotated(list,{title:'REEL 全体（'+list.length+' クリップ）',filename:'reel_annotated'});
+  const withAnno=!(opts&&opts.annotations===false);
+  return exportAnnotated(list,{
+    title:'REEL 全体（'+list.length+' クリップ）'+(withAnno?'':'（アノテ無し）'),
+    filename:'reel'+(withAnno?'_annotated':''),
+    annotations:withAnno
+  });
 }
 
 async function openRetimer(node,v){
@@ -17308,11 +17317,36 @@ function openReel(){
   mkMenuItem('保存','Ctrl+S',()=>doSave(false));
   mkMenuItem('名前を付けて保存…','Ctrl+Shift+S',()=>doSave(true));
   fileDD.appendChild(ce(d,'div','sep'));
-  mkMenuItem('⬇ アノテ込みで書き出し','',()=>{
+  mkMenuItem('⬇ 書き出し…','',()=>{
     const cs=(reelUI&&reelUI.clips)||[];
     if(!cs.length){toast('REEL にクリップがありません');return}
-    /* REEL の書き出しは親 window の関数を呼ぶ（storage / paintStrokeList 等は親側にある） */
-    try{exportAnnotatedReelClips(cs)}catch(e){toast('書き出しに失敗しました：'+(e&&e.message||''))}
+    /* v.008：書き出しオプション小窓を開く。アノテ有無をチェックボックスで選択。 */
+    const ov=ce(d,'div','ov');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9700;display:flex;align-items:center;justify-content:center';
+    const box=ce(d,'div','box');
+    box.style.cssText='background:#1c1c1f;border:1px solid #3a3a42;border-radius:10px;width:min(360px,92vw);padding:18px 20px;display:flex;flex-direction:column;gap:14px;color:#e8e8ec;font-family:system-ui,-apple-system,sans-serif';
+    const title=ce(d,'div');title.style.cssText='font-size:15px;font-weight:700';title.textContent='書き出しオプション';
+    box.appendChild(title);
+    const opt=ce(d,'label');opt.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px';
+    const cb=ce(d,'input');cb.type='checkbox';cb.checked=true;cb.style.cssText='width:15px;height:15px;cursor:pointer';
+    opt.appendChild(cb);opt.appendChild(ce(d,'span',null,'アノテーションを含める'));
+    box.appendChild(opt);
+    const hint=ce(d,'div');hint.style.cssText='font-size:11px;color:#9a9aaa';
+    hint.textContent='※ REEL 全体（'+cs.length+' クリップ）を書き出します。';
+    box.appendChild(hint);
+    const btns=ce(d,'div');btns.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:4px';
+    const cancel=ce(d,'button','btn','キャンセル');cancel.onclick=()=>ov.remove();
+    const go=ce(d,'button','btn primary','書き出し開始');go.style.cssText='background:#4da6ff;color:#111;border:0;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer';
+    go.onclick=()=>{
+      const withAnno=cb.checked;
+      ov.remove();
+      try{exportAnnotatedReelClips(cs,{annotations:withAnno})}catch(e){toast('書き出しに失敗しました：'+(e&&e.message||''))}
+    };
+    btns.appendChild(cancel);btns.appendChild(go);
+    box.appendChild(btns);
+    ov.appendChild(box);
+    closeOnBackdrop(ov,()=>ov.remove());
+    d.body.appendChild(ov);
   });
   fileMi.onclick=e=>{e.stopPropagation();const willOpen=!fileDD.classList.contains('show');closeMenu();if(willOpen){fileMi.classList.add('open');fileDD.classList.add('show')}};
   d.addEventListener('click',()=>closeMenu());
