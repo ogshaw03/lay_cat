@@ -18,6 +18,18 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.036) **Simple B 変換：1 ショットの save 失敗で project.json 全体書き込みが止まる問題を修正**：
+  - **原因**：直接 saveShot が 1 件でも false を返すと、続く persist の `_saveShotWithLock` が「versions を潰す書込み拒否」ガードに引っかかり、`shotFailed>0` により `saveProjectSplit` が project.json 更新を skip → リロード時に古い骨格が復元されて工程 review が全部戻っていた。
+  - **修正 1**：`window._bypassShotGuard=true` を変換中に立て、`_saveShotWithLock` のガード判定をスルー。変換完了後に解除。
+  - **修正 2**：直接 saveShot が失敗した場合、120ms → 400ms のディレイでリトライ（一時的なファイルロック等の救済）。
+  - **修正 3**：完了時トーストに失敗件数を明示。
+  - APP_VERSION：2026.09.20.035 → 2026.09.20.036
+
+- (dev v2026.09.20.035) **Simple B 変換の自動リロード提案を撤回し、ログを localStorage にも保存**：
+  - 自動リロード（confirm→location.reload）で F12 コンソールが消えて診断できなかった問題対応。
+  - 変換完了時はトーストで案内するだけに変更。ログは `localStorage.getItem('laycat_convertLog')` でも取得可能。
+  - APP_VERSION：2026.09.20.034 → 2026.09.20.035
+
 - (dev v2026.09.20.034) **Simple B 変換にログ出力＋完了時自動リロード提案を追加**：
   - `convertLegacyToSimpleB` に console.log を挿入し、各ショットの kids 数・保存成否・rev 番号を出力。F12 コンソールで診断可能に。
   - 変換完了後に confirm ダイアログで「ページ再読み込みしますか？」を提示。OK でハードリロード。DB キャッシュ・URL routing の残留を排除。

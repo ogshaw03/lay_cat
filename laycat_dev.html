@@ -3402,15 +3402,19 @@ async function _saveShotWithLock(pid,sid,fileBody){
   }
   const nextRev=Math.max(knownRev,remoteRev)+1;
   const out={v:1,shotId:sid,nodes:outNodes,_rev:nextRev};
-  /* v.033 ガード（A）：versions を潰す書込みは拒否。事故防止のフェイルセーフ。 */
-  try{
-    const guard=await _shotSaveGuardWarn(pid,sid,out);
-    if(!guard.ok){
-      try{console.error('[laycat] _saveShotWithLock GUARD: refusing save that would lose versions',{pid,sid,warnings:guard.warnings})}catch(_){}
-      try{toast('shot.json 書込みガード発動：versions が失われる保存を拒否しました（コンソール確認）',5000)}catch(_){}
-      return {ok:false,merged:false,body:null,guardBlocked:true,warnings:guard.warnings};
-    }
-  }catch(_){}
+  /* v.033 ガード（A）：versions を潰す書込みは拒否。事故防止のフェイルセーフ。
+     v.036：Simple B 変換など「意図的に子 review を削除する」処理中は
+     `window._bypassShotGuard=true` を立ててガードをスルーする。 */
+  if(!window._bypassShotGuard){
+    try{
+      const guard=await _shotSaveGuardWarn(pid,sid,out);
+      if(!guard.ok){
+        try{console.error('[laycat] _saveShotWithLock GUARD: refusing save that would lose versions',{pid,sid,warnings:guard.warnings})}catch(_){}
+        try{toast('shot.json 書込みガード発動：versions が失われる保存を拒否しました（コンソール確認）',5000)}catch(_){}
+        return {ok:false,merged:false,body:null,guardBlocked:true,warnings:guard.warnings};
+      }
+    }catch(_){}
+  }
   /* v.033 バックアップ（B）：書込み直前の状態を shots/backup/{sid}.bak.json に退避 */
   try{await _shotSaveBackup(pid,sid)}catch(_){}
   const ok=await storage.saveShot(pid,sid,out);
@@ -3788,7 +3792,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.034';
+const APP_VERSION='2026.09.20.036';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10659,6 +10663,9 @@ async function convertLegacyToSimpleB(root,shots){
   const pid=root.id;
   const _log=[];const _pushLog=(...a)=>{try{console.log('[Simple B convert]',...a);_log.push(a.join(' '))}catch(_){}};
   _pushLog('start',pid,'shots:',shots.length);
+  /* v.036：変換中は shot save ガードをバイパスする（子 review 削除は意図的な shrinkage） */
+  window._bypassShotGuard=true;
+  const _failedIds=[];
   /* 事前：root.stages が空なら、変換対象ショットの子工程名（順序）から補完する。
      これをしないと変換後に工程プルダウンが空になり、Simple B UI から工程を選べなくなる。 */
   if(!Array.isArray(root.stages)||!root.stages.length){
@@ -10745,16 +10752,20 @@ async function convertLegacyToSimpleB(root,shots){
       const _stripS=n=>{const c=Object.assign({},n);if('status' in c)delete c.status;return c};
       const shotFile={v:1,shotId:sh.id,nodes:[_stripS(sh)]};
       shotFile._rev=((_revBucket(pid).shots[sh.id]|0)+1);
-      const ok=await storage.saveShot(pid,sh.id,shotFile);
+      /* v.036：失敗時はリトライ（一時的なファイルロック等の救済） */
+      let ok=await storage.saveShot(pid,sh.id,shotFile);
+      if(!ok){await new Promise(r=>setTimeout(r,120));ok=await storage.saveShot(pid,sh.id,shotFile)}
+      if(!ok){await new Promise(r=>setTimeout(r,400));ok=await storage.saveShot(pid,sh.id,shotFile)}
       _pushLog('shot',sh.name,'kids:',kids.length,'saved:',ok,'rev:',shotFile._rev);
       if(ok){
         _saveCache.shot[pid]=_saveCache.shot[pid]||{};
         _saveCache.shot[pid][sh.id]=JSON.stringify({v:1,shotId:sh.id,nodes:[_stripS(sh)]});
         _revBucket(pid).shots[sh.id]=shotFile._rev;
       }else{
-        _pushLog('WARN save returned false for',sh.name,'— check folder permission');
+        _failedIds.push(sh.id);
+        _pushLog('WARN save returned false for',sh.name,'— will retry via persist (guard bypassed)');
       }
-    }catch(e){_pushLog('ERR shot save',sh.id,e&&e.message);try{console.warn('convertLegacyToSimpleB: shot direct save failed',sh.id,e)}catch(_){}}
+    }catch(e){_failedIds.push(sh.id);_pushLog('ERR shot save',sh.id,e&&e.message);try{console.warn('convertLegacyToSimpleB: shot direct save failed',sh.id,e)}catch(_){}}
   }
   /* 削除した子 review の status/{kid}.json も掃除（残っても実害はないが、混乱防止＆
      再ロード時に hydrate が孤児ステータスを掴んで不要ノードを作るのを防ぐ）。 */
@@ -10763,14 +10774,18 @@ async function convertLegacyToSimpleB(root,shots){
     try{delete _saveCache.shot[pid][kidId]}catch(_){}
     try{delete _revBucket(pid).shots[kidId]}catch(_){}
   }
-  _pushLog('deleted kid ids:',deletedKidIds.length);
+  _pushLog('deleted kid ids:',deletedKidIds.length,'failed shots:',_failedIds.length);
   normalizeNodes();
   /* project.json（骨格＋root.stages 更新）だけは通常の persist で書く。
-     shot.json は既に直接書き込み済みなので false-dirty にならず skip される。 */
+     shot.json は既に直接書き込み済みなので false-dirty にならず skip される。
+     v.036：ガードは既にバイパス中なので、直接書きが失敗したショットも persist の
+     _saveShotWithLock で救われる（shrinkage が許容される）。 */
   await persist();
+  /* バイパス解除（通常運用時は必ずガードを効かせる） */
+  try{delete window._bypassShotGuard}catch(_){window._bypassShotGuard=false}
   _pushLog('persist done. total log entries:',_log.length);
-  /* v.034：変換完了後は一度リロードするのが確実（DB キャッシュ・URL routing の残留を排除）。 */
-  try{if(confirm('Simple B への変換が完了しました。\n変更を反映するためページを再読み込みします。よろしいですか？（キャンセルすると再読み込みしません）'))location.reload()}catch(_){}
+  try{localStorage.setItem('laycat_convertLog',JSON.stringify({at:new Date().toISOString(),pid,log:_log}))}catch(_){}
+  try{toast('変換完了（失敗 '+_failedIds.length+' 件）。Ctrl+F5 でリロードしてください。ログは F12 or localStorage.getItem("laycat_convertLog")',10000)}catch(_){}
 }
 /* ============================================================
    プロジェクトメンバー（担当割り当て・メンション・ロール用の名簿）
