@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.019) **マイルストーンの追加 UI を LayCAT からは撤去し、pmboard 側に集約**：
+  - ヘッダーの `#milestoneBar` と関連 JS（`_msLoad` / `_msRenderBar` / `openMilestonesModal` / ポーリング）を削除。
+  - `storage.loadMilestones/saveMilestones` API は残置（将来の再統合用）。
+  - APP_VERSION：2026.09.20.018 → 2026.09.20.019
+
 - (dev v2026.09.20.018) **マイルストーン機能を追加（LayCAT 本体）**：
   - プロジェクト単位のマイルストーン（日付 + テキスト）を追加／編集／削除できる管理モーダルをヘッダーから開けるように。
   - ヘッダー中央（appVer の右）に「📌 マイルストーン」バー（次期／最寄り 1 件＋残数を表示）を追加、クリックでモーダル。
@@ -2610,6 +2615,12 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.09.20.007) **マイルストーンの追加／編集／削除を pmboard 側に集約**：
+  - タイムラインヘッダーの日付セルクリックで追加ポップアップが開き、テキストを入れて「追加」で `milestones.json` に保存＋ガントに縦線を即時描画。
+  - 既存のマイルストーン縦線ラベル（📌 テキスト）をクリックすると編集ポップアップが開き、日付・テキストの編集／削除ができる。
+  - 書込境界：`milestones.json` のみ（`storage.writeJson` 経由）。shot.json / laycat.project.json は不触。
+  - APP_VERSION：2026.09.20.006 → 2026.09.20.007
 
 - (dev v2026.09.20.006) **マイルストーンをガントに縦線として描画**：
   - `loadAndRender` で `milestones.json` を読み込み `DATA.milestones` に格納。

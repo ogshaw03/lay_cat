@@ -601,7 +601,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.20.006';
+const APP_VERSION='2026.09.20.007';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1222,6 +1222,12 @@ function buildTimelineHdr(){
     const p = jstParts(dt);
     if(p.wk===0||p.wk===6) d.classList.add('wknd');
     d.textContent = p.d;
+    /* v.007：日付セルクリックでマイルストーン追加 */
+    const iso = p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');
+    d.dataset.iso = iso;
+    d.style.cursor = 'pointer';
+    d.title = iso + ' — クリックでマイルストーン追加';
+    d.addEventListener('click', ()=>openMilestoneAddPopup(iso, d));
     dow.appendChild(d);
   }
   hdr.appendChild(weeks); hdr.appendChild(dow);
@@ -1555,7 +1561,8 @@ function buildGantt(){
   if(typeof window._pmApplyPlanSelectionUi==='function') window._pmApplyPlanSelectionUi();
 }
 
-/* マイルストーン縦線をガント wrapper 内に描画。今日マーカーと同じ CSS 変数で位置決め。 */
+/* マイルストーン縦線をガント wrapper 内に描画。今日マーカーと同じ CSS 変数で位置決め。
+   v.007：ラベルクリックで編集／削除できるように pointer-events を効かせる。 */
 function drawGanttMilestones(wrapper){
   if(!wrapper||!DATA.timeline||!DATA.timeline.days)return;
   wrapper.querySelectorAll('.gantt-milestone').forEach(n=>n.remove());
@@ -1570,11 +1577,110 @@ function drawGanttMilestones(wrapper){
     line.style.cssText='position:absolute;top:0;bottom:0;width:0;border-left:2px dashed #8cb4f0;pointer-events:none;z-index:6;left:calc(var(--shot-col-w,220px) + (100% - var(--shot-col-w,220px)) * '+idx+' / '+days+')';
     const lb=document.createElement('div');
     lb.className='lbl';
-    lb.style.cssText='position:absolute;top:0;left:4px;background:rgba(140,180,240,.16);color:#8cb4f0;border:1px solid rgba(140,180,240,.4);border-radius:6px;padding:1px 8px;font-size:10px;font-weight:700;white-space:nowrap;pointer-events:none;font-family:var(--font-head)';
+    lb.style.cssText='position:absolute;top:0;left:4px;background:rgba(140,180,240,.16);color:#8cb4f0;border:1px solid rgba(140,180,240,.4);border-radius:6px;padding:1px 8px;font-size:10px;font-weight:700;white-space:nowrap;pointer-events:auto;font-family:var(--font-head);cursor:pointer';
     lb.textContent='📌 '+(m.text||'').slice(0,60);
+    lb.title='クリックで編集';
+    lb.addEventListener('click',(ev)=>{ev.stopPropagation();openMilestoneEditPopup(m,lb)});
     line.appendChild(lb);
     wrapper.appendChild(line);
   }
+}
+/* v.007：milestones.json を書き込みつつ DATA.milestones を更新して再描画。
+   書込境界：`milestones.json` のみ。shot.json / laycat.project.json は触らない。 */
+async function _pmSaveMilestones(){
+  try{
+    const items=Array.isArray(DATA.milestones)?DATA.milestones.slice():[];
+    items.sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
+    DATA.milestones=items;
+    await storage.writeJson('milestones.json',{v:1,items,updatedAt:new Date().toISOString()});
+    return true;
+  }catch(e){console.warn('milestones save failed',e);return false}
+}
+function _msRedraw(){
+  const wrapper=document.querySelector('.gantt-body-wrap')||document.getElementById('ganttBody')?.parentElement;
+  if(wrapper)drawGanttMilestones(wrapper);
+}
+function _msCloseAny(){document.querySelectorAll('.pm-ms-pop').forEach(n=>n.remove())}
+function _pmCurrentUserEmailSafe(){try{return _pmCurrentUserEmail()}catch(_){return ''}}
+/* 日付クリックで表示する追加ポップアップ */
+function openMilestoneAddPopup(iso,anchor){
+  _msCloseAny();
+  const pop=_msMkPopup(anchor);
+  const ttl=document.createElement('div');ttl.style.cssText='font-size:12px;color:var(--text3);margin-bottom:6px';
+  ttl.textContent='📌 '+iso+' にマイルストーン追加';
+  pop.appendChild(ttl);
+  const inp=document.createElement('input');inp.type='text';inp.placeholder='例：LO 完了、動画 UP';
+  inp.style.cssText='width:100%;padding:6px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px';
+  pop.appendChild(inp);
+  const btns=document.createElement('div');btns.style.cssText='display:flex;justify-content:flex-end;gap:6px;margin-top:8px';
+  const cancel=document.createElement('button');cancel.textContent='キャンセル';cancel.style.cssText='padding:4px 10px;border-radius:6px;background:transparent;border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:12px';
+  cancel.onclick=_msCloseAny;
+  const save=document.createElement('button');save.textContent='追加';save.style.cssText='padding:4px 10px;border-radius:6px;background:#4da6ff;border:0;color:#111;cursor:pointer;font-size:12px;font-weight:700';
+  save.onclick=async()=>{
+    const t=(inp.value||'').trim();if(!t)return;
+    if(!Array.isArray(DATA.milestones))DATA.milestones=[];
+    DATA.milestones.push({
+      id:'ms_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+      text:t,date:iso,
+      createdBy:_pmCurrentUserEmailSafe(),createdAt:new Date().toISOString()
+    });
+    await _pmSaveMilestones();_msRedraw();_msCloseAny();
+  };
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();save.click()}else if(e.key==='Escape'){_msCloseAny()}});
+  btns.appendChild(cancel);btns.appendChild(save);pop.appendChild(btns);
+  setTimeout(()=>inp.focus(),0);
+}
+/* ラベルクリックで表示する編集／削除ポップアップ */
+function openMilestoneEditPopup(m,anchor){
+  _msCloseAny();
+  const pop=_msMkPopup(anchor);
+  const ttl=document.createElement('div');ttl.style.cssText='font-size:12px;color:var(--text3);margin-bottom:6px';
+  ttl.textContent='📌 マイルストーン編集';
+  pop.appendChild(ttl);
+  const drow=document.createElement('div');drow.style.cssText='display:flex;gap:6px;margin-bottom:6px';
+  const dIn=document.createElement('input');dIn.type='date';dIn.value=m.date||'';
+  dIn.style.cssText='padding:6px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-code);font-size:12px';
+  drow.appendChild(dIn);pop.appendChild(drow);
+  const inp=document.createElement('input');inp.type='text';inp.value=m.text||'';
+  inp.style.cssText='width:100%;padding:6px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px';
+  pop.appendChild(inp);
+  const btns=document.createElement('div');btns.style.cssText='display:flex;justify-content:space-between;gap:6px;margin-top:8px';
+  const del=document.createElement('button');del.textContent='削除';del.style.cssText='padding:4px 10px;border-radius:6px;background:transparent;border:1px solid #e06a6a;color:#e06a6a;cursor:pointer;font-size:12px';
+  del.onclick=async()=>{
+    if(!confirm('このマイルストーンを削除しますか？'))return;
+    DATA.milestones=(DATA.milestones||[]).filter(x=>x.id!==m.id);
+    await _pmSaveMilestones();_msRedraw();_msCloseAny();
+  };
+  const right=document.createElement('div');right.style.cssText='display:flex;gap:6px';
+  const cancel=document.createElement('button');cancel.textContent='キャンセル';cancel.style.cssText='padding:4px 10px;border-radius:6px;background:transparent;border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:12px';
+  cancel.onclick=_msCloseAny;
+  const save=document.createElement('button');save.textContent='保存';save.style.cssText='padding:4px 10px;border-radius:6px;background:#4da6ff;border:0;color:#111;cursor:pointer;font-size:12px;font-weight:700';
+  save.onclick=async()=>{
+    m.date=dIn.value||null;m.text=(inp.value||'').trim();
+    m.updatedBy=_pmCurrentUserEmailSafe();m.updatedAt=new Date().toISOString();
+    await _pmSaveMilestones();_msRedraw();_msCloseAny();
+  };
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();save.click()}else if(e.key==='Escape'){_msCloseAny()}});
+  right.appendChild(cancel);right.appendChild(save);
+  btns.appendChild(del);btns.appendChild(right);pop.appendChild(btns);
+  setTimeout(()=>inp.focus(),0);
+}
+/* アンカー要素の下に浮かぶポップアップ本体 */
+function _msMkPopup(anchor){
+  const rect=anchor.getBoundingClientRect();
+  const pop=document.createElement('div');pop.className='pm-ms-pop';
+  pop.style.cssText='position:fixed;z-index:9998;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;box-shadow:0 8px 22px rgba(0,0,0,.45);min-width:260px;max-width:340px;font-family:system-ui,-apple-system,sans-serif';
+  document.body.appendChild(pop);
+  /* 画面右端はみ出しを抑える */
+  const px=Math.min(rect.left,window.innerWidth-320);
+  pop.style.left=Math.max(8,px)+'px';
+  pop.style.top=(rect.bottom+6)+'px';
+  /* 外側クリックで閉じる */
+  setTimeout(()=>{
+    const off=(ev)=>{if(!pop.contains(ev.target)){document.removeEventListener('mousedown',off,true);_msCloseAny()}};
+    document.addEventListener('mousedown',off,true);
+  },0);
+  return pop;
 }
 
 /* =========== カスタムスケジュール Gantt =========== */
