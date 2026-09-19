@@ -78,7 +78,7 @@
   .u-mail{font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .role{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;letter-spacing:.5px}
   .role.op{background:rgba(214,169,95,.16);color:#d6a95f;border:1px solid rgba(214,169,95,.4)}
-  .role.admin{background:rgba(199,199,207,.14);color:#c7c7cf;border:1px solid rgba(199,199,207,.32)}
+  .role.admin{background:rgba(140,180,240,.14);color:#8cb4f0;border:1px solid rgba(140,180,240,.34)}
   .role.member{background:rgba(127,191,154,.14);color:#7fbf9a;border:1px solid rgba(127,191,154,.34)}
   .role.dom{background:rgba(154,154,170,.12);color:#9a9aaa;border:1px solid rgba(154,154,170,.3)}
   .empty{font-size:12px;color:var(--text3);padding:6px 2px}
@@ -193,7 +193,7 @@
       <!-- アクセス管理 -->
       <div class="card">
         <div class="card-title">🔐 アクセス管理 / 権限付与</div>
-        <div class="card-desc">2区分でアクセスを管理します。<b>運営</b>=この設定を編集可・監査ログ閲覧可、<b>メンバー</b>=LayCAT にログインできる（プロジェクト参加は各プロジェクト側で管理）。許可したメールアドレスの Google アカウントが LayCAT を利用できます。行ごとのボタンで権限を変更・削除できます。</div>
+        <div class="card-desc">3区分でアクセスを管理します。<b>運営</b>=この設定を編集可・監査ログ閲覧可・メンテ中でも閲覧可、<b>管理者</b>=一般メンバーと同じログイン権限だがヘッダーに「（管理者）」バッジ表示、<b>メンバー</b>=LayCAT にログインできる（プロジェクト参加は各プロジェクト側で管理）。許可したメールアドレスの Google アカウントが LayCAT を利用できます。行ごとのボタンで権限を変更・削除できます。</div>
 
         <div class="counts" id="counts" style="margin:6px 0 12px"></div>
         <button class="btn btn-primary" id="openAccessBtn">🪟 別ウィンドウで開く（ユーザー追加・権限変更・削除）</button>
@@ -355,19 +355,21 @@ $('rulesPre')&&($('rulesPre').textContent=RULES);
 $('rulesPre2')&&($('rulesPre2').textContent=RULES);
 
 /* ---- 役割リストの取り出し ----
-   2026-07-24 に「管理者(adminEmails)」ロールを廃止（層① は 運営 or メンバー の 2 択に統一）。
-   互換のため adminEmails フィールドが Firestore に残っていても無視し、
-   config 保存時に allowedEmails へマージ移行する（setRole 内で処理）。 */
+   2026-09-20：役職を「運営 / 管理者 / メンバー」の 3 段階に戻した（旧 2026-07-24 の 2 段階統一を撤回）。
+   - operator (運営)：この設定を編集可・監査ログ閲覧可・メンテ中も閲覧可
+   - admin (管理者)：一般メンバーと同ログイン権限だが LayCAT ヘッダーに「（管理者）」バッジ
+   - member (メンバー)：一般
+   adminEmails は独立して扱い、allowedEmails / operatorEmails とは重複させない。 */
 const arr=v=>Array.isArray(v)?[...v]:[];
 function tiers(data){
-  const operators=arr(data.operatorEmails);
-  /* 旧 adminEmails は allowedEmails に統合してメンバー扱いに */
-  const legacyAdmins=arr(data.adminEmails).filter(e=>!operators.includes(e));
-  const explicit=arr(data.allowedEmails);
-  const memberSet=new Set([...explicit,...legacyAdmins].map(lc));
-  const members=[...memberSet].filter(e=>!operators.map(lc).includes(e));
+  const opSet=new Set(arr(data.operatorEmails).map(lc));
+  const adminSet=new Set(arr(data.adminEmails).map(lc).filter(e=>!opSet.has(e)));
+  const explicitMembers=new Set(arr(data.allowedEmails).map(lc).filter(e=>!opSet.has(e)&&!adminSet.has(e)));
+  const operators=[...opSet];
+  const admins=[...adminSet];
+  const members=[...explicitMembers];
   const domains=arr(data.allowedDomains).map(d=>String(d).replace(/^@/,''));
-  return {operators,members,domains};
+  return {operators,admins,members,domains};
 }
 function isEditor(){ if(!cfg)return true; const t=tiers(cfg); return t.operators.map(lc).includes(lc(me.email)); }
 /* 監査ログは運営（operatorEmails）のみアクセス可。
@@ -498,7 +500,7 @@ function render(){
 }
 
 function paint(){
-  const {operators,members,domains}=tiers(cfg);
+  const {operators,admins,members,domains}=tiers(cfg);
   // authRequired
   const on=cfg.authRequired!==false;
   $('authRequired').checked=on;
@@ -520,8 +522,8 @@ function paint(){
     });
     return row;
   };
-  /* ユーザー一覧（運営/メンバー）は別ウィンドウに描画。inline はサマリのみ */
-  $('counts').textContent=`運営 ${operators.length} ・ メンバー ${members.length}`;
+  /* ユーザー一覧（運営/管理者/メンバー）は別ウィンドウに描画。inline はサマリのみ */
+  $('counts').textContent=`運営 ${operators.length} ・ 管理者 ${(admins||[]).length} ・ メンバー ${members.length}`;
   paintAccessWin();
   /* 監査ログカード：カード自体は常に表示。ボタンは operatorEmails 登録者のみ活性化、
      それ以外は「未登録のため閲覧不可」の案内文を出す（何もないと機能に気づけないため）。*/
@@ -573,22 +575,24 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 .u-mail{font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .role{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700}
 .role.op{background:rgba(214,169,95,.16);color:#d6a95f;border:1px solid rgba(214,169,95,.4)}
-.role.admin{background:rgba(199,199,207,.14);color:#c7c7cf;border:1px solid rgba(199,199,207,.32)}
+.role.admin{background:rgba(140,180,240,.14);color:#8cb4f0;border:1px solid rgba(140,180,240,.34)}
 .role.member{background:rgba(127,191,154,.14);color:#7fbf9a;border:1px solid rgba(127,191,154,.34)}
+.role.dom{background:rgba(154,154,170,.12);color:#9a9aaa;border:1px solid rgba(154,154,170,.3)}
 .empty{font-size:12px;color:var(--text3);padding:6px 2px}
 #awNote{display:none;position:fixed;top:0;left:0;right:0;background:#2d3550;color:#fff;padding:9px;text-align:center;font-size:12px;z-index:10}
 </style></head><body>
 <div id="awNote"></div>
 <h1>🔐 アクセス管理 / 権限付与</h1>
-<div class="desc"><b>運営</b>=この設定を編集可・監査ログ閲覧可。<b>メンバー</b>=LayCAT にログインできる（プロジェクト参加は各プロジェクト側で管理）。行ごとのボタンで権限を変更・削除できます。</div>
+<div class="desc"><b>運営</b>=この設定を編集可・監査ログ閲覧可・メンテ中も閲覧可。<b>管理者</b>=一般メンバーと同ログイン権限＋ヘッダー「（管理者）」バッジ。<b>メンバー</b>=LayCAT にログインできる（プロジェクト参加は各プロジェクト側で管理）。行ごとのボタンで権限を変更・削除できます。</div>
 <div class="add-row">
   <input id="awAddEmail" type="email" placeholder="user@example.com" autocomplete="off">
-  <select id="awAddRole"><option value="member">メンバー</option><option value="operator">運営</option></select>
+  <select id="awAddRole"><option value="member">メンバー</option><option value="admin">管理者</option><option value="operator">運営</option></select>
   <button class="btn btn-primary" id="awAddBtn">追加</button>
 </div>
 <div class="search"><input id="awSearch" type="text" placeholder="メールアドレスで検索…" autocomplete="off"></div>
 <div class="counts" id="awCounts"></div>
-<div class="sub-label">運営（この設定を編集可・監査ログ閲覧可）</div><div class="u-list" id="awOpList"></div>
+<div class="sub-label">運営（この設定を編集可・監査ログ閲覧可・メンテ中も閲覧可）</div><div class="u-list" id="awOpList"></div>
+<div class="sub-label">管理者（一般メンバーと同ログイン権限＋ヘッダーに「（管理者）」バッジ）</div><div class="u-list" id="awAdminList"></div>
 <div class="sub-label">メンバー（ログインのみ）</div><div class="u-list" id="awMemberList"></div>
 <div class="sub-label">ドメイン許可でログイン中（明示登録なし・許可ドメインに一致するアカウント）</div><div class="u-list" id="awDomUserList"></div>
 </body></html>`;
@@ -608,7 +612,7 @@ function openAccessWindow(){
 function paintAccessWin(){
   if(!accessWin||accessWin.closed||!cfg)return;
   const d=accessWin.document;
-  const {operators,members,domains}=tiers(cfg);
+  const {operators,admins,members,domains}=tiers(cfg);
   const q=lc((accessQuery||'').trim());
   const flt=a=>q?a.filter(e=>lc(e).includes(q)):a;
   const editor=isEditor();
@@ -620,23 +624,27 @@ function paintAccessWin(){
     btns.forEach(([label,fn,danger])=>{const b=d.createElement('button');b.className='btn btn-sm'+(danger?' btn-danger':'');b.textContent=label;b.disabled=!editor;b.onclick=fn;row.appendChild(b);});
     return row;
   };
-  const opL=d.getElementById('awOpList'),meL=d.getElementById('awMemberList');
-  opL.innerHTML='';meL.innerHTML='';
-  const fo=flt(operators),fm=flt(members);
-  fo.forEach(e=>opL.appendChild(mkRow(e,{cls:'op',label:'運営'},[['→メンバー',()=>setRole(e,'member')],['削除',()=>setRole(e,'remove'),true]])));
+  const opL=d.getElementById('awOpList'),adL=d.getElementById('awAdminList'),meL=d.getElementById('awMemberList');
+  opL.innerHTML='';if(adL)adL.innerHTML='';meL.innerHTML='';
+  const fo=flt(operators),fa=flt(admins||[]),fm=flt(members);
+  fo.forEach(e=>opL.appendChild(mkRow(e,{cls:'op',label:'運営'},[['→管理者',()=>setRole(e,'admin')],['→メンバー',()=>setRole(e,'member')],['削除',()=>setRole(e,'remove'),true]])));
   if(!fo.length)opL.innerHTML='<div class="empty">'+(q?'該当なし':'運営はいません')+'</div>';
-  fm.forEach(e=>meL.appendChild(mkRow(e,{cls:'member',label:'メンバー'},[['→運営',()=>setRole(e,'operator')],['削除',()=>setRole(e,'remove'),true]])));
+  if(adL){
+    fa.forEach(e=>adL.appendChild(mkRow(e,{cls:'admin',label:'管理者'},[['→運営',()=>setRole(e,'operator')],['→メンバー',()=>setRole(e,'member')],['削除',()=>setRole(e,'remove'),true]])));
+    if(!fa.length)adL.innerHTML='<div class="empty">'+(q?'該当なし':'管理者はいません')+'</div>';
+  }
+  fm.forEach(e=>meL.appendChild(mkRow(e,{cls:'member',label:'メンバー'},[['→管理者',()=>setRole(e,'admin')],['→運営',()=>setRole(e,'operator')],['削除',()=>setRole(e,'remove'),true]])));
   if(!fm.length)meL.innerHTML='<div class="empty">'+(q?'該当なし':'メンバーはいません')+'</div>';
-  /* ドメイン許可で実際にログイン中のアカウント：明示登録（運営／メンバー）に含まれていないユーザーで、
+  /* ドメイン許可で実際にログイン中のアカウント：明示登録（運営／管理者／メンバー）に含まれていないユーザーで、
      許可ドメインに一致するメールを持つ人を表示。「→メンバーに固定」で明示メンバーへ昇格できる。 */
   const duL=d.getElementById('awDomUserList');
   if(duL){
-    const explicit=new Set([...operators,...members].map(lc));
+    const explicit=new Set([...operators,...(admins||[]),...members].map(lc));
     let dusers=Object.values(luUsers||{}).filter(u=>u&&u.email&&!explicit.has(lc(u.email))&&(domains||[]).some(dom=>lc(u.email).endsWith('@'+lc(dom))));
     if(q)dusers=dusers.filter(u=>lc(u.email).includes(q)||lc(u.displayName||'').includes(q));
     dusers.sort((a,b)=>lc(a.displayName||a.email).localeCompare(lc(b.displayName||b.email)));
     duL.innerHTML='';
-    dusers.forEach(u=>duL.appendChild(mkRow(u.email,{cls:'admin',label:'ドメイン'},[['→メンバーに固定',()=>setRole(u.email,'member')]])));
+    dusers.forEach(u=>duL.appendChild(mkRow(u.email,{cls:'dom',label:'ドメイン'},[['→メンバーに固定',()=>setRole(u.email,'member')]])));
     if(!dusers.length){
       let msg;
       if(luErr)msg='loggedUsers を読み込めません（'+escH(luErr)+'）';
@@ -645,9 +653,9 @@ function paintAccessWin(){
       else msg='ドメイン許可でログインしたアカウントはまだありません';
       duL.innerHTML='<div class="empty">'+msg+'</div>';
     }
-    d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ メンバー ${members.length} ・ ドメインログイン ${dusers.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fm.length+dusers.length}件`:'');
+    d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ 管理者 ${(admins||[]).length} ・ メンバー ${members.length} ・ ドメインログイン ${dusers.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fa.length+fm.length+dusers.length}件`:'');
   }else{
-    d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ メンバー ${members.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fm.length}件`:'');
+    d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ 管理者 ${(admins||[]).length} ・ メンバー ${members.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fa.length+fm.length}件`:'');
   }
 }
 
@@ -678,11 +686,11 @@ function renderInvites(){
       });
     }
   }
-  // 招待リンクから参加したメンバー（明示的な運営/メンバー登録済みの人は除く）
+  // 招待リンクから参加したメンバー（明示的な運営/管理者/メンバー登録済みの人は除く）
   const ilist=$('invitedList');
   if(ilist){
-    const {operators,members}=tiers(cfg||{});
-    const explicit=new Set([...operators,...members].map(lc));
+    const {operators,admins,members}=tiers(cfg||{});
+    const explicit=new Set([...operators,...(admins||[]),...members].map(lc));
     let arrv=Object.entries(invitedEmails||{}).map(([k,v])=>({key:k,...(v||{})})).filter(v=>v.email&&!explicit.has(lc(v.email)));
     const q=lc(query.trim());
     if(q)arrv=arrv.filter(v=>lc(v.email).includes(q)||lc(nameOf(v.email)||v.name||'').includes(q));
@@ -739,12 +747,12 @@ async function removeInvited(key,email){
 
 async function readConfig(){const snap=await getDoc(doc(db,...CFG_PATH));return snap.exists()?snap.data():{};}
 
-const roleLabel={operator:'運営',member:'メンバー',remove:'削除'};
+const roleLabel={operator:'運営',admin:'管理者',member:'メンバー',remove:'削除'};
 async function setRole(email,target){
   email=lc(email);
   if(!isEditor())return notify('運営のみ実行できます');
-  /* 「admin」ターゲットは廃止済み。互換のため受け取っても member として扱う */
-  if(target==='admin')target='member';
+  /* 有効な target：operator / admin / member / remove */
+  if(!['operator','admin','member','remove'].includes(target))return;
   const data=await readConfig();
   const {operators:curOp}=tiers(data);
   // 最後の運営は降格・削除不可（運営ゼロによるロック防止）
@@ -757,15 +765,18 @@ async function setRole(email,target){
     if(!awConfirm(email+' を削除しますか？'))return;
   }
   try{
+    /* 3 リストを再構築：どのリストにも email が入らないところから、target に応じて追加 */
     let operators=arr(data.operatorEmails).map(lc).filter(e=>e!==email);
-    /* 旧 adminEmails は allowedEmails に統合してから email を除外する */
-    const legacyAdmins=arr(data.adminEmails).map(lc);
-    const explicit=arr(data.allowedEmails).map(lc);
-    let members=[...new Set([...explicit,...legacyAdmins])].filter(e=>e!==email&&!operators.includes(e));
+    let admins=arr(data.adminEmails).map(lc).filter(e=>e!==email);
+    let members=arr(data.allowedEmails).map(lc).filter(e=>e!==email);
     if(target==='operator')operators.push(email);
+    else if(target==='admin')admins.push(email);
     else if(target==='member')members.push(email);
-    /* adminEmails は空配列で上書き（旧データを掃除） */
-    await setDoc(doc(db,...CFG_PATH),{operatorEmails:operators,adminEmails:[],allowedEmails:members,updatedBy:me.email,updatedAt:new Date().toISOString()},{merge:true});
+    /* 重複除去（順序保持） */
+    operators=[...new Set(operators)];
+    admins=[...new Set(admins)].filter(e=>!operators.includes(e));
+    members=[...new Set(members)].filter(e=>!operators.includes(e)&&!admins.includes(e));
+    await setDoc(doc(db,...CFG_PATH),{operatorEmails:operators,adminEmails:admins,allowedEmails:members,updatedBy:me.email,updatedAt:new Date().toISOString()},{merge:true});
     awNotify(target==='remove'?('削除しました: '+email):(roleLabel[target]+'に変更しました: '+email));
   }catch(e){notify('失敗: '+e.message)}
 }
@@ -778,8 +789,8 @@ async function addUser(){
   if(!email)return awNotify('メールアドレスを入力してください');
   const role=(rEl&&rEl.value)||'member';
   const data=await readConfig();
-  const {operators,members}=tiers(data);
-  if(operators.includes(email)||members.includes(email))return awNotify('既に追加されています（権限変更は一覧のボタンから）');
+  const {operators,admins,members}=tiers(data);
+  if(operators.includes(email)||(admins||[]).includes(email)||members.includes(email))return awNotify('既に追加されています（権限変更は一覧のボタンから）');
   await setRole(email,role);
   if(eEl)eEl.value=''; if(rEl)rEl.value='member';
 }
