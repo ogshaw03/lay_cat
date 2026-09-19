@@ -104,7 +104,12 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .tree-row.hit{background:rgba(96,165,255,.08)}
 /* TREE */
 .tree{font-size:13px}
-.tree-row{display:flex;align-items:center;gap:5px;padding:5px 6px;border-radius:6px;color:var(--text2);cursor:pointer;white-space:nowrap;overflow:hidden}
+.tree-row{display:flex;align-items:center;gap:5px;padding:5px 6px;border-radius:6px;color:var(--text2);cursor:pointer;white-space:nowrap;overflow:hidden;position:relative}
+/* v.038：Maya アウトライナ風 DnD の視覚フィードバック */
+.tree-row.tree-drag-src{opacity:.4}
+.tree-row.tree-drop-before{box-shadow:inset 0 2px 0 0 var(--accent)}
+.tree-row.tree-drop-after{box-shadow:inset 0 -2px 0 0 var(--accent)}
+.tree-row.tree-drop-inside{background:rgba(96,165,255,.15);box-shadow:inset 0 0 0 1px var(--accent)}
 .tree-row:hover{background:var(--bg4);color:var(--text)}
 .tree-row.active{background:rgba(255,255,255,.08);color:var(--text)}
 .tree-toggle{width:14px;text-align:center;color:var(--text3);flex-shrink:0;font-size:9px;transition:transform .1s}
@@ -3733,7 +3738,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.037';
+const APP_VERSION='2026.09.19.038';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5143,8 +5148,78 @@ function renderTreeNode(container,node,depth,filt){
       go(node.id);
     }
   };
+  /* v.038：Maya アウトライナ風の DnD 階層移動。フィルタ中は無効。プロジェクト root ノードは動かせない。 */
+  if(!filt&&node.parentId){
+    row.draggable=true;
+    row.addEventListener('dragstart',ev=>{
+      ev.stopPropagation();
+      try{ev.dataTransfer.setData('text/plain',node.id);ev.dataTransfer.effectAllowed='move'}catch(_){}
+      row.classList.add('tree-drag-src');
+    });
+    row.addEventListener('dragend',()=>{
+      row.classList.remove('tree-drag-src');
+      document.querySelectorAll('#sidebar .tree-row').forEach(el=>el.classList.remove('tree-drop-before','tree-drop-after','tree-drop-inside'));
+    });
+  }
+  row.addEventListener('dragover',ev=>{
+    ev.preventDefault();try{ev.dataTransfer.dropEffect='move'}catch(_){}
+    const rect=row.getBoundingClientRect();
+    const relY=(ev.clientY-rect.top)/rect.height;
+    const zone=relY<0.28?'before':(relY>0.72?'after':'inside');
+    document.querySelectorAll('#sidebar .tree-row').forEach(el=>el.classList.remove('tree-drop-before','tree-drop-after','tree-drop-inside'));
+    if(zone==='inside'&&node.type==='section')row.classList.add('tree-drop-inside');
+    else if(zone==='before'&&node.parentId)row.classList.add('tree-drop-before');
+    else if(zone==='after'&&node.parentId)row.classList.add('tree-drop-after');
+  });
+  row.addEventListener('drop',async ev=>{
+    ev.preventDefault();ev.stopPropagation();
+    document.querySelectorAll('#sidebar .tree-row').forEach(el=>el.classList.remove('tree-drop-before','tree-drop-after','tree-drop-inside'));
+    let srcId=null;try{srcId=ev.dataTransfer.getData('text/plain')}catch(_){}
+    if(!srcId||srcId===node.id)return;
+    const src=getNode(srcId);if(!src||!src.parentId)return; /* project root は動かさない */
+    if(_isDescendantOrSelf(src.id,node.id))return; /* 循環防止 */
+    if(rootOfId(src)!==rootOfId(node))return; /* 別プロジェクト間の移動は禁止 */
+    const rect=row.getBoundingClientRect();
+    const relY=(ev.clientY-rect.top)/rect.height;
+    const zone=relY<0.28?'before':(relY>0.72?'after':'inside');
+    let newParent=null,insertBeforeIdx=-1;
+    if(zone==='inside'&&node.type==='section'){
+      newParent=node.id; /* section の中に append */
+    }else{
+      newParent=node.parentId;
+      const tgtIdx=DB.nodes.indexOf(node);
+      insertBeforeIdx=zone==='before'?tgtIdx:tgtIdx+1;
+    }
+    if(!newParent)return; /* root 直下移動は許可済み（node.parentId が存在するのが上のガードで確認） */
+    /* DB.nodes を再構築：src を抜いて指定位置に差し込む。順序が childrenOf のソースなので順序管理は重要 */
+    const srcCurIdx=DB.nodes.indexOf(src);if(srcCurIdx<0)return;
+    src.parentId=newParent;
+    if(insertBeforeIdx<0){
+      /* section 内に append：newParent 配下の最後の子ノードのすぐ後ろに挿入 */
+      const lastKidIdx=(()=>{let last=-1;for(let i=0;i<DB.nodes.length;i++){if(DB.nodes[i]!==src&&DB.nodes[i].parentId===newParent)last=i}return last})();
+      DB.nodes.splice(srcCurIdx,1);
+      const insertAt=lastKidIdx<0?DB.nodes.length:(lastKidIdx>=srcCurIdx?lastKidIdx:lastKidIdx+1);
+      DB.nodes.splice(Math.min(insertAt+1,DB.nodes.length),0,src);
+    }else{
+      DB.nodes.splice(srcCurIdx,1);
+      const adjIdx=insertBeforeIdx>srcCurIdx?insertBeforeIdx-1:insertBeforeIdx;
+      DB.nodes.splice(Math.max(0,Math.min(adjIdx,DB.nodes.length)),0,src);
+    }
+    try{await persist()}catch(_){}
+    render();
+  });
   container.appendChild(row);
   if(kids.length&&expanded){const wrap=el('div');for(const c of kids)renderTreeNode(wrap,c,depth+1,filt);container.appendChild(wrap)}
+}
+/* 循環判定：target が src と同じ or src の子孫なら true。DnD で自分自身/配下への移動を防ぐ。 */
+function _isDescendantOrSelf(srcId,targetId){
+  if(srcId===targetId)return true;
+  let cur=getNode(targetId);
+  while(cur&&cur.parentId){
+    if(cur.parentId===srcId)return true;
+    cur=getNode(cur.parentId);
+  }
+  return false;
 }
 
 /* パンくず */
