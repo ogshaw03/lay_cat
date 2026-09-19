@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.055';
+const APP_VERSION='2026.09.20.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7127,6 +7127,21 @@ function roleOf(node){
   return 'category';                                     /* それ以外のフォルダ */
 }
 function roleLabel(node){const m=ROLE_META[roleOf(node)];return m?m.label:'';}
+/* v.056：progressData の返り値を「現在の工程」で絞り込んで再集計。
+   stageName='__none__' は未着手（curNode 無し・stageName 空）を意味する。
+   ステータスタブなら perShot を絞ってから rows.count を再計算、工程タブ相当は
+   perShot だけ絞る（工程タブは同じ工程での再集計は意味を成さないため rows はそのまま）。 */
+function _filterProgressByStage(pd,stageName){
+  const norm=(stageName==='__none__')?null:stageName;
+  const filtered=pd.perShot.filter(ps=>norm===null?!ps.stageName:ps.stageName===norm);
+  if(pd.tab==='status'){
+    const rowMap=Object.fromEntries(pd.rows.map(r=>[r.id,Object.assign({},r,{count:0})]));
+    for(const ps of filtered){const id=(rowMap[ps.statusId]?ps.statusId:'empty');if(rowMap[id])rowMap[id].count++}
+    const rows=pd.rows.map(r=>rowMap[r.id]);
+    return Object.assign({},pd,{total:filtered.length,rows,perShot:filtered});
+  }
+  return Object.assign({},pd,{total:filtered.length,perShot:filtered});
+}
 /* 進捗タブ：工程／ステータスを 2 カラム（左=工程／右=ステータス）で並置。
    タブ切替は廃止し、複数エピソード時は各カラム内で縦並び。
    pmPick キーは `stage::…` / `status::…` の prefix で種別を判別する。 */
@@ -7196,22 +7211,48 @@ function renderProjProgress(main,cur){
   /* 総数（ステータスは常に総ショット数と一致するので判定に流用） */
   const grand=progressData(targetIds,'status',shotFilterPass).total;
   if(!grand){main.appendChild(el('div','pm-empty',emptyMsg));return}
+  /* v.056：工程グラフで工程をクリックしているとき、ステータスグラフをその工程配下のショットに絞る。
+     `state.pmPick` は 'stage::<name>'（単一 EP）または 'stage::<pid>::<name>'（複数 EP）を含む。 */
+  const _rawPick=state.pmPick?String(state.pmPick):'';
+  const _stageGlobalPick=(_rawPick.startsWith('stage::')&&!multiEp)?_rawPick.slice('stage::'.length):null;
+  const _stagePickByPid={};
+  if(_rawPick.startsWith('stage::')&&multiEp){
+    const rest=_rawPick.slice('stage::'.length);const idx=rest.indexOf('::');
+    if(idx>0)_stagePickByPid[rest.slice(0,idx)]=rest.slice(idx+2);
+  }
   /* 2 カラム構築。工程なしプロジェクトはステータス 1 カラム */
   const cols=el('div','pm-cols'+(hasStages?'':' single'));
   const buildCol=(type)=>{
     const isStage=(type==='stage');
     const col=el('div','pm-col');
-    col.appendChild(el('div','pm-col-h',isStage?'工程':'ステータス'));
+    const hh=el('div','pm-col-h');
+    hh.appendChild(el('span',null,isStage?'工程':'ステータス'));
+    /* ステータス列で工程が pick 中なら、絞り込み中バッジ＋解除ボタンを見出しに追加 */
+    if(!isStage&&(_stageGlobalPick||Object.keys(_stagePickByPid).length)){
+      const stName=_stageGlobalPick||Object.values(_stagePickByPid)[0];
+      const badge=el('span');badge.style.cssText='margin-left:8px;font-family:var(--font-code);font-size:11px;color:var(--text3);font-weight:500';
+      badge.textContent='※ 「'+(stName==='__none__'?'未着手':stName)+'」の工程で絞り込み中';
+      hh.appendChild(badge);
+      const clr=el('button','btn btn-ghost btn-sm','解除');
+      clr.style.cssText='margin-left:6px;padding:2px 8px;font-size:11px';
+      clr.onclick=()=>{state.pmPick=null;renderBody();resolveThumbs()};
+      hh.appendChild(clr);
+    }
+    col.appendChild(hh);
     const body=el('div','pm-col-body');
     if(multiEp){
       for(const pid of parents){
-        const node=getNode(pid);const p=progressData([pid],type,shotFilterPass);
+        const node=getNode(pid);
+        let p=progressData([pid],type,shotFilterPass);
+        /* ステータス列だけ、該当 EP に工程 pick があれば絞り込む */
+        if(!isStage&&_stagePickByPid[pid])p=_filterProgressByStage(p,_stagePickByPid[pid]);
         const keyOf=r=>type+'::'+pid+'::'+r.id;
         const head=el('div','pm-eph');head.appendChild(el('span',null,node?node.name:'—'));head.appendChild(el('span','cnt','ショット '+p.total+' 件'));
         body.appendChild(pmDonutCard(p,isStage,keyOf,{small:true,ep:true,head}));
       }
     }else{
-      const p=progressData(targetIds,type,shotFilterPass);
+      let p=progressData(targetIds,type,shotFilterPass);
+      if(!isStage&&_stageGlobalPick)p=_filterProgressByStage(p,_stageGlobalPick);
       body.appendChild(pmDonutCard(p,isStage,r=>type+'::'+r.id,{}));
     }
     col.appendChild(body);return col;
