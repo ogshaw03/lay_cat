@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.012) **左上「進行管理」ボタンを「PM Board」に改名＋現在プロジェクトの pmboard を確実に開く**：
+  - ラベル「進行管理」→「PM Board」に変更。
+  - `onmousedown` の pid 取得を `state.currentPage`（未使用の typo）から `state.currentId` に修正し、現在開いているプロジェクトの pmboard を確実に開くように。project が未特定なら REG 先頭にフォールバック。
+  - APP_VERSION：2026.09.20.011 → 2026.09.20.012
+
 - (dev v2026.09.20.011) **各クリップの 1F 目のアノテが焼き込まれない不具合を修正**：
   - **原因**：`requestVideoFrameCallback` は「新しいフレームが表示された瞬間」に発火するため、`play()` 開始時点で既に表示されている frame 0 の描画を rvfc が拾えず、その 1F 目に置かれたアノテが canvas に塗られる前に captureStream に取り込まれていた。
   - **修正**：`play()` の直後（初回開始とクリップ境界の両方）で明示的に `draw(0)` を 1 回呼び、frame 0 のビデオ描画＋アノテを canvas に塗ってから rvfc に引き渡す。
