@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.051';
+const APP_VERSION='2026.09.19.052';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6512,33 +6512,45 @@ function openBulkTagModal(root,shotIds){
     if(!tags.length){const em=el('div');em.style.cssText='padding:14px;color:var(--text3);font-size:12px;text-align:center';em.textContent='まだタグがありません。下の入力から作成してください。';list.appendChild(em);return}
     for(const t of tags){
       const st=stateOf(t.id);
-      const row=el('div');row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background .1s ease';
-      row.onmouseenter=()=>row.style.background='var(--bg4,rgba(255,255,255,.05))';
-      row.onmouseleave=()=>row.style.background='transparent';
-      const cb=el('input');cb.type='checkbox';cb.style.cssText='width:15px;height:15px;cursor:pointer;flex-shrink:0';
-      cb.checked=(st!=='none');cb.indeterminate=(st==='some');
-      cb.onclick=(e)=>{e.stopPropagation()};
-      cb.onchange=()=>{
-        if(cb.checked){for(const sh of shots){if(!getShotTags(sh).includes(t.id))sh.tags=[...getShotTags(sh),t.id]}}
+      /* v.052：チェックボックスをやめてチップ状の行に。付与済み＝白／未付与＝ブラックアウト（暗くくすませ表示）。
+         「一部」（複数ショット選択時のみ発生）は白ベースに破線ボーダーで区別。 */
+      const row=el('div');
+      const _rowStyle=(hover)=>{
+        if(st==='all'){
+          row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;cursor:pointer;transition:all .12s ease;background:'+(hover?'#f2f2f2':'#fff')+';border:1px solid #fff;color:#111';
+        }else if(st==='some'){
+          row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;cursor:pointer;transition:all .12s ease;background:'+(hover?'#ececec':'#fafafa')+';border:1px dashed #888;color:#111';
+        }else{
+          row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;cursor:pointer;transition:all .12s ease;background:'+(hover?'#1a1a1e':'#111')+';border:1px solid #2a2a2f;color:#555';
+        }
+      };
+      _rowStyle(false);
+      row.onmouseenter=()=>_rowStyle(true);
+      row.onmouseleave=()=>_rowStyle(false);
+      row.onclick=(e)=>{
+        /* 編集／削除ボタン上のクリックは除外 */
+        if(e.target.closest('button'))return;
+        if(st==='none'){for(const sh of shots){if(!getShotTags(sh).includes(t.id))sh.tags=[...getShotTags(sh),t.id]}}
         else{for(const sh of shots){sh.tags=getShotTags(sh).filter(x=>x!==t.id)}}
         dirty=true;drawList();
       };
-      row.onclick=(e)=>{if(e.target!==cb){cb.checked=!cb.checked;cb.dispatchEvent(new Event('change'))}};
-      row.appendChild(cb);
-      const nm=el('span');nm.style.cssText='flex:1;font-family:var(--font-code);font-size:13px;color:var(--text)';nm.textContent='#'+t.name;
+      const nm=el('span');nm.style.cssText='flex:1;font-family:var(--font-code);font-size:13px;font-weight:'+(st==='none'?'500':'700');
+      nm.textContent='#'+t.name;
       row.appendChild(nm);
-      /* 状態表示 */
-      const badge=el('span');badge.style.cssText='font-family:var(--font-code);font-size:10px;color:var(--text3);font-variant-numeric:tabular-nums';
-      if(st==='all')badge.textContent='全て';else if(st==='some')badge.textContent='一部';else badge.textContent='無し';
-      row.appendChild(badge);
+      /* 状態バッジ（複数ショットで「一部」が出る時のみ意味があるので all/none は省略） */
+      if(st==='some'){
+        const badge=el('span');badge.style.cssText='font-family:var(--font-code);font-size:10px;color:#666;font-variant-numeric:tabular-nums';
+        badge.textContent='一部';
+        row.appendChild(badge);
+      }
       /* 名前編集ボタン */
-      const rn=el('button','btn btn-ghost btn-sm','編集');
-      rn.style.cssText='padding:2px 8px;font-size:11px';
+      const rn=el('button');rn.type='button';rn.textContent='編集';
+      rn.style.cssText='padding:2px 8px;font-size:11px;border-radius:5px;cursor:pointer;background:transparent;border:1px solid '+(st==='none'?'#333':'#bbb')+';color:'+(st==='none'?'#666':'#333');
       rn.onclick=(e)=>{e.stopPropagation();const nv=(prompt('タグ名を変更',t.name)||'').trim();if(!nv||nv===t.name)return;if(renameTag(root,t.id,nv)){dirty=true;drawList()}};
       row.appendChild(rn);
       /* 削除ボタン */
-      const del=el('button','btn btn-ghost btn-sm','削除');
-      del.style.cssText='padding:2px 8px;font-size:11px;color:var(--red)';
+      const del=el('button');del.type='button';del.textContent='削除';
+      del.style.cssText='padding:2px 8px;font-size:11px;border-radius:5px;cursor:pointer;background:transparent;border:1px solid '+(st==='none'?'#552':'#e88')+';color:'+(st==='none'?'#a55':'#c33');
       del.onclick=(e)=>{
         e.stopPropagation();
         if(!confirm('タグ「'+t.name+'」を削除しますか？\n全ショットとアセットからこのタグが外れます。'))return;
