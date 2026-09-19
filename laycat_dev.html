@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.052';
+const APP_VERSION='2026.09.19.053';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6493,10 +6493,10 @@ function openBulkTagModal(root,shotIds){
   head.appendChild(closeBtn);
   box.appendChild(head);
   const hint=el('div');hint.style.cssText='font-size:11px;color:var(--text3)';
-  hint.textContent='チェック＝全選択ショットに付与／中間＝一部付与／未チェック＝無し。切替で一括変更。閉じたときに保存されます。';
+  hint.textContent='クリックで付与／解除。ダブルクリックで名前を編集。ホバー時の × で削除。';
   box.appendChild(hint);
   const list=el('div','tag-list');
-  list.style.cssText='flex:1;overflow-y:auto;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px';
+  list.style.cssText='flex:1;overflow-y:auto;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-wrap:wrap;gap:8px;align-content:flex-start';
   box.appendChild(list);
   /* 新規タグ作成入力 */
   const addRow=el('div');addRow.style.cssText='display:flex;gap:6px';
@@ -6512,52 +6512,49 @@ function openBulkTagModal(root,shotIds){
     if(!tags.length){const em=el('div');em.style.cssText='padding:14px;color:var(--text3);font-size:12px;text-align:center';em.textContent='まだタグがありません。下の入力から作成してください。';list.appendChild(em);return}
     for(const t of tags){
       const st=stateOf(t.id);
-      /* v.052：チェックボックスをやめてチップ状の行に。付与済み＝白／未付与＝ブラックアウト（暗くくすませ表示）。
-         「一部」（複数ショット選択時のみ発生）は白ベースに破線ボーダーで区別。 */
-      const row=el('div');
-      const _rowStyle=(hover)=>{
+      /* v.053：本当のチップに。flex-wrap のコンテナに丸みのあるピル型チップを流し込む。
+         付与済み（all）＝白塗り、未付与（none）＝ブラックアウト、複数選択時の一部（some）＝白＋破線ボーダー。
+         ホバー時のみ右端に × アイコン（削除）を出す。ダブルクリックで名前編集。 */
+      const chip=el('span');chip.dataset.state=st;
+      const _apply=(hover)=>{
         if(st==='all'){
-          row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;cursor:pointer;transition:all .12s ease;background:'+(hover?'#f2f2f2':'#fff')+';border:1px solid #fff;color:#111';
+          chip.style.cssText='display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:14px;font-family:var(--font-code);font-size:12px;font-weight:700;line-height:1.4;cursor:pointer;user-select:none;transition:transform .1s ease,background .12s ease;background:'+(hover?'#f0f0f0':'#fff')+';color:#111;border:1px solid #fff;'+(hover?'transform:translateY(-1px)':'');
         }else if(st==='some'){
-          row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;cursor:pointer;transition:all .12s ease;background:'+(hover?'#ececec':'#fafafa')+';border:1px dashed #888;color:#111';
+          chip.style.cssText='display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:14px;font-family:var(--font-code);font-size:12px;font-weight:700;line-height:1.4;cursor:pointer;user-select:none;transition:transform .1s ease,background .12s ease;background:'+(hover?'#eaeaea':'#fafafa')+';color:#111;border:1px dashed #666;'+(hover?'transform:translateY(-1px)':'');
         }else{
-          row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;cursor:pointer;transition:all .12s ease;background:'+(hover?'#1a1a1e':'#111')+';border:1px solid #2a2a2f;color:#555';
+          chip.style.cssText='display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:14px;font-family:var(--font-code);font-size:12px;font-weight:500;line-height:1.4;cursor:pointer;user-select:none;transition:transform .1s ease,background .12s ease;background:'+(hover?'#181820':'#0e0e12')+';color:#5a5a62;border:1px solid #26262c;'+(hover?'transform:translateY(-1px)':'');
         }
       };
-      _rowStyle(false);
-      row.onmouseenter=()=>_rowStyle(true);
-      row.onmouseleave=()=>_rowStyle(false);
-      row.onclick=(e)=>{
-        /* 編集／削除ボタン上のクリックは除外 */
-        if(e.target.closest('button'))return;
+      _apply(false);
+      chip.onmouseenter=()=>{_apply(true);delBtn.style.opacity='1';delBtn.style.pointerEvents='auto'};
+      chip.onmouseleave=()=>{_apply(false);delBtn.style.opacity='0';delBtn.style.pointerEvents='none'};
+      chip.title=(st==='none'?'クリックで付与':'クリックで解除')+'\nダブルクリックで名前変更';
+      chip.onclick=(e)=>{
+        if(e.target===delBtn||delBtn.contains(e.target))return;
         if(st==='none'){for(const sh of shots){if(!getShotTags(sh).includes(t.id))sh.tags=[...getShotTags(sh),t.id]}}
         else{for(const sh of shots){sh.tags=getShotTags(sh).filter(x=>x!==t.id)}}
         dirty=true;drawList();
       };
-      const nm=el('span');nm.style.cssText='flex:1;font-family:var(--font-code);font-size:13px;font-weight:'+(st==='none'?'500':'700');
-      nm.textContent='#'+t.name;
-      row.appendChild(nm);
-      /* 状態バッジ（複数ショットで「一部」が出る時のみ意味があるので all/none は省略） */
-      if(st==='some'){
-        const badge=el('span');badge.style.cssText='font-family:var(--font-code);font-size:10px;color:#666;font-variant-numeric:tabular-nums';
-        badge.textContent='一部';
-        row.appendChild(badge);
-      }
-      /* 名前編集ボタン */
-      const rn=el('button');rn.type='button';rn.textContent='編集';
-      rn.style.cssText='padding:2px 8px;font-size:11px;border-radius:5px;cursor:pointer;background:transparent;border:1px solid '+(st==='none'?'#333':'#bbb')+';color:'+(st==='none'?'#666':'#333');
-      rn.onclick=(e)=>{e.stopPropagation();const nv=(prompt('タグ名を変更',t.name)||'').trim();if(!nv||nv===t.name)return;if(renameTag(root,t.id,nv)){dirty=true;drawList()}};
-      row.appendChild(rn);
-      /* 削除ボタン */
-      const del=el('button');del.type='button';del.textContent='削除';
-      del.style.cssText='padding:2px 8px;font-size:11px;border-radius:5px;cursor:pointer;background:transparent;border:1px solid '+(st==='none'?'#552':'#e88')+';color:'+(st==='none'?'#a55':'#c33');
-      del.onclick=(e)=>{
+      chip.ondblclick=(e)=>{
+        e.stopPropagation();
+        const nv=(prompt('タグ名を変更',t.name)||'').trim();
+        if(!nv||nv===t.name)return;
+        if(renameTag(root,t.id,nv)){dirty=true;drawList()}
+      };
+      const nm=el('span');nm.textContent='#'+t.name;chip.appendChild(nm);
+      /* 一部付与インジケータ（bullet） */
+      if(st==='some'){const dot=el('span');dot.textContent='•';dot.style.cssText='color:#666;font-size:14px;line-height:1';chip.appendChild(dot)}
+      /* 削除 × ボタン（ホバー時のみ表示） */
+      const delBtn=el('span');delBtn.textContent='×';
+      delBtn.style.cssText='display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;font-size:14px;line-height:1;cursor:pointer;background:'+(st==='none'?'#333':'rgba(0,0,0,.15)')+';color:'+(st==='none'?'#aaa':'#333')+';opacity:0;pointer-events:none;transition:opacity .12s ease';
+      delBtn.title='このタグを削除';
+      delBtn.onclick=(e)=>{
         e.stopPropagation();
         if(!confirm('タグ「'+t.name+'」を削除しますか？\n全ショットとアセットからこのタグが外れます。'))return;
         deleteTag(root,t.id);dirty=true;drawList();
       };
-      row.appendChild(del);
-      list.appendChild(row);
+      chip.appendChild(delBtn);
+      list.appendChild(chip);
     }
   };
   drawList();
