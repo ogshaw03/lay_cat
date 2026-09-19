@@ -3733,7 +3733,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.036';
+const APP_VERSION='2026.09.19.037';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6659,26 +6659,11 @@ function fillAssetDrawer(){
   body.appendChild(addRow);
   setTimeout(resolveThumbs,0);
 }
-/* 進捗タブ用：プロジェクト配下でショット親になり得るノード（＝ EP フォルダ、または root） */
-/* 判定ルール（Simple B・レガシー multi-stage 両対応、起点フォルダ設定を極力不要にする）：
-   ・優先：ルート直下の子で `kind==='episode'` の明示指定があればそれ
-   ・次に：ルート直下の子で以下いずれかを含むものを EP と見なす：
-     ・レガシー shot section（type==='section' で孫＝工程 review を持つ）
-     ・Simple B ショット（type==='review'）
-   ・どちらも無ければルート自身（＝直下がショット） */
-function pmProgressParents(root){
-  const rootChildren=childrenOf(root.id);
-  const marked=rootChildren.filter(rc=>rc.kind==='episode');
-  if(marked.length)return marked;
-  /* v.036：Simple B（review 型ショット）を EP フォルダ配下に置いても EP を検出できるよう、
-     child が review 型（＝ショット自身）でも EP として拾う。従来は「孫を持つ section」だけ検出していた。 */
-  const episodes=rootChildren.filter(rc=>{
-    const kids=childrenOf(rc.id);
-    return kids.some(sh=>sh.type==='review'||childrenOf(sh.id).length>0);
-  });
-  if(episodes.length)return episodes;
-  return [root];
-}
+/* 進捗タブ用：ショット親フォルダの取得。
+   v.037：自動検出（`kind:'episode'` 判定・孫持ち判定）は廃止。
+   ユーザーが進捗タブのプルダウンで明示的に選んだフォルダ（`root.shotsParentIds`）を使う。
+   未設定の場合は root 自身を返す（＝直下がショット）というシンプルな既定値のみ。 */
+function pmProgressParents(root){return [root]}
 /* 有効なショット親（複数可）：プロジェクト設定の指定を優先、なければ自動検出。
    エピソードが別フォルダに分かれている場合、複数の親フォルダをまとめて扱う。
    自動時は 3 階層モデルに則り「エピソードがあれば全エピソード、無ければルート」を返す。 */
@@ -6740,28 +6725,37 @@ function renderProjProgress(main,cur){
   const parents=state.pmParentIds;
   /* 工程（子ノード）を持つショットが1つでもあるか。無ければ「工程グラフ」は無意味なのでステータスのみ表示 */
   const hasStages=parents.some(pid=>childrenOf(pid).some(sh=>childrenOf(sh.id).length>0));
-  /* ショット親フォルダはプロジェクト設定から指定（複数可・表示のみ） */
+  /* v.037：ショット親フォルダを「配下の全フォルダ（section 型）＋プロジェクト直下」のプルダウンで選択。
+     自動検出は廃止。ユーザーが明示的にどのフォルダ配下をショットとみなすかを選ぶ。 */
   const info=el('div','pm-sel');
-  const pnames=state.pmParentIds.map(id=>pathOf(id).map(x=>x.name).join(' / ')).join(' ／ ');
-  info.appendChild(el('label',null,'ショット親フォルダ： '+pnames+(shotsAuto(cur)?'（自動）':'')));
-  const cfg=el('button','pm-stab');cfg.textContent='⚙ 設定で変更';cfg.style.cssText='padding:4px 10px;font-size:11px';cfg.onclick=()=>openRename(cur);
-  info.appendChild(cfg);
-  main.appendChild(info);
-  /* この設定でどの階層が「ショット」「工程」になるかを具体例で明示（自動検出の当て推量を可視化） */
-  {
-    const hint=el('div','pm-role-hint');
-    const firstShot=shotsOf(cur)[0];
-    const fk=firstShot?childrenOf(firstShot.id)[0]:null;
-    /* ノード名（フォルダ由来のユーザー入力）はtextContentで安全に挿入し、innerHTML連結によるHTMLインジェクション(XSS)を防ぐ */
-    const tn=t=>document.createTextNode(t),bel=t=>el('b',null,t);
-    if(firstShot){
-      hint.appendChild(tn('この設定では 「'));hint.appendChild(tn(firstShot.name));hint.appendChild(tn('」＝'));hint.appendChild(bel('ショット'));
-      if(fk){hint.appendChild(tn('／「'));hint.appendChild(tn(fk.name));hint.appendChild(tn('」＝'));hint.appendChild(bel('工程'))}else{hint.appendChild(tn('（工程なし）'))}
-      hint.appendChild(tn(' として扱われます。'));
-    }else{hint.appendChild(tn('この直下が【ショット】、そのさらに下が【工程】として集計されます。'))}
-    if(shotsAuto(cur)){hint.appendChild(tn('　※現在は'));hint.appendChild(bel('自動判定'));hint.appendChild(tn('です（設定で明示指定できます）。'))}
-    main.appendChild(hint);
+  info.appendChild(el('label',null,'表示するフォルダ：'));
+  const sel=el('select');
+  sel.style.cssText='padding:4px 10px;font-size:12px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;min-width:220px;max-width:520px';
+  /* root（プロジェクト直下）＋ 全ての section 型子孫を階層インデント付きで列挙 */
+  const _folderOptions=[];
+  _folderOptions.push({id:cur.id,label:'プロジェクト直下（'+cur.name+'）',depth:0});
+  (function walk(pid,depth){
+    const kids=childrenOf(pid).filter(n=>n.type==='section');
+    /* 子（フォルダ）を alphabetical / 元順序で並べる。ユーザーが tree で見る順序に合わせる。 */
+    for(const k of kids){
+      _folderOptions.push({id:k.id,label:'　'.repeat(depth+1)+'└ '+k.name,depth:depth+1});
+      walk(k.id,depth+1);
+    }
+  })(cur.id,0);
+  for(const opt of _folderOptions){
+    const o=document.createElement('option');o.value=opt.id;o.textContent=opt.label;sel.appendChild(o);
   }
+  sel.value=(parents[0]&&_folderOptions.some(o=>o.id===parents[0]))?parents[0]:cur.id;
+  sel.onchange=async()=>{
+    cur.shotsParentIds=[sel.value];
+    /* 単一プロジェクトのメタだけ更新するので persist（全体保存）を呼ぶ。REG 全体走査だが、
+       shot.json への versions 影響は無い（shotsParentIds はプロジェクト骨格 laycat.project.json 側のフィールド）。
+       ガード（v.033 A）は versions 縮小のみ検出するので通過。 */
+    try{await persist()}catch(_){}
+    renderBody();resolveThumbs();
+  };
+  info.appendChild(sel);
+  main.appendChild(info);
   /* 円グラフの表示（複数エピソード時のみ選択可）：全エピソードを並べる／特定のエピソードのみ */
   if(state.pmDonutMode==null){try{state.pmDonutMode=localStorage.getItem('layna_pmDonutMode')||'all'}catch(_){state.pmDonutMode='all'}}
   /* 選択が現在の親フォルダに存在しない（別プロジェクト等）場合は「並べる」に戻す */
