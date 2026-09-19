@@ -2592,6 +2592,12 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.003) **アクセス管理コンソール（access.json）を pmboard 側にも継承**：
+  - `access.json` を pmboard 起動時に `fetch` し、`authRequired && hostname==='ogshaw03.github.io'` のときはアクセス管理コンソールで許可されたアカウントのみ入れるゲートを追加。
+  - 判定は LayCAT と同じ `roleFor` ロジック（adminEmails / operatorEmails / allowedEmails / allowedDomains）。Firebase 側の invited メールも補完的に許可。
+  - 許可外は ⛔ 画面へ切替（プロジェクト読込より前で拒否＝データ露出も遮断）。ローカル/プレビュー環境は互換で通す。
+  - APP_VERSION：2026.09.20.002 → 2026.09.20.003
+
 - (dev v2026.09.20.002) **アクセス識別を「名前」から「メールアドレス」に変更**：
   - `localStorage.laycat_userEmail`（LayCAT が `authUser.email` を保存）を現在ユーザー識別として使い、`root.members[].id`（メール）と照合。名前照合は撤回。
   - LayCAT に未ログインでメール未設定なら拒否画面。案内文もメール表示に変更。

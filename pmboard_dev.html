@@ -601,7 +601,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.20.002';
+const APP_VERSION='2026.09.20.003';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2364,16 +2364,66 @@ function _pmCheckMemberAccess(){
   body.innerHTML=`<div class="empty-panel" style="max-width:520px;margin:40px auto"><div class="ep-ico">🔒</div><div class="ep-title">アクセス権がありません</div><div class="ep-sub" style="line-height:1.6">「${escapeHtml(projName)}」のメンバーとして登録されていません。<br>現在のメール：<b>${escapeHtml(meNow)}</b><br><br>アクセスするには、LayCAT にログインしてプロジェクトのメンバーに登録されたメールと一致させ、このタブを再読み込みしてください。</div></div>`;
   return false;
 }
+/* v.0.2.0 (pmboard)：LayCAT のアクセス管理コンソール（access.json）を継承。
+   `authRequired` かつ ogshaw03.github.io 上のときは、以下の何れにも該当しないアカウントを拒否：
+   - adminEmails / operatorEmails / allowedEmails に含まれる
+   - allowedDomains 配下のドメイン
+   さらに Firebase 側（招待リンク経由の invited）で許可されたメールも補完的に許可する。
+   LayCAT が既にログイン時に localStorage.laycat_userEmail を書いているので、その値で判定。 */
+let _pmAccessCfg=null,_pmAuthOn=false,_pmAccessLoaded=false;
+async function _pmLoadAccess(){
+  if(_pmAccessLoaded)return;
+  _pmAccessLoaded=true;
+  try{
+    const r=await fetch('./access.json',{cache:'no-store'});
+    _pmAccessCfg=await r.json();
+  }catch(_){_pmAccessCfg=null}
+  /* Firebase invited を追記（LayCAT が公開している __laynaFB を使えれば） */
+  try{
+    if(window.__laynaFB&&window.__laynaFB.loadInvited){
+      const inv=await window.__laynaFB.loadInvited();
+      const em=inv&&inv.emails?Object.values(inv.emails).map(x=>x&&x.email).filter(Boolean):[];
+      if(em.length){_pmAccessCfg=_pmAccessCfg||{};_pmAccessCfg.allowedEmails=[...(_pmAccessCfg.allowedEmails||[]),...em]}
+    }
+  }catch(_){}
+  _pmAuthOn=!!(_pmAccessCfg&&_pmAccessCfg.authRequired)&&location.hostname==='ogshaw03.github.io';
+}
+function _pmRoleFor(email){
+  if(!_pmAccessCfg||!email)return null;
+  const e=String(email).toLowerCase();
+  const has=arr=>Array.isArray(arr)&&arr.map(x=>String(x||'').toLowerCase()).includes(e);
+  if(has(_pmAccessCfg.operatorEmails))return 'operator';
+  if(has(_pmAccessCfg.adminEmails))return 'admin';
+  if(has(_pmAccessCfg.allowedEmails))return 'member';
+  const dom=e.split('@')[1]||'';
+  if((_pmAccessCfg.allowedDomains||[]).some(d=>String(d).toLowerCase().replace(/^@/,'')===dom))return 'member';
+  return null;
+}
+function _pmCheckOrgAccess(){
+  if(!_pmAuthOn)return true; /* 認証オフ環境（ローカル/プレビュー）は互換で通す */
+  const em=_pmCurrentUserEmail();
+  const role=em?_pmRoleFor(em):null;
+  if(role)return true;
+  const body=document.getElementById('ganttBody');
+  const meNow=em||'（未ログイン）';
+  body.innerHTML=`<div class="empty-panel" style="max-width:520px;margin:40px auto"><div class="ep-ico">⛔</div><div class="ep-title">このアプリを利用する権限がありません</div><div class="ep-sub" style="line-height:1.6">アクセス管理コンソール（access.json）で許可されていないアカウントです。<br>現在のメール：<b>${escapeHtml(meNow)}</b><br><br>管理者に allowedEmails への追加を依頼してください。既に許可済みの場合は、LayCAT でログインし直してから pmboard を再読み込みしてください。</div></div>`;
+  return false;
+}
 async function loadAndRender(){
   const body = document.getElementById('ganttBody');
   body.innerHTML=`<div class="loading-panel">読み込み中…</div>`;
+  /* v.003：LayCAT の access.json（アクセス管理コンソール）を先に取得。認証オンで
+     許可外なら以降のプロジェクト読込に進まず拒否画面を出す（データ露出を防ぐため
+     `loadProjectData` より前）。 */
+  await _pmLoadAccess();
+  if(!_pmCheckOrgAccess()){return}
   const r = await loadProjectData();
   if(!r.ok){
     body.innerHTML=`<div class="empty-panel"><div class="ep-ico">⚠</div><div class="ep-title">読み込み失敗</div><div class="ep-sub">${escapeHtml(r.err||'不明なエラー')}</div></div>`;
     return;
   }
-  /* v.0.2.0 (pmboard)：LayCAT のプロジェクトメンバー管理を継承。root.members が設定されて
-     いれば、`localStorage.laycat_userName` の名前と照合し、非メンバーはアクセス拒否画面に。
+  /* LayCAT のプロジェクトメンバー管理を継承。root.members が設定されていれば、
+     `localStorage.laycat_userEmail` と照合し、非メンバーはアクセス拒否画面に。
      members が未設定・空配列のプロジェクトは従来通り誰でも閲覧可（互換）。 */
   if(!_pmCheckMemberAccess()){return}
   /* カスタムスケジュール（オリジナル工程セット）も並列読み込み */
