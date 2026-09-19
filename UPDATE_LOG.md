@@ -18,6 +18,22 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.048) **ショットにタグ機能を追加（アセット紐付けをタグ経由でも可能に）**：
+  - **背景**：ショットを「使用アセット」「シーケンス」等の切り口でグルーピング／紐付けしたい要望。
+  - **データモデル**：
+    - `root.tags = [{id, name, createdAt}]` … プロジェクト直下（laycat.project.json）
+    - `shot.tags = [tagId, ...]` … shots/{sid}.json（既存 versions/currentStage 等と併存）
+    - `asset.tagIds = [tagId, ...]` … root.assets の各アセット（laycat.project.json）
+    - アセットの実効的な使用ショット = 手動 `usedInShots` ∪ `shots で tags と asset.tagIds が交わるもの`（`effectiveUsedShots(root, asset)`）
+  - **UI**：
+    - ショットタブの選択バーに「🏷️ タグ付け」ボタン追加。押すと一括タグ付け／解除モーダル（既存タグの all/some/none 表示・新規作成・リネーム・削除）。
+    - ショットタイル／縦並び行にタグ chip を表示（`#tagname`）。
+    - アセットドロワーに「タグで自動紐付け」セクション追加。タグを toggle するとそのタグを持つショットが自動でこのアセットに紐付く。プレビューで「タグ経由で紐付くショット」を列挙。
+    - アセットタイルの「使用: N ショット」を effectiveUsedShots ベースに変更（タグ経由分も含む）。
+    - ショットページの「使用アセット」パネルもタグ経由分を含めて表示。
+  - **書込境界**：`root.tags` / `shot.tags` / `asset.tagIds` の変更は既存の `persist()` 経路で `laycat.project.json` と `shots/{sid}.json` に反映（未変更分は `_saveCache` で skip されるため実質は現プロジェクトのみ書込）。既存 shot.json の versions[] / pmMemo 等他フィールドは触らない。
+  - APP_VERSION：2026.09.19.047 → 2026.09.19.048
+
 - (dev v2026.09.19.047) **ショットタブをフォルダ単位でセクション分けして表示**：
   - **背景**：ショットタブは全ショットをフラットに並べていた（`parents.length>1` のときのみ EP 親でグループ表示）。プロジェクトが増えると視認性が落ちるという要望。
   - **修正**：`renderProjShots` を書き換え、ショットを **直接の親フォルダ** ごとにグルーピング。各グループの見出しに「フォルダのフルパス（root → parent）＋件数」をアセットタブのカテゴリ見出しと同じスタイルで描画（`font-head` 太字＋区切り線）。単一グループでも同スタイルで表示するため見た目が統一される。

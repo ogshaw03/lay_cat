@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.047';
+const APP_VERSION='2026.09.19.048';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6092,6 +6092,11 @@ function renderProjShots(main,cur){
     const bar=el('div','shot-sel-bar');
     bar.appendChild(el('span','cnt','選択中 '+state.shotSel.size+' 件'));
     const sp=el('div');sp.style.flex='1';bar.appendChild(sp);
+    /* v.048：選択したショットへの一括タグ付け */
+    const tagBtn=el('button','btn btn-ghost btn-sm','🏷️ タグ付け');
+    tagBtn.title='選択中のショットにタグを一括で付与／解除';
+    tagBtn.onclick=()=>openBulkTagModal(cur,Array.from(state.shotSel));
+    bar.appendChild(tagBtn);
     const reelBtn=el('button','btn btn-primary btn-sm','▶ 選択した動画を REEL に追加');
     reelBtn.onclick=()=>reelAddSelectedShots();
     bar.appendChild(reelBtn);
@@ -6220,6 +6225,8 @@ function renderProjShots(main,cur){
     mt.appendChild(el('span','pth',lv?('最新: '+lv.v.name):'動画なし'));
     bd.appendChild(mt);
     const ab=rep?taskAssignBadges(rep):null;if(ab)bd.appendChild(ab); /* 作業/チェック担当バッジ（動画なしでも表示） */
+    /* v.048：ショットに付いているタグを chip で表示 */
+    {const tc=buildShotTagChipsRow(sh,cur);if(tc)bd.appendChild(tc)}
     tile.appendChild(bd);
     /* タイルクリック：
        - 選択モード中（state.shotSel が非空）は選択トグル（追加／解除）
@@ -6265,6 +6272,8 @@ function renderProjShots(main,cur){
     /* v.014：ステータスはショット単位。buildStatusSelect の対象を sh に統一（レガシー shot section も Simple B review もそのまま渡す）。 */
     {const spc=buildStatusSelect(sh);spc.onclick=e=>e.stopPropagation();it.appendChild(spc);}
     const ab=rep?taskAssignBadges(rep):null;if(ab)it.appendChild(ab); /* 作業/チェック担当 */
+    /* v.048：ショットに付いているタグを chip で表示（縦並び行にも） */
+    {const tc=buildShotTagChipsRow(sh,cur);if(tc){tc.style.marginLeft='4px';it.appendChild(tc)}}
     it.appendChild(el('span','shot-row-meta',lv?('最新 '+lv.v.name):'動画なし'));
     return it;
   };
@@ -6402,6 +6411,162 @@ function assetUnlink(root,assetId,shotId){
   a.updatedAt=nowIso();
   return true;
 }
+/* ===== v.048：タグ機能 =====
+   タグは shot につける任意ラベル。アセットとは独立の分類レイヤーだが、
+   「このタグが付いたショット群 = このアセットを使う」という間接紐付けにも使う。
+   - root.tags = [{id,name,createdAt}]   … プロジェクト直下（laycat.project.json）
+   - shot.tags = [tagId, ...]            … shots/{sid}.json（既存 versions/currentStage 等と併存）
+   - asset.tagIds = [tagId, ...]         … root.assets の各アセット（laycat.project.json）
+   アセットの実効的な使用ショット = 手動 usedInShots ∪ shots で tags と asset.tagIds が交わるもの */
+function getTags(root){return Array.isArray(root&&root.tags)?root.tags:[]}
+function getTag(root,id){return getTags(root).find(t=>t.id===id)||null}
+function ensureTagsList(root){if(!Array.isArray(root.tags))root.tags=[]}
+function createTag(root,name){
+  const nm=(name||'').trim();if(!nm)return null;
+  const ex=getTags(root).find(t=>t.name.toLowerCase()===nm.toLowerCase());if(ex)return ex;
+  ensureTagsList(root);
+  const t={id:'tag_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),name:nm,createdAt:nowIso()};
+  root.tags.push(t);return t;
+}
+function deleteTag(root,id){
+  if(!root)return;
+  root.tags=getTags(root).filter(t=>t.id!==id);
+  /* asset.tagIds からも除去（shot.tags 側は削除タグ id が残っても表示側で getTag=null により無視される） */
+  for(const a of getAssets(root))if(Array.isArray(a.tagIds))a.tagIds=a.tagIds.filter(x=>x!==id);
+}
+function renameTag(root,id,newName){const t=getTag(root,id);if(!t)return false;const nm=(newName||'').trim();if(!nm)return false;t.name=nm;return true}
+function getShotTags(sh){return Array.isArray(sh&&sh.tags)?sh.tags:[]}
+function shotsWithAnyTag(root,tagIds){
+  const tset=new Set(tagIds||[]);if(!tset.size)return [];
+  const out=[];for(const sh of shotsOf(root))if(getShotTags(sh).some(t=>tset.has(t)))out.push(sh);
+  return out;
+}
+/* アセットに紐付いた「実効的な使用ショット」：手動 usedInShots + タグ経由の集合和 */
+function effectiveUsedShots(root,asset){
+  const set=new Set(asset&&asset.usedInShots||[]);
+  if(asset&&Array.isArray(asset.tagIds)&&asset.tagIds.length){
+    for(const sh of shotsWithAnyTag(root,asset.tagIds))set.add(sh.id);
+  }
+  return Array.from(set).map(id=>getNode(id)).filter(Boolean);
+}
+/* ショットに付いているタグを chip 列で描画（表示のみ／編集はモーダル or ショットページから）。
+   タグが 1 つも無ければ null を返す（呼び出し側で append を skip）。 */
+function buildShotTagChipsRow(sh,root){
+  const ids=getShotTags(sh);if(!ids.length)return null;
+  const wrap=el('div','shot-tag-chips');
+  wrap.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-top:4px';
+  let any=false;
+  for(const tid of ids){
+    const t=getTag(root,tid);if(!t)continue;
+    const c=el('span');c.style.cssText='display:inline-flex;align-items:center;padding:2px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;font-family:var(--font-code);font-size:10px;color:var(--text2);line-height:1.4;white-space:nowrap';
+    c.textContent='#'+t.name;
+    wrap.appendChild(c);any=true;
+  }
+  return any?wrap:null;
+}
+/* 選択中のショットに一括でタグを付与／解除するモーダル。
+   書込境界（このモーダルで発生する保存）：
+   - 新規タグ作成：`root.tags` に push → 次回 saveProjectSplit で laycat.project.json に反映
+   - 各ショットの tags 更新：`sh.tags` を書き換える → 次回 saveProjectSplit で shots/{sid}.json に反映
+   - モーダル閉じ時に `persist()` を一度呼び、双方をまとめて disk へ書き出す
+   `persist()` を使う理由：既存の asset 追加／リンクと同じパターン。全プロジェクトを走査するが
+   未変更分は `_saveCache` で skip されるため、実質は今のプロジェクトのみ書かれる。 */
+function openBulkTagModal(root,shotIds){
+  if(!root||!Array.isArray(shotIds)||!shotIds.length){toast('選択されたショットがありません');return}
+  ensureTagsList(root);
+  const shots=shotIds.map(id=>getNode(id)).filter(sh=>sh&&_isShotLikeNode(sh));
+  if(!shots.length){toast('選択されたショットが見つかりません');return}
+  /* 現在の適用状態：各タグに対して all（全ショットに付いている）／some（一部）／none（誰も付いていない） */
+  const stateOf=(tid)=>{
+    let has=0;for(const sh of shots)if(getShotTags(sh).includes(tid))has++;
+    if(has===0)return 'none';if(has===shots.length)return 'all';return 'some';
+  };
+  const back=el('div','modal-back');back.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center';
+  const box=el('div','modal-box');box.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;width:min(480px,92vw);max-height:82vh;display:flex;flex-direction:column;gap:10px';
+  const head=el('div');head.style.cssText='display:flex;align-items:center;gap:10px';
+  const title=el('div');title.style.cssText='font-family:var(--font-head);font-weight:800;font-size:16px;color:var(--text)';title.textContent='タグ付け';
+  head.appendChild(title);
+  const cnt=el('span');cnt.style.cssText='font-family:var(--font-code);font-size:12px;color:var(--text3)';cnt.textContent='選択中 '+shots.length+' 件';
+  head.appendChild(cnt);
+  const sp=el('div');sp.style.flex='1';head.appendChild(sp);
+  const closeBtn=el('button','btn btn-ghost btn-sm','×');closeBtn.title='閉じる';
+  head.appendChild(closeBtn);
+  box.appendChild(head);
+  const hint=el('div');hint.style.cssText='font-size:11px;color:var(--text3)';
+  hint.textContent='チェック＝全選択ショットに付与／中間＝一部付与／未チェック＝無し。切替で一括変更。閉じたときに保存されます。';
+  box.appendChild(hint);
+  const list=el('div','tag-list');
+  list.style.cssText='flex:1;overflow-y:auto;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px';
+  box.appendChild(list);
+  /* 新規タグ作成入力 */
+  const addRow=el('div');addRow.style.cssText='display:flex;gap:6px';
+  const nameIn=el('input');nameIn.type='text';nameIn.placeholder='新しいタグ名（例：キャラA、SQ01）';
+  nameIn.style.cssText='flex:1;padding:6px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--font-code);font-size:13px';
+  const addBtn=el('button','btn btn-primary btn-sm','＋ 作成して付与');
+  addRow.appendChild(nameIn);addRow.appendChild(addBtn);
+  box.appendChild(addRow);
+  let dirty=false;
+  const drawList=()=>{
+    list.innerHTML='';
+    const tags=getTags(root);
+    if(!tags.length){const em=el('div');em.style.cssText='padding:14px;color:var(--text3);font-size:12px;text-align:center';em.textContent='まだタグがありません。下の入力から作成してください。';list.appendChild(em);return}
+    for(const t of tags){
+      const st=stateOf(t.id);
+      const row=el('div');row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background .1s ease';
+      row.onmouseenter=()=>row.style.background='var(--bg4,rgba(255,255,255,.05))';
+      row.onmouseleave=()=>row.style.background='transparent';
+      const cb=el('input');cb.type='checkbox';cb.style.cssText='width:15px;height:15px;cursor:pointer;flex-shrink:0';
+      cb.checked=(st!=='none');cb.indeterminate=(st==='some');
+      cb.onclick=(e)=>{e.stopPropagation()};
+      cb.onchange=()=>{
+        if(cb.checked){for(const sh of shots){if(!getShotTags(sh).includes(t.id))sh.tags=[...getShotTags(sh),t.id]}}
+        else{for(const sh of shots){sh.tags=getShotTags(sh).filter(x=>x!==t.id)}}
+        dirty=true;drawList();
+      };
+      row.onclick=(e)=>{if(e.target!==cb){cb.checked=!cb.checked;cb.dispatchEvent(new Event('change'))}};
+      row.appendChild(cb);
+      const nm=el('span');nm.style.cssText='flex:1;font-family:var(--font-code);font-size:13px;color:var(--text)';nm.textContent='#'+t.name;
+      row.appendChild(nm);
+      /* 状態表示 */
+      const badge=el('span');badge.style.cssText='font-family:var(--font-code);font-size:10px;color:var(--text3);font-variant-numeric:tabular-nums';
+      if(st==='all')badge.textContent='全て';else if(st==='some')badge.textContent='一部';else badge.textContent='無し';
+      row.appendChild(badge);
+      /* 名前編集ボタン */
+      const rn=el('button','btn btn-ghost btn-sm','編集');
+      rn.style.cssText='padding:2px 8px;font-size:11px';
+      rn.onclick=(e)=>{e.stopPropagation();const nv=(prompt('タグ名を変更',t.name)||'').trim();if(!nv||nv===t.name)return;if(renameTag(root,t.id,nv)){dirty=true;drawList()}};
+      row.appendChild(rn);
+      /* 削除ボタン */
+      const del=el('button','btn btn-ghost btn-sm','削除');
+      del.style.cssText='padding:2px 8px;font-size:11px;color:var(--red)';
+      del.onclick=(e)=>{
+        e.stopPropagation();
+        if(!confirm('タグ「'+t.name+'」を削除しますか？\n全ショットとアセットからこのタグが外れます。'))return;
+        deleteTag(root,t.id);dirty=true;drawList();
+      };
+      row.appendChild(del);
+      list.appendChild(row);
+    }
+  };
+  drawList();
+  addBtn.onclick=()=>{
+    const nm=(nameIn.value||'').trim();if(!nm)return;
+    const t=createTag(root,nm);if(!t)return;
+    /* 新規作成直後は選択ショット全てに付与 */
+    for(const sh of shots){if(!getShotTags(sh).includes(t.id))sh.tags=[...getShotTags(sh),t.id]}
+    dirty=true;nameIn.value='';drawList();
+  };
+  nameIn.onkeydown=(e)=>{if(e.key==='Enter'){e.preventDefault();addBtn.click()}};
+  const close=async()=>{
+    document.body.removeChild(back);
+    if(dirty){try{await persist()}catch(_){}try{render()}catch(_){}}
+  };
+  closeBtn.onclick=close;
+  back.onclick=(e)=>{if(e.target===back)close()};
+  back.appendChild(box);
+  document.body.appendChild(back);
+  setTimeout(()=>nameIn.focus(),0);
+}
 /* アセットタブ本体：タイル + ヘッダ + 「＋ アセット追加」 */
 function renderProjAssets(main,root){
   const assets=getAssets(root);
@@ -6503,7 +6668,8 @@ function _buildAssetTile(a,root){
   tile.appendChild(th);
   const bd=el('div','bd');
   bd.appendChild(el('div','nm',a.name||'(名称未設定)'));
-  const cntU=(a.usedInShots||[]).filter(id=>getNode(id)).length;
+  /* v.048：使用ショット件数 = 手動 usedInShots ∪ タグ経由（asset.tagIds ⇔ shot.tags） */
+  const cntU=effectiveUsedShots(root,a).length;
   const mt=el('div','mt');
   mt.appendChild(el('span','pth',cntU?('使用: '+cntU+' ショット'):'未使用'));
   bd.appendChild(mt);
@@ -6523,8 +6689,17 @@ function _buildAssetTile(a,root){
    紐付け操作は「アセットタブ側」で完結させる（責務を分ける）。 */
 function buildShotAssetsPane(container,shot,root){
   if(!shot||!root)return;
-  const linkedIds=Array.isArray(shot.assets)?shot.assets:[];
-  const assets=linkedIds.map(id=>getAsset(root,id)).filter(Boolean);
+  /* v.048：使用アセット = 手動 shot.assets ∪ タグ経由（asset.tagIds が shot.tags と交わるもの） */
+  const manualIds=Array.isArray(shot.assets)?shot.assets:[];
+  const tset=new Set(getShotTags(shot));
+  const linkedSet=new Set(manualIds);
+  if(tset.size){
+    for(const a of getAssets(root)){
+      if(!Array.isArray(a.tagIds)||!a.tagIds.length)continue;
+      if(a.tagIds.some(t=>tset.has(t)))linkedSet.add(a.id);
+    }
+  }
+  const assets=Array.from(linkedSet).map(id=>getAsset(root,id)).filter(Boolean);
   const wrap=el('div','shot-assets-pane');
   wrap.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px';
   const head=el('div');head.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px';
@@ -6765,6 +6940,54 @@ function fillAssetDrawer(){
   };
   addRow.appendChild(sel);
   body.appendChild(addRow);
+  /* --- v.048：タグで使用ショットを自動紐付け ---
+     asset.tagIds に選んだタグが 1 つでも付いているショットは、このアセットを使うとみなす。
+     表示側（ショットページ「使用アセット」等）は effectiveUsedShots(root, asset) 経由で
+     手動 usedInShots とタグ経由の集合和を表示。 */
+  body.appendChild(el('div','section-label','タグで自動紐付け'));
+  const tagHint=el('div');tagHint.style.cssText='font-size:11px;color:var(--text3);margin-bottom:6px';
+  tagHint.textContent='選んだタグが付いた全ショットに、このアセットが自動で紐付きます（手動指定と併用可）。';
+  body.appendChild(tagHint);
+  if(!Array.isArray(a.tagIds))a.tagIds=[];
+  const allTags=getTags(root);
+  const tagWrap=el('div');tagWrap.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px';
+  if(!allTags.length){
+    const em=el('div');em.style.cssText='color:var(--text3);font-size:12px';
+    em.textContent='まだタグがありません。ショットタブで選択→「タグ付け」から作成できます。';
+    tagWrap.appendChild(em);
+  }else{
+    for(const t of allTags){
+      const on=a.tagIds.includes(t.id);
+      const chip=el('button');chip.type='button';
+      chip.style.cssText='padding:4px 10px;border-radius:12px;font-family:var(--font-code);font-size:12px;cursor:pointer;transition:all .12s ease;'+(on?'background:var(--accent);border:1px solid var(--accent);color:var(--bg)':'background:var(--bg3);border:1px solid var(--border);color:var(--text2)');
+      chip.textContent=(on?'✓ ':'')+'#'+t.name;
+      chip.onclick=async()=>{
+        if(a.tagIds.includes(t.id))a.tagIds=a.tagIds.filter(x=>x!==t.id);
+        else a.tagIds=[...a.tagIds,t.id];
+        a.updatedAt=nowIso();
+        try{await persist()}catch(_){}
+        render();
+      };
+      tagWrap.appendChild(chip);
+    }
+  }
+  body.appendChild(tagWrap);
+  /* タグ経由で解決される「実効的な使用ショット」の一覧（プレビュー） */
+  const eff=effectiveUsedShots(root,a);
+  const manualIds=new Set(a.usedInShots||[]);
+  const tagOnly=eff.filter(sh=>!manualIds.has(sh.id));
+  if(tagOnly.length){
+    const lbl=el('div');lbl.style.cssText='font-size:11px;color:var(--text3);margin-bottom:4px';
+    lbl.textContent='タグ経由で紐付くショット（'+tagOnly.length+'）：';
+    body.appendChild(lbl);
+    const effWrap=el('div');effWrap.style.cssText='display:flex;flex-wrap:wrap;gap:4px';
+    for(const sh of tagOnly){
+      const chip=el('span');chip.style.cssText='display:inline-block;padding:3px 8px;background:var(--bg3);border:1px dashed var(--border);border-radius:10px;font-family:var(--font-code);font-size:11px;color:var(--text2)';
+      chip.textContent=sh.name;
+      effWrap.appendChild(chip);
+    }
+    body.appendChild(effWrap);
+  }
   setTimeout(resolveThumbs,0);
 }
 /* 進捗タブ用：ショット親フォルダの取得。
