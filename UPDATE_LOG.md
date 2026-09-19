@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.030) **サイドバー含む残り 6 箇所の「レガシー shot section 判定」に Simple B ガードを追加**：
+  - v.029 で 4 箇所修正したが、`renderTreeNode` の `_isLegacyShotContainer`（サイドバー描画）や `getShotStageForTag` / `renderReviewBody` / `renderProjProgress` の `_isShotSection` / `_hdrIsLegacyContainer` / `_isShotContainer` / `isLegacyShotContainer` にも同じパターンが残っていた。
+  - 全 6 箇所に「子のいずれかが currentStage を持つならフォルダ扱いで false」を追加。
+  - サイドバーで Simple B フォルダがショットとして表示されていた（アイコンが film、集約 versions バッジ ▶107 が出ていた）不具合が直る。
+  - APP_VERSION：2026.09.20.029 → 2026.09.20.030
+
 - (dev v2026.09.20.029) **フォルダが shot 扱いされる不具合を修正（Simple B と Legacy shot section の判別強化）**：
   - v.028 の拡張で「子が全て review な section」を shot 境界と判定していたが、Simple B ショット（review 型で currentStage 持ち）で埋まっている**フォルダ**も shot 扱いされ、shots/{sid}.json に書き出されてツリーが崩壊していた。
   - 修正：`_isShotNodeForSave` / `_isShotLikeNode` / `_isShotSectionLegacy`（本体）と `isLegacyShot`（pmboard）の 4 箇所すべてで、「子のいずれかが `currentStage` を持つならフォルダとみなす」ガードを追加。
