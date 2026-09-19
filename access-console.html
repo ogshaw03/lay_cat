@@ -94,7 +94,7 @@
 
 <div class="overlay hidden" id="loginScreen">
   <div class="title-big">LayCAT <span class="sub">アクセス管理</span></div>
-  <div class="muted">運営専用のコンソールです。運営アカウントでログインしてください。</div>
+  <div class="muted">運営／管理者専用のコンソールです。登録されたアカウントでログインしてください。</div>
   <button class="btn btn-primary" id="loginBtn">Google でログイン</button>
 </div>
 
@@ -129,7 +129,7 @@
 
     <div id="opArea" class="hidden">
       <!-- R2 メンバーシップ再構築（operatorEmails/運営 のみ・1 回だけ実行） -->
-      <div class="card" id="rebuildCard">
+      <div class="card" id="rebuildCard" data-op-only="1">
         <div class="card-title">🔄 R2 メンバーシップ再構築（初回移行用）</div>
         <div class="card-desc">
           既存プロジェクトの <code>_access.json</code> を全走査して Firestore <code>laycatMemberships</code> インデックスを構築します。
@@ -144,7 +144,7 @@
       </div>
 
       <!-- 監査ログ（operatorEmails/運営 のみ） -->
-      <div class="card" id="auditCard">
+      <div class="card" id="auditCard" data-op-only="1">
         <div class="card-title">📋 監査ログ</div>
         <div class="card-desc">R2 プロジェクトへの書込・削除・拒否・エラーの記録を閲覧できます。<b>運営（operatorEmails）のみ</b>アクセス可能。</div>
         <a class="btn btn-primary hidden" id="auditOpenBtn" href="admin-audit.html" target="_blank" rel="noopener">📋 監査ログを開く（別タブ）</a>
@@ -155,7 +155,7 @@
       </div>
 
       <!-- 認証必須トグル -->
-      <div class="card">
+      <div class="card" data-op-only="1">
         <div class="card-title">🔑 認証</div>
         <div class="card-desc">オンにすると、下で許可したメンバーのみ LayCAT にログインできます。</div>
         <div class="mstatus off" id="arStatus"><span class="dot off" id="arDot"></span><span id="arText">状態を取得中…</span></div>
@@ -163,7 +163,7 @@
       </div>
 
       <!-- メンテナンス制御 -->
-      <div class="card">
+      <div class="card" data-op-only="1">
         <div class="card-title">🛠 メンテナンス制御</div>
         <div class="card-desc">開始するとアクセス中の全メンバーがメンテナンス画面になります（運営は上部バナーで閲覧可）。<b>解除すると全メンバーのページが自動的に再読み込み</b>されます。</div>
         <div class="mstatus off" id="mStatus"><span class="dot off" id="mDot"></span><span id="mStatusText">状態を取得中…</span></div>
@@ -177,7 +177,7 @@
       </div>
 
       <!-- 全体メッセージ（お知らせ） -->
-      <div class="card">
+      <div class="card" data-op-only="1">
         <div class="card-title">📢 全メンバーへのお知らせ</div>
         <div class="card-desc">メンテナンス予告などのメッセージを全メンバーの画面上部に表示します。各メンバーは確認後に自分で消せます。</div>
         <div class="mstatus off" id="bStatus"><span class="dot off" id="bDot"></span><span id="bStatusText">お知らせはありません</span></div>
@@ -201,7 +201,7 @@
       </div>
 
       <!-- 招待リンク（承認不要URL） -->
-      <div class="card">
+      <div class="card" data-op-only="1">
         <div class="card-title">🔗 招待リンク（承認不要）</div>
         <div class="card-desc">このリンクから LayCAT を開いた人は、<b>承認なしで自動的にメンバー</b>になります。何人でも使えます（無効化するまで有効）。リンクを知っている人は誰でも入れるため、配布先は信頼できる範囲に限定してください。無効化しても、すでに参加した人はメンバーのままです（下の「参加者」から個別に解除できます）。</div>
         <div class="add-row">
@@ -225,7 +225,7 @@
       </div>
 
       <!-- セットアップ（ルール） -->
-      <div class="card">
+      <div class="card" data-op-only="1">
         <div class="card-title">⚙ セットアップ（Firebase コンソール・初回のみ）</div>
         <div class="card-desc">このコンソールと LayCAT 本体は Firestore の <code>laynaAccess/config</code> を共有します。Firestore を有効化し、以下のルールを設定してください。</div>
         <details open><summary>必要な Firestore セキュリティルール</summary><pre id="rulesPre2"></pre></details>
@@ -372,6 +372,11 @@ function tiers(data){
   return {operators,admins,members,domains};
 }
 function isEditor(){ if(!cfg)return true; const t=tiers(cfg); return t.operators.map(lc).includes(lc(me.email)); }
+/* 2026-09-20：管理者（adminEmails）もコンソールを閲覧できるように isAdmin を追加。
+   管理者は「アクセス管理」と「許可ドメイン」のカードは見られるが、運営専用（data-op-only）
+   のカード（監査ログ・認証・メンテ・お知らせ・招待リンク・セットアップ・R2 再構築）は非表示。
+   isEditor() は引き続き運営のみで、編集系ボタンは全て非活性のまま。 */
+function isAdmin(){ if(!cfg)return true; const t=tiers(cfg); const em=lc(me.email); return t.operators.map(lc).includes(em)||(t.admins||[]).map(lc).includes(em); }
 /* 監査ログは運営（operatorEmails）のみアクセス可。
    ※ 2026-07-24 「管理者(adminEmails)」廃止後は isEditor と同義（運営 = editor = auditor）。 */
 function isAuditor(){ return isEditor(); }
@@ -409,8 +414,8 @@ function subscribe(){
   /* ログイン記録（laynaAccess/loggedUsers）を監視して名前・ドメインログイン者を表示 */
   luErr=null;
   unsubLU=onSnapshot(doc(db,'laynaAccess','loggedUsers'),
-    snap=>{ luErr=null; luUsers=snap.exists()?(snap.data().users||{}):{}; rebuildNames(); if(cfg&&isEditor())paint(); },
-    err=>{ luErr=err&&err.message; if(cfg&&isEditor())paint(); }
+    snap=>{ luErr=null; luUsers=snap.exists()?(snap.data().users||{}):{}; rebuildNames(); if(cfg&&isAdmin())paint(); },
+    err=>{ luErr=err&&err.message; if(cfg&&isAdmin())paint(); }
   );
   /* 招待リンク（承認不要URL）一覧を監視 */
   unsubInv=onSnapshot(collection(db,INV_COL),
@@ -490,12 +495,18 @@ function render(){
     return;
   }
   $('bootstrapCard').classList.add('hidden');
-  if(!isEditor()){
+  if(!isAdmin()){
+    /* 運営でも管理者でもない → コンソールに入れない */
     $('notOpCard').classList.remove('hidden');$('opArea').classList.add('hidden');
-    $('notOpDesc').textContent=me.email+' は運営(operatorEmails)に登録されていません。編集するには運営に追加を依頼してください。';
+    $('notOpDesc').textContent=me.email+' は運営／管理者に登録されていません。閲覧するには運営に追加を依頼してください。';
     return;
   }
   $('notOpCard').classList.add('hidden');$('opArea').classList.remove('hidden');
+  /* 管理者（運営ではない）の場合は運営専用カードを非表示に */
+  const opOnly=isEditor();
+  document.querySelectorAll('#opArea .card[data-op-only]').forEach(c=>{
+    if(opOnly)c.classList.remove('hidden');else c.classList.add('hidden');
+  });
   paint();
 }
 
