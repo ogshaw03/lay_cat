@@ -3764,7 +3764,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.022';
+const APP_VERSION='2026.09.20.023';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4308,6 +4308,92 @@ function scanMentionsForMe(){
     updateNotifBadge();persist(); /* 通知を localStorage に保存（次回読込でも保持） */
     const pn=$('#notifPanel');if(pn&&!pn.classList.contains('hidden'))renderNotifPanel();
   }
+  /* v.023：優先（急ぎ）版の未確認モーダル通知 */
+  try{showPriorityModalIfAny()}catch(e){try{console.warn('priority modal failed',e)}catch(_){}}
+}
+/* v.023：version.priority=true の版を対象に、自分がチェック担当のものをモーダルで通知。
+   ack はブラウザ localStorage に vid 単位で保存し、閉じたものは再表示しない。 */
+function _priorityAckSet(){try{return new Set(JSON.parse(localStorage.getItem('laycat_prioAck')||'[]'))}catch(_){return new Set()}}
+function _savePriorityAck(set){try{localStorage.setItem('laycat_prioAck',JSON.stringify([...set].slice(-3000)))}catch(_){}}
+function _collectPriorityForMe(){
+  const out=[];const ack=_priorityAckSet();
+  if(!DB)return out;
+  const meEmail=((authUser&&authUser.email)||'').toLowerCase();
+  for(const root of childrenOf(null)){
+    if(projectLocked(root))continue;
+    const me=myIdentity(root);
+    if(!me.ids.size&&!me.name)continue;
+    const meNmLc=me.name?String(me.name).trim().toLowerCase():'';
+    for(const n of descendants(root.id)){
+      if(!n||n.type!=='review'||!n.reviewer)continue;
+      const rid=String(n.reviewer).toLowerCase();
+      const rm=memberById(root,n.reviewer);
+      const rmNmLc=rm?String(rm.name||'').trim().toLowerCase():'';
+      const revNmLc=String(n.reviewer||'').trim().toLowerCase();
+      const mineRev=me.ids.has(rid)||(meNmLc&&rmNmLc&&rmNmLc===meNmLc)||(meNmLc&&revNmLc===meNmLc);
+      if(!mineRev)continue;
+      for(const ver of (n.versions||[])){
+        if(!ver||!ver.id||!ver.priority)continue;
+        if(ack.has(ver.id))continue;
+        /* 自分自身のアップロードはスキップ */
+        const upperLc=String(ver.uploadedBy||'').trim().toLowerCase();
+        if(upperLc&&meNmLc&&upperLc===meNmLc)continue;
+        if(meEmail&&upperLc===meEmail)continue;
+        out.push({root,node:n,ver});
+      }
+    }
+  }
+  return out;
+}
+function showPriorityModalIfAny(){
+  const items=_collectPriorityForMe();
+  if(!items.length)return;
+  /* 既に開いている場合は重複表示しない */
+  if(document.getElementById('priorityModal'))return;
+  const back=el('div');back.id='priorityModal';
+  back.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;display:flex;align-items:center;justify-content:center';
+  const box=el('div');
+  box.style.cssText='background:var(--bg2);border:2px solid #ff6b6b;border-radius:12px;padding:20px 24px;width:min(560px,92vw);max-height:82vh;display:flex;flex-direction:column;gap:12px;box-shadow:0 12px 40px rgba(255,107,107,.35)';
+  const title=el('div');title.style.cssText='font-family:var(--font-head);font-weight:800;font-size:17px;color:#ff6b6b;display:flex;align-items:center;gap:8px';
+  title.innerHTML='🚨 <span>優先チェック依頼が '+items.length+' 件あります</span>';
+  box.appendChild(title);
+  const hint=el('div');hint.style.cssText='font-size:12px;color:var(--text3);line-height:1.5';
+  hint.textContent='急ぎで確認してほしいアップロードが届いています。行をクリックするとその動画を開きます。';
+  box.appendChild(hint);
+  const list=el('div');list.style.cssText='flex:1;overflow-y:auto;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:4px';
+  for(const it of items){
+    const sh=(function(){let cur=it.node;while(cur&&cur.type==='review'&&cur.parentId){const p=getNode(cur.parentId);if(!p)break;if(p.type==='section'&&!p.parentId)break;cur=p}return cur})();
+    const row=el('div');row.style.cssText='display:flex;flex-direction:column;gap:2px;padding:8px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;cursor:pointer;transition:background .12s ease';
+    row.onmouseenter=()=>row.style.background='var(--bg4,rgba(255,255,255,.05))';
+    row.onmouseleave=()=>row.style.background='var(--bg2)';
+    const line1=el('div');line1.style.cssText='display:flex;gap:8px;align-items:baseline';
+    const projLb=el('span');projLb.style.cssText='font-family:var(--font-code);font-size:10px;color:var(--text3)';projLb.textContent=it.root.name||'';
+    const nmLb=el('span');nmLb.style.cssText='font-weight:700;color:var(--text)';nmLb.textContent=(sh&&sh.name)||it.node.name;
+    const stLb=el('span');stLb.style.cssText='font-family:var(--font-code);font-size:11px;color:var(--text2)';stLb.textContent='工程: '+(it.node.name||'—')+' ／版: '+(it.ver.name||'—');
+    line1.appendChild(projLb);line1.appendChild(nmLb);
+    const line2=el('div');line2.style.cssText='display:flex;gap:8px;font-size:11px;color:var(--text3)';
+    const upl=el('span');upl.textContent='アップロード：'+(it.ver.uploadedBy||'—');
+    const at=el('span');try{at.textContent=new Date(it.ver.uploadedAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}catch(_){at.textContent=it.ver.uploadedAt||''}
+    line2.appendChild(upl);line2.appendChild(at);
+    row.appendChild(line1);row.appendChild(stLb);row.appendChild(line2);
+    row.onclick=()=>{
+      /* ack して閉じ、該当版のレビュー窓を開く */
+      const ack=_priorityAckSet();ack.add(it.ver.id);_savePriorityAck(ack);
+      try{back.remove()}catch(_){}
+      try{openReview(it.node.id,it.ver.id,{modal:true})}catch(_){}
+    };
+    list.appendChild(row);
+  }
+  box.appendChild(list);
+  const btns=el('div');btns.style.cssText='display:flex;justify-content:space-between;gap:8px;margin-top:4px';
+  const dismissAll=el('button','btn btn-ghost btn-sm','すべて確認済みにする');
+  dismissAll.onclick=()=>{const ack=_priorityAckSet();for(const it of items)ack.add(it.ver.id);_savePriorityAck(ack);back.remove()};
+  const later=el('button','btn btn-primary btn-sm','あとで確認');
+  later.onclick=()=>back.remove();
+  btns.appendChild(dismissAll);btns.appendChild(later);
+  box.appendChild(btns);
+  back.appendChild(box);
+  document.body.appendChild(back);
 }
 /* ライブ同期ではないため、他者の新着（サブミット＝チェック依頼・アノテ等）は
    フォルダを読み直すまで手元の DB に入らない。通知ベルを開いた時などにこれを呼び、
@@ -11324,6 +11410,8 @@ async function uploadVersion(node,file,ui,opts){
     /* サイレント・アップロード：チェック依頼通知を出さない設定（アップロードモーダルの
        「チェック担当者に通知を送る」☑ が OFF のとき）。通知スキャナで版ごとにスキップする。 */
     if(opts.notify===false)version.noNotify=true;
+    /* v.023：優先（急ぎ）フラグ。担当者にモーダル通知を出すためのマーカー */
+    if(opts.priority===true)version.priority=true;
     /* EXR の場合はフラグを立てておく（レビュー画面で「EXR 表示調整」ボタンを出すため） */
     if(isExr){version.exr=true;version.exrView={exposure:0,gamma:2.2}}
     /* アップロード時のコメントは「メッセージ」（node.comments）として記録（ショット全体コメントは廃止） */
@@ -11402,6 +11490,7 @@ async function uploadExrSequence(node,seq,ui,opts){
       version.uploadCommentId=_cm.id;
     }
     if(opts.notify===false)version.noNotify=true;
+    if(opts.priority===true)version.priority=true;
     node.versions.push(version);if(thumbRef)node.thumbnail=thumbRef;
     /* v.027 修正：通常動画版と同じく notify ガードを追加（サイレント時はステータス自動変更しない） */
     if(opts.notify!==false){const sts=projStatuses(node);if(sts&&sts.length)await setStatus(node,sts[0].id,'upload')}
@@ -11455,12 +11544,23 @@ function openUploadModal(node,file){
       notifyLab.innerHTML='<b>チェック担当者に通知を送る</b><span style="color:var(--text3);margin-left:6px;font-size:11px">（オフ＝サイレント・アップロード）</span>';
       notifyRow.appendChild(notifyLab);
       inner.appendChild(notifyRow);
+      /* v.023：優先（急ぎ）フラグ。ON なら version.priority=true を焼き、チェック担当者が
+         アプリを触ったときにモーダルでポップアップ通知（未確認のうちは毎ログインで表示）。 */
+      const prioRow=el('label','form-row');
+      prioRow.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin:0';
+      const prioCb=el('input');prioCb.type='checkbox';prioCb.checked=false;
+      prioCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
+      prioRow.appendChild(prioCb);
+      const prioLab=el('span','form-label');prioLab.style.margin='0';
+      prioLab.innerHTML='<b>🚨 優先（急ぎでチェック依頼）</b><span style="color:var(--text3);margin-left:6px;font-size:11px">（担当者がアプリを触ったらモーダル表示）</span>';
+      prioRow.appendChild(prioLab);
+      inner.appendChild(prioRow);
       const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=()=>{closeModal();res(false)};
       const ok=el('button','btn btn-primary','アップロード');
       ok.onclick=async()=>{
         closeModal();
         const proot=rootOf(node);
-        await uploadVersion(node,file,curUploadUI||{prog:{classList:{add(){},remove(){}}},bi:{style:{}},pct:{}},{name:nameRow.f.value,comment:cmtRow.f.value,projectId:proot?proot.id:null,notify:notifyCb.checked});
+        await uploadVersion(node,file,curUploadUI||{prog:{classList:{add(){},remove(){}}},bi:{style:{}},pct:{}},{name:nameRow.f.value,comment:cmtRow.f.value,projectId:proot?proot.id:null,notify:notifyCb.checked,priority:prioCb.checked});
         res(true);
       };
       mFoot(body,[cancel,ok]);
