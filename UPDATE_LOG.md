@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.036) **進捗表示の起点フォルダ（EP）自動検出を Simple B にも対応**：
+  - **背景**：v.035 以前は `pmProgressParents` が「孫（工程）を持つ子」だけ EP と見なしていたので、`root → EP → Simple B ショット（review 型・子なし）` 構造では EP が検出できず、手動で `shotsParentIds` 設定が必要だった。
+  - **修正**：EP 判定条件を「その子が review 型（Simple B ショット）または孫を持つ section（レガシー shot）」に拡張。両モデル混在プロジェクトでも EP を漏れなく拾えるように。
+  - **効果**：新規プロジェクトを Simple B で作って EP フォルダを添えても起点フォルダの手動設定が不要。既存の明示設定（`shotsParentIds` / `shotsParentId`）は引き続き優先。
+  - APP_VERSION：2026.09.19.035 → 2026.09.19.036
+
 - (dev v2026.09.19.035) **工程フォルダ概念を UI から削除**（サイドバー・ショット section ページの双方）：
   - **背景**：`arch-hierarchy-shot-stage` メモリの通り「ショットは 1 ページ、工程はプルダウン」方針に完全に寄せる。従来レガシー multi-stage shot は section 直下に review 子ノードが並び、サイドバー展開＝工程一覧、shot section クリック＝工程タイル表示という 3 段階だったが、これを廃止。
   - **サイドバー（`renderTreeNode`）**：レガシー shot container（section 直下が全て review）を検出したら、

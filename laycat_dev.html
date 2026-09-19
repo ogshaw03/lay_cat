@@ -3733,7 +3733,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.035';
+const APP_VERSION='2026.09.19.036';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6659,16 +6659,23 @@ function fillAssetDrawer(){
   body.appendChild(addRow);
   setTimeout(resolveThumbs,0);
 }
-/* 進捗タブ用：プロジェクト配下でショット親になり得るノード（孫を持つ） */
-/* 3 階層モデル（エピソード → ショット → 作業ページ）に沿った自動判定：
+/* 進捗タブ用：プロジェクト配下でショット親になり得るノード（＝ EP フォルダ、または root） */
+/* 判定ルール（Simple B・レガシー multi-stage 両対応、起点フォルダ設定を極力不要にする）：
    ・優先：ルート直下の子で `kind==='episode'` の明示指定があればそれ
-   ・次に：ルート直下の子で「孫（ショット）→ 曾孫（作業ページ）」を持つ子があればそれ
+   ・次に：ルート直下の子で以下いずれかを含むものを EP と見なす：
+     ・レガシー shot section（type==='section' で孫＝工程 review を持つ）
+     ・Simple B ショット（type==='review'）
    ・どちらも無ければルート自身（＝直下がショット） */
 function pmProgressParents(root){
   const rootChildren=childrenOf(root.id);
   const marked=rootChildren.filter(rc=>rc.kind==='episode');
   if(marked.length)return marked;
-  const episodes=rootChildren.filter(rc=>childrenOf(rc.id).some(sh=>childrenOf(sh.id).length>0));
+  /* v.036：Simple B（review 型ショット）を EP フォルダ配下に置いても EP を検出できるよう、
+     child が review 型（＝ショット自身）でも EP として拾う。従来は「孫を持つ section」だけ検出していた。 */
+  const episodes=rootChildren.filter(rc=>{
+    const kids=childrenOf(rc.id);
+    return kids.some(sh=>sh.type==='review'||childrenOf(sh.id).length>0);
+  });
   if(episodes.length)return episodes;
   return [root];
 }
