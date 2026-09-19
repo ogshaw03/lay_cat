@@ -3767,7 +3767,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.026';
+const APP_VERSION='2026.09.20.027';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10624,6 +10624,16 @@ function openLegacyToSimpleBModal(root){
    他プロジェクトの shot.json は _saveCache により未変更 → スキップ。 */
 async function convertLegacyToSimpleB(root,shots){
   if(!shots||!shots.length)return;
+  /* 事前：root.stages が空なら、変換対象ショットの子工程名（順序）から補完する。
+     これをしないと変換後に工程プルダウンが空になり、Simple B UI から工程を選べなくなる。 */
+  if(!Array.isArray(root.stages)||!root.stages.length){
+    const uniq=[];const seen=new Set();
+    for(const sh of shots){
+      const kids=childrenOf(sh.id).filter(k=>k.type==='review');
+      for(const k of kids){if(!seen.has(k.name)){seen.add(k.name);uniq.push(k.name)}}
+    }
+    if(uniq.length)root.stages=uniq;
+  }
   for(const sh of shots){
     const kids=childrenOf(sh.id).filter(k=>k.type==='review');
     if(!kids.length)continue;
