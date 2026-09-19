@@ -125,7 +125,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
 .mh-row1{display:flex;align-items:center;gap:12px;min-height:42px}
 .vdiv{width:1px;height:20px;background:var(--border2);flex-shrink:0;align-self:center;margin:0 2px}
-/* 作業ページの2カラムレイアウト：左=既存内容、右=NOTE パネル（固定表示・NOTE 内でスクロール） */
+/* ショットページの2カラムレイアウト：左=既存内容、右=NOTE パネル（固定表示・NOTE 内でスクロール） */
 /* min-height を viewport 分確保することで sticky が常に機能する（左が短くても NOTE が付いてくる） */
 .review-layout{display:flex;gap:16px;align-items:flex-start;width:100%;min-height:calc(100vh - 240px)}
 /* 右スライド（openReviewDrawer/openSubmitDrawer）内では NOTE パネルを出さないので 1 カラム扱い */
@@ -163,7 +163,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .note-img-tb button:hover{background:var(--bg4);border-color:var(--edge)}
 .note-img-tb .sep{width:1px;background:var(--border);margin:0 3px;align-self:stretch}
 .note-img-tb .lbl{font-size:10px;color:var(--text3);align-self:center;margin:0 2px}
-/* 作業ページ/カテゴリページ左上の固定バー（スクロール追従） */
+/* ショットページ/カテゴリページ左上の固定バー（スクロール追従） */
 /* task-topbar は main-col 内にあるが、下線 (border-bottom) は行全体を横断する見た目に
    したいので、`::after` で右方向 (note-col の右端まで = gap 16 + note-col 340 + scroll 右パディング 20 = 376px)
    に線だけ延長する。box-sizing:border-box の overflow ペナルティを避けられる。 */
@@ -249,7 +249,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .ptab{background:none;border:none;border-bottom:2px solid transparent;color:var(--text3);font-family:var(--font-head);font-size:14px;font-weight:700;letter-spacing:.5px;padding:8px 16px;cursor:pointer}
 .ptab:hover{color:var(--text)}
 .ptab.on{color:var(--text);border-bottom-color:var(--accent2)}
-/* タブ列（ヘッダ内・開いている作業ページを下線付きテキストタブで複数並べる） */
+/* タブ列（ヘッダ内・開いているショットページを下線付きテキストタブで複数並べる） */
 .task-tabs{display:flex;align-items:flex-end;gap:2px;flex-wrap:wrap;margin:0 -20px 0;padding:2px 20px 0;border-bottom:1px solid var(--border);min-height:34px}
 .task-tabs-empty{font-size:12px;color:var(--text3);padding:6px 2px}
 .task-tab{display:inline-flex;align-items:center;gap:5px;max-width:260px;background:none;border:none;border-bottom:2px solid transparent;color:var(--text3);font-family:var(--font-code);font-size:14px;font-weight:600;letter-spacing:.2px;font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;padding:8px 8px 8px 12px;cursor:pointer;margin-bottom:-1px}
@@ -710,7 +710,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .drawer-hd .sp{flex:1}
 .drawer-hd .drawer-acts{display:flex;gap:8px;flex-shrink:0}
 .drawer-body{flex:1;min-height:0;overflow-y:auto;padding:16px 18px}
-/* レビュードロワー：作業ページの固定バーを上部メニュー直下に詰める（隙間を無くす） */
+/* レビュードロワー：ショットページの固定バーを上部メニュー直下に詰める（隙間を無くす） */
 .drawer.drawer-review .drawer-body{padding-top:0}
 .drawer.drawer-review .drawer-body .task-topbar{margin-left:-18px;margin-right:-18px;padding-left:18px;padding-right:18px}
 /* 右側スライドは幅が狭いので、フレームコメント（スクショ）列を細くして
@@ -722,7 +722,7 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .stage-strip .ss-lab svg{width:12px;height:12px}
 .ss-sel{min-width:110px;max-width:180px;padding:5px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;font-family:inherit;cursor:pointer}
 .ss-sel:focus{outline:none;border-color:var(--border2)}
-/* インライン工程プルダウン（作業ページ h1 の中）：見出しの一部として表示する。
+/* インライン工程プルダウン（ショットページ h1 の中）：見出しの一部として表示する。
    通常の .ss-sel は 12px/max 180px だが、h1 内では 18px/max 260px にして
    工程名テキストと同じ視覚重量になるように。 */
 .stage-strip-inline{display:inline-flex;align-items:center}
@@ -1065,7 +1065,7 @@ textarea.form-input{height:70px;resize:vertical}
   </main>
 </div>
 <div class="modal-overlay hidden" id="modal"><div class="modal" id="modalBody"></div></div>
-<div class="drop-overlay hidden" id="dropOverlay"><div class="dz"><span class="big">◐</span>ここにドロップしてアップロード<br><small>動画・画像ファイル（複数可）— この作業ページのログに追加されます</small></div></div>
+<div class="drop-overlay hidden" id="dropOverlay"><div class="dz"><span class="big">◐</span>ここにドロップしてアップロード<br><small>動画・画像ファイル（複数可）— このショットページのログに追加されます</small></div></div>
 
 <script>
 'use strict';
@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.040';
+const APP_VERSION='2026.09.19.041';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4233,7 +4233,7 @@ function scanMentionsForMe(){
     /* 既存の DB.notifications に該当キーが無くて localStorage seen だけ残っているものは、
        次回以降のために seen 側からも取り除く（消えた通知を復活可能にする）。 */
     for(const s of [...seen])if(s.startsWith('rq:')&&!existingRq.has(s)&&!pending.some(p=>p.rqKey===s))seen.delete(s);
-    /* 作業ページ経由の直接アップロード（＝サブミットを作らない経路）でもチェック依頼通知を出す。
+    /* ショットページ経由の直接アップロード（＝サブミットを作らない経路）でもチェック依頼通知を出す。
        各タスクの版を走査し、自分がチェック担当のタスクに他者がアップした新規版を検知する。
        重複抑止は上と同じで DB.notifications.rqKey ベース（'rq:v:...'）。 */
     for(const n of descendants(root.id)){
@@ -4835,7 +4835,7 @@ function subShowView(sb){
     const mt=el('div','mt');const badge=el('span','pm-badge',n.name);badge.style.background=stageBadgeColor(n);mt.appendChild(badge);mt.appendChild(el('span','pth',v.name));bd.appendChild(mt);
     if(item.comment)bd.appendChild(el('div','pth',item.comment));
     tile.appendChild(bd);
-    tile.onclick=()=>{if(subS.ov)subS.ov.remove();go(n.id)}; /* 作業ページへ */
+    tile.onclick=()=>{if(subS.ov)subS.ov.remove();go(n.id)}; /* ショットページへ */
     grid.appendChild(tile);
   }
   if(!(sb.items&&sb.items.length))wrap.appendChild(el('div','sub-empty','アイテムがありません。'));
@@ -5369,7 +5369,7 @@ function buildProjectTabsHead(root){
   });
   return nav;
 }
-/* 下段：左サイドバー／ショットから開いたタスク（作業ページ）をタブとして複数並べる（ブラウザのタブ風） */
+/* 下段：左サイドバー／ショットから開いたタスク（ショットページ）をタブとして複数並べる（ブラウザのタブ風） */
 function buildTaskTabs(root){
   /* タスク（review）のみタブ表示。カテゴリ（section）は表示しない。
      state.openTasks は破壊的にフィルタしない（暗号化解錠前や R2 非同期取り込みで getNode が
@@ -5391,7 +5391,7 @@ function buildTaskTabs(root){
   state.openTasks=cleaned;
   const strip=el('div','task-tabs');
   if(!visible.length){
-    strip.appendChild(el('span','task-tabs-empty','左のツリーやショットから作業ページを開くとタブで並びます'));
+    strip.appendChild(el('span','task-tabs-empty','左のツリーやショットからショットページを開くとタブで並びます'));
     return strip;
   }
   /* タブ並べ替え D&D の状態（Chrome 風にリアルタイムでスライドさせるため strip 全体で管理）。
@@ -5727,7 +5727,7 @@ function projectStageNames(rootId){return [...new Set(descendants(rootId).filter
 function tlHiddenSet(rootId){if(state.tlHiddenFor!==rootId){state.tlHiddenFor=rootId;state.tlHidden=new Set()}return state.tlHidden;}
 
 /* v.040：階層モデルを「フォルダ」「ショットページ」の 2 種に簡素化。
-   従来はエピソード／ショット／作業ページ の 3 階層想定だったが、
+   従来はエピソード／ショット／ショットページ の 3 階層想定だったが、
    ユーザー方針で「任意深さのフォルダ + 末端のショットページ」に統一。
    openAddModal は type='section' or 'review' を渡すだけ。 */
 function _emptyProjectGuide(cur){
@@ -5772,7 +5772,7 @@ function renderProjTimeline(main,cur){
   const evs=projectUpdates(cur.id).filter(visEv);
   const lab=el('div','section-label');lab.appendChild(el('span',null,'最新の更新タイムライン'));main.appendChild(lab);
   if(!evs.length){
-    main.appendChild(el('div','empty',projectUpdates(cur.id).length?'表示できる更新がありません。右上の工程フィルタでチェックを追加してください。':'まだ更新がありません。作業ページに動画をアップロードすると、ここに新着順で表示されます。'));
+    main.appendChild(el('div','empty',projectUpdates(cur.id).length?'表示できる更新がありません。右上の工程フィルタでチェックを追加してください。':'まだ更新がありません。ショットページに動画をアップロードすると、ここに新着順で表示されます。'));
     /* 完全な空プロジェクト（子要素なし）の場合、大きなアクションボタンで最初の一手をガイドする */
     if(descendants(cur.id).length===0){main.appendChild(_emptyProjectGuide(cur));}
     return;
@@ -5781,9 +5781,9 @@ function renderProjTimeline(main,cur){
   for(const e of evs){
     if(e.type==='submit'){tl.appendChild(tlSubmitItem(e,cur));continue}
     /* ショットの枠全体をクリックで該当ショットへ移動 */
-    const it=el('div','tl-item');it.onclick=()=>openReviewDrawer(e.node.id);it.title='クリックで作業ページを右側に表示（動画タイルは作業ページへ）';
+    const it=el('div','tl-item');it.onclick=()=>openReviewDrawer(e.node.id);it.title='クリックでショットページを右側に表示（動画タイルはショットページへ）';
     const th=el('img','tl-thumb');if(e.v.thumb)th.dataset.ref=e.v.thumb;
-    th.title='クリックで作業ページへ';th.onclick=ev=>{ev.stopPropagation();go(e.node.id)}; /* 動画タイルは直接作業ページへ */
+    th.title='クリックでショットページへ';th.onclick=ev=>{ev.stopPropagation();go(e.node.id)}; /* 動画タイルは直接ショットページへ */
     it.appendChild(th);
     const bd=el('div','tl-body');
     const shot=e.node.parentId?getNode(e.node.parentId):null;
@@ -5805,7 +5805,7 @@ function renderProjTimeline(main,cur){
 function tlSubmitItem(e,cur){
   const sb=(DB.submits||[]).find(s=>s.id===e.submitId);
   const open=()=>{if(sb)openSubmitDrawer(sb.id)};
-  const grp=el('div','tl-submit-group');grp.style.cursor='pointer';grp.title='クリックでサブミットを右側に表示（動画タイルは作業ページへ）';grp.onclick=open; /* 枠クリックで右スライド表示 */
+  const grp=el('div','tl-submit-group');grp.style.cursor='pointer';grp.title='クリックでサブミットを右側に表示（動画タイルはショットページへ）';grp.onclick=open; /* 枠クリックで右スライド表示 */
   const head=el('div','tl-submit-head');
   head.appendChild(elIco('span','tl-subbadge','folder','サブミット'));
   head.appendChild(el('span','tl-subname',e.name));
@@ -5815,7 +5815,7 @@ function tlSubmitItem(e,cur){
   const row=el('div','tl-submit-tiles');
   for(const item of e.items){
     const n=item.node,v=item.v;const shot=n.parentId?getNode(n.parentId):null;
-    const tile=el('div','tl-stile');tile.onclick=ev=>{ev.stopPropagation();go(n.id)};tile.title='クリックで作業ページへ：'+((shot?shot.name+' / ':'')+n.name); /* 動画タイルは直接作業ページへ */
+    const tile=el('div','tl-stile');tile.onclick=ev=>{ev.stopPropagation();go(n.id)};tile.title='クリックでショットページへ：'+((shot?shot.name+' / ':'')+n.name); /* 動画タイルは直接ショットページへ */
     const th=el('div','th');const img=el('img');if(v.thumb)img.dataset.ref=v.thumb;th.appendChild(img);tile.appendChild(th);
     const bd=el('div','bd');
     bd.appendChild(el('div','sn',shot?shot.name:n.name)); /* ショット名 */
@@ -6008,7 +6008,7 @@ function renderProjCheck(main,root){
   for(const n of hits){
     const done=!isPend(n);
     const lv=latestVideoVersionUnder(n.id);
-    const it=el('div','tl-item'+(done?' tl-done':''));it.title='クリックで作業ページをタブ表示（動画タイルはアノテーション表示）';it.onclick=()=>go(n.id);
+    const it=el('div','tl-item'+(done?' tl-done':''));it.title='クリックでショットページをタブ表示（動画タイルはアノテーション表示）';it.onclick=()=>go(n.id);
     const th=el('img','tl-thumb');if(lv&&lv.v.thumb)th.dataset.ref=lv.v.thumb;
     if(lv){th.title='クリックでアノテーションウィンドウを開く';th.onclick=ev=>{ev.stopPropagation();openReview(lv.node.id,lv.v.id,{modal:true})}} /* 動画タイルはアノテーションをモーダル表示 */
     it.appendChild(th);
@@ -6186,11 +6186,11 @@ function renderProjShots(main,cur){
     }else th.appendChild(thumbPh());
     /* オミット：サムネはそのまま（グレーアウトはCSS）、オミット猫をオーバーレイ */
     if(isOmit){const ov=el('div','omit-ov');const cat=el('img','omit-cat');cat.src=OMIT_CAT_IMG;cat.alt='オミット';ov.appendChild(cat);th.appendChild(ov);}
-    /* 動画・サムネ部分（th）のクリック：縦並び行と同じで、作業ページ（タブ）追加＝go に振る。
+    /* 動画・サムネ部分（th）のクリック：縦並び行と同じで、ショットページ（タブ）追加＝go に振る。
        選択モード中／Ctrl・Meta クリックは通常のタイル onclick（下）と同じ選択トグルを通す。
        これによりタイル枠クリック＝右スライド、動画部クリック＝タブ追加、の 2 挙動が両立する。 */
     if(lv){
-      th.title='クリックで作業ページ（タブ）に追加';
+      th.title='クリックでショットページ（タブ）に追加';
       th.onclick=(ev)=>{
         const inSel=(state.shotSel&&state.shotSel.size>0);
         if(inSel||ev.ctrlKey||ev.metaKey)return; /* 選択モード時はタイル本体の onclick に委譲（stopPropagation しない） */
@@ -6255,8 +6255,8 @@ function renderProjShots(main,cur){
     };
     const th=el('img','shot-row-th');if(lv&&lv.v.thumb)th.dataset.ref=lv.v.thumb;
     /* 縦並び表示のサムネクリック：以前はアノテ窓（openReview modal）を開いていたが、
-       ユーザー要望により作業ページ（タブ）追加＝go に変更。行本体クリックの右スライドはそのまま。 */
-    if(lv){th.title='クリックで作業ページ（タブ）に追加';th.onclick=ev=>{ev.stopPropagation();go(lv.node.id)}}
+       ユーザー要望によりショットページ（タブ）追加＝go に変更。行本体クリックの右スライドはそのまま。 */
+    if(lv){th.title='クリックでショットページ（タブ）に追加';th.onclick=ev=>{ev.stopPropagation();go(lv.node.id)}}
     it.appendChild(th);
     it.appendChild(el('span','shot-row-nm',sh.name)); /* ショット名 */
     if(rep){const stg=el('span','tl-stage',rep.name);stg.style.background=lv?stageBadgeColor(rep):hexA(stageBadgeColor(rep),.45);it.appendChild(stg);} /* 工程（全工程未着手なら先頭工程を控えめ色で表示） */
@@ -6771,7 +6771,7 @@ const ROLE_META={
   category:{label:'フォルダ',    ico:'folder'},
   shot    :{label:'ショット',      ico:'film'},
   stage   :{label:'工程',        ico:'shot'},
-  task    :{label:'作業ページ',  ico:'task'},
+  task    :{label:'ショットページ',  ico:'task'},
 };
 /* roleOf は毎回 shotsOf(root) を再構築するとO(n^2)になるため、レンダー単位でショットID集合をメモ化する（render/normalizeで無効化） */
 let _shotIdSetMemo=null;
@@ -6787,7 +6787,7 @@ function roleOf(node){
   if(shotIds.has(node.id))return 'shot';                 /* ショット親の直下＝ショット */
   const parent=getNode(node.parentId);
   if(parent&&shotIds.has(parent.id))return 'stage';      /* ショットの直下＝工程 */
-  if(node.type==='review')return 'task';                 /* ショット階層に属さない単独の作業ページ */
+  if(node.type==='review')return 'task';                 /* ショット階層に属さない単独のショットページ */
   /* kind 未設定の旧データでも「ルート直下の section で兄弟にショット（section 孫を持つ）が居る」なら episode 推定 */
   if(parent&&!parent.parentId&&node.type==='section'){
     const sibs=childrenOf(parent.id).filter(n=>n.id!==node.id);
@@ -6795,7 +6795,7 @@ function roleOf(node){
       /* 兄弟がエピソードなら自分もエピソード相当 */
       return 'episode';
     }
-    /* 自分の直下に孫（作業ページ）を持つ子（ショット）が居るなら自分はエピソード */
+    /* 自分の直下に孫（ショットページ）を持つ子（ショット）が居るなら自分はエピソード */
     if(childrenOf(node.id).some(gc=>childrenOf(gc.id).length>0))return 'episode';
   }
   return 'category';                                     /* それ以外のフォルダ */
@@ -6947,7 +6947,7 @@ function pmShotBreakdown(main,p,isStage,pickId,hasStages){
       badge.style.background=isStage?curStageColor(ps.stageName):(stInfo(ps.curNode||ps.shot).color||'#5a5a6a');mt.appendChild(badge);
       mt.appendChild(el('span','pth',lv?('最新: '+lv.v.name):'動画なし'));bd.appendChild(mt);tile.appendChild(bd);
       tile.onclick=()=>{
-        /* 動画がある → その工程の作業ページ。動画無しでも、代表工程 (curNode)、なければ
+        /* 動画がある → その工程のショットページ。動画無しでも、代表工程 (curNode)、なければ
            ショット直下の先頭工程、最後の手段でショット自身へ遷移して「動画なし」でも作業できるようにする。 */
         if(lv)go(lv.node.id);
         else if(ps.curNode)go(ps.curNode.id);
@@ -6956,7 +6956,7 @@ function pmShotBreakdown(main,p,isStage,pickId,hasStages){
           go(kids.length?kids[0].id:ps.shot.id);
         }
       };
-      grid.appendChild(tile); /* タイル → 作業ページへ */
+      grid.appendChild(tile); /* タイル → ショットページへ */
     }
     main.appendChild(grid);
   }else{
@@ -7196,7 +7196,7 @@ async function _noteResizeImage(file,maxSide){
     img.src=url;
   });
 }
-/* 作業ページ右カラムの NOTE パネル（contenteditable ベースの簡易リッチテキスト）
+/* ショットページ右カラムの NOTE パネル（contenteditable ベースの簡易リッチテキスト）
    ・保存先：node.note（HTML 文字列）→ persist() 経由でプロジェクトデータに保持
    ・書式：太字・見出し（H1/H2/H3）・文字サイズ・水平線・書式リセット
    ・画像：<img class="note-img"> 挿入＋クリック選択でミニツールバー（幅／回転／削除）
@@ -7479,12 +7479,12 @@ function renderReviewBody(s,cur,opts){
   s.appendChild(layout);
   /* 以降、s の代わりに mainCol へ追加する（既存コードの s.appendChild を最小改変で流用） */
   s=mainCol;
-  /* 作業ページ左上の固定バー：ショット番号／工程／ステータス＋ステータス切替・設定・削除（スクロール追従） */
+  /* ショットページ左上の固定バー：ショット番号／工程／ステータス＋ステータス切替・設定・削除（スクロール追従） */
   const topbar=el('div','task-topbar');
   /* 同ショット内に複数工程があればプルダウン、無ければテキストで工程名を表示。
      プルダウン選択で他工程ページへ遷移（現在の工程は selected 状態で引き継ぎ）。 */
   const shotSec=(cur.parentId&&getNode(cur.parentId))||null;
-  /* Auto-sync：この作業ページを開いた瞬間、ショット section の currentStage を
+  /* Auto-sync：このショットページを開いた瞬間、ショット section の currentStage を
      「今表示している工程名」に同期させる。プルダウン切替以外のナビゲーション（ツリークリック・
      ハッシュ直リンク・go() 経由）でも一貫して「現在の工程 = プルダウンが指す工程」となる。
      shotSec が「shot section」（type=section で直下子が全て review）のときのみ書き込む。 */
@@ -7646,7 +7646,7 @@ function buildStageStrip(shot,curReviewId){
   wrap.appendChild(sel);
   return wrap;
 }
-/* 作業ページ左上：工程切替プルダウン。
+/* ショットページ左上：工程切替プルダウン。
    優先順位：
      ・親（shot）が「shot section」（type=section で 子が全て review）＝ 旧モデル
        → 兄弟 review を列挙し switchStageInTab で切替
@@ -7747,10 +7747,10 @@ function fillReviewDrawer(){
   back._p.textContent=(shot?pathOf(shot.id).slice(1).map(x=>x.name).join(' / '):pathOf(node.id).slice(1,-1).map(x=>x.name).join(' / '))||rootOf(node).name;
   back._acts.innerHTML='';
   /* ＋タブに追加：現在選択中の工程をタブに追加 */
-  const openB=el('button','btn btn-open btn-sm','タブに追加');openB.title='この工程の作業ページをタブとして開く';openB.onclick=()=>{const id=state.drawer&&state.drawer.id;closeReviewDrawer();if(id)go(id)};back._acts.appendChild(openB);
+  const openB=el('button','btn btn-open btn-sm','タブに追加');openB.title='この工程のショットページをタブとして開く';openB.onclick=()=>{const id=state.drawer&&state.drawer.id;closeReviewDrawer();if(id)go(id)};back._acts.appendChild(openB);
   back.classList.add('drawer-review');
   const body=back._body;body.innerHTML='';curUploadUI=null;
-  /* 上部：各工程のタイル（サブミットの右スライドと同形）。クリックで下の作業ページを切替 */
+  /* 上部：各工程のタイル（サブミットの右スライドと同形）。クリックで下のショットページを切替 */
   const stages=shot?descendants(shot.id).filter(n=>n.type==='review'):[node];
   if(stages.length>1||shot){
     body.appendChild(el('div','section-label','工程（クリックで切替・ダブルクリックでタブに追加）'));
@@ -7780,7 +7780,7 @@ function fillReviewDrawer(){
     }
     body.appendChild(grid);
   }
-  /* 下部：選択中の工程の作業ページ（水色ラインで区切り＝サブミットと共通） */
+  /* 下部：選択中の工程のショットページ（水色ラインで区切り＝サブミットと共通） */
   const detail=el('div','sub-detail');body.appendChild(detail);
   renderReviewBody(detail,node,{inDrawer:true});
   resolveThumbs();
@@ -7815,7 +7815,7 @@ function fillSubmitDrawer(){
   }
   if(sb.comment){const bc=el('div','sub-viewcmt');bc.appendChild(elIco('div','ttl','folder','サブミットへのコメント'));bc.appendChild(el('div','tx',sb.comment));body.appendChild(bc);}
   /* 提出物ヘッダ：まとめて全ショットをタブに追加するボタンを配置 */
-  const sl=el('div','section-label');sl.appendChild(el('span',null,'提出物（タイルをクリックすると下に作業ページを表示）'));
+  const sl=el('div','section-label');sl.appendChild(el('span',null,'提出物（タイルをクリックすると下にショットページを表示）'));
   const slActs=el('div','acts');
   const addAll=el('button','btn btn-open btn-sm','＋ まとめてタブに追加');addAll.title='この提出の全ショットをタブに追加';
   addAll.onclick=()=>{const nodes=(sb.items||[]).map(it=>getNode(it.nodeId)).filter(n=>n&&n.type==='review');if(!nodes.length)return;for(const n of nodes){state.openTasks=(state.openTasks||[]).filter(x=>x!==n.id);state.openTasks.push(n.id)}closeReviewDrawer();go(nodes[nodes.length-1].id)};
@@ -7833,19 +7833,19 @@ function fillSubmitDrawer(){
     const mt=el('div','mt');const badge=el('span','pm-badge',n.name);badge.style.background=stageBadgeColor(n);mt.appendChild(badge);mt.appendChild(el('span','pth',v.name));bd.appendChild(mt);
     if(item.comment)bd.appendChild(el('div','pth',item.comment));
     tile.appendChild(bd);
-    tile.onclick=()=>{state.drawer.detailId=n.id;tiles.forEach(t=>t.classList.remove('sel'));tile.classList.add('sel');showSubDetail();syncHash()}; /* タイル → その下に作業ページを展開 */
+    tile.onclick=()=>{state.drawer.detailId=n.id;tiles.forEach(t=>t.classList.remove('sel'));tile.classList.add('sel');showSubDetail();syncHash()}; /* タイル → その下にショットページを展開 */
     tiles.push(tile);grid.appendChild(tile);
   }
   if(!(sb.items&&sb.items.length)){body.appendChild(el('div','sub-empty','アイテムがありません。'));return}
   body.appendChild(grid);body.appendChild(detail);
-  /* 選択したタイルの作業ページをタイルの下（ドロワー内）に表示 */
+  /* 選択したタイルのショットページをタイルの下（ドロワー内）に表示 */
   function showSubDetail(){
     detail.innerHTML='';
     const n=state.drawer.detailId&&getNode(state.drawer.detailId);
     if(!n||n.type!=='review')return;
     const hd=el('div','sub-detail-hd');
     hd.appendChild(elIco('span','ttl','film',(shotOf(n)?shotOf(n)+' / ':'')+n.name+' — '+roleLabel(n)+'ページ'));
-    const openB=el('button','btn btn-open btn-sm','タブに追加');openB.title='この作業ページをタブとして開く';openB.onclick=()=>{closeReviewDrawer();go(n.id)};hd.appendChild(openB);
+    const openB=el('button','btn btn-open btn-sm','タブに追加');openB.title='このショットページをタブとして開く';openB.onclick=()=>{closeReviewDrawer();go(n.id)};hd.appendChild(openB);
     detail.appendChild(hd);
     const inner=el('div','sub-detail-body');renderReviewBody(inner,n,{inDrawer:true});detail.appendChild(inner);
     resolveThumbs();
@@ -8467,7 +8467,7 @@ function noteBlock(v,n,opts){
 }
 
 /* 動画・画像をダウンロード。フォルダ内の実ファイル名は media_<id> に変わっているため、
-   作業ページの動画タイトル（v.name）＋元の拡張子でダウンロードする。 */
+   ショットページの動画タイトル（v.name）＋元の拡張子でダウンロードする。 */
 async function downloadVersion(v){
   if(!v||!v.file){toast('ファイルがありません');return}
   let a=null,dlurl=null;
@@ -8541,7 +8541,7 @@ function logItem(node,v){
     const lb=elIco('button','btn btn-ghost btn-sm','reel',' '+r.name);lb.title='保存済みリールを開く';
     lb.onclick=()=>openReelFromSaved(r.id);head.appendChild(lb);
   }
-  /* この版を削除（アノテーションウィンドウを開かずに、作業ページから直接削除できる）。
+  /* この版を削除（アノテーションウィンドウを開かずに、ショットページから直接削除できる）。
      fbビューアの削除ボタンと同じロジック。もし該当版で fb が開いていたら閉じる。 */
   const dlt=el('button','btn btn-danger btn-sm');dlt.appendChild(icoEl('trash'));dlt.title='この'+(v.type==='video'?'動画':'画像')+'を削除';
   dlt.onclick=async e=>{e.stopPropagation();
@@ -8553,7 +8553,7 @@ function logItem(node,v){
     node.versions=node.versions.filter(x=>x.id!==v.id);
     node.thumbnail=node.versions.length?node.versions[node.versions.length-1].thumb:null;
     await persist();
-    /* 該当ブロックを DOM から即除去。さらに作業ページの scroll を強制クリアしてから
+    /* 該当ブロックを DOM から即除去。さらにショットページの scroll を強制クリアしてから
        render() で完全再構築（render 途中で中断・スキップされても DOM が古いままにならない）。 */
     try{document.querySelectorAll('.log-item[data-vid="'+v.id+'"]').forEach(li=>li.remove());}catch(_){}
     try{const sc=document.getElementById('scroll');if(sc)sc.innerHTML='';}catch(_){}
@@ -9154,8 +9154,8 @@ function frow(label,type){const r=el('div','form-row');r.appendChild(el('label',
 function typeSelector(initial,onChange,opts){
   opts=opts||{};
   const threeWay=!!opts.threeWay;
-  const labels=opts.labels||{section:'ショット',review:'作業ページ'};
-  const subs=opts.subs||{section:'ショット単位のフォルダ（sh010 など）。中に工程を並べる',review:'動画・画像の FB ログを縦に残す作業ページ'};
+  const labels=opts.labels||{section:'ショット',review:'ショットページ'};
+  const subs=opts.subs||{section:'ショット単位のフォルダ（sh010 など）。中に工程を並べる',review:'動画・画像の FB ログを縦に残すショットページ'};
   const epLabel=opts.epLabel||'エピソード';
   const epSub=opts.epSub||'複数話の場合の話単位フォルダ（EP01 など）。中にショットを並べる';
   /* 3-way モードでは get() の返り値は 'episode' | 'cut' | 'task'。
@@ -9192,7 +9192,7 @@ function typeSelector(initial,onChange,opts){
 function openProjectModal(){
   openModal(body=>{
     body.classList.add('proj-modal');
-    const inner=mHead(body,'新規プロジェクト','エピソード・ショット・作業ページとは別の、最上位のプロジェクトです');
+    const inner=mHead(body,'新規プロジェクト','エピソード・ショット・ショットページとは別の、最上位のプロジェクトです');
     /* サムネイル（タイルの縦横比に合わせてトリミング可能） */
     inner.appendChild(el('div','form-label','プロジェクトサムネイル（任意・ドラッグ/拡大でタイル表示範囲を調整）'));
     let thumbFile=null,thumbUrl=null,cropWidget=null;
@@ -9704,7 +9704,7 @@ function openRename(node){
     sec(1,'📝','基本情報','このアイテムの表示名・種別・説明を編集します。');
     const nameRow=frow('名前','input');nameRow.f.value=node.name;
     inner.appendChild(nameRow.r);
-    /* プロジェクトルート以外は 3-way（エピソード／ショット／作業ページ）で階層種別を後から変更可能。
+    /* プロジェクトルート以外は 3-way（エピソード／ショット／ショットページ）で階層種別を後から変更可能。
        ルートは常に section なので従来通り 2 択（section/review）にする（実質固定）。
        3-way モードでは ts.get() が 'episode'|'cut'|'task' を返すので保存時にマップする。 */
     let _initSel;
@@ -9715,7 +9715,7 @@ function openRename(node){
     const ts=typeSelector(_initSel,null,isProjectRoot?undefined:{threeWay:true});
     inner.appendChild(ts.row);
     const kids=childrenOf(node.id).length,vers=node.versions.length;
-    if(kids||vers)inner.appendChild(el('div','form-label','※ 種別を変えてもデータは消えません（作業ページにすると子アイテムは非表示、フォルダにすると動画ログは非表示になります）。現在: 子'+kids+'件 / 動画'+vers+'本'));
+    if(kids||vers)inner.appendChild(el('div','form-label','※ 種別を変えてもデータは消えません（ショットページにすると子アイテムは非表示、フォルダにすると動画ログは非表示になります）。現在: 子'+kids+'件 / 動画'+vers+'本'));
     const descRow=frow('説明','textarea');descRow.f.value=node.description||'';
     inner.appendChild(descRow.r);
     /* セクションフォルダ：工程テンプレート
@@ -9799,7 +9799,7 @@ function openRename(node){
       }
     }
     /* タスク（工程）：作業担当・チェック担当（メンバーから選択。ショット単位ではなく工程ごとに設定） */
-    /* 作業者/チェック者の設定は作業ページ上部バー（設定ボタンの左）に移設 */
+    /* 作業者/チェック者の設定はショットページ上部バー（設定ボタンの左）に移設 */
     /* プロジェクト（ルート）ならステータス／進捗のショット親フォルダを編集できる */
     let stArr=null,spSel=null,projThumbFile=null,projThumbUrlTmp=null,projCropWidget=null,scArr=null,ovSel=null;
     let pwNew=null,pwConf=null,pwRemove=null;
@@ -10035,7 +10035,7 @@ function projectMembers(root){if(!root)return [];root.members=Array.isArray(root
 function memberById(root,id){if(!root||!id)return null;const k=String(id).toLowerCase();return (root.members||[]).find(m=>String(m.id).toLowerCase()===k)||null}
 /* ==== 工程（タスク）担当（作業担当者 / チェック担当者）====
    ・保存先は工程＝タスク（review）ノードの node.assignee / node.reviewer（メンバーID＝メール）
-   ・担当はショット単位ではなく工程ごとに変わり得るため、作業ページの設定画面で設定する。
+   ・担当はショット単位ではなく工程ごとに変わり得るため、ショットページの設定画面で設定する。
    ・候補はプロジェクトメンバー（projectMembers）。進捗/ショットタブのフィルタに使用 */
 /* 工程（タスク）の担当バッジ：割当があるものだけ表示 */
 function taskAssignBadges(node){
@@ -10078,7 +10078,7 @@ function memberSearchPicker(root,current,label,onChange,noneLabel){
   setDisplay();
   return {row,get:()=>value};
 }
-/* 作業ページ上部バー用：作業者/チェック者を編集できる検索付きインラインピッカー */
+/* ショットページ上部バー用：作業者/チェック者を編集できる検索付きインラインピッカー */
 function taskAssignTopPicker(node,field,label){
   const root=rootOf(node);
   const p=memberSearchPicker(root,node[field],label,async v=>{if(v)node[field]=v;else delete node[field];await persist();renderBody();resolveThumbs()},'— 未割当');
@@ -11169,7 +11169,7 @@ function openReview(nodeId,versionId,opts){
      fb-top 全体の中で対称に配置される。両サイドの 1fr が同幅を確保するので clipInfo は本当の中央に来る。 */
   const actions=el('div','fb-actions');top.appendChild(actions);
   /* 作業担当者／チェック担当者バッジ：クリックでその場のメンバーピッカーを開いて変更できる。
-     ・保存先は node[field]（工程＝review タスク自身）。作業ページの taskAssignTopPicker と同じ挙動。
+     ・保存先は node[field]（工程＝review タスク自身）。ショットページの taskAssignTopPicker と同じ挙動。
      ・表示は node の値を優先し、未設定ならショット親の値を fallback で継承する。
      ・未設定でも「担当:— / レビュー:—」の chip を表示して、そこから設定できるようにする。 */
   {
@@ -11444,7 +11444,7 @@ function openReview(nodeId,versionId,opts){
     })();
   }
   /* このバージョン削除ボタンは、アノテーション削除と誤操作しやすいため
-     アノテ窓のトップバーから撤去（版削除は作業ページ側の版タイル右上から可能）。 */
+     アノテ窓のトップバーから撤去（版削除はショットページ側の版タイル右上から可能）。 */
   /* 表示モード切替 */
   fsBtn=el('button','btn btn-ghost btn-sm fb-fs','⛶');fsBtn.onclick=()=>{fbFullscreen=!fbFullscreen;fbApplyMode()};actions.appendChild(fsBtn);
   ov.appendChild(top);
@@ -11785,9 +11785,9 @@ function openReview(nodeId,versionId,opts){
   const list=el('div','fb-notes');side.appendChild(list);
   const iw=el('div','fb-input');
   const ta=el('textarea');ta.placeholder=isVideo?'このフレームにコメント…（@でメンション・Ctrl+Enterで送信）':'コメント…（@でメンション・Ctrl+Enterで送信）';
-  const sb=el('button','btn btn-primary btn-sm','送信');sb.title='コメント／アノテーションを作業ページに反映（未送信を含めまとめて保存）';
+  const sb=el('button','btn btn-primary btn-sm','送信');sb.title='コメント／アノテーションをショットページに反映（未送信を含めまとめて保存）';
   iw.appendChild(ta);iw.appendChild(sb);side.appendChild(iw);attachMention(ta,rootOf(node));
-  /* 「保存」バーは非表示（送信 = そのまま作業ページに反映するように一段化）。
+  /* 「保存」バーは非表示（送信 = そのままショットページに反映するように一段化）。
      未送信の残数表示だけは残しておいたほうが親切なので、状態インジケータとして薄く表示。 */
   const submitBar=el('div','fb-submit-bar');
   const submitLab=el('span','fb-unsent-lab');
@@ -13238,7 +13238,7 @@ function openReview(nodeId,versionId,opts){
     renderNotes(true);drawAll();drawTimeline();updSubmit();
     persist().then(()=>{try{renderBody();resolveThumbs()}catch(_){}}).catch(e=>{try{console.warn('persist(submit) failed',e);toast('保存に失敗しました')}catch(_){}});
   }
-  /* 送信 = 「現在フレームのコメント+アノテだけ」を即作業ページに反映（他フレームの pending は残す）。
+  /* 送信 = 「現在フレームのコメント+アノテだけ」を即ショットページに反映（他フレームの pending は残す）。
      保存 = 全フレームまとめて反映（従来 submit）。他フレームの未送信 pending が残ってる時のみ表示。
      UI は先に更新して見た目上の遅延をゼロにし、persist は _persistChain 経由でバックグラウンド直列化。 */
   async function sendCurrent(){
@@ -15170,7 +15170,7 @@ function openReel(){
   const clist=ce(d,'div','fb-notes');cside.appendChild(clist);
   const ciw=ce(d,'div','fb-input');
   const cta=d.createElement('textarea');cta.placeholder='このフレームにコメント…（@でメンション・Ctrl+Enterで送信）';
-  const csend=ce(d,'button','btn on','送信');csend.title='コメント／アノテを送信（保存するまで作業ページには反映されません）';
+  const csend=ce(d,'button','btn on','送信');csend.title='コメント／アノテを送信（保存するまでショットページには反映されません）';
   ciw.appendChild(cta);ciw.appendChild(csend);cside.appendChild(ciw);attachMention(cta,curRoot());
   rowEl.appendChild(cside);
 
@@ -16372,7 +16372,7 @@ function openReel(){
      真実のソースは v.review.notes。pending はセッション中の表示用ミラー。
      embed ノート id は `reel_emb_<nodeId>_<frame>` の固定 ID。1 フレーム 1 ノート、drawing 配列に全 stroke／figure。
      描画・クリア・消しゴム・投げ縄削除の各操作後に該当フレームを reelSyncEmbedFrame で再構築し debounce persist。
-     ⇒ REEL で描いた瞬間から作業ページ側の動画にも埋め込まれ、逆方向の変更も v.review.notes 経由で見える。 */
+     ⇒ REEL で描いた瞬間からショットページ側の動画にも埋め込まれ、逆方向の変更も v.review.notes 経由で見える。 */
   const _reelEmbPrefix=c=>'reel_emb_'+(c&&c.nodeId?c.nodeId:'unknown')+'_';
   function _reelEmbId(c,frame){return _reelEmbPrefix(c)+frame}
   function reelSyncEmbedFrame(c,frame){
@@ -16984,7 +16984,7 @@ function openReel(){
     populateReelFilters(allRevs);
     const fs=reelUI.filterStatus||'',fa=(reelUI.filterAssignee||'').toLowerCase();
     const revs=allRevs.filter(n=>(!fs||nodeStatus(n)===fs)&&(!fa||String(n.assignee||'').toLowerCase()===fa));
-    if(!revs.length){rlist.appendChild(ce(d,'div','pth',allRevs.length?'フィルタに一致するショットがありません':'動画のある作業ページがありません'));return}
+    if(!revs.length){rlist.appendChild(ce(d,'div','pth',allRevs.length?'フィルタに一致するショットがありません':'動画のあるショットページがありません'));return}
     /* ショット（工程=reviewの親section）ごとにまとめ、工程でタイルを分けない。
        ショットタイル → 押すと工程タイル → さらに該当動画（バージョン）を選ぶ。 */
     const shotMap=new Map();
@@ -17254,7 +17254,7 @@ function openComparePicker(aNode,aVer,onPick){
       }
       list.appendChild(card);
     }
-    if(!shown)list.appendChild(el('div','sub-empty','動画のある作業ページがありません。'));
+    if(!shown)list.appendChild(el('div','sub-empty','動画のあるショットページがありません。'));
   }
   search.oninput=paint;paint();
   const pkf=el('div','pkf');pkf.appendChild(el('span','sub','比較元: '+((shotOf(aNode)?shotOf(aNode)+' / ':'')+aNode.name+' '+aVer.name)));
