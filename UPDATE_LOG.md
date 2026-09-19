@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.014) **ユーザー名を localStorage に永続化（pmboard との共有識別）**：
+  - トップバー右上の「名前」入力（`#currentUser`）を `localStorage.laycat_userName` に保存／復元するよう配線。
+  - pmboard 側で同じキーを読んで `root.members` と照合し、非メンバーのアクセスを弾く。これにより「PMboard のアクセス権をプロジェクトのメンバー管理から継承」する構成が成立。
+  - APP_VERSION：2026.09.20.013 → 2026.09.20.014
+
 - (dev v2026.09.20.013) **PM Board ボタンのリンク先を pmboard_dev.html に修正**：
   - laycat_dev.html は Dev なので pmboard も Dev（pmboard_dev.html）を開くように変更。Beta 反映時に pmboard.html へ戻す想定（本体側 laycat.html は既に pmboard.html を指しているので、次回 Beta 反映で dev→dev、beta→beta の対応を維持する）。
   - APP_VERSION：2026.09.20.012 → 2026.09.20.013
@@ -2581,6 +2586,11 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.09.20.001) **LayCAT のプロジェクトメンバー管理を継承したアクセスチェックを追加**：
+  - `localStorage.laycat_userName`（LayCAT 側で v.014 から永続化）を現在ユーザー識別として使用し、`root.members` と照合。非メンバーはアクセス拒否画面（🔒 アイコン＋ガイド）に切替。
+  - `root.members` 未設定／空配列のプロジェクトは互換のため誰でも閲覧可。
+  - APP_VERSION：2026.09.19.033 → 2026.09.20.001
 
 - (dev v2026.09.19.033) **SHOT 列を 1 行レイアウトに戻し、メモをショット名の右に inline 配置**：
   - **背景**：v.026 でメモを 2 段目に配置したが、行高が嵩んで見づらいというユーザー要望。

@@ -601,7 +601,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.19.033';
+const APP_VERSION='2026.09.20.001';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2334,6 +2334,36 @@ function updateFolderUI(){
     nm.textContent = storage.pid ? '許可待ち' : '未接続';
   }
 }
+/* v.0.2.0 (pmboard)：LayCAT のメンバー管理を継承したアクセスチェック。
+   - `localStorage.laycat_userName` を現在ユーザー識別として使う。
+   - `root.members` に登録されていない名前ならアクセス拒否画面に切替。
+   - members 未設定／空配列のプロジェクトは互換のため誰でも閲覧可。 */
+function _pmCurrentUserName(){
+  try{return (localStorage.getItem('laycat_userName')||'').trim()}catch(_){return ''}
+}
+function _pmIsMember(root){
+  if(!root)return true;
+  const list=Array.isArray(root.members)?root.members.filter(m=>m&&m.active!==false):[];
+  if(!list.length)return true; /* members 未設定 → 互換で許可 */
+  const nm=_pmCurrentUserName().toLowerCase();
+  if(!nm)return false;
+  for(const m of list){
+    const cid=String(m.id||'').toLowerCase();
+    const cnm=String(m.name||'').toLowerCase();
+    if(nm && (nm===cid||nm===cnm))return true;
+  }
+  return false;
+}
+function _pmCheckMemberAccess(){
+  const nodes=(DATA.project&&Array.isArray(DATA.project.nodes))?DATA.project.nodes:[];
+  const root=nodes.find(n=>n.id===(DATA.project&&DATA.project.id))||nodes.find(n=>!n.parentId);
+  if(_pmIsMember(root))return true;
+  const body=document.getElementById('ganttBody');
+  const meNow=_pmCurrentUserName()||'（未設定）';
+  const projName=(DATA.project&&(DATA.project.name||DATA.project.id))||'このプロジェクト';
+  body.innerHTML=`<div class="empty-panel" style="max-width:520px;margin:40px auto"><div class="ep-ico">🔒</div><div class="ep-title">アクセス権がありません</div><div class="ep-sub" style="line-height:1.6">「${escapeHtml(projName)}」のメンバーとして登録されていません。<br>現在の識別名：<b>${escapeHtml(meNow)}</b><br><br>アクセスするには、LayCAT のトップバー右上「名前」欄をプロジェクトに登録されたメンバー名と一致させて、このタブを再読み込みしてください。</div></div>`;
+  return false;
+}
 async function loadAndRender(){
   const body = document.getElementById('ganttBody');
   body.innerHTML=`<div class="loading-panel">読み込み中…</div>`;
@@ -2342,6 +2372,10 @@ async function loadAndRender(){
     body.innerHTML=`<div class="empty-panel"><div class="ep-ico">⚠</div><div class="ep-title">読み込み失敗</div><div class="ep-sub">${escapeHtml(r.err||'不明なエラー')}</div></div>`;
     return;
   }
+  /* v.0.2.0 (pmboard)：LayCAT のプロジェクトメンバー管理を継承。root.members が設定されて
+     いれば、`localStorage.laycat_userName` の名前と照合し、非メンバーはアクセス拒否画面に。
+     members が未設定・空配列のプロジェクトは従来通り誰でも閲覧可（互換）。 */
+  if(!_pmCheckMemberAccess()){return}
   /* カスタムスケジュール（オリジナル工程セット）も並列読み込み */
   await loadCustomSchedules();
   /* スケール（日/週/月）を反映（timeline.days が確定してから）— rerender は後続処理に任せる */
