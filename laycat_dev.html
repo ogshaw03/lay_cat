@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.053';
+const APP_VERSION='2026.09.19.054';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -13861,7 +13861,22 @@ function latestVideoVersionUnder(nodeId){let best=null;for(const n of [getNode(n
 function progressData(parentIds,tab,filterFn){
   const ids=Array.isArray(parentIds)?parentIds:[parentIds]; /* 複数の親フォルダを集約（単一idも可） */
   const parent=getNode(ids[0]);
-  let shots=[];{const seen=new Set();for(const pid of ids)for(const sh of childrenOf(pid))if(!seen.has(sh.id)){seen.add(sh.id);shots.push(sh)}}
+  /* v.054：ショットの列挙をショットタブ（shotsOf）と同じ再帰＋型フィルタに揃える。
+     旧実装は `childrenOf(pid)` の直下のみを見ていたため、選んだフォルダが「更にフォルダを含む
+     コンテナ」（例：プロジェクト直下配下に EP01/EP02 フォルダがあるケース）だと、EP フォルダ
+     自身がショット扱いで縦並びに出てしまう不具合があった。ここは shotsOf のロジックを流用。 */
+  let shots=[];{
+    const seen=new Set();
+    for(const pid of ids){
+      const stack=[...childrenOf(pid)];
+      while(stack.length){
+        const n=stack.shift();
+        if(!n||seen.has(n.id))continue;
+        if(_isShotLikeNode(n)){seen.add(n.id);shots.push(n)}
+        else if(n.type==='section')stack.push(...childrenOf(n.id));
+      }
+    }
+  }
   if(filterFn)shots=shots.filter(filterFn);
   const statuses=projStatuses(parent||shots[0]||{});
   const perShot=shots.map(shot=>{
