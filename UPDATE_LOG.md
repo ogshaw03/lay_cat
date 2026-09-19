@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.046) **ショットタブ・進捗タブがショットページ（Simple B review）に対応**：
+  - **背景**：ショットタブは `shotsOf(root)` の結果を並べる仕様だが、`shotsOf` は「ショット親フォルダの直下子」を type 問わず返していた。そのため `root → EP folder → ショットページ` のようなネスト構造では EP フォルダ自体がショットとして並んで実物のショットページが出ない、逆に純粋なフォルダも "ショット" 扱いされる問題があった。
+  - **修正**：`shotsOf` を再帰化＋型フィルタ。`_isShotLikeNode` で「review 型」or「レガシー shot section（子が全て review）」だけを "ショット" と判定し、それ以外の section（純粋なフォルダ）は中を掘る。ショットが多重にネストされていても正しく集約。
+  - **影響**：ショットタブ・進捗タブ・工数タブ（`shotsOf` を使う全経路）で Simple B review が正しくショットとして表示される。既存のレガシー multi-stage 構造も無変更で動作継続。
+  - APP_VERSION：2026.09.19.045 → 2026.09.19.046
+
 - (dev v2026.09.19.045) **v.044 の工程プルダウン色付けが効いていなかった不具合を修正**：
   - **原因 1**：pmboard 由来の `resolveColor` を LayCAT 側で使っていたが LayCAT には未定義 → `_colorFor` が常に null になり色付け全部スキップ。`stageColorFor` は既に `#hex` を返すので **そのまま style に流し込む**ように修正。
   - **原因 2**：`.stage-strip-inline .ss-sel:hover/:focus/:active` の CSS が `color:var(--text)` / `border-color:var(--accent)` を上書きしていたので、inline style を `!important` 付きで設定。

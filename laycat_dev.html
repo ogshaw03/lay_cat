@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.045';
+const APP_VERSION='2026.09.19.046';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6761,7 +6761,31 @@ function shotsParentsOf(root){
 /* 後方互換：単一の親が必要な箇所用（先頭を返す） */
 function shotsParentOf(root){return shotsParentsOf(root)[0];}
 /* 選択された全親フォルダ直下のショットを集約（重複除去・順序保持） */
-function shotsOf(root){const seen=new Set(),out=[];for(const pid of shotsParentsOf(root))for(const sh of childrenOf(pid))if(!seen.has(sh.id)){seen.add(sh.id);out.push(sh)}return out;}
+/* v.046：shotsOf を 2 階層モデル（フォルダ／ショットページ）に対応。
+   ショット親配下を再帰的に走査して "ショットらしい" ノード（review 型 or レガシー shot section）だけ返す。
+   途中のフォルダ（section で子に review 以外を含む）は素通りして中を掘る。 */
+function _isShotLikeNode(n){
+  if(!n)return false;
+  if(n.type==='review')return true;
+  if(n.type==='section'){
+    const kids=childrenOf(n.id);
+    return kids.length>=1&&kids.every(k=>k.type==='review');
+  }
+  return false;
+}
+function shotsOf(root){
+  const seen=new Set(),out=[];
+  for(const pid of shotsParentsOf(root)){
+    const stack=[...childrenOf(pid)];
+    while(stack.length){
+      const n=stack.shift();
+      if(!n||seen.has(n.id))continue;
+      if(_isShotLikeNode(n)){seen.add(n.id);out.push(n)}
+      else if(n.type==='section'){stack.push(...childrenOf(n.id))}
+    }
+  }
+  return out;
+}
 /* ショット親が明示指定されず自動検出になっているか */
 function shotsAuto(root){return !(Array.isArray(root.shotsParentIds)&&root.shotsParentIds.some(id=>getNode(id)))&&!(root.shotsParentId&&getNode(root.shotsParentId));}
 /* ── 役割の"見える化" ──
