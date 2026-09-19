@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.029) **フォルダが shot 扱いされる不具合を修正（Simple B と Legacy shot section の判別強化）**：
+  - v.028 の拡張で「子が全て review な section」を shot 境界と判定していたが、Simple B ショット（review 型で currentStage 持ち）で埋まっている**フォルダ**も shot 扱いされ、shots/{sid}.json に書き出されてツリーが崩壊していた。
+  - 修正：`_isShotNodeForSave` / `_isShotLikeNode` / `_isShotSectionLegacy`（本体）と `isLegacyShot`（pmboard）の 4 箇所すべてで、「子のいずれかが `currentStage` を持つならフォルダとみなす」ガードを追加。
+  - Simple B ショットは必ず `currentStage` を持つので、この判定で確実に区別できる。
+  - APP_VERSION：2026.09.20.028 → 2026.09.20.029
+
 - (dev v2026.09.20.028) **Simple B 変換が保存で巻き戻る問題を根本修正（_isShotNodeForSave 拡張）**：
   - **原因**：`_isShotNodeForSave` が `type==='section'` のみをショット境界と判定していたため、v.025 変換後の Simple B（type='review'）ショットは `shots/{sid}.json` に個別保存されず、古い section+review 子のファイルがディスクに残り続けていた。次回起動時に `_hydrateShots` が古いファイルを DB に上書きして変換が巻き戻り、サイドバーに工程ページが復活・PMB 側のショット認識も崩れていた（PMB のガントバーが消える等）。
   - **修正**：`_isShotNodeForSave` に Simple B 分岐を追加。`type='review'` の非ルートで、親がレガシー shot section でないなら shot 境界と判定。これにより Simple B ショットが `shots/{sid}.json` に個別保存され、古いファイルを上書き。
@@ -2675,6 +2681,11 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.09.20.011) **Simple B ショットで埋まったフォルダを isLegacyShot がレガシー扱いしていた不具合を修正**：
+  - `isLegacyShot` を「子が全て review」の判定に加えて「子のいずれかが currentStage を持つならフォルダ扱いで false」を追加。
+  - これで Simple B 変換後のフォルダ配下ショットが正しく認識され、ガントバーが正常表示。
+  - APP_VERSION：2026.09.20.010 → 2026.09.20.011
 
 - (dev v2026.09.20.010) **マイルストーン日付ラベルのフォントを拡大＋視認性向上**：
   - ガント上のラベル文字を 10px → 13px、📌 は 14px。色を `--text2` → `--text` に濃く、text-shadow を追加して背景との識別性を確保。

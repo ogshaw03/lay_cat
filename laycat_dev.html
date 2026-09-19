@@ -3155,14 +3155,20 @@ function _isShotNodeForSave(n,allNodes){
   if(n.type==='section'){
     const kids=allNodes.filter(x=>x.parentId===n.id);
     if(!kids.length)return false;
-    return kids.every(k=>k.type==='review');
+    if(!kids.every(k=>k.type==='review'))return false;
+    /* v.029：子のいずれかが `currentStage` を持つ（＝ Simple B ショット）なら、
+       この section は「フォルダ」であってレガシー shot section ではない。
+       ショット扱いすると、フォルダを勝手に shots/{sid}.json に書き出してツリーが崩れる。 */
+    if(kids.some(k=>k.currentStage!=null))return false;
+    return true;
   }
   if(n.type==='review'){
-    /* 親がレガシー shot section（＝子が全て review 型）だったら、これは工程子なのでショット扱いしない */
+    /* 親がレガシー shot section（＝子が全て review かつ Simple B ではない）なら、
+       これは工程子なのでショット扱いしない */
     const parent=allNodes.find(x=>x.id===n.parentId);
     if(parent&&parent.type==='section'&&parent.parentId){
       const sibs=allNodes.filter(x=>x.parentId===parent.id);
-      if(sibs.length&&sibs.every(k=>k.type==='review'))return false;
+      if(sibs.length&&sibs.every(k=>k.type==='review')&&!sibs.some(k=>k.currentStage!=null))return false;
     }
     return true;
   }
@@ -3782,7 +3788,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.028';
+const APP_VERSION='2026.09.20.029';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7224,7 +7230,11 @@ function _isShotLikeNode(n){
   if(n.type==='review')return true;
   if(n.type==='section'){
     const kids=childrenOf(n.id);
-    return kids.length>=1&&kids.every(k=>k.type==='review');
+    if(!kids.length)return false;
+    if(!kids.every(k=>k.type==='review'))return false;
+    /* v.029：Simple B ショットで埋まっている section はフォルダなのでショット扱いしない */
+    if(kids.some(k=>k.currentStage!=null))return false;
+    return true;
   }
   return false;
 }
@@ -10584,11 +10594,14 @@ function openRename(node){
     mFoot(body,[cancel,save]);
   });
 }
-/* v.025：section 直下が全て review かつ非空ならレガシーショットとみなす（既存 _isShotLikeNode と同義） */
+/* v.025：section 直下が全て review かつ非空ならレガシーショットとみなす。
+   v.029：ただし子が currentStage を持つ Simple B ショットのフォルダは除外。 */
 function _isShotSectionLegacy(n){
   if(!n||n.type!=='section'||!n.parentId)return false;
   const kids=childrenOf(n.id);
-  return kids.length>=1&&kids.every(k=>k&&k.type==='review');
+  if(!kids.length||!kids.every(k=>k&&k.type==='review'))return false;
+  if(kids.some(k=>k.currentStage!=null))return false;
+  return true;
 }
 /* Simple B 変換：プレビュー → 実行の 2 段階モーダル */
 function openLegacyToSimpleBModal(root){
