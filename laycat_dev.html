@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.002';
+const APP_VERSION='2026.09.20.003';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -17708,7 +17708,7 @@ async function sendToReel(node,v){
   toast('REEL に送りました: '+node.name+' '+v.name);
 }
 /* v.056：ショットページの「前後カットでREELに送る」用。
-   現在編集中の版はそのまま送り、shotsOf(root) 上での前後 1 カットずつは最新動画を送る。
+   shotsOf(root) 上での前後 1 カットずつと自分自身を、それぞれの最新動画で REEL に並べる。
    前後カットとの繋がり確認が本来の Reel の使い方なので、単独でなくこちらを推奨挙動にする。 */
 async function sendToReelWithNeighbors(node,v){
   if(v.type!=='video'){toast('REEL に送れるのは動画のみです');return}
@@ -17723,14 +17723,9 @@ async function sendToReelWithNeighbors(node,v){
   const neighbors=[list[idx-1],list[idx],list[idx+1]].filter(Boolean);
   let added=0,skipped=0;
   for(const sh of neighbors){
-    if(sh.id===shot.id){
-      /* 中央：現在ユーザーが見ている版をそのまま送る（近隣は latest） */
-      await reelAddClip(node,v);added++;
-    }else{
-      const lv=latestVideoVersionUnder(sh.id);
-      if(!lv||lv.v.type!=='video'){skipped++;continue}
-      await reelAddClip(lv.node,lv.v);added++;
-    }
+    const lv=latestVideoVersionUnder(sh.id);
+    if(!lv||lv.v.type!=='video'){skipped++;continue}
+    await reelAddClip(lv.node,lv.v);added++;
   }
   toast('前後カット含めて '+added+' 件を REEL に追加'+(skipped?'（動画なし '+skipped+' 件スキップ）':''));
 }
