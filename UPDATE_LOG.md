@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.017) **役職を「運営 / 管理者 / メンバー」の 3 段階に整理**：
+  - コード上は元々 `operator / admin / member` の 3 段階だったが、UI では operator と admin を「（管理者）」表記＋メンテ中閲覧可でひとまとめにしていた。
+  - **ヘッダーバッジ**：operator→「（運営）」、admin→「（管理者）」、member→なし に分岐。
+  - **メンテ中の閲覧許可**：operator（運営）のみに限定。admin は一般メンバーと同じくオーバーレイ表示。
+  - **登録先**：`access.json` の `operatorEmails` / `adminEmails` / `allowedEmails` はそのまま（内部 role 名も現状維持）。
+  - APP_VERSION：2026.09.20.016 → 2026.09.20.017
+
 - (dev v2026.09.20.016) **短命の localStorage.laycat_accessCfg 書き出しを撤回（pmboard 側に Firebase 直接連携を入れたため不要）**：
   - v.016 で追加した onAuthChanged 内での `laycat_accessCfg` 書き込みを削除。pmboard は自前で Firebase を初期化して Firestore を直接読むため、リレーが不要になった。
   - `laycat_userEmail` の永続化（v.015）は残置（pmboard の fallback 用）。

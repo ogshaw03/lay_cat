@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.016';
+const APP_VERSION='2026.09.20.017';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -18069,7 +18069,9 @@ function showAuthedHeader(){
   $('#nameField').classList.add('hidden');
   const bx=$('#authUserBox');bx.classList.remove('hidden');bx.innerHTML='';
   if(authUser.photo){const img=el('img','avatar');img.src=authUser.photo;img.referrerPolicy='no-referrer';bx.appendChild(img)}
-  bx.appendChild(el('span',null,authUser.name+((authUser.role==='admin'||authUser.role==='operator')?'（管理者）':'')));
+  /* v.017：役職を 3 段階（運営 / 管理者 / メンバー）でヘッダーに明示。
+     operator=運営（メンテ閲覧可）、admin=管理者（一般と同扱い）、member=なし。 */
+  bx.appendChild(el('span',null,authUser.name+(authUser.role==='operator'?'（運営）':(authUser.role==='admin'?'（管理者）':''))));
   const lo=el('span','lo','ログアウト');lo.onclick=async()=>{if(window.__laynaFB)await window.__laynaFB.logout()};bx.appendChild(lo);
 }
 /* ===== メンテナンス / 全体お知らせ（運営コンソールから制御。OGREF相当） ===== */
@@ -18110,7 +18112,8 @@ function _wireSignals(){
   _signalsWired=true;
   window.__laynaFB.subscribeSignals(
     d=>{const active=!!(d&&d.active),role=authUser&&authUser.role,msg=(d&&d.message)||'';
-        if(role==='operator'||role==='admin'){_operMaintBanner(active,msg);return}
+        /* v.017：メンテ中の閲覧許可は operator（運営）のみ。admin は一般と同じくオーバーレイ表示。 */
+        if(role==='operator'){_operMaintBanner(active,msg);return}
         if(_maintActive&&!active){/* メンテ終了時：キャッシュバスターで最新版を強制取得 */location.href=location.pathname+'?_='+Date.now();return}
         _maintOverlay(active,msg);},
     d=>_showBroadcast(d||{})
