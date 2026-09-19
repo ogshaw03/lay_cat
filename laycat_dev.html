@@ -3733,7 +3733,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.034';
+const APP_VERSION='2026.09.19.035';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5105,7 +5105,12 @@ function computeSidebarVisible(root){
 }
 function renderTreeNode(container,node,depth,filt){
   if(filt&&!filt.vis.has(node.id))return;
-  const kids=childrenOf(node.id).filter(c=>!filt||filt.vis.has(c.id));
+  /* v.035：レガシー multi-stage shot section は「ショット」として扱う。
+     配下の工程（review）は左サイドバーに展開せず、行クリックで直接ショットページ（現在工程）を開く。
+     判定：type==='section' で直下子が全て review。 */
+  const _allKids=childrenOf(node.id);
+  const _isLegacyShotContainer=!!(node.type==='section'&&_allKids.length>=1&&_allKids.every(k=>k.type==='review'));
+  const kids=_isLegacyShotContainer?[]:_allKids.filter(c=>!filt||filt.vis.has(c.id));
   const row=el('div','tree-row'+(node.id===state.currentId?' active':'')+(filt&&filt.matchIds.has(node.id)?' hit':''));
   row.style.paddingLeft=(6+depth*13)+'px';
   const expanded=filt?true:state.expanded.has(node.id); /* フィルタ中は一致枝を自動展開 */
@@ -5114,14 +5119,30 @@ function renderTreeNode(container,node,depth,filt){
   row.appendChild(tg);
   const dot=el('span','tree-dot');dot.style.background=stInfo(node).color;row.appendChild(dot);
   const rl=roleOf(node);
-  const ico=icoEl((ROLE_META[rl]&&ROLE_META[rl].ico)||(node.type==='review'?'film':'folder'));ico.style.flexShrink='0';ico.classList.add('role-ico','role-'+rl);ico.setAttribute('title',ROLE_META[rl]?ROLE_META[rl].label:'');row.appendChild(ico);
+  /* レガシー shot container はアイコンをショットっぽく寄せる（従来 folder アイコン → film） */
+  const _icoName=_isLegacyShotContainer?'film':((ROLE_META[rl]&&ROLE_META[rl].ico)||(node.type==='review'?'film':'folder'));
+  const ico=icoEl(_icoName);ico.style.flexShrink='0';ico.classList.add('role-ico','role-'+rl);ico.setAttribute('title',ROLE_META[rl]?ROLE_META[rl].label:'');row.appendChild(ico);
   row.appendChild(el('span','tree-name',node.name));
-  /* v.032：node.versions が undefined でも落ちないよう防御。壊れた review ノード（versions 未初期化）が
-     入っていたとき、renderTreeNode で `node.versions.length` を読んで TypeError で全画面表示不能になっていた件を修正。 */
+  /* v.032：node.versions が undefined でも落ちないよう防御。 */
   const _vlen=(node.type==='review'&&Array.isArray(node.versions))?node.versions.length:0;
   if(_vlen)row.appendChild(el('span','tree-badge','▶'+_vlen));
+  else if(_isLegacyShotContainer){
+    /* 現在工程 review の版数を集約で見せる（サイドバーで動画有無を分かりやすく） */
+    let vs=0;for(const k of _allKids)if(Array.isArray(k.versions))vs+=k.versions.length;
+    if(vs)row.appendChild(el('span','tree-badge','▶'+vs));
+  }
   else if(kids.length){const tb=elIco('span','tree-badge','folder',String(kids.length));row.appendChild(tb)}
-  row.onclick=()=>go(node.id);
+  /* クリック挙動：レガシー shot container なら currentStage の review へ直行（無ければ先頭 review）。
+     それ以外は従来どおり node.id へ go。 */
+  row.onclick=()=>{
+    if(_isLegacyShotContainer){
+      const curName=node.currentStage||null;
+      const target=(curName&&_allKids.find(k=>k.type==='review'&&k.name===curName))||_allKids[0];
+      go(target?target.id:node.id);
+    }else{
+      go(node.id);
+    }
+  };
   container.appendChild(row);
   if(kids.length&&expanded){const wrap=el('div');for(const c of kids)renderTreeNode(wrap,c,depth+1,filt);container.appendChild(wrap)}
 }
@@ -5552,6 +5573,16 @@ function renderBodyMain(){
   }
   /* サブページ（セクション/レビュー）— 上部タブは「ページ」がアクティブ表示 */
   state.lastPageId=cur.id; /* 「ページ」タブで最後に開いた画面として記憶 */
+  /* v.035：レガシー multi-stage shot section を開いたときは、工程タイルを出さずに
+     currentStage（無ければ先頭工程）の review ページに自動転送。「ショット単位で 1 ページ」の運用に統一。 */
+  if(cur.type==='section'){
+    const _kids=DB.nodes.filter(n=>n.parentId===cur.id);
+    if(_kids.length>=1&&_kids.every(k=>k.type==='review')){
+      const curName=cur.currentStage||null;
+      const target=(curName&&_kids.find(k=>k.name===curName))||_kids[0];
+      if(target){renderReviewBody(s,target);return}
+    }
+  }
   if(cur.type==='review')renderReviewBody(s,cur);
   else renderSectionBody(s,cur);
 }

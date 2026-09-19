@@ -18,6 +18,17 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.035) **工程フォルダ概念を UI から削除**（サイドバー・ショット section ページの双方）：
+  - **背景**：`arch-hierarchy-shot-stage` メモリの通り「ショットは 1 ページ、工程はプルダウン」方針に完全に寄せる。従来レガシー multi-stage shot は section 直下に review 子ノードが並び、サイドバー展開＝工程一覧、shot section クリック＝工程タイル表示という 3 段階だったが、これを廃止。
+  - **サイドバー（`renderTreeNode`）**：レガシー shot container（section 直下が全て review）を検出したら、
+    - 配下の工程 review 子は**展開しない**（`kids=[]` にする）
+    - アイコンは folder → film に切替（ショット扱い）
+    - クリックで `currentStage`（無ければ先頭工程）の review へ直接 `go`
+    - バッジは全工程の版数合計を表示
+  - **ページ描画（`renderProjectHome` の後段）**：cur が legacy shot container のときは工程タイル（renderSectionBody）ではなく `renderReviewBody(currentStage review)` に自動転送。ショットページが直接開く。
+  - **Simple B ショット**（review 型ショット）は無変更で従来通り動作。
+  - APP_VERSION：2026.09.19.034 → 2026.09.19.035
+
 - (dev v2026.09.19.034) **REEL クリップタイルをドラッグ＆ドロップで並べ替え可能に**：
   - **追加**：各 `.clip` タイルに `draggable=true` を付与。dragstart で source 記録、dragover でカーソル位置に応じて `reel-drop-before` / `reel-drop-after` インジケータ表示、drop で `reelUI.clips` の splice → 現在再生中クリップの id を追跡して cur 更新 → `reelRender` + `scheduleReelPersist`。
   - **CSS**：`.clip{cursor:grab}` / `:active{cursor:grabbing}` / `.reel-drag-src{opacity:.4}` / drop 位置に `inset box-shadow` で青ライン表示。
