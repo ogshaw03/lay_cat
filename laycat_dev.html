@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.044';
+const APP_VERSION='2026.09.19.045';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7668,15 +7668,14 @@ function buildStageStripInline(shot,curReviewId){
   const isLegacyShotContainer=!!(shot && shot.type==='section' && directKids.length>=1 && directKids.every(k=>k.type==='review'));
   const siblings=isLegacyShotContainer?directKids:[];
   const useLegacy=isLegacyShotContainer && siblings.length>=2;
-  /* v.044：工程プルダウンに工程設定の色を反映。
-     ・現在選択中の工程色でセレクトの border と文字色を着色
-     ・各オプションも工程色で色付け（対応ブラウザで有効）
-     ・stageColorFor(root, name) が工程設定の色を返すので、それを resolveColor で使用可能な形に。 */
-  const _colorFor=(name)=>{try{return resolveColor(stageColorFor(root,name))}catch(_){return null}};
+  /* v.044/v.045：工程プルダウンに工程設定の色を反映。
+     stageColorFor(root, name) は #hex を直接返すので、そのまま style に流し込む。
+     （v.044 で pmboard 由来の resolveColor を誤って使っていたためこの関数が undefined でエラー → 色反映されない不具合を修正） */
+  const _colorFor=(name)=>{try{const c=stageColorFor(root,name);return (typeof c==='string'&&c)?c:null}catch(_){return null}};
   const _applySelColor=(sel,name)=>{
     const c=_colorFor(name);
-    if(c){sel.style.borderColor=c;sel.style.color=c}
-    else{sel.style.borderColor='';sel.style.color=''}
+    if(c){sel.style.setProperty('border-color',c,'important');sel.style.setProperty('color',c,'important')}
+    else{sel.style.removeProperty('border-color');sel.style.removeProperty('color')}
   };
   if(useLegacy){
     /* --- 旧モデル：兄弟 review 列挙（従来動作） --- */
