@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.049';
+const APP_VERSION='2026.09.19.050';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6079,6 +6079,13 @@ function renderProjShots(main,cur){
   const mkBtn=(mode,svg,title)=>{const b=el('button','sv-sw-btn'+(state.shotsView===mode?' on':''));b.type='button';b.innerHTML=svg;b.title=title;b.onclick=()=>{if(state.shotsView!==mode){state.shotsView=mode;try{localStorage.setItem('layna_shotsView',mode)}catch(_){}renderBody();resolveThumbs()}};return b;};
   seg.appendChild(mkBtn('grid',ICON_GRID,'グリッド表示'));seg.appendChild(mkBtn('list',ICON_LIST,'縦並び表示'));
   head.appendChild(seg);
+  /* v.050：グルーピング切替（フォルダ／タグ） */
+  if(!state.shotsGroupBy){try{state.shotsGroupBy=localStorage.getItem('layna_shotsGroupBy')||'folder'}catch(_){state.shotsGroupBy='folder'}}
+  const grpSeg=el('div','sv-sw');
+  const mkGrpBtn=(mode,label,title)=>{const b=el('button','sv-sw-btn'+(state.shotsGroupBy===mode?' on':''));b.type='button';b.textContent=label;b.title=title;b.style.cssText='padding:4px 10px;font-family:var(--font-code);font-size:11px;font-weight:700';b.onclick=()=>{if(state.shotsGroupBy!==mode){state.shotsGroupBy=mode;try{localStorage.setItem('layna_shotsGroupBy',mode)}catch(_){}renderBody();resolveThumbs()}};return b;};
+  grpSeg.appendChild(mkGrpBtn('folder','フォルダ','フォルダ単位でグルーピング'));
+  grpSeg.appendChild(mkGrpBtn('tag','タグ','タグ単位でグルーピング（複数タグ持ちは各グループに重複表示）'));
+  head.appendChild(grpSeg);
   /* v.017：全ショットの最新動画をショット順に REEL に並べる（全体確認用） */
   const reelAllBtn=el('button','btn btn-primary btn-sm','▶ 全ショットを REEL で通し確認');
   reelAllBtn.title='プロジェクト内の全ショットの最新動画をショット順で REEL に並べます（全体確認用）';
@@ -6282,30 +6289,47 @@ function renderProjShots(main,cur){
     if(isList){const list=el('div','shot-list');for(const sh of shotList)list.appendChild(mkRow(sh));main.appendChild(list);}
     else{const grid=el('div','pm-grid');for(const sh of shotList)grid.appendChild(mkTile(sh));main.appendChild(grid);}
   };
-  /* v.047：ショットを直接の親フォルダごとにグルーピングして表示（アセットタブのカテゴリ分けに合わせた見せ方）。
-     shots は shotsOf の順序を保持しているので、その順で初回出現の親でグループ順を決める。 */
-  const _groups=[];const _gmap=new Map();
-  for(const sh of shots){
-    const pid=sh.parentId||'__root__';
-    if(!_gmap.has(pid)){
-      const parentNode=(pid==='__root__')?null:getNode(pid);
-      _gmap.set(pid,{parentNode,list:[]});
-      _groups.push(_gmap.get(pid));
+  /* v.047／v.050：ショットをグルーピングして表示（フォルダ or タグ）。
+     - folder モード：直接の親フォルダごと（v.047）。shots は shotsOf の順序で初回出現順にグループ化。
+     - tag モード：root.tags のタグごとにセクション化。複数タグ持ちのショットは各タグに重複表示。
+       どのタグも付いていないショットは末尾「タグなし」に。タグが 1 つも定義されていないときは
+       全ショットを「タグなし」1 グループにまとめる。 */
+  const _groups=[];
+  if(state.shotsGroupBy==='tag'){
+    const allTags=getTags(cur);
+    const shotSet=new Set(shots.map(s=>s.id));
+    for(const t of allTags){
+      const list=shots.filter(sh=>getShotTags(sh).includes(t.id));
+      if(list.length)_groups.push({label:'#'+t.name,list});
     }
-    _gmap.get(pid).list.push(sh);
+    const untagged=shots.filter(sh=>{const st=getShotTags(sh);return !st.length||!st.some(tid=>allTags.find(t=>t.id===tid))});
+    if(untagged.length)_groups.push({label:'タグなし',list:untagged,muted:true});
+  }else{
+    const _gmap=new Map();
+    for(const sh of shots){
+      const pid=sh.parentId||'__root__';
+      if(!_gmap.has(pid)){
+        const parentNode=(pid==='__root__')?null:getNode(pid);
+        _gmap.set(pid,{parentNode,list:[]});
+        _groups.push(_gmap.get(pid));
+      }
+      _gmap.get(pid).list.push(sh);
+    }
+    for(const g of _groups){
+      if(g.parentNode){
+        const p=pathOf(g.parentNode.id).slice(1).map(n=>n.name).join(' / ');
+        g.label=p||g.parentNode.name;
+      }else{g.label='プロジェクト直下'}
+    }
   }
   for(let gi=0;gi<_groups.length;gi++){
     const g=_groups[gi];
-    /* 見出しバー（フォルダ名 + 件数）。区切り線でセクションを分離。 */
+    /* 見出しバー（グループ名 + 件数）。区切り線でセクションを分離。 */
     const sec=el('div');sec.style.cssText='margin-top:'+(gi===0?'0':'22px');
     const bar=el('div');
     bar.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:12px';
-    const nm=el('span');nm.style.cssText='font-family:var(--font-head);font-weight:800;font-size:16px;color:var(--text)';
-    /* フォルダ名 = 親がプロジェクトルートなら "プロジェクト直下" 、そうでなければ root → parent のパスをスラッシュ区切り */
-    if(g.parentNode){
-      const p=pathOf(g.parentNode.id).slice(1).map(n=>n.name).join(' / ');
-      nm.textContent=p||g.parentNode.name;
-    }else{nm.textContent='プロジェクト直下'}
+    const nm=el('span');nm.style.cssText='font-family:var(--font-head);font-weight:800;font-size:16px;color:'+(g.muted?'var(--text3)':'var(--text)');
+    nm.textContent=g.label;
     bar.appendChild(nm);
     const cnt=el('span');cnt.style.cssText='font-family:var(--font-code);font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums';
     cnt.textContent='('+g.list.length+')';
