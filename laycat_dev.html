@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.046';
+const APP_VERSION='2026.09.19.047';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6273,16 +6273,38 @@ function renderProjShots(main,cur){
     if(isList){const list=el('div','shot-list');for(const sh of shotList)list.appendChild(mkRow(sh));main.appendChild(list);}
     else{const grid=el('div','pm-grid');for(const sh of shotList)grid.appendChild(mkTile(sh));main.appendChild(grid);}
   };
-  /* EPが分かれている（ショット親フォルダが複数）時は、親フォルダ（EP）ごとに区切って表示する */
-  if(parents.length>1){
-    for(const pid of parents){
-      const grp=shots.filter(sh=>sh.parentId===pid);
-      if(!grp.length)continue;
-      const pnode=getNode(pid);
-      main.appendChild(el('div','pm-eph2',(pnode?pnode.name:'—')+'（'+grp.length+'）'));
-      renderGroup(grp);
+  /* v.047：ショットを直接の親フォルダごとにグルーピングして表示（アセットタブのカテゴリ分けに合わせた見せ方）。
+     shots は shotsOf の順序を保持しているので、その順で初回出現の親でグループ順を決める。 */
+  const _groups=[];const _gmap=new Map();
+  for(const sh of shots){
+    const pid=sh.parentId||'__root__';
+    if(!_gmap.has(pid)){
+      const parentNode=(pid==='__root__')?null:getNode(pid);
+      _gmap.set(pid,{parentNode,list:[]});
+      _groups.push(_gmap.get(pid));
     }
-  }else renderGroup(shots);
+    _gmap.get(pid).list.push(sh);
+  }
+  for(let gi=0;gi<_groups.length;gi++){
+    const g=_groups[gi];
+    /* 見出しバー（フォルダ名 + 件数）。区切り線でセクションを分離。 */
+    const sec=el('div');sec.style.cssText='margin-top:'+(gi===0?'0':'22px');
+    const bar=el('div');
+    bar.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:12px';
+    const nm=el('span');nm.style.cssText='font-family:var(--font-head);font-weight:800;font-size:16px;color:var(--text)';
+    /* フォルダ名 = 親がプロジェクトルートなら "プロジェクト直下" 、そうでなければ root → parent のパスをスラッシュ区切り */
+    if(g.parentNode){
+      const p=pathOf(g.parentNode.id).slice(1).map(n=>n.name).join(' / ');
+      nm.textContent=p||g.parentNode.name;
+    }else{nm.textContent='プロジェクト直下'}
+    bar.appendChild(nm);
+    const cnt=el('span');cnt.style.cssText='font-family:var(--font-code);font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums';
+    cnt.textContent='('+g.list.length+')';
+    bar.appendChild(cnt);
+    sec.appendChild(bar);
+    main.appendChild(sec);
+    renderGroup(g.list);
+  }
   if(!isList)setupShotAutoplay(); /* タイル動画：マウスホバーで再生（グリッドのみ） */
 }
 /* ==== ショットタブのタイル：マウスホバーで再生（元解像度） ====
