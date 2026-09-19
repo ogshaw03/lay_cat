@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.028) **Simple B 変換が保存で巻き戻る問題を根本修正（_isShotNodeForSave 拡張）**：
+  - **原因**：`_isShotNodeForSave` が `type==='section'` のみをショット境界と判定していたため、v.025 変換後の Simple B（type='review'）ショットは `shots/{sid}.json` に個別保存されず、古い section+review 子のファイルがディスクに残り続けていた。次回起動時に `_hydrateShots` が古いファイルを DB に上書きして変換が巻き戻り、サイドバーに工程ページが復活・PMB 側のショット認識も崩れていた（PMB のガントバーが消える等）。
+  - **修正**：`_isShotNodeForSave` に Simple B 分岐を追加。`type='review'` の非ルートで、親がレガシー shot section でないなら shot 境界と判定。これにより Simple B ショットが `shots/{sid}.json` に個別保存され、古いファイルを上書き。
+  - **ユーザー操作**：Ctrl+F5 でハードリロード → プロジェクト設定から「Simple B に変換」を再実行してください。今度は永続化されます。
+  - APP_VERSION：2026.09.20.027 → 2026.09.20.028
+
 - (dev v2026.09.20.027) **Simple B 変換で root.stages が空だと工程プルダウンが空になる問題を修正**：
   - `convertLegacyToSimpleB` の冒頭で `root.stages` が未設定なら、変換対象ショットの子工程名を出現順に収集して root.stages に投入。
   - これで変換後の Simple B UI（工程プルダウン）に工程一覧が正しく出る。

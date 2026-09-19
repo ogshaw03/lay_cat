@@ -3145,13 +3145,28 @@ async function offerPhase2Migration(){
   });
 }
 /* Phase 2 判定：ノードが "shot" 境界か（＝ shots/ 個別ファイル対象か）。
-   条件：`type='section'` の非ルートノードで、直接の子が全て `type='review'`（工程）。
-   → カテゴリ（子が section）は shot にならず骨格として project.json に残る。 */
+   ・レガシー：`type='section'` の非ルートノードで、直接の子が全て `type='review'`（工程）
+   ・Simple B（v.027 追加）：`type='review'` の非ルートで、親が「レガシーの shot section」ではない
+   これで Simple B ショットも shots/{sid}.json に個別保存される。従来は Simple B の versions[] が
+   laycat.project.json に直接同居していたが、Simple B 変換で shots ファイル未保存だと古い
+   shot.json（旧 section+review 構造）が hydrate で復活して変換が巻き戻る問題があった。 */
 function _isShotNodeForSave(n,allNodes){
-  if(!n||n.type!=='section'||!n.parentId)return false;
-  const kids=allNodes.filter(x=>x.parentId===n.id);
-  if(!kids.length)return false;
-  return kids.every(k=>k.type==='review');
+  if(!n||!n.parentId)return false;
+  if(n.type==='section'){
+    const kids=allNodes.filter(x=>x.parentId===n.id);
+    if(!kids.length)return false;
+    return kids.every(k=>k.type==='review');
+  }
+  if(n.type==='review'){
+    /* 親がレガシー shot section（＝子が全て review 型）だったら、これは工程子なのでショット扱いしない */
+    const parent=allNodes.find(x=>x.id===n.parentId);
+    if(parent&&parent.type==='section'&&parent.parentId){
+      const sibs=allNodes.filter(x=>x.parentId===parent.id);
+      if(sibs.length&&sibs.every(k=>k.type==='review'))return false;
+    }
+    return true;
+  }
+  return false;
 }
 /* ========================================================================
    Simple Option B：review ノードそのものをショットとして使う軽量化パス。
@@ -3767,7 +3782,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.027';
+const APP_VERSION='2026.09.20.028';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
