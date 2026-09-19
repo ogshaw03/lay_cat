@@ -601,7 +601,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.20.005';
+const APP_VERSION='2026.09.20.006';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1550,7 +1550,31 @@ function buildGantt(){
   const p = jstParts(new Date());
   marker.innerHTML = `<div class="lbl">TODAY ${p.m}/${p.d}</div>`;
   wrapper.appendChild(marker);
+  /* v.006：マイルストーン縦線を描画 */
+  drawGanttMilestones(wrapper);
   if(typeof window._pmApplyPlanSelectionUi==='function') window._pmApplyPlanSelectionUi();
+}
+
+/* マイルストーン縦線をガント wrapper 内に描画。今日マーカーと同じ CSS 変数で位置決め。 */
+function drawGanttMilestones(wrapper){
+  if(!wrapper||!DATA.timeline||!DATA.timeline.days)return;
+  wrapper.querySelectorAll('.gantt-milestone').forEach(n=>n.remove());
+  const items=Array.isArray(DATA.milestones)?DATA.milestones:[];
+  const days=DATA.timeline.days;
+  for(const m of items){
+    if(!m||!m.date)continue;
+    let idx;try{idx=dayIdx(m.date)}catch(_){continue}
+    if(idx<0||idx>days)continue;
+    const line=document.createElement('div');
+    line.className='gantt-milestone';
+    line.style.cssText='position:absolute;top:0;bottom:0;width:0;border-left:2px dashed #8cb4f0;pointer-events:none;z-index:6;left:calc(var(--shot-col-w,220px) + (100% - var(--shot-col-w,220px)) * '+idx+' / '+days+')';
+    const lb=document.createElement('div');
+    lb.className='lbl';
+    lb.style.cssText='position:absolute;top:0;left:4px;background:rgba(140,180,240,.16);color:#8cb4f0;border:1px solid rgba(140,180,240,.4);border-radius:6px;padding:1px 8px;font-size:10px;font-weight:700;white-space:nowrap;pointer-events:none;font-family:var(--font-head)';
+    lb.textContent='📌 '+(m.text||'').slice(0,60);
+    line.appendChild(lb);
+    wrapper.appendChild(line);
+  }
 }
 
 /* =========== カスタムスケジュール Gantt =========== */
@@ -1644,6 +1668,8 @@ function buildCustomGantt(scheduleId){
   const pjt = jstParts(new Date());
   marker.innerHTML = `<div class="lbl">TODAY ${pjt.m}/${pjt.d}</div>`;
   wrapper.appendChild(marker);
+  /* v.006：マイルストーン縦線 */
+  drawGanttMilestones(wrapper);
   if(typeof window._pmApplyPlanSelectionUi==='function') window._pmApplyPlanSelectionUi();
 }
 
@@ -2457,6 +2483,11 @@ async function loadAndRender(){
   if(!_pmCheckMemberAccess()){return}
   /* カスタムスケジュール（オリジナル工程セット）も並列読み込み */
   await loadCustomSchedules();
+  /* v.006：マイルストーン（milestones.json）を読み込み。ガント縦線描画に使う。 */
+  try{
+    const ms=await storage.readJson('milestones.json');
+    DATA.milestones=(ms&&Array.isArray(ms.items))?ms.items.slice():[];
+  }catch(_){DATA.milestones=[]}
   /* スケール（日/週/月）を反映（timeline.days が確定してから）— rerender は後続処理に任せる */
   if(typeof applyGanttScale==='function') applyGanttScale(DATA.scale || 'week', {rerender:false});
   buildTimelineHdr();
