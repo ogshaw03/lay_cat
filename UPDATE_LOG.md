@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.034) **Simple B 変換にログ出力＋完了時自動リロード提案を追加**：
+  - `convertLegacyToSimpleB` に console.log を挿入し、各ショットの kids 数・保存成否・rev 番号を出力。F12 コンソールで診断可能に。
+  - 変換完了後に confirm ダイアログで「ページ再読み込みしますか？」を提示。OK でハードリロード。DB キャッシュ・URL routing の残留を排除。
+  - APP_VERSION：2026.09.20.033 → 2026.09.20.034
+
 - (dev v2026.09.20.033) **変換ボタンが「部分変換済みショット」を検出できず消える不具合を修正・変換を idempotent 化**：
   - **原因**：`_isShotSectionLegacy` が `type='section'` のみを対象にしていたため、既に一部変換された（`type='review'` になったが子 review が残っている）ショットが「レガシー 0 件」判定になりボタンが消えていた。
   - **修正 1**：`_isShotSectionLegacy` に `type='review'` の分岐を追加。子に review が残っていて currentStage を持たない状態も「クリーンアップ対象」として検出。
