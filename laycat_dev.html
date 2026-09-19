@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.048';
+const APP_VERSION='2026.09.19.049';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6734,6 +6734,52 @@ function buildShotAssetsPane(container,shot,root){
   wrap.appendChild(grid);
   container.appendChild(wrap);
 }
+/* v.049：ショットページ右カラム「使用アセット」の下に置くタグ表示／編集パネル。
+   このショットに付いているタグを chip で列挙。「＋ 編集」ボタンで既存の
+   openBulkTagModal をこのショット単独で呼び、その場で付与／解除できる。 */
+function buildShotTagsPane(container,shot,root){
+  if(!shot||!root)return;
+  const ids=getShotTags(shot);
+  const tags=ids.map(id=>getTag(root,id)).filter(Boolean);
+  const wrap=el('div','shot-tags-pane');
+  wrap.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px';
+  const head=el('div');head.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px';
+  const lb=el('span');lb.style.cssText='font-family:var(--font-head);font-weight:800;font-size:13px;color:var(--text)';lb.textContent='タグ';
+  head.appendChild(lb);
+  const cnt=el('span');cnt.style.cssText='font-family:var(--font-code);font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums';cnt.textContent='('+tags.length+')';
+  head.appendChild(cnt);
+  const sp=el('div');sp.style.flex='1';head.appendChild(sp);
+  const editBtn=el('button','btn btn-ghost btn-sm','＋ 編集');
+  editBtn.title='このショットのタグを編集';
+  editBtn.onclick=()=>openBulkTagModal(root,[shot.id]);
+  head.appendChild(editBtn);
+  wrap.appendChild(head);
+  if(!tags.length){
+    const em=el('div');em.style.cssText='font-size:12px;color:var(--text3)';
+    em.textContent='タグ未設定。「＋ 編集」から付与できます。';
+    wrap.appendChild(em);
+    container.appendChild(wrap);
+    return;
+  }
+  const chipWrap=el('div');chipWrap.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+  for(const t of tags){
+    const chip=el('span');chip.style.cssText='display:inline-flex;align-items:center;gap:4px;padding:3px 4px 3px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;font-family:var(--font-code);font-size:12px;color:var(--text)';
+    chip.appendChild(el('span',null,'#'+t.name));
+    const x=el('button');x.type='button';x.textContent='×';
+    x.style.cssText='border:0;background:transparent;color:var(--text3);cursor:pointer;font-size:14px;padding:0 6px;line-height:1';
+    x.title='このタグを外す';
+    x.onclick=async()=>{
+      /* このショットからだけタグを外す。書込境界：shots/{sid}.json の tags[] のみ。 */
+      shot.tags=getShotTags(shot).filter(x2=>x2!==t.id);
+      try{await persist()}catch(_){}
+      try{render()}catch(_){}
+    };
+    chip.appendChild(x);
+    chipWrap.appendChild(chip);
+  }
+  wrap.appendChild(chipWrap);
+  container.appendChild(wrap);
+}
 /* v.018：pmboard の SHOT メモ（`notes/{shotSectionId}.json`）を読み取り、
    ショットページ右カラムに「PMMEMO」欄として表示する。書込みは pmboard 側のみ、
    LayCAT では閲覧専用（`readonly` で content 表示）。 */
@@ -7813,6 +7859,8 @@ function renderReviewBody(s,cur,opts){
   if(noteCol){
     const _shotForAssets=_hdrIsLegacyContainer?shotSec:cur;
     if(_shotForAssets)buildShotAssetsPane(noteCol,_shotForAssets,rootOf(cur));
+    /* v.049：使用アセットの下にタグ表示パネル（ショット単位でタグを編集可能） */
+    if(_shotForAssets)buildShotTagsPane(noteCol,_shotForAssets,rootOf(cur));
     if(_shotForAssets)buildShotPmMemoPane(noteCol,_shotForAssets,rootOf(cur));
     buildTaskNotePane(noteCol,cur);
   }
