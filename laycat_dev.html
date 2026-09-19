@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.001';
+const APP_VERSION='2026.09.20.002';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -11634,7 +11634,7 @@ function openReview(nodeId,versionId,opts){
   }
   if(isVideo){const rt=el('button','btn btn-ghost btn-sm',(v.timeRemap&&v.timeRemap.enabled)?'⧗ リタイム ●':'⧗ リタイム');rt.title=(v.timeRemap&&v.timeRemap.enabled)?'AE 互換タイムリマップ・ビューアを開く（この版はリタイム ON／ただしビューア内プレビュー専用・REEL・書き出しには反映されません）':'AE 互換タイムリマップ・ビューアを開く（タメツメ指示用・ビューア内プレビュー専用）';rt.onclick=()=>openRetimer(node,v);actions.appendChild(rt)}
   if(isVideo){cmpBtn=el('button','btn btn-ghost btn-sm','⇄ 比較');cmpBtn.title='別の版・ショットと横並びで比較（アノテーション可）';cmpBtn.onclick=()=>{if(cmpOn)exitCompare();else openComparePicker(node,v,(bN,bV)=>enterCompare(bN,bV))};actions.appendChild(cmpBtn)}
-  if(isVideo){const rb=elIco('button','btn btn-ghost btn-sm','reel',' REELに送る');rb.title='この動画を REEL に送る';rb.onclick=()=>sendToReel(node,v);actions.appendChild(rb)}
+  if(isVideo){const rb=elIco('button','btn btn-ghost btn-sm','reel',' 前後カットでREELに送る');rb.title='この動画と前後のショット（ショット順で ±1）の最新動画を REEL に並べて、前後カットとのつながりを確認します';rb.onclick=()=>sendToReelWithNeighbors(node,v);actions.appendChild(rb)}
   /* EXR：トップバーにレイヤー切替＋露出/ガンマ、Depth 選択時は黒白点/反転を追加。
      全部同じ列に compact 表示。 */
   if(!isVideo&&(v.exr||isExrRef(v.file))){
@@ -17706,6 +17706,33 @@ async function sendToReel(node,v){
   openReel();if(!reelAlive())return;
   await reelAddClip(node,v);
   toast('REEL に送りました: '+node.name+' '+v.name);
+}
+/* v.056：ショットページの「前後カットでREELに送る」用。
+   現在編集中の版はそのまま送り、shotsOf(root) 上での前後 1 カットずつは最新動画を送る。
+   前後カットとの繋がり確認が本来の Reel の使い方なので、単独でなくこちらを推奨挙動にする。 */
+async function sendToReelWithNeighbors(node,v){
+  if(v.type!=='video'){toast('REEL に送れるのは動画のみです');return}
+  const root=rootOf(node);
+  /* node（review）からショット祖先を辿る（Simple B なら node 自身が該当） */
+  let shot=node;while(shot&&!_isShotLikeNode(shot))shot=shot.parentId?getNode(shot.parentId):null;
+  if(!root||!shot){await sendToReel(node,v);return}
+  const list=shotsOf(root);
+  const idx=list.findIndex(s=>s.id===shot.id);
+  if(idx<0){await sendToReel(node,v);return}
+  openReel();if(!reelAlive())return;
+  const neighbors=[list[idx-1],list[idx],list[idx+1]].filter(Boolean);
+  let added=0,skipped=0;
+  for(const sh of neighbors){
+    if(sh.id===shot.id){
+      /* 中央：現在ユーザーが見ている版をそのまま送る（近隣は latest） */
+      await reelAddClip(node,v);added++;
+    }else{
+      const lv=latestVideoVersionUnder(sh.id);
+      if(!lv||lv.v.type!=='video'){skipped++;continue}
+      await reelAddClip(lv.node,lv.v);added++;
+    }
+  }
+  toast('前後カット含めて '+added+' 件を REEL に追加'+(skipped?'（動画なし '+skipped+' 件スキップ）':''));
 }
 /* ショットタブで範囲/複数選択したショット群を、それぞれの最新動画で REEL に一括追加 */
 async function reelAddSelectedShots(){
