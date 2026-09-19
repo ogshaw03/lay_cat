@@ -3767,7 +3767,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.024';
+const APP_VERSION='2026.09.20.025';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10549,12 +10549,137 @@ function openRename(node){
         if(projThumbUrlTmp){try{URL.revokeObjectURL(projThumbUrlTmp)}catch(_){}}
       }
       await persist();closeModal();render();resolveThumbs()};
+    /* v.025：レガシー（section+review 子）ショットが 1 つでもある場合、Simple B に変換するボタンを表示 */
+    if(isProjectRoot){
+      const legacyCount=descendants(node.id).filter(n=>n&&n.type==='section'&&n.parentId&&_isShotSectionLegacy(n)).length;
+      if(legacyCount>0){
+        const secB=el('div','settings-section');
+        secB.appendChild(el('span','ic','🔄'));
+        secB.appendChild(el('span','ttl','Simple B に変換'));
+        inner.appendChild(secB);
+        const p=el('p','settings-help');
+        p.textContent='このプロジェクトの旧モデル（工程を子ノードで持つショット）'+legacyCount+' 件を Simple B（工程はショット自身の currentStage プロパティ）に統合します。動画・コメント・アノテは version.stage / c.stage タグを付けて保持。この操作は不可逆です。実行前にプロジェクトフォルダの手動バックアップを推奨します。';
+        inner.appendChild(p);
+        const btn=el('button','btn btn-danger');btn.type='button';btn.textContent='🔄 Simple B に変換する（プレビュー）';
+        btn.style.marginBottom='12px';
+        btn.onclick=()=>openLegacyToSimpleBModal(node);
+        inner.appendChild(btn);
+      }
+    }
     mFoot(body,[cancel,save]);
   });
 }
-
-/* ============================================================
-   プロジェクトメンバー（担当割り当て・メンション・ロール用の名簿）
+/* v.025：section 直下が全て review かつ非空ならレガシーショットとみなす（既存 _isShotLikeNode と同義） */
+function _isShotSectionLegacy(n){
+  if(!n||n.type!=='section'||!n.parentId)return false;
+  const kids=childrenOf(n.id);
+  return kids.length>=1&&kids.every(k=>k&&k.type==='review');
+}
+/* Simple B 変換：プレビュー → 実行の 2 段階モーダル */
+function openLegacyToSimpleBModal(root){
+  const shots=descendants(root.id).filter(n=>_isShotSectionLegacy(n));
+  const summary=shots.map(sh=>{
+    const kids=childrenOf(sh.id).filter(k=>k.type==='review');
+    let vTotal=0,cTotal=0,nTotal=0;
+    for(const k of kids){
+      vTotal+=(k.versions||[]).length;
+      cTotal+=(k.comments||[]).length;
+      for(const v of (k.versions||[]))nTotal+=(((v.review&&v.review.notes)||[]).length);
+    }
+    return {shot:sh,stageCount:kids.length,vTotal,cTotal,nTotal};
+  });
+  openModal(body=>{
+    const inner=mHead(body,'Simple B に変換（プレビュー）',root.name);
+    const p=el('p','settings-help');
+    p.innerHTML='対象：<b>'+shots.length+' ショット</b>／統合対象：<b>合計 '+summary.reduce((a,s)=>a+s.vTotal,0)+' version・'+summary.reduce((a,s)=>a+s.cTotal,0)+' コメント・'+summary.reduce((a,s)=>a+s.nTotal,0)+' アノテ</b><br>この操作は不可逆です。バックアップ済みであることを確認してから実行してください。';
+    inner.appendChild(p);
+    const list=el('div');
+    list.style.cssText='max-height:44vh;overflow-y:auto;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:4px';
+    for(const s of summary){
+      const row=el('div');row.style.cssText='display:flex;gap:8px;align-items:baseline;font-family:var(--font-code);font-size:12px;padding:4px 6px;background:var(--bg2);border-radius:4px';
+      const nm=el('span');nm.style.cssText='flex:1;font-weight:700;color:var(--text)';nm.textContent=s.shot.name;
+      const meta=el('span');meta.style.cssText='color:var(--text3);font-size:11px';
+      meta.textContent='工程 '+s.stageCount+'／版 '+s.vTotal+'／コメ '+s.cTotal+'／アノテ '+s.nTotal;
+      row.appendChild(nm);row.appendChild(meta);
+      list.appendChild(row);
+    }
+    inner.appendChild(list);
+    const warn=el('p','settings-help');
+    warn.style.cssText='color:#e06a6a;margin-top:10px;font-weight:600';
+    warn.textContent='⚠ 実行後は元に戻せません（バックアップフォルダから復元してください）。';
+    inner.appendChild(warn);
+    const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=closeModal;
+    const run=el('button','btn btn-danger','変換を実行');
+    run.onclick=async()=>{
+      if(!confirm('本当に変換を実行しますか？\n'+shots.length+' 件のショットが Simple B に統合されます。この操作は不可逆です。'))return;
+      run.disabled=true;run.textContent='変換中...';
+      try{await convertLegacyToSimpleB(root,shots);toast('Simple B への変換が完了しました');closeModal();render();resolveThumbs()}
+      catch(e){run.disabled=false;run.textContent='変換を実行';toast('変換に失敗しました：'+(e&&e.message||''))}
+    };
+    mFoot(body,[cancel,run]);
+  });
+}
+/* 実変換：各レガシーショット section を review 型に統合し、子工程 review を削除。
+   書込境界：現プロジェクトの laycat.project.json + 対象 shot.json のみ（persist 経由）。
+   他プロジェクトの shot.json は _saveCache により未変更 → スキップ。 */
+async function convertLegacyToSimpleB(root,shots){
+  if(!shots||!shots.length)return;
+  for(const sh of shots){
+    const kids=childrenOf(sh.id).filter(k=>k.type==='review');
+    if(!kids.length)continue;
+    /* 「現在の工程」を決定：sh.currentStage → 動画がある最新工程 → ステータスが空でない最新工程 → 先頭 */
+    let curStageName=sh.currentStage||null;
+    if(!curStageName){
+      const stageOrder=projStageList(root);
+      let latest=null,latestTime=0;
+      for(const k of kids){
+        const latestVer=(k.versions||[]).reduce((a,v)=>(a&&a.uploadedAt>v.uploadedAt?a:v),null);
+        if(latestVer&&latestVer.uploadedAt&&latestVer.uploadedAt>latestTime){latestTime=latestVer.uploadedAt;latest=k}
+      }
+      if(latest)curStageName=latest.name;
+      else{
+        const withStatus=kids.filter(k=>k.status&&k.status!=='empty');
+        if(withStatus.length)curStageName=withStatus[withStatus.length-1].name;
+        else curStageName=(stageOrder[0]||kids[0].name);
+      }
+    }
+    /* 集約：versions / comments / stageHistory */
+    const versions=[];const comments=[];const stageHistorySrc=[];
+    let mergedStatus=null,mergedAssignee=null,mergedReviewer=null;
+    for(const k of kids){
+      const stageName=k.name;
+      for(const v of (k.versions||[])){const nv=Object.assign({},v);if(!nv.stage)nv.stage=stageName;versions.push(nv)}
+      for(const c of (k.comments||[])){const nc=Object.assign({},c);if(!nc.stage)nc.stage=stageName;comments.push(nc)}
+      for(const h of (k.stageHistory||[])){stageHistorySrc.push(Object.assign({},h,{_srcStage:stageName}))}
+      if(k.name===curStageName){
+        if(k.status)mergedStatus=k.status;
+        if(k.assignee)mergedAssignee=k.assignee;
+        if(k.reviewer)mergedReviewer=k.reviewer;
+      }
+    }
+    /* uploadedAt / time で時系列ソート（安定） */
+    versions.sort((a,b)=>String(a.uploadedAt||'').localeCompare(String(b.uploadedAt||'')));
+    comments.sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
+    stageHistorySrc.sort((a,b)=>String(a.ts||'').localeCompare(String(b.ts||'')));
+    /* section → review 変換 */
+    sh.type='review';
+    sh.versions=versions;
+    sh.comments=comments;
+    sh.currentStage=curStageName;
+    sh.stageHistory=stageHistorySrc;
+    if(mergedStatus)sh.status=mergedStatus;else if(!sh.status)sh.status='empty';
+    if(mergedAssignee)sh.assignee=mergedAssignee;
+    if(mergedReviewer)sh.reviewer=mergedReviewer;
+    delete sh.stages;
+    /* 子工程 review を削除 */
+    for(const k of kids){
+      const idx=DB.nodes.indexOf(k);
+      if(idx>=0)DB.nodes.splice(idx,1);
+    }
+  }
+  normalizeNodes();
+  await persist();
+}
    ・保存先はプロジェクトルートの node.members（＝共有フォルダ内 layna.project.json）
    ・ID はメール（認証と一致する安定ID）を推奨。表示名・ロール・色を持つ。
    ・アクセス権（誰がログインできるか）とは別レイヤー（そちらは access-console / Firebase）。

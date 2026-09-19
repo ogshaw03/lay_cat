@@ -18,6 +18,20 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.025) **プロジェクト設定に「Simple B に変換」ボタン追加（レガシー → Simple B マイグレ）**：
+  - プロジェクト設定モーダルに、旧モデル（section+review 子）のショットが 1 件以上あれば「🔄 Simple B に変換」ボタンを表示。
+  - 押すとプレビュー：対象ショット数／統合される version・comment・アノテ数の合計と、ショットごとの明細を表示。
+  - 「変換を実行」で `convertLegacyToSimpleB(root, shots)` を実行：
+    - 各レガシーショット section を review 型に変換
+    - 子工程 review の versions / comments を `.stage` タグ付きで shot 側に統合、stageHistory を時系列マージ
+    - currentStage は「shot.currentStage → 最新版がある工程 → status が非空の工程 → 先頭」の優先で決定
+    - 集約元工程のうち currentStage 相当のもの（あれば）から status / assignee / reviewer を採用
+    - 子工程 review を DB.nodes から削除、`shot.stages` フィールドを削除
+    - `normalizeNodes()` + `persist()` で 1 プロジェクトのみ保存（他プロジェクトは _saveCache により skip）
+  - **書込境界**：現プロジェクトの laycat.project.json + 対象 shot.json のみ更新。他プロジェクト・別ショットは触らない。
+  - **不可逆**：実行前にプロジェクトフォルダの手動バックアップを推奨する旨をヘルプ文に明示。
+  - APP_VERSION：2026.09.20.024 → 2026.09.20.025
+
 - (dev v2026.09.20.024) **サブミット提出ピッカーの工程選択を Simple B では非表示に**：
   - `submitStagesOf(shot).length===1`（Simple B or 単一工程レガシー）のとき工程チップを出さず、行全体をクリック対象にして選択／解除。選択中は水色ハイライト＋✓ 表示。
   - 複数工程を持つレガシー multi-stage ショットのみ従来の工程チップ UI を継続。
