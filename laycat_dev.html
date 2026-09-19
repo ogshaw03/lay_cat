@@ -3733,7 +3733,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.033';
+const APP_VERSION='2026.09.19.034';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14609,6 +14609,12 @@ function openReel(){
    +'.clip{position:relative;flex-shrink:0;background:#1c1c1f;border:1px solid #3a3a42;border-radius:6px;padding:4px 6px 5px;cursor:pointer;overflow:hidden;min-width:78px;display:flex;flex-direction:column;gap:3px}'
    +'.clip.cur{border-color:#e8e8ec;background:#232327}'
    +'.clip.unsent{border-color:#e0a63a}'
+   /* v.034：DnD 並べ替え用 */
+   +'.clip{cursor:grab}'
+   +'.clip:active{cursor:grabbing}'
+   +'.clip.reel-drag-src{opacity:.4}'
+   +'.clip.reel-drop-before{box-shadow:inset 3px 0 0 0 #5cc7ef}'
+   +'.clip.reel-drop-after{box-shadow:inset -3px 0 0 0 #5cc7ef}'
    +'.clip .cth{width:100%;height:46px;background:#0a0a0c center/contain no-repeat;border-radius:3px;flex-shrink:0}'
    +'.clip .unsent-dot{position:absolute;top:3px;right:3px;min-width:14px;height:14px;padding:0 3px;box-sizing:border-box;background:#e0a63a;color:#1a1a1a;font-size:9px;font-weight:700;line-height:14px;text-align:center;border-radius:7px;z-index:2}'
    +'.clip .nm{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
@@ -16975,6 +16981,9 @@ function reelRender(){
     const unsent=((c.drafts&&c.drafts.length)||0)+((c.pending&&c.pending.length)||0)+(((c.commentDraft||'').trim())?1:0);
     const b=ce(d,'div','clip'+(i===reelUI.cur?' cur':'')+(unsent?' unsent':''));
     b.style.width=Math.max(78,(c.dur||2)*reelUI.pxs)+'px';
+    /* v.034：ドラッグ＆ドロップで並べ替え可能に。既存の ◀▶ ボタンによる隣接入替は互換で残す。 */
+    b.draggable=true;
+    b.dataset.reelIdx=i;
     if(unsent){const dot=ce(d,'div','unsent-dot',String(unsent));dot.title='未保存 '+unsent+'件';b.appendChild(dot)}
     /* サムネ：クリップ元動画の v.thumb（無ければ node.thumbnail）を表示 */
     const cth=ce(d,'div','cth');b.appendChild(cth);
@@ -16987,8 +16996,8 @@ function reelRender(){
     b.appendChild(ce(d,'div','du',fmtSec(c.dur)));
     const ops=ce(d,'div','ops');
     const mk=(lab,fn,tt)=>{const x=ce(d,'button',null,lab);x.title=tt;x.onclick=e=>{e.stopPropagation();fn()};ops.appendChild(x)};
-    mk('◀',()=>{if(i>0){[cs[i-1],cs[i]]=[cs[i],cs[i-1]];if(reelUI.cur===i)reelUI.cur--;else if(reelUI.cur===i-1)reelUI.cur++;reelRender()}},'左へ');
-    mk('▶',()=>{if(i<cs.length-1){[cs[i+1],cs[i]]=[cs[i],cs[i+1]];if(reelUI.cur===i)reelUI.cur++;else if(reelUI.cur===i+1)reelUI.cur--;reelRender()}},'右へ');
+    mk('◀',()=>{if(i>0){[cs[i-1],cs[i]]=[cs[i],cs[i-1]];if(reelUI.cur===i)reelUI.cur--;else if(reelUI.cur===i-1)reelUI.cur++;reelRender();scheduleReelPersist()}},'左へ');
+    mk('▶',()=>{if(i<cs.length-1){[cs[i+1],cs[i]]=[cs[i],cs[i+1]];if(reelUI.cur===i)reelUI.cur++;else if(reelUI.cur===i+1)reelUI.cur--;reelRender();scheduleReelPersist()}},'右へ');
     mk('✕',()=>{
       /* R1 修正：このクリップの pending が動画側に埋め込まれている場合、外す前に警告して掃除する。
          「未保存でも即外す」の従来挙動は動画にゴミが残るのでダメ。 */
@@ -17002,6 +17011,41 @@ function reelRender(){
     },'外す');
     b.appendChild(ops);
     b.onclick=()=>{reelUI.cur=i;reelUI.loadCur(true)};
+    /* v.034：DnD イベントハンドラ。dragstart で元 idx を保存、dragover でドロップ位置を可視化、
+       drop で splice → cur 追従 → 再描画＋永続化。 */
+    b.addEventListener('dragstart',ev=>{
+      try{ev.dataTransfer.setData('text/plain',String(i));ev.dataTransfer.effectAllowed='move'}catch(_){}
+      b.classList.add('reel-drag-src');
+    });
+    b.addEventListener('dragend',()=>{
+      b.classList.remove('reel-drag-src');
+      track.querySelectorAll('.clip').forEach(x=>{x.classList.remove('reel-drop-before');x.classList.remove('reel-drop-after')});
+    });
+    b.addEventListener('dragover',ev=>{
+      ev.preventDefault();try{ev.dataTransfer.dropEffect='move'}catch(_){}
+      const rect=b.getBoundingClientRect();const before=(ev.clientX-rect.left)<rect.width/2;
+      track.querySelectorAll('.clip').forEach(x=>{x.classList.remove('reel-drop-before');x.classList.remove('reel-drop-after')});
+      b.classList.add(before?'reel-drop-before':'reel-drop-after');
+    });
+    b.addEventListener('dragleave',()=>{b.classList.remove('reel-drop-before');b.classList.remove('reel-drop-after')});
+    b.addEventListener('drop',ev=>{
+      ev.preventDefault();
+      let from=-1;try{from=parseInt(ev.dataTransfer.getData('text/plain'),10)}catch(_){}
+      if(!Number.isFinite(from)||from<0||from>=cs.length)return;
+      const rect=b.getBoundingClientRect();const before=(ev.clientX-rect.left)<rect.width/2;
+      let to=i+(before?0:1);
+      if(from===to||from===to-1)return; /* 同位置 or 直前 → no-op */
+      const curId=cs[reelUI.cur]; /* 現在再生中クリップの参照を保存 */
+      const item=cs.splice(from,1)[0];
+      if(from<to)to--;
+      cs.splice(to,0,item);
+      /* cur 追従：id で再検索して新しい index に更新 */
+      const newCur=cs.indexOf(curId);
+      if(newCur>=0)reelUI.cur=newCur;
+      track.querySelectorAll('.clip').forEach(x=>{x.classList.remove('reel-drop-before');x.classList.remove('reel-drop-after')});
+      reelRender();
+      scheduleReelPersist();
+    });
     track.appendChild(b);
   });
   /* ルーラー：実際のクリップブロック(最小幅・gap込み)の並びに合わせて描画（プレイヘッドとズレないように） */

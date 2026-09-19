@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.19.034) **REEL クリップタイルをドラッグ＆ドロップで並べ替え可能に**：
+  - **追加**：各 `.clip` タイルに `draggable=true` を付与。dragstart で source 記録、dragover でカーソル位置に応じて `reel-drop-before` / `reel-drop-after` インジケータ表示、drop で `reelUI.clips` の splice → 現在再生中クリップの id を追跡して cur 更新 → `reelRender` + `scheduleReelPersist`。
+  - **CSS**：`.clip{cursor:grab}` / `:active{cursor:grabbing}` / `.reel-drag-src{opacity:.4}` / drop 位置に `inset box-shadow` で青ライン表示。
+  - **互換**：既存の ◀▶ ボタンによる隣接入替は残す。あわせて ◀▶ にも `scheduleReelPersist` を呼ぶよう修正（従来は保存されず F5 で戻っていた副次バグを解消）。
+  - APP_VERSION：2026.09.19.033 → 2026.09.19.034
+
 - (dev v2026.09.19.033) **shot.json 保存時にデータ損失防止ガード（A）と自動バックアップ（B）を追加**（v.029/v.030 事故の再発防止・コード級フェイルセーフ）：
   - **背景**：v.029/v.030 で `persist()` が全 REG プロジェクトの shot.json を空 versions で上書きし、動画メタ・FB・レビュー履歴を全消失させた事故を受け、CLAUDE.md／メモリの運用ルールだけでなくコード側にも物理的な安全網を追加。
   - **A. `_shotSaveGuardWarn(pid,sid,newFile)`**：`_saveShotWithLock` の書込み直前で、既存 shot.json の各 review ノードと新ペイロードを比較。`versions.length` が減少（特に N>0 → 0）または review 自体が消えている場合は **書込みを拒否**。console.error + toast で通知。呼び出し元には `{ok:false, guardBlocked:true, warnings:[...]}` を返す。
