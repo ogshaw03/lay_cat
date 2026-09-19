@@ -3788,7 +3788,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.032';
+const APP_VERSION='2026.09.20.033';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10568,9 +10568,10 @@ function openRename(node){
         if(projThumbUrlTmp){try{URL.revokeObjectURL(projThumbUrlTmp)}catch(_){}}
       }
       await persist();closeModal();render();resolveThumbs()};
-    /* v.025：レガシー（section+review 子）ショットが 1 つでもある場合、Simple B に変換するボタンを表示 */
+    /* v.025：レガシー（section+review 子）ショットが 1 つでもある場合、Simple B に変換するボタンを表示。
+       v.033：部分変換済みの review-with-orphan-kids も対象（_isShotSectionLegacy が両方検出）。 */
     if(isProjectRoot){
-      const legacyCount=descendants(node.id).filter(n=>n&&n.type==='section'&&n.parentId&&_isShotSectionLegacy(n)).length;
+      const legacyCount=descendants(node.id).filter(n=>_isShotSectionLegacy(n)).length;
       if(legacyCount>0){
         const secB=el('div','settings-section');
         secB.appendChild(el('span','ic','🔄'));
@@ -10589,12 +10590,21 @@ function openRename(node){
   });
 }
 /* v.025：section 直下が全て review かつ非空ならレガシーショットとみなす。
-   v.029：ただし子が currentStage を持つ Simple B ショットのフォルダは除外。 */
+   v.029：ただし子が currentStage を持つ Simple B ショットのフォルダは除外。
+   v.033：type='review' でも子 review が残っている「部分変換済み」ショットも検出。
+   → 変換の再実行で子を掃除できるようにする（idempotent）。 */
 function _isShotSectionLegacy(n){
-  if(!n||n.type!=='section'||!n.parentId)return false;
-  const kids=childrenOf(n.id);
-  if(!kids.length||!kids.every(k=>k&&k.type==='review'))return false;
+  if(!n||!n.parentId)return false;
+  if(n.type!=='section'&&n.type!=='review')return false;
+  const kids=childrenOf(n.id).filter(k=>k&&k.type==='review');
+  if(!kids.length)return false;
+  /* 子のいずれかが currentStage を持つ＝この n はフォルダで、子は Simple B ショット。除外 */
   if(kids.some(k=>k.currentStage!=null))return false;
+  /* section なら残り子が review 型のみでなければならない（レガシー shot section の条件） */
+  if(n.type==='section'){
+    const allKids=childrenOf(n.id);
+    if(!allKids.every(k=>k&&k.type==='review'))return false;
+  }
   return true;
 }
 /* Simple B 変換：プレビュー → 実行の 2 段階モーダル */
@@ -10677,29 +10687,43 @@ async function convertLegacyToSimpleB(root,shots){
         else curStageName=(stageOrder[0]||kids[0].name);
       }
     }
-    /* 集約：versions / comments / stageHistory */
-    const versions=[];const comments=[];const stageHistorySrc=[];
-    let mergedStatus=null,mergedAssignee=null,mergedReviewer=null;
+    /* 集約：versions / comments / stageHistory
+       v.033：sh に既に統合済みの versions/comments がある（部分変換済み）場合を考慮し、
+       version.id / comment.id で dedup してから追加する（idempotent）。 */
+    const existingVerIds=new Set((sh.versions||[]).map(v=>v&&v.id).filter(Boolean));
+    const existingCommIds=new Set((sh.comments||[]).map(c=>c&&c.id).filter(Boolean));
+    const versions=(sh.versions||[]).slice();
+    const comments=(sh.comments||[]).slice();
+    const stageHistorySrc=(sh.stageHistory||[]).slice();
+    let mergedStatus=sh.status||null,mergedAssignee=sh.assignee||null,mergedReviewer=sh.reviewer||null;
     for(const k of kids){
       const stageName=k.name;
-      for(const v of (k.versions||[])){const nv=Object.assign({},v);if(!nv.stage)nv.stage=stageName;versions.push(nv)}
-      for(const c of (k.comments||[])){const nc=Object.assign({},c);if(!nc.stage)nc.stage=stageName;comments.push(nc)}
+      for(const v of (k.versions||[])){
+        if(v.id&&existingVerIds.has(v.id))continue;
+        const nv=Object.assign({},v);if(!nv.stage)nv.stage=stageName;versions.push(nv);
+        if(nv.id)existingVerIds.add(nv.id);
+      }
+      for(const c of (k.comments||[])){
+        if(c.id&&existingCommIds.has(c.id))continue;
+        const nc=Object.assign({},c);if(!nc.stage)nc.stage=stageName;comments.push(nc);
+        if(nc.id)existingCommIds.add(nc.id);
+      }
       for(const h of (k.stageHistory||[])){stageHistorySrc.push(Object.assign({},h,{_srcStage:stageName}))}
       if(k.name===curStageName){
-        if(k.status)mergedStatus=k.status;
-        if(k.assignee)mergedAssignee=k.assignee;
-        if(k.reviewer)mergedReviewer=k.reviewer;
+        if(k.status&&!mergedStatus)mergedStatus=k.status;
+        if(k.assignee&&!mergedAssignee)mergedAssignee=k.assignee;
+        if(k.reviewer&&!mergedReviewer)mergedReviewer=k.reviewer;
       }
     }
     /* uploadedAt / time で時系列ソート（安定） */
     versions.sort((a,b)=>String(a.uploadedAt||'').localeCompare(String(b.uploadedAt||'')));
     comments.sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
     stageHistorySrc.sort((a,b)=>String(a.ts||'').localeCompare(String(b.ts||'')));
-    /* section → review 変換 */
+    /* section → review 変換（既に review でも上書きしても実害なし） */
     sh.type='review';
     sh.versions=versions;
     sh.comments=comments;
-    sh.currentStage=curStageName;
+    if(!sh.currentStage)sh.currentStage=curStageName;
     sh.stageHistory=stageHistorySrc;
     if(mergedStatus)sh.status=mergedStatus;else if(!sh.status)sh.status='empty';
     if(mergedAssignee)sh.assignee=mergedAssignee;

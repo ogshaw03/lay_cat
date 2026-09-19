@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.033) **変換ボタンが「部分変換済みショット」を検出できず消える不具合を修正・変換を idempotent 化**：
+  - **原因**：`_isShotSectionLegacy` が `type='section'` のみを対象にしていたため、既に一部変換された（`type='review'` になったが子 review が残っている）ショットが「レガシー 0 件」判定になりボタンが消えていた。
+  - **修正 1**：`_isShotSectionLegacy` に `type='review'` の分岐を追加。子に review が残っていて currentStage を持たない状態も「クリーンアップ対象」として検出。
+  - **修正 2**：`convertLegacyToSimpleB` の versions / comments 統合を id ベースの dedup 付きに変更。再実行しても重複しない（idempotent）。currentStage / status / assignee / reviewer も「既に設定があれば残す」ロジックに。
+  - APP_VERSION：2026.09.20.032 → 2026.09.20.033
+
 - (dev v2026.09.20.032) **Simple B 変換が 3-way マージで巻き戻る問題を根本修正（shots/{sid}.json を直接書き込み）**：
   - **原因**：`_saveShotWithLock` の 3-way マージがベースライン欠落時に「相手（disk 側の旧レガシー）」を保持する仕様のため、conversion 実行時に削除した子 review が復活していた（3-way マージの理論的挙動としては正しいが、この用途では意図と逆）。
   - **修正**：`convertLegacyToSimpleB` の各ショット保存を `storage.saveShot` の直接書き込みに切替、3-way マージをバイパス。`_saveCache.shot` と `_revBucket().shots` も同期し、次回 `persist` で false-dirty にならないように。
