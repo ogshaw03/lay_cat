@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.006';
+const APP_VERSION='2026.09.20.007';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -15893,12 +15893,16 @@ function openReel(){
   });
   function drawAnno(){
     const ctx=anno.getContext('2d');ctx.clearRect(0,0,anno.width,anno.height);
+    /* v.007：👁 OFF のときはアノテーション全体を非表示にする。旧実装は saved notes だけ
+       ゲートしていたので、pending strokes・drafts・shape draft・head/mannequin プレビュー等が
+       残って「押しても非表示にならない」問題があった。ここで早期リターンして clear のみ。 */
+    if(!RV.eye)return;
     const dt=rvData();const f=dispF();
     const lyOn=s=>RV.layerVis[((s.layer||1)-1)];
     /* REEL 由来の embed ノート（id=reel_emb_<node>_<frame>）は pending と重複するので v.review.notes 側では
        描画対象から除外する。実際の描画は下の pending ブロックが担当（drag 中もリアルタイム反映）。 */
     const isReelEmb=n=>n&&n.id&&n.id.indexOf('reel_emb_')===0;
-    if(dt&&RV.eye){
+    if(dt){
       /* ゴースト：前後フレームのアノテーションを薄く表示 */
       const cc=reelUI.clips[reelUI.cur];const cdr=(cc&&cc.drafts)||[];
       const shownN=dt.v.review.notes.filter(n=>!isReelEmb(n)).concat(cdr);
@@ -16796,7 +16800,7 @@ function openReel(){
     drawFTL();
   };
   durS.onchange=()=>{drawAnno();drawFTL()};
-  eyeB.onclick=()=>{RV.eye=!RV.eye;eyeB.classList.toggle('on',RV.eye);drawAnno()};
+  eyeB.onclick=()=>{RV.eye=!RV.eye;eyeB.classList.toggle('on',RV.eye);eyeB.textContent=RV.eye?'👁':'—';drawAnno()};
   undoB.onclick=()=>{if(RV.histIdx<=0)return;RV.histIdx--;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent();try{reelAfterEdit(reelUI.clips[reelUI.cur])}catch(_){}};
   redoB.onclick=()=>{if(RV.histIdx>=RV.hist.length-1)return;RV.histIdx++;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent();try{reelAfterEdit(reelUI.clips[reelUI.cur])}catch(_){}};
   clrB.onclick=()=>{
