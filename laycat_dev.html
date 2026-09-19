@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.042';
+const APP_VERSION='2026.09.19.043';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4854,7 +4854,9 @@ async function subSendToReel(sb){
 /* ============================================================
    ナビ / レンダリング
    ============================================================ */
-function go(id){state.currentId=id;state.search='';state.pmPick=null;state.reviewOpen=null;$('#searchInput').value='';const nn=getNode(id);state.projTab=(nn&&nn.type==='review')?'browse':'timeline';/* レビューを開くときはタブ強調とハッシュを本文表示(browse)に合わせる */if(nn&&nn.type==='review'){state.openTasks=(state.openTasks||[]).filter(x=>x!==id);state.openTasks.push(id)}/* タスク(review)のみタブとして開く（カテゴリは開かない） */for(const n of pathOf(id))state.expanded.add(n.id);render();syncHash();autoRefresh()}
+function go(id){state.currentId=id;state.search='';state.pmPick=null;state.reviewOpen=null;$('#searchInput').value='';const nn=getNode(id);state.projTab=(nn&&nn.type==='review')?'browse':'timeline';/* レビューを開くときはタブ強調とハッシュを本文表示(browse)に合わせる */if(nn&&nn.type==='review'){state.openTasks=(state.openTasks||[]).filter(x=>x!==id);state.openTasks.push(id)}/* v.043：ターゲットまでの先祖のみ expanded に追加（ターゲット自身は展開しない）。
+  フォルダをクリックしたときに自動で開かないようにするため。以前は pathOf(id) 全体だったので、
+  フォルダを選択する度に自身も展開されていた。 */for(const n of pathOf(id))if(n.id!==id)state.expanded.add(n.id);render();syncHash();autoRefresh()}
 /* ============================================================
    URLルーティング（ハッシュ）— 画面ごとに固有URL・作業者間でリンク共有
    #/                     ホーム
