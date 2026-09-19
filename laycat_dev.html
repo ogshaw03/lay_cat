@@ -659,8 +659,11 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
    1 行 = 1 ショット、行内に工程チップを横並びで選択できる。
    各列は固定幅にして、ショット名の長さや作業者数に依らず列位置がブレないようにする。 */
 .pk-list{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px}
-.pk-row{display:flex;align-items:center;gap:10px;padding:5px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg2)}
+.pk-row{display:flex;align-items:center;gap:10px;padding:5px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);transition:background .12s ease,border-color .12s ease}
 .pk-row:hover{background:var(--bg3);border-color:var(--border2)}
+/* v.024：Simple B / 単一工程のショットで行全体を選択ハイライト */
+.pk-row.pk-sel{background:rgba(126,203,255,.14);border-color:rgba(126,203,255,.55)}
+.pk-row.pk-sel::before{content:'✓';color:#7ecbff;font-weight:800;margin-right:-2px}
 .pk-row .pk-th{width:52px;height:29px;background:#000 center/cover no-repeat;border-radius:3px;flex-shrink:0}
 .pk-row .pk-nm{font-size:12px;font-weight:700;color:var(--text);font-family:var(--font-code);font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0;width:110px;overflow:hidden;text-overflow:ellipsis}
 .pk-row .pk-asg{flex-shrink:0;width:160px;display:flex;gap:4px;overflow:hidden;flex-wrap:nowrap}
@@ -3764,7 +3767,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.023';
+const APP_VERSION='2026.09.20.024';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4796,13 +4799,26 @@ function openSubPicker(){
     if(lv&&lv.v.thumb)storage.getURL(lv.v.thumb).then(u=>{if(u)th.style.backgroundImage='url("'+u+'")'});
     row.appendChild(th);
     row.appendChild(el('span','pk-nm',shot.name));
+    /* v.024：ショット単体（Simple B）や単一工程のショットでは工程チップを出さない。
+       row 全体をトグル対象にして「行クリックで選択／解除」に統一。
+       複数工程（レガシー multi-stage）のときのみ従来通り工程チップを表示。 */
     const chips=el('div','pk-stages');
-    for(const stg of visStages){
-      const chip=el('div','pk-chip'+(sel.has(stg.id)?' on':''));
-      const dot=el('span','pk-dot');dot.style.background=stageBadgeColor(stg);chip.appendChild(dot);
-      chip.appendChild(document.createTextNode(stg.name));
-      chip.onclick=e=>{e.stopPropagation();if(sel.has(stg.id))sel.delete(stg.id);else sel.add(stg.id);chip.classList.toggle('on',sel.has(stg.id));updCount()};
-      chips.appendChild(chip);
+    const isSingle=visStages.length===1;
+    if(isSingle){
+      const stg=visStages[0];
+      /* 単一工程は選択状態のみ視覚化（チェックマーク）。 */
+      row.classList.toggle('pk-sel',sel.has(stg.id));
+      row.style.cursor='pointer';
+      const toggle=()=>{if(sel.has(stg.id))sel.delete(stg.id);else sel.add(stg.id);row.classList.toggle('pk-sel',sel.has(stg.id));updCount()};
+      row.addEventListener('click',(e)=>{if(e.target.closest('button,a,input,select,textarea'))return;toggle()});
+    }else{
+      for(const stg of visStages){
+        const chip=el('div','pk-chip'+(sel.has(stg.id)?' on':''));
+        const dot=el('span','pk-dot');dot.style.background=stageBadgeColor(stg);chip.appendChild(dot);
+        chip.appendChild(document.createTextNode(stg.name));
+        chip.onclick=e=>{e.stopPropagation();if(sel.has(stg.id))sel.delete(stg.id);else sel.add(stg.id);chip.classList.toggle('on',sel.has(stg.id));updCount()};
+        chips.appendChild(chip);
+      }
     }
     row.appendChild(chips);
     /* 作業担当者：この行の見える工程からユニークなアサイニーを集めて色ドット付きバッジで表示。
