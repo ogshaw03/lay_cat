@@ -601,7 +601,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.20.003';
+const APP_VERSION='2026.09.20.004';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2340,6 +2340,11 @@ function updateFolderUI(){
    - members 未設定／空配列のプロジェクトは互換のため誰でも閲覧可。
    - LayCAT に未ログインでメール未設定なら拒否。 */
 function _pmCurrentUserEmail(){
+  /* pmboard 自身の Firebase Auth（同じ laycat-54ee4 プロジェクト）で認証済みなら
+     __laynaFBUser.email を優先。取れなければ LayCAT が書いた localStorage を fallback。 */
+  try{
+    if(window.__laynaFBUser&&window.__laynaFBUser.email)return String(window.__laynaFBUser.email).trim().toLowerCase();
+  }catch(_){}
   try{return (localStorage.getItem('laycat_userEmail')||'').trim().toLowerCase()}catch(_){return ''}
 }
 function _pmIsMember(root){
@@ -2374,11 +2379,23 @@ let _pmAccessCfg=null,_pmAuthOn=false,_pmAccessLoaded=false;
 async function _pmLoadAccess(){
   if(_pmAccessLoaded)return;
   _pmAccessLoaded=true;
+  /* 静的 access.json をベースに、Firebase（Firestore）で管理されている accessCfg / invited を
+     直接マージする。pmboard 自身が Firebase を初期化しているので LayCAT を経由しなくても
+     コンソール側の最新設定を反映できる。 */
   try{
     const r=await fetch('./access.json',{cache:'no-store'});
     _pmAccessCfg=await r.json();
   }catch(_){_pmAccessCfg=null}
-  /* Firebase invited を追記（LayCAT が公開している __laynaFB を使えれば） */
+  /* Firebase の onAuthStateChanged が初回発火するまで最大 6s 待つ（ログイン状態が判るまで） */
+  try{if(window.__pmFBReady)await Promise.race([window.__pmFBReady,new Promise(r=>setTimeout(r,6000))])}catch(_){}
+  /* Firestore の laynaAccess/config を上書きマージ */
+  try{
+    if(window.__laynaFB&&window.__laynaFB.loadAccess){
+      const fs=await window.__laynaFB.loadAccess();
+      if(fs&&typeof fs==='object')_pmAccessCfg=Object.assign({},_pmAccessCfg||{},fs);
+    }
+  }catch(_){}
+  /* invited を allowedEmails に追記 */
   try{
     if(window.__laynaFB&&window.__laynaFB.loadInvited){
       const inv=await window.__laynaFB.loadInvited();
@@ -2406,7 +2423,19 @@ function _pmCheckOrgAccess(){
   if(role)return true;
   const body=document.getElementById('ganttBody');
   const meNow=em||'（未ログイン）';
-  body.innerHTML=`<div class="empty-panel" style="max-width:520px;margin:40px auto"><div class="ep-ico">⛔</div><div class="ep-title">このアプリを利用する権限がありません</div><div class="ep-sub" style="line-height:1.6">アクセス管理コンソール（access.json）で許可されていないアカウントです。<br>現在のメール：<b>${escapeHtml(meNow)}</b><br><br>管理者に allowedEmails への追加を依頼してください。既に許可済みの場合は、LayCAT でログインし直してから pmboard を再読み込みしてください。</div></div>`;
+  const loggedIn=!!em;
+  const btnLabel=loggedIn?'別アカウントでログイン':'Google でログイン';
+  const title=loggedIn?'このアプリを利用する権限がありません':'ログインが必要です';
+  const desc=loggedIn
+    ? `アクセス管理コンソールで許可されていないアカウントです。<br>現在のメール：<b>${escapeHtml(meNow)}</b><br><br>管理者に allowedEmails への追加を依頼するか、別アカウントでログインし直してください。`
+    : 'このアプリの利用にはログインが必要です。下のボタンから Google アカウントでログインしてください。';
+  body.innerHTML=`<div class="empty-panel" style="max-width:520px;margin:40px auto"><div class="ep-ico">⛔</div><div class="ep-title">${escapeHtml(title)}</div><div class="ep-sub" style="line-height:1.6">${desc}</div><div style="margin-top:16px;display:flex;gap:8px;justify-content:center"><button id="pmLoginBtn" style="padding:8px 18px;border-radius:8px;background:#4da6ff;color:#111;border:0;font-weight:700;cursor:pointer">${escapeHtml(btnLabel)}</button>${loggedIn?'<button id="pmLogoutBtn" style="padding:8px 14px;border-radius:8px;background:transparent;border:1px solid #3a3a42;color:#c8c8d0;cursor:pointer">ログアウト</button>':''}</div></div>`;
+  const lb=document.getElementById('pmLoginBtn');
+  if(lb)lb.onclick=async()=>{try{if(window.__laynaFB)await window.__laynaFB.login();/* 再チェックのため再読込 */setTimeout(()=>location.reload(),300)}catch(e){alert('ログインに失敗しました：'+(e&&e.message||e))}};
+  const lo=document.getElementById('pmLogoutBtn');
+  if(lo)lo.onclick=async()=>{try{if(window.__laynaFB)await window.__laynaFB.logout();setTimeout(()=>location.reload(),300)}catch(_){}};
+  /* ログイン状態が変わったら自動で再読込 */
+  window.__pmOnAuthChanged=()=>{setTimeout(()=>location.reload(),200)};
   return false;
 }
 async function loadAndRender(){
@@ -3135,6 +3164,46 @@ const initialPid = document.getElementById('projSelect').value;
 if(initialPid){ switchToProject(initialPid).then(updateLastUpdatedLabel); }
 else { showInitialEmptyState(); }
 
+</script>
+
+<script type="module">
+  /* v.004：LayCAT と同じ laycat-54ee4 Firebase プロジェクトに接続。
+     pmboard 自身で Auth と Firestore を扱えるようにし、アクセス管理コンソール
+     （laynaAccess/config, invited）を直接参照できるようにする。 */
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  const firebaseConfig={apiKey:"AIzaSyBn9TFT7lMdEVcatGo6v_qzIPXeDay5Cvw",authDomain:"laycat-54ee4.firebaseapp.com",projectId:"laycat-54ee4",storageBucket:"laycat-54ee4.firebasestorage.app",messagingSenderId:"1016486781774",appId:"1:1016486781774:web:f41f9546fd47e73774b41f"};
+  window.__laynaFBUser=undefined;
+  /* 認証状態が初回に届いたら resolve する Promise。pmboard の loadAndRender が待つ用。 */
+  let _pmFBReadyResolve;window.__pmFBReady=new Promise(r=>{_pmFBReadyResolve=r});
+  try{
+    const app=initializeApp(firebaseConfig);const auth=getAuth(app);const provider=new GoogleAuthProvider();
+    window.__laynaFB={
+      login:()=>signInWithPopup(auth,provider),
+      logout:()=>signOut(auth),
+      loadAccess:async()=>{try{
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);const snap=await m.getDoc(m.doc(fs,'laynaAccess','config'));
+        return snap.exists()?snap.data():null;
+      }catch(e){return null}},
+      loadInvited:async()=>{try{
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);const snap=await m.getDoc(m.doc(fs,'laynaAccess','invited'));
+        return snap.exists()?snap.data():null;
+      }catch(e){return null}}
+    };
+    onAuthStateChanged(auth,u=>{
+      const uu=u?{displayName:u.displayName,email:u.email,photoURL:u.photoURL}:null;
+      window.__laynaFBUser=uu;
+      if(_pmFBReadyResolve){_pmFBReadyResolve(uu);_pmFBReadyResolve=null}
+      /* 認証状態が後から変わった（ログイン／ログアウト）なら pmboard を再描画 */
+      if(typeof window.__pmOnAuthChanged==='function')try{window.__pmOnAuthChanged(uu)}catch(_){}
+    });
+  }catch(e){
+    window.__laynaFBError=e&&e.message;
+    window.__laynaFBUser=null;
+    if(_pmFBReadyResolve){_pmFBReadyResolve(null);_pmFBReadyResolve=null}
+  }
 </script>
 
 </body>

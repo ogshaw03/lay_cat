@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.016) **短命の localStorage.laycat_accessCfg 書き出しを撤回（pmboard 側に Firebase 直接連携を入れたため不要）**：
+  - v.016 で追加した onAuthChanged 内での `laycat_accessCfg` 書き込みを削除。pmboard は自前で Firebase を初期化して Firestore を直接読むため、リレーが不要になった。
+  - `laycat_userEmail` の永続化（v.015）は残置（pmboard の fallback 用）。
+  - APP_VERSION：2026.09.20.015 → 2026.09.20.016
+
 - (dev v2026.09.20.015) **pmboard の識別を「名前」から「メールアドレス」に変更**：
   - v.014 の `laycat_userName` 保存を撤回し、`authUser.email` を `localStorage.laycat_userEmail` に保存するよう変更（起動 500ms 後 ＋ 3 秒周期の軽い同期）。
   - `root.members[].id`（メール）と照合するので LayCAT ログインが前提。未ログインは pmboard 拒否画面へ。
@@ -2591,6 +2596,13 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.09.20.004) **pmboard に Firebase Auth/Firestore を直接組み込み、コンソールで許可されたアカウントで確実に入れるように**：
+  - v.003 は access.json（静的 JSON）だけを見ていたため、Firestore コンソール側で追加した allowedEmails が反映されず「メンバーのはずなのに弾かれる」問題があった。
+  - pmboard 自身に Firebase App / Auth / Firestore を組み込み、LayCAT と同じ `laycat-54ee4` プロジェクトに接続。`__laynaFB.loadAccess()` / `loadInvited()` を使って Firestore の最新の許可リストを直接マージ。
+  - `_pmCurrentUserEmail` は `__laynaFBUser.email` を優先し、`laycat_userEmail`（LayCAT 側の LS）を fallback。
+  - 拒否画面に「Google でログイン」ボタン／「別アカウントでログイン」ボタンを追加。ログイン成功時は自動リロード。
+  - APP_VERSION：2026.09.20.003 → 2026.09.20.004
 
 - (dev v2026.09.20.003) **アクセス管理コンソール（access.json）を pmboard 側にも継承**：
   - `access.json` を pmboard 起動時に `fetch` し、`authRequired && hostname==='ogshaw03.github.io'` のときはアクセス管理コンソールで許可されたアカウントのみ入れるゲートを追加。
