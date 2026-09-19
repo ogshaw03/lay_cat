@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.014';
+const APP_VERSION='2026.09.20.015';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -3780,17 +3780,20 @@ const PLACEHOLDER_THUMB="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPcAAADwC
 function thumbPh(doc){doc=doc||document;const w=doc.createElement('div');w.className='thumb-ph';const im=doc.createElement('img');im.src=PLACEHOLDER_THUMB;im.alt='未着手';im.draggable=false;w.appendChild(im);return w}
 let authUser=null; // {name,email,photo,role} when Google認証時
 const currentUser=()=>authUser?authUser.name:(($('#currentUser').value||'').trim()||'anonymous');
-/* v.014：ユーザー名を localStorage に永続化。pmboard など別タブが同じユーザー識別を使って
-   root.members とアクセス権照合ができるようにする。初回ロードで復元、入力変更で保存。 */
-(function _wireCurrentUserPersist(){
-  try{
-    const el=document.getElementById('currentUser');
-    if(!el)return;
-    const saved=(localStorage.getItem('laycat_userName')||'').trim();
-    if(saved&&!el.value)el.value=saved;
-    el.addEventListener('input',()=>{try{localStorage.setItem('laycat_userName',(el.value||'').trim())}catch(_){}});
-    el.addEventListener('change',()=>{try{localStorage.setItem('laycat_userName',(el.value||'').trim())}catch(_){}});
-  }catch(_){}
+/* v.015：pmboard など別タブが同じユーザー識別で root.members（m.id=メール）と照合できるように
+   `authUser.email` を localStorage に永続化する。ログイン変更を polling ではなく getter で受けるので、
+   起動時と定期チェックの二重で拾う。名前は localStorage 永続化しない（識別はメール優先）。 */
+(function _wireCurrentEmailPersist(){
+  const push=()=>{
+    try{
+      const em=(authUser&&authUser.email)?String(authUser.email).toLowerCase():'';
+      if(em)localStorage.setItem('laycat_userEmail',em);
+      else localStorage.removeItem('laycat_userEmail');
+    }catch(_){}
+  };
+  /* 起動直後は authUser 未定 → 少し遅延して初回、以後 3 秒ごとに軽く同期 */
+  setTimeout(push,500);
+  setInterval(push,3000);
 })();
 function toast(m){const t=el('div','toast',m);document.body.appendChild(t);setTimeout(()=>t.remove(),2400)}
 /* 任意の document／window に対してトーストを表示。REEL ポップアップから呼ぶ場合に使用。 */

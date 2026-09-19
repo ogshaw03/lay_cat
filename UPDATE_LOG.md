@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.015) **pmboard の識別を「名前」から「メールアドレス」に変更**：
+  - v.014 の `laycat_userName` 保存を撤回し、`authUser.email` を `localStorage.laycat_userEmail` に保存するよう変更（起動 500ms 後 ＋ 3 秒周期の軽い同期）。
+  - `root.members[].id`（メール）と照合するので LayCAT ログインが前提。未ログインは pmboard 拒否画面へ。
+  - APP_VERSION：2026.09.20.014 → 2026.09.20.015
+
 - (dev v2026.09.20.014) **ユーザー名を localStorage に永続化（pmboard との共有識別）**：
   - トップバー右上の「名前」入力（`#currentUser`）を `localStorage.laycat_userName` に保存／復元するよう配線。
   - pmboard 側で同じキーを読んで `root.members` と照合し、非メンバーのアクセスを弾く。これにより「PMboard のアクセス権をプロジェクトのメンバー管理から継承」する構成が成立。
@@ -2586,6 +2591,11 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.09.20.002) **アクセス識別を「名前」から「メールアドレス」に変更**：
+  - `localStorage.laycat_userEmail`（LayCAT が `authUser.email` を保存）を現在ユーザー識別として使い、`root.members[].id`（メール）と照合。名前照合は撤回。
+  - LayCAT に未ログインでメール未設定なら拒否画面。案内文もメール表示に変更。
+  - APP_VERSION：2026.09.20.001 → 2026.09.20.002
 
 - (dev v2026.09.20.001) **LayCAT のプロジェクトメンバー管理を継承したアクセスチェックを追加**：
   - `localStorage.laycat_userName`（LayCAT 側で v.014 から永続化）を現在ユーザー識別として使用し、`root.members` と照合。非メンバーはアクセス拒否画面（🔒 アイコン＋ガイド）に切替。
