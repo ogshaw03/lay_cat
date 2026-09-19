@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.039';
+const APP_VERSION='2026.09.19.040';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5052,24 +5052,14 @@ function renderSidebar(){
   lab.appendChild(rootBtn);
   const ctrls=el('span','side-ctrls');
   const col=el('span','add','⊟');col.title='現在の階層以外を閉じる';col.onclick=()=>{state.expanded=new Set(pathOf(state.currentId).map(n=>n.id));renderSidebar()};ctrls.appendChild(col);
-  /* ＋追加：現在選択中の階層（state.currentId）を親として作成。
-     選択が review（作業ページ）ならその親フォルダを親に。親の子構造で role を判定：
-     - 親 = ルート（無選択）→ role='in-root'（エピソード／ショット／作業ページ の 3 択）
-     - 親に「孫を持つ子」があれば episode 相当→ role='in-episode'（ショット／作業ページ の 2 択）
-     - それ以外は role 未指定（default = ショット／作業ページ） */
-  const add=el('span','add','＋');add.title='この直下にアイテムを追加';
+  /* ＋追加：v.040 で 2 階層モデル（フォルダ／ショットページ）に簡素化。
+     選択中ノードを親に、常に 2 択（フォルダ or ショットページ）モーダルを開く。 */
+  const add=el('span','add','＋');add.title='この直下にフォルダ or ショットページを追加';
   add.onclick=()=>{
     let target=state.currentId?getNode(state.currentId):null;
     if(!target)target=root;
     if(target.type==='review'){const p=target.parentId?getNode(target.parentId):null;target=p||root}
-    let addRole;
-    if(target.id===root.id){addRole='in-root'}
-    else{
-      /* target.kind==='episode' 明示があれば in-episode 確定、無ければ孫の有無で推定 */
-      const isEp=(target.kind==='episode')||childrenOf(target.id).some(k=>k.type==='section'&&childrenOf(k.id).length>0);
-      addRole=isEp?'in-episode':undefined;
-    }
-    openAddModal(target.id,undefined,addRole);
+    openAddModal(target.id);
   };
   ctrls.appendChild(add);
   lab.appendChild(ctrls);sb.appendChild(lab);
@@ -5736,38 +5726,32 @@ function projectStageNames(rootId){return [...new Set(descendants(rootId).filter
 /* タイムラインで非表示にしている工程名（プロジェクト単位・切替時にリセット） */
 function tlHiddenSet(rootId){if(state.tlHiddenFor!==rootId){state.tlHiddenFor=rootId;state.tlHidden=new Set()}return state.tlHidden;}
 
-/* 空プロジェクトの初回ガイド：3 階層に対応した大きな導線ボタン
-   エピソード（＝ルート直下のフォルダ）／ショット（＝エピソード直下 or ルート直下のフォルダ）／
-   作業ページ（＝ショット直下のレビューページ）。
-   openAddModal は section/review の 2 種しか扱わないので、エピソードとショットはどちらも
-   'section' を渡し、モーダル内で名前をユーザーが入れる形（内部データ的にも同じ section）。 */
+/* v.040：階層モデルを「フォルダ」「ショットページ」の 2 種に簡素化。
+   従来はエピソード／ショット／作業ページ の 3 階層想定だったが、
+   ユーザー方針で「任意深さのフォルダ + 末端のショットページ」に統一。
+   openAddModal は type='section' or 'review' を渡すだけ。 */
 function _emptyProjectGuide(cur){
   const wrap=el('div','empty-proj-guide');
-  wrap.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:24px auto 0;max-width:1000px;width:100%';
-  const mkBtn=(iconName,title,sub,tpref,role)=>{
-    const b=el('button','empty-proj-btn');
-    b.type='button';
+  wrap.style.cssText='display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:24px auto 0;max-width:700px;width:100%';
+  const mkBtn=(iconName,title,sub,tpref)=>{
+    const b=el('button','empty-proj-btn');b.type='button';
     b.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:36px 18px;background:transparent;border:2px dashed var(--border);border-radius:var(--radius);color:var(--text2);cursor:pointer;transition:all .15s ease;min-height:180px;font:inherit';
     b.onmouseenter=()=>{b.style.borderColor='var(--accent)';b.style.color='var(--text1)';b.style.background='rgba(255,255,255,.02)'};
     b.onmouseleave=()=>{b.style.borderColor='var(--border)';b.style.color='var(--text2)';b.style.background='transparent'};
     const ic=icoEl(iconName);ic.style.cssText='width:36px;height:36px';b.appendChild(ic);
     const t=el('div');t.style.cssText='font-size:16px;font-weight:600';t.textContent=title;b.appendChild(t);
     const s=el('div');s.style.cssText='font-size:12px;color:var(--text3);text-align:center;line-height:1.5';s.textContent=sub;b.appendChild(s);
-    b.onclick=()=>openAddModal(cur.id,tpref,role);
+    b.onclick=()=>openAddModal(cur.id,tpref);
     return b;
   };
-  wrap.appendChild(mkBtn('folder','エピソードを追加','複数話ある場合の話単位フォルダ（EP01 など）','section','episode'));
-  wrap.appendChild(mkBtn('folder','ショットを追加','1 ショット単位のフォルダ（sh010 など）。エピソードなしなら直接ここから','section','cut'));
-  wrap.appendChild(mkBtn('film','作業ページを追加','動画・画像のレビュー／FB ログを残す作業ページ','review','task'));
+  wrap.appendChild(mkBtn('folder','フォルダを追加','グループ化用のフォルダ。任意の深さでネスト可（EP01 / sh010 など自由）','section'));
+  wrap.appendChild(mkBtn('film','ショットページを追加','動画・画像の FB ログ／レビューを残すショットページ','review'));
   return wrap;
 }
-/* 空のフォルダに配置するガイドボタン。フォルダの階層位置に応じて表示するボタンを切替：
-   - エピソード相当（＝親がルート、かつルート配下の他フォルダに孫がある）→ ショット／作業ページ の 2 択
-   - それ以外（ショット相当）→ 作業ページのみ
-   フォルダが空でない場合や section 以外は null を返さず、シンプルな 1 択（作業ページ）を返す。 */
 function _emptyFolderGuide(cur){
   const wrap=el('div','empty-proj-guide');
-  const mkBtn=(iconName,title,sub,tpref,role)=>{
+  wrap.style.cssText='display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:16px auto 0;max-width:680px;width:100%';
+  const mkBtn=(iconName,title,sub,tpref)=>{
     const b=el('button','empty-proj-btn');b.type='button';
     b.style.cssText='display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:36px 18px;background:transparent;border:2px dashed var(--border);border-radius:var(--radius);color:var(--text2);cursor:pointer;transition:all .15s ease;min-height:180px;font:inherit';
     b.onmouseenter=()=>{b.style.borderColor='var(--accent)';b.style.color='var(--text1)';b.style.background='rgba(255,255,255,.02)'};
@@ -5775,31 +5759,11 @@ function _emptyFolderGuide(cur){
     const ic=icoEl(iconName);ic.style.cssText='width:36px;height:36px';b.appendChild(ic);
     const t=el('div');t.style.cssText='font-size:16px;font-weight:600';t.textContent=title;b.appendChild(t);
     const sd=el('div');sd.style.cssText='font-size:12px;color:var(--text3);text-align:center;line-height:1.5';sd.textContent=sub;b.appendChild(sd);
-    b.onclick=()=>openAddModal(cur.id,tpref,role);
+    b.onclick=()=>openAddModal(cur.id,tpref);
     return b;
   };
-  /* 階層判定：優先順位
-     1. `cur.kind` が保存されていればそれを使う（作成時点で確定）
-     2. 親がルート & 兄弟が「孫を持つ子」を持てば自分もエピソード
-     3. それ以外はショット扱い */
-  let isEpisode=false;
-  if(cur.kind==='episode')isEpisode=true;
-  else if(cur.kind==='cut')isEpisode=false;
-  else{
-    const parent=cur.parentId?getNode(cur.parentId):null;
-    if(parent&&!parent.parentId){
-      const siblings=childrenOf(parent.id).filter(c=>c.id!==cur.id);
-      isEpisode=siblings.some(sib=>sib.kind==='episode'||childrenOf(sib.id).some(gc=>childrenOf(gc.id).length>0));
-    }
-  }
-  const cols=isEpisode?2:1;
-  wrap.style.cssText='display:grid;grid-template-columns:repeat('+cols+',1fr);gap:14px;margin:16px auto 0;max-width:'+(cols*340)+'px;width:100%';
-  if(isEpisode){
-    wrap.appendChild(mkBtn('folder','ショットを追加','1 ショット単位のフォルダ（sh010 など）','section','cut'));
-    wrap.appendChild(mkBtn('film','作業ページを追加','動画・画像のレビュー／FB ログを残す作業ページ','review','task'));
-  }else{
-    wrap.appendChild(mkBtn('film','作業ページを追加','動画・画像のレビュー／FB ログを残す作業ページ','review','task'));
-  }
+  wrap.appendChild(mkBtn('folder','フォルダを追加','この中にさらに分類フォルダを作れます','section'));
+  wrap.appendChild(mkBtn('film','ショットページを追加','動画・画像の FB ログ／レビューを残すショットページ','review'));
   return wrap;
 }
 function renderProjTimeline(main,cur){
@@ -9608,30 +9572,23 @@ function openR2ConnectModal(){
 function openAddModal(parentId,initialType,role){
   openModal(body=>{
     const cur=parentId?getNode(parentId):null;
-    /* role が指定されている（3 階層モデルの導線ボタンから呼ばれた）場合はページ種別は自動で確定、
-       選択 UI 自体を出さない。role='cut' のみ工程セクションを表示（ショットの中に工程を並べる）。 */
-    const roleTitle={episode:'エピソードを追加',cut:'ショットを追加',task:'作業ページを追加','in-root':'アイテムを追加（エピソード／ショット／作業ページ）','in-episode':'アイテムを追加（ショット／作業ページ）'}[role]||'アイテムを追加';
+    /* v.040：2 階層モデル（フォルダ／ショットページ）に統一。role 引数は互換のため受けるが挙動は同じ。
+       initialType が明示されればそれを初期選択に、無ければ 'section'（フォルダ）を既定。 */
+    const _initT=(initialType==='review')?'review':'section';
+    const roleTitle=(_initT==='review'?'ショットページを追加':'フォルダを追加');
     const inner=mHead(body,roleTitle,cur?('親: '+cur.name):'新規アイテム');
-    const nameRow=frow('名前 / ベース名（例: ショット01 / cut）','input');
+    const nameRow=frow('名前 / ベース名（例: sh010 / EP01）','input');
     inner.appendChild(nameRow.r);
     const nameLab=nameRow.r.querySelector('label');
     let stgSection=null;
-    const _initT=role?((role==='task')?'review':'section'):((initialType==='review'||initialType==='section')?initialType:'section');
-    /* ページ種別セレクタ：
-       - role='episode'/'cut'/'task' は暗黙で確定するため出さない
-       - role='in-root'（プロジェクトルート直下の＋追加、無選択時）は エピソード／ショット／作業ページ の 3 択
-       - role='in-episode'（エピソードフォルダ配下の＋追加）は ショット／作業ページ の 2 択
-       - role 未指定は default（ショット／作業ページ） */
-    const _tsOpts=(role==='in-root')
-      ?{threeWay:true}
-      :((role==='in-episode')?{labels:{section:'ショット',review:'作業ページ'},subs:{section:'ショット単位のフォルダ（sh010 など）',review:'動画・画像の FB ログを残す作業ページ'}}:undefined);
-    /* 3-way モードでは sel 値が 'episode'|'cut'|'task'。工程セクションの表示は 'cut' のときだけ。 */
+    /* 種別セレクタは常に 2 択（フォルダ／ショットページ） */
+    const _tsOpts={labels:{section:'フォルダ',review:'ショットページ'},subs:{section:'グループ化用（任意深さでネスト可）',review:'動画・画像の FB ログ／レビュー用の 1 ページ'}};
     const ts=typeSelector(_initT,t=>{
       if(!stgSection)return;
-      if(role==='in-root'){stgSection.style.display=(t==='cut')?'':'none'}
-      else{stgSection.style.display=(t==='section'&&role!=='episode'&&role!=='task')?'':'none'}
+      /* ショットページ（review）を選んだら工程セクションは不要。フォルダ選択でも表示しない（v.040 モデルでは工程はプロジェクト設定）。 */
+      stgSection.style.display='none';
     },_tsOpts);
-    if(!role||role==='in-episode'||role==='in-root')inner.appendChild(ts.row);
+    inner.appendChild(ts.row);
     /* 連番で複数作成（同じ工程を含むフォルダを一括作成） */
     const seqTop=el('label','form-label');seqTop.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px';
     const seqCb=el('input');seqCb.type='checkbox';seqTop.appendChild(seqCb);seqTop.appendChild(document.createTextNode('連番で複数作成'));
@@ -9686,51 +9643,32 @@ function openAddModal(parentId,initialType,role){
     const addStg=el('button','btn btn-ghost btn-sm','＋ 工程を追加');addStg.style.marginBottom='6px';addStg.onclick=()=>{stgArr.push('新工程');redrawStg()};
     stgSection.appendChild(addStg);
     inner.appendChild(stgSection);
-    /* 初期タイプが review（タスク）／role='episode'|'task' なら工程セクションを非表示。
-       role='cut' のみ工程セクションを表示（ショットに工程を並べる用途）。
-       role='in-root' 時は 3-way selector 初期 'episode' で始まるので非表示スタート。 */
-    if(_initT==='review'||role==='episode'||role==='task'||role==='in-root')stgSection.style.display='none';
+    /* v.040：工程セクションは基本的に不要（ショットページ＝review は 1 ページ管理・工程はプルダウン）。
+       常に非表示にしておき、旧モデル互換 UI としては残置（DOM は生成しているが display:none）。 */
+    stgSection.style.display='none';
     const descRow=frow('説明（任意）','textarea');inner.appendChild(descRow.r);
     const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=closeModal;
     const save=el('button','btn btn-primary','追加');
     save.onclick=async()=>{
       const base=nameRow.f.value.trim();if(!base)return toast('名前を入力してください');
-      /* 3-way モードでは ts.get() は 'episode'|'cut'|'task' → 内部 type にマップ。
-         2-way モードは 'section'|'review' がそのまま返る。 */
-      const raw=ts.get();
-      const type=(raw==='episode'||raw==='cut')?'section':(raw==='task'?'review':raw);
-      /* 工程セクションを作るのは「ショット相当」のみ。エピソードは section だが工程は作らない。
-         - type='section' が前提（review には工程不要）
-         - role='episode' 明示は除外
-         - 3-way で raw='episode' 選択も除外 */
-      const wantStages=(type==='section')&&(role!=='episode')&&(raw!=='episode');
+      /* v.040：ts.get() は 'section' or 'review' のみ。type そのまま採用。 */
+      const type=ts.get();
       let names=[base];
       if(seqCb.checked){
         const cnt=Math.max(1,Math.min(200,parseInt(cntI.value)||1));
         const start=parseInt(startI.value)||0,step=parseInt(stepI.value)||1,dig=Math.max(0,parseInt(digI.value)||0);
         names=[];for(let i=0;i<cnt;i++)names.push(base+String(start+i*step).padStart(dig,'0'));
       }
-      const stages=wantStages?stgArr.map(x=>x.trim()).filter(Boolean):[];
-      /* 階層ヒント：作成後の空フォルダ判定（_emptyFolderGuide 等）で兄弟がまだ無い場合の
-         フォールバックとして「これはエピソード」「これはショット」の印を残す。role/raw から確定できる場合のみ。 */
-      const kindHint=(raw==='episode'||role==='episode')?'episode'
-                    :((raw==='cut'||role==='cut'||(type==='section'&&role==='in-episode'))?'cut':null);
-      /* Simple B：ショット相当（wantStages=true）で工程が空なら、単一 review ノードとして作成。
-         工程が指定されていれば従来通り section+review 子。それ以外（エピソード・作業ページ）は type そのまま。 */
-      const simpleShot=(wantStages && stages.length===0);
-      const createType=simpleShot?'review':type;
       const createdIds=[];
       for(const nm of names){
-        const id=addNode(parentId,nm,names.length===1?descRow.f.value.trim():'',createType);
+        const id=addNode(parentId,nm,names.length===1?descRow.f.value.trim():'',type);
         createdIds.push(id);
         const nd=getNode(id);
-        if(kindHint)nd.kind=kindHint;
-        if(simpleShot){
-          /* 新モデル：currentStage の初期値を root.stages[0] に */
+        /* ショットページ（review）作成時は currentStage の初期値を root.stages[0] に。
+           工程セクション（別 review 子ノード）は作らない（Simple B 単一 review モデル）。 */
+        if(type==='review'){
           const _list=projStageList(rootOf(nd));
-          if(_list.length) nd.currentStage=_list[0];
-        }else if(stages.length){
-          for(const st of stages)addNode(id,st,'','review');nd.stages=stages.slice();
+          if(_list.length)nd.currentStage=_list[0];
         }
       }
       await persist();closeModal();if(parentId)state.expanded.add(parentId);render();resolveThumbs();
