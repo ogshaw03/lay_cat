@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.003';
+const APP_VERSION='2026.09.20.005';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -17708,24 +17708,34 @@ async function sendToReel(node,v){
   toast('REEL に送りました: '+node.name+' '+v.name);
 }
 /* v.056：ショットページの「前後カットでREELに送る」用。
-   shotsOf(root) 上での前後 1 カットずつと自分自身を、それぞれの最新動画で REEL に並べる。
-   前後カットとの繋がり確認が本来の Reel の使い方なので、単独でなくこちらを推奨挙動にする。 */
+   中央（現ショット）は「今ユーザーが見ている版」をそのまま送る。
+   shotsOf(root) 上での前後 ±1 カットは、それぞれのショットの最新動画で送る。
+   v.005：ショット祖先の探索は「node から辿って shotsOf(root) の集合に含まれるノードを見つける」
+   方式に変更。旧実装は `_isShotLikeNode` が「review 単体」でも true を返すため、レガシー
+   multi-stage（shot section 直下に review 複数）で node=review にとどまってしまい、
+   shotsOf が返す実ショット（section 側）と id が一致せず、結果 1 カットだけ送っていた。 */
 async function sendToReelWithNeighbors(node,v){
   if(v.type!=='video'){toast('REEL に送れるのは動画のみです');return}
   const root=rootOf(node);
-  /* node（review）からショット祖先を辿る（Simple B なら node 自身が該当） */
-  let shot=node;while(shot&&!_isShotLikeNode(shot))shot=shot.parentId?getNode(shot.parentId):null;
-  if(!root||!shot){await sendToReel(node,v);return}
+  if(!root){await sendToReel(node,v);return}
   const list=shotsOf(root);
+  const listSet=new Set(list.map(s=>s.id));
+  let shot=node;while(shot&&!listSet.has(shot.id))shot=shot.parentId?getNode(shot.parentId):null;
+  if(!shot){await sendToReel(node,v);return}
   const idx=list.findIndex(s=>s.id===shot.id);
   if(idx<0){await sendToReel(node,v);return}
   openReel();if(!reelAlive())return;
   const neighbors=[list[idx-1],list[idx],list[idx+1]].filter(Boolean);
   let added=0,skipped=0;
   for(const sh of neighbors){
-    const lv=latestVideoVersionUnder(sh.id);
-    if(!lv||lv.v.type!=='video'){skipped++;continue}
-    await reelAddClip(lv.node,lv.v);added++;
+    if(sh.id===shot.id){
+      /* 中央：現在ユーザーが見ている版をそのまま送る */
+      await reelAddClip(node,v);added++;
+    }else{
+      const lv=latestVideoVersionUnder(sh.id);
+      if(!lv||lv.v.type!=='video'){skipped++;continue}
+      await reelAddClip(lv.node,lv.v);added++;
+    }
   }
   toast('前後カット含めて '+added+' 件を REEL に追加'+(skipped?'（動画なし '+skipped+' 件スキップ）':''));
 }
