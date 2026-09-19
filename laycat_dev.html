@@ -3767,7 +3767,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.025';
+const APP_VERSION='2026.09.20.026';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10680,6 +10680,8 @@ async function convertLegacyToSimpleB(root,shots){
   normalizeNodes();
   await persist();
 }
+/* ============================================================
+   プロジェクトメンバー（担当割り当て・メンション・ロール用の名簿）
    ・保存先はプロジェクトルートの node.members（＝共有フォルダ内 layna.project.json）
    ・ID はメール（認証と一致する安定ID）を推奨。表示名・ロール・色を持つ。
    ・アクセス権（誰がログインできるか）とは別レイヤー（そちらは access-console / Firebase）。
