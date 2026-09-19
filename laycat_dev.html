@@ -3792,7 +3792,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.037';
+const APP_VERSION='2026.09.20.038';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4029,6 +4029,22 @@ function normalizeNodes(){
     if(n.type==='review'){
       if(!Array.isArray(n.versions))n.versions=[];
       if(!Array.isArray(n.comments))n.comments=[];
+    }
+  }
+  /* v.038：Simple B ショットマーカー `kind:'shot'` の後方互換 backfill。
+     以下 2 ケースで kind='shot' を補完（既に kind が付いているノードは触らない）：
+       (a) review かつ currentStage が入っている → Simple B ショット確定。
+       (b) review かつ root.stages が空 → legacy 工程が成立しないので Simple B 確定。
+     どちらでもない（root.stages あり／currentStage 未設定）は legacy 工程と区別不能なので温存。 */
+  {
+    const rootHasStages=new Map();
+    for(const n of DB.nodes){if(!n.parentId)rootHasStages.set(n.id,Array.isArray(n.stages)&&n.stages.length>0)}
+    for(const n of DB.nodes){
+      if(n.type!=='review')continue;
+      if(n.kind)continue;
+      if(n.currentStage!=null){n.kind='shot';continue}
+      const rid=rootOfId(n);
+      if(rid&&rootHasStages.get(rid)===false){n.kind='shot'}
     }
   }
   /* 動画があっても未判定なら「未着手」のまま（アップロード＝自動でチェック待ちにしない）。
@@ -5285,7 +5301,7 @@ function renderTreeNode(container,node,depth,filt){
      判定：type==='section' で直下子が全て review。
      v.030：ただし子のいずれかが currentStage を持つなら Simple B ショットのフォルダ扱いで除外。 */
   const _allKids=childrenOf(node.id);
-  const _isLegacyShotContainer=!!(node.type==='section'&&_allKids.length>=1&&_allKids.every(k=>k.type==='review')&&!_allKids.some(k=>k.currentStage!=null));
+  const _isLegacyShotContainer=!!(node.type==='section'&&_allKids.length>=1&&_allKids.every(k=>k.type==='review')&&!_allKids.some(k=>k.currentStage!=null||k.kind==='shot'));
   const kids=_isLegacyShotContainer?[]:_allKids.filter(c=>!filt||filt.vis.has(c.id));
   const _multiSel=_treeSel.has(node.id);
   const row=el('div','tree-row'+(node.id===state.currentId?' active':'')+(_multiSel?' multi-sel':'')+(filt&&filt.matchIds.has(node.id)?' hit':''));
@@ -7237,8 +7253,10 @@ function _isShotLikeNode(n){
     const kids=childrenOf(n.id);
     if(!kids.length)return false;
     if(!kids.every(k=>k.type==='review'))return false;
-    /* v.029：Simple B ショットで埋まっている section はフォルダなのでショット扱いしない */
-    if(kids.some(k=>k.currentStage!=null))return false;
+    /* v.029：Simple B ショットで埋まっている section はフォルダなのでショット扱いしない。
+       v.038：currentStage が空でも kind:'shot' が付いていれば Simple B ショットとみなす
+       （root.stages が空のプロジェクトで shot page を作った場合の判定漏れを塞ぐ）。 */
+    if(kids.some(k=>k.currentStage!=null||k.kind==='shot'))return false;
     return true;
   }
   return false;
@@ -8049,7 +8067,7 @@ function renderReviewBody(s,cur,opts){
      Simple B（cur 自身がショット＝ review）では cur.name がショット名。
      プルダウンが無いケース（工程 1 つのみ）は工程名テキストを併記する。 */
   const _hdrShotKids=shotSec?DB.nodes.filter(n=>n.parentId===shotSec.id):[];
-  const _hdrIsLegacyContainer=!!(shotSec && shotSec.type==='section' && _hdrShotKids.length>=1 && _hdrShotKids.every(k=>k.type==='review') && !_hdrShotKids.some(k=>k.currentStage!=null));
+  const _hdrIsLegacyContainer=!!(shotSec && shotSec.type==='section' && _hdrShotKids.length>=1 && _hdrShotKids.every(k=>k.type==='review') && !_hdrShotKids.some(k=>k.currentStage!=null||k.kind==='shot'));
   const _hdrShotName=_hdrIsLegacyContainer?shotSec.name:cur.name;
   h1.appendChild(el('span','tt-shot-name',_hdrShotName));
   if(stageSwitcher){
@@ -10138,16 +10156,15 @@ function openAddModal(parentId,initialType,role){
     const nameRow=frow('名前 / ベース名（例: sh010 / EP01）','input');
     inner.appendChild(nameRow.r);
     const nameLab=nameRow.r.querySelector('label');
-    let stgSection=null;
     /* 種別セレクタは常に 2 択（フォルダ／ショットページ） */
     const _tsOpts={labels:{section:'フォルダ',review:'ショットページ'},subs:{section:'グループ化用（任意深さでネスト可）',review:'動画・画像の FB ログ／レビュー用の 1 ページ'}};
+    /* v.038：初期工程プルダウンの表示切替に使う。 */
+    let stageInitBox=null;
     const ts=typeSelector(_initT,t=>{
-      if(!stgSection)return;
-      /* ショットページ（review）を選んだら工程セクションは不要。フォルダ選択でも表示しない（v.040 モデルでは工程はプロジェクト設定）。 */
-      stgSection.style.display='none';
+      if(stageInitBox)stageInitBox.style.display=(t==='review')?'':'none';
     },_tsOpts);
     inner.appendChild(ts.row);
-    /* 連番で複数作成（同じ工程を含むフォルダを一括作成） */
+    /* 連番で複数作成 */
     const seqTop=el('label','form-label');seqTop.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px';
     const seqCb=el('input');seqCb.type='checkbox';seqTop.appendChild(seqCb);seqTop.appendChild(document.createTextNode('連番で複数作成'));
     const seqFields=el('div');seqFields.style.cssText='display:none;gap:12px;flex-wrap:wrap;margin:6px 0 6px';
@@ -10158,58 +10175,28 @@ function openAddModal(parentId,initialType,role){
     [cntI,startI,stepI,digI,nameRow.f].forEach(i=>i.addEventListener('input',updPrev));
     seqCb.onchange=()=>{seqFields.style.display=seqCb.checked?'flex':'none';nameLab.textContent=seqCb.checked?'ベース名（例: cut → cut010, cut020 …）':(cur?'名前 / ベース名（例: ショット01 / cut）':'プロジェクト名');updPrev()};
     inner.appendChild(seqTop);inner.appendChild(seqFields);inner.appendChild(prev);
-    /* 作成する各フォルダ内の工程（親の設定を初期値に、その場で編集可）
-       ＋ プロジェクト設定で作った工程テンプレートから一発適用も可能。
-       Simple B：工程を追加しなくても OK（省略時は「1 ショット＝1 ページ」の単一 review モードで作成される）。 */
-    stgSection=el('div');
-    stgSection.style.cssText='margin-top:14px;padding-top:14px;border-top:1px solid var(--border)';
-    const _stgHead=el('div');_stgHead.style.cssText='font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:8px';
-    _stgHead.appendChild(document.createTextNode('⚙ 各フォルダ内に作成する工程（省略可）'));
-    stgSection.appendChild(_stgHead);
-    stgSection.appendChild(el('div','form-label','工程を追加しなければ、ショットは 1 ページに統合される新モデル（推奨）で作成されます。工程はプロジェクト設定の「工程セット」（root.stages）から後で切替可能。'));
-    /* テンプレート適用プルダウン（プロジェクトルートの stageTemplates から拾う） */
-    const _rootForTpl=cur?rootOf(cur):null;
-    const _templates=_rootForTpl?projectStageTemplates(_rootForTpl):[];
-    if(_templates.length){
-      const applyRow=el('div');applyRow.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px';
-      applyRow.appendChild(el('span','form-label','工程テンプレートから選択：'));
-      const tplSel=el('select','form-input');tplSel.style.cssText='flex:1;min-width:140px;max-width:220px';
-      for(const t of _templates){const o=el('option',null,t.name||'(無名テンプレート)');o.value=t.id;tplSel.appendChild(o)}
-      applyRow.appendChild(tplSel);
-      const applyBtn=el('button','btn btn-primary btn-sm','このテンプレートを適用');applyBtn.type='button';
-      applyBtn.onclick=()=>{const t=_templates.find(x=>x.id===tplSel.value);if(!t)return;stgArr=(t.stages||[]).slice();redrawStg();toast('テンプレート「'+(t.name||'')+'」を適用しました')};
-      applyRow.appendChild(applyBtn);
-      stgSection.appendChild(applyRow);
+    /* v.038：ショットページ作成時の初期工程プルダウン。
+       root.stages から候補を出し、任意で選択。省略時（＝「工程なし」）は currentStage 未設定のまま
+       作成される（Simple B は kind:'shot' マーカーで legacy と区別できるので currentStage が空でも OK）。 */
+    const _rootForStages=cur?rootOf(cur):null;
+    const _stageOpts=_rootForStages?projStageList(_rootForStages):[];
+    stageInitBox=el('div');stageInitBox.style.cssText='margin-top:10px;display:'+((_initT==='review')?'':'none');
+    const _stgLab=el('div','form-label','初期工程（任意）');stageInitBox.appendChild(_stgLab);
+    const stageInitSel=el('select','form-input');stageInitSel.style.cssText='min-width:180px;max-width:260px';
+    const _optNone=el('option',null,'（未設定）');_optNone.value='';stageInitSel.appendChild(_optNone);
+    for(const s of _stageOpts){const o=el('option',null,s);o.value=s;stageInitSel.appendChild(o)}
+    if(_stageOpts.length)stageInitSel.value=_stageOpts[0];
+    stageInitBox.appendChild(stageInitSel);
+    if(!_stageOpts.length){
+      const _hint=el('div','form-label','（このプロジェクトには工程セット未登録。プロジェクト設定で工程セットを登録すると初期工程を選べます）');
+      _hint.style.color='var(--text3)';stageInitBox.appendChild(_hint);
     }
-    const stgWrap=el('div','step-grid');stgSection.appendChild(stgWrap);
-    /* Simple B：デフォルトは工程なし（＝単一 review モードで作成）。親の stages を継承せず、
-       ユーザーがテンプレート適用や「＋ 工程を追加」で明示的に指定した時だけ旧モデル（section+
-       子 review）として作成する。 */
-    let stgArr=[];
-    const redrawStg=()=>{
-      stgWrap.innerHTML='';
-      stgArr.forEach((nm,i)=>{
-        const row=el('div','step-row');
-        const sc=el('span');sc.style.cssText='width:13px;height:13px;border-radius:3px;flex-shrink:0;align-self:center;background:'+stageColor(nm);
-        const inp=el('input','form-input');inp.value=nm;inp.oninput=()=>{stgArr[i]=inp.value;sc.style.background=stageColor(inp.value)};
-        const del=el('button','btn btn-danger btn-sm','削除');del.onclick=()=>{stgArr.splice(i,1);redrawStg()};
-        row.appendChild(sc);row.appendChild(inp);row.appendChild(del);stgWrap.appendChild(row);
-      });
-      if(!stgArr.length)stgWrap.appendChild(el('div','form-label','（工程なし。上の「このテンプレートを適用」または「＋ 工程を追加」で設定できます）'));
-    };
-    redrawStg();
-    const addStg=el('button','btn btn-ghost btn-sm','＋ 工程を追加');addStg.style.marginBottom='6px';addStg.onclick=()=>{stgArr.push('新工程');redrawStg()};
-    stgSection.appendChild(addStg);
-    inner.appendChild(stgSection);
-    /* v.040：工程セクションは基本的に不要（ショットページ＝review は 1 ページ管理・工程はプルダウン）。
-       常に非表示にしておき、旧モデル互換 UI としては残置（DOM は生成しているが display:none）。 */
-    stgSection.style.display='none';
+    inner.appendChild(stageInitBox);
     const descRow=frow('説明（任意）','textarea');inner.appendChild(descRow.r);
     const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=closeModal;
     const save=el('button','btn btn-primary','追加');
     save.onclick=async()=>{
       const base=nameRow.f.value.trim();if(!base)return toast('名前を入力してください');
-      /* v.040：ts.get() は 'section' or 'review' のみ。type そのまま採用。 */
       const type=ts.get();
       let names=[base];
       if(seqCb.checked){
@@ -10217,16 +10204,18 @@ function openAddModal(parentId,initialType,role){
         const start=parseInt(startI.value)||0,step=parseInt(stepI.value)||1,dig=Math.max(0,parseInt(digI.value)||0);
         names=[];for(let i=0;i<cnt;i++)names.push(base+String(start+i*step).padStart(dig,'0'));
       }
+      const _initStage=stageInitSel.value||'';
       const createdIds=[];
       for(const nm of names){
         const id=addNode(parentId,nm,names.length===1?descRow.f.value.trim():'',type);
         createdIds.push(id);
         const nd=getNode(id);
-        /* ショットページ（review）作成時は currentStage の初期値を root.stages[0] に。
-           工程セクション（別 review 子ノード）は作らない（Simple B 単一 review モデル）。 */
+        /* v.038：ショットページ（review）は Simple B の 1 ショット＝ 1 ページ。
+           - kind:'shot' を必ず打刻（legacy 工程 review との判定曖昧さを排除）。
+           - 初期工程プルダウンで選ばれていればそれを currentStage に、未選択なら null のまま。 */
         if(type==='review'){
-          const _list=projStageList(rootOf(nd));
-          if(_list.length)nd.currentStage=_list[0];
+          nd.kind='shot';
+          if(_initStage)nd.currentStage=_initStage;
         }
       }
       await persist();closeModal();if(parentId)state.expanded.add(parentId);render();resolveThumbs();
@@ -10538,10 +10527,17 @@ function openRename(node){
     }
     const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=closeModal;
     const save=el('button','btn btn-primary','保存');save.onclick=async()=>{if(!nameRow.f.value.trim())return toast('名前を入力してください');node.name=nameRow.f.value.trim();node.description=descRow.f.value.trim();
-      /* v.031：2-way selector（section/review）のみ。kind は使わない（Simple B 統一）。 */
+      /* v.031：2-way selector（section/review）のみ。
+         v.038：Simple B のショットページマーカー `kind:'shot'` を種別に合わせて維持／整理。
+           - review 選択：kind='shot' を必ず立てる（legacy 誤検出の根絶）。
+           - section 選択：kind='shot' があれば削除。`kind:'episode'` は温存。 */
       {const raw=ts.get();
        node.type=(raw==='review')?'review':'section';
-       delete node.kind;
+       if(node.type==='review'){
+         if(node.kind!=='shot')node.kind='shot';
+       }else{
+         if(node.kind==='shot')delete node.kind;
+       }
       }
       if(stArr)node.statuses=stArr.filter(x=>x.label.trim()).map(x=>({id:x.id||newId('st'),label:x.label.trim(),color:x.color,checkWait:x.checkWait===true,clientWait:x.clientWait===true}));if(spSel){const ids=spSel.get();if(ids.length)node.shotsParentIds=ids;else delete node.shotsParentIds;delete node.shotsParentId}if(stagesArr!=null){const s=stagesArr.map(x=>x.trim()).filter(Boolean);if(s.length&&node.type==='section')node.stages=s;else delete node.stages}
       /* プロジェクトルートの工程テンプレート保存。空を除去して保存。後方互換のため node.stages は先頭テンプレートで同期。 */
@@ -10602,8 +10598,10 @@ function _isShotSectionLegacy(n){
   if(n.type!=='section'&&n.type!=='review')return false;
   const kids=childrenOf(n.id).filter(k=>k&&k.type==='review');
   if(!kids.length)return false;
-  /* 子のいずれかが currentStage を持つ＝この n はフォルダで、子は Simple B ショット。除外 */
-  if(kids.some(k=>k.currentStage!=null))return false;
+  /* 子のいずれかが currentStage を持つ＝この n はフォルダで、子は Simple B ショット。除外。
+     v.038：currentStage 未設定でも `kind:'shot'` が付いていれば Simple B ショットとみなして除外。
+     （root.stages が空のプロジェクトで作った Simple B ショットが legacy 誤認される事故対策） */
+  if(kids.some(k=>k.currentStage!=null||k.kind==='shot'))return false;
   /* section なら残り子が review 型のみでなければならない（レガシー shot section の条件） */
   if(n.type==='section'){
     const allKids=childrenOf(n.id);
@@ -10728,8 +10726,10 @@ async function convertLegacyToSimpleB(root,shots){
     versions.sort((a,b)=>String(a.uploadedAt||'').localeCompare(String(b.uploadedAt||'')));
     comments.sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
     stageHistorySrc.sort((a,b)=>String(a.ts||'').localeCompare(String(b.ts||'')));
-    /* section → review 変換（既に review でも上書きしても実害なし） */
+    /* section → review 変換（既に review でも上書きしても実害なし）。
+       v.038：Simple B ショットの明示マーカー kind:'shot' を必ず立てる（legacy 誤検出を根絶）。 */
     sh.type='review';
+    sh.kind='shot';
     sh.versions=versions;
     sh.comments=comments;
     if(!sh.currentStage)sh.currentStage=curStageName;

@@ -18,6 +18,19 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.038) **ショットページ／工程ページのごちゃごちゃ問題を根本修正・新規追加モーダルを整理**：
+  - **バグ**：`root.stages` が空のプロジェクトで「ショットページ」を連番作成すると、`currentStage` が未設定になり、`_isShotSectionLegacy` 等が親フォルダを **レガシー shot container** と誤判定 → 新規 s001/s002/… が **工程扱い** で表示され、変換対象検出も不安定になっていた。
+  - **根本修正 1（明示マーカー導入）**：Simple B のショットページ `review` に `kind:'shot'` を打刻。
+    - 新規追加モーダル：`type==='review'` で作成する時に `nd.kind='shot'` を必ず立てる。
+    - Simple B 変換：`convertLegacyToSimpleB` で `sh.kind='shot'` を追加。
+    - legacy 判定 4 箇所を `k.currentStage!=null || k.kind==='shot'` に更新（`_isShotLikeNode` / `_isLegacyShotContainer`（renderTreeNode）/ `_hdrIsLegacyContainer`（renderReviewBody）/ `_isShotSectionLegacy`（変換対象）。
+  - **根本修正 2（新規追加モーダル整理）**：`openAddModal` の隠された dead stgSection（＋ 工程を追加 UI・stgArr・テンプレート適用ボタン）を完全に削除。代わりに `root.stages` から候補を出す **初期工程プルダウン（任意）** を追加。ショットページ選択時のみ表示。root.stages 未登録なら「未設定」＋ヒント文言を表示。
+  - **backfill**：`normalizeNodes` に `kind:'shot'` の後方互換 backfill を追加。既存 review で `currentStage!=null` なら kind='shot' を補完、`root.stages` が空のプロジェクトの review も legacy 不成立なので kind='shot' 補完。曖昧なケース（stages ありで currentStage 空）は温存。
+  - **openRename の save**：従来の `delete node.kind` を種別依存に変更。review 保存時は kind='shot' を必ず立て、section 戻し時のみ kind='shot' を除去（`kind:'episode'` は温存）。
+  - **副次効果**：Simple B 変換が「部分変換済み」ショットも安定検出できるようになる（`kind:'shot'` があれば currentStage が空でも Simple B 側と判別可能）。
+  - **書込境界**：新規追加は追加ノードの kind/currentStage のみ書き込み。既存ノードに触らず。
+  - APP_VERSION：2026.09.20.037 → 2026.09.20.038
+
 - (dev v2026.09.20.037) **ショットページ：工程プルダウン横の「🎞 工程」type-chip を撤去**：
   - ショットページ h1 内のステータスバッジ直後に出ていた役割 type-chip（`role-task` の「工程」ラベル）は、隣の工程プルダウンと情報が重複するため削除。
   - 影響範囲：`renderReviewBody` の h1 生成のみ。他のヘッダ（ツリー・カテゴリページ側の line 7622）はそのまま。
