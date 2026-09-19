@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.010';
+const APP_VERSION='2026.09.20.011';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14523,6 +14523,10 @@ async function exportAnnotated(clipList,exportOpts){
     /* rvfc を新 active に切替（旧 gen は破棄） */
     if(useRvfc)scheduleRvfc();
     try{await nextVid.play()}catch(_){}
+    /* v.011：クリップ境界でも初回フレーム（frame 0）が rvfc に届かないケースがあり、
+       次クリップの 1F 目のアノテが飛ぶ。ここでも play 直後に draw(0) を明示的に呼んで
+       確実に塗る（draw は activeVid()=nextVid を見るので新クリップの frame 0 が対象）。 */
+    try{draw(0)}catch(_){}
     /* 旧 active を停止＋ソースを解放してから、その次のクリップを先読み */
     try{videos[oldIdx].pause()}catch(_){}
     const preIdx=curIdx+1;
@@ -14567,6 +14571,10 @@ async function exportAnnotated(clipList,exportOpts){
   try{recorder.start(1000);}catch(e){toast('録画開始に失敗しました：'+(e&&e.message||''));try{ov.remove()}catch(_){}return}
   try{videos[0].currentTime=0}catch(_){}
   try{await videos[0].play()}catch(e){toast('再生開始に失敗しました：'+(e&&e.message||''));cancelled=true;try{ov.remove()}catch(_){}return}
+  /* v.011：クリップ開始直後のフレーム 0 は rvfc の初回発火に間に合わないことが多く、その 1F 目に
+     置かれたアノテが焼き込まれない不具合があった。play 直後に明示的に draw(0) を 1 回呼び、
+     canvas 上でフレーム 0 のアノテを確実に塗ってから rvfc に引き渡す。 */
+  try{draw(0)}catch(_){}
   tick();
 }
 async function exportAnnotatedVersion(node,v){
