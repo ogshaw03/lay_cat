@@ -601,7 +601,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.20.004';
+const APP_VERSION='2026.09.20.005';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -3101,6 +3101,54 @@ function showInitialEmptyState(){
 
 /* =========== Init =========== */
 document.getElementById('appVer').textContent = APP_VERSION;
+/* v.005：認証チェック前は本体 UI（プロジェクト名等）を一切見せないよう、body に gated クラスを
+   即時付与＋全面オーバーレイを被せる。認証チェックに通ってから外す。 */
+document.body.classList.add('pm-gated');
+(function _pmInjectGateStyle(){
+  const s=document.createElement('style');
+  s.textContent='body.pm-gated > *:not(#pmGateOv){visibility:hidden !important}'+
+                '#pmGateOv{position:fixed;inset:0;background:#0d0d10;z-index:99999;display:flex;align-items:center;justify-content:center;color:#e8e8ec;font-family:system-ui,-apple-system,sans-serif}';
+  document.head.appendChild(s);
+})();
+(function _pmMountGate(){
+  const ov=document.createElement('div');ov.id='pmGateOv';
+  ov.innerHTML='<div style="max-width:520px;padding:30px;text-align:center"><div style="font-size:36px;margin-bottom:8px">🔒</div><div style="font-weight:700;font-size:15px;margin-bottom:6px">アクセス確認中…</div><div style="font-size:12px;color:#9a9aaa">アクセス管理コンソールの許可を確認しています。</div></div>';
+  document.body.appendChild(ov);
+})();
+function _pmRevealApp(){
+  document.body.classList.remove('pm-gated');
+  const ov=document.getElementById('pmGateOv');if(ov)ov.remove();
+}
+function _pmShowGateDenied(){
+  const em=_pmCurrentUserEmail();
+  const loggedIn=!!em;
+  const btnLabel=loggedIn?'別アカウントでログイン':'Google でログイン';
+  const title=loggedIn?'アクセス権がありません':'ログインが必要です';
+  const meNow=em||'（未ログイン）';
+  const desc=loggedIn
+    ? `アクセス管理コンソールで許可されていないアカウントです。<br>現在のメール：<b>${escapeHtml(meNow)}</b><br><br>管理者に allowedEmails への追加を依頼するか、別アカウントでログインし直してください。`
+    : 'PM Board の利用にはログインが必要です。下のボタンから Google アカウントでログインしてください。';
+  const ov=document.getElementById('pmGateOv');
+  if(!ov)return;
+  ov.innerHTML=`<div style="max-width:520px;padding:30px;text-align:center;line-height:1.65"><div style="font-size:44px;margin-bottom:10px">⛔</div><div style="font-weight:700;font-size:17px;margin-bottom:10px">${escapeHtml(title)}</div><div style="font-size:13px;color:#c8c8d0">${desc}</div><div style="margin-top:18px;display:flex;gap:8px;justify-content:center"><button id="pmGateLoginBtn" style="padding:9px 18px;border-radius:8px;background:#4da6ff;color:#111;border:0;font-weight:700;cursor:pointer">${escapeHtml(btnLabel)}</button>${loggedIn?'<button id="pmGateLogoutBtn" style="padding:9px 14px;border-radius:8px;background:transparent;border:1px solid #3a3a42;color:#c8c8d0;cursor:pointer">ログアウト</button>':''}</div></div>`;
+  const lb=document.getElementById('pmGateLoginBtn');
+  if(lb)lb.onclick=async()=>{try{if(window.__laynaFB)await window.__laynaFB.login();setTimeout(()=>location.reload(),300)}catch(e){alert('ログインに失敗しました：'+(e&&e.message||e))}};
+  const lo=document.getElementById('pmGateLogoutBtn');
+  if(lo)lo.onclick=async()=>{try{if(window.__laynaFB)await window.__laynaFB.logout();setTimeout(()=>location.reload(),300)}catch(_){}};
+  window.__pmOnAuthChanged=()=>{setTimeout(()=>location.reload(),200)};
+}
+(async function _pmBootGate(){
+  try{await _pmLoadAccess()}catch(_){}
+  if(_pmAuthOn){
+    const em=_pmCurrentUserEmail();
+    const role=em?_pmRoleFor(em):null;
+    if(!role){_pmShowGateDenied();return}
+  }
+  /* ゲート通過 → 本体を可視化し、以下の通常初期化を実行 */
+  _pmRevealApp();
+  _pmAppInit();
+})();
+function _pmAppInit(){
 buildOtherTabsPlaceholder();
 populateProjectPicker();
 initScheduleDrag();
@@ -3163,6 +3211,7 @@ updateLastUpdatedLabel();
 const initialPid = document.getElementById('projSelect').value;
 if(initialPid){ switchToProject(initialPid).then(updateLastUpdatedLabel); }
 else { showInitialEmptyState(); }
+} /* end _pmAppInit */
 
 </script>
 

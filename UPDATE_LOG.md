@@ -2597,6 +2597,12 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.005) **アクセス不可時にプロジェクト名が漏洩する懸念を修正（アプリ本体を完全隠蔽）**：
+  - v.004 は認証チェック前に `populateProjectPicker` がプロジェクト一覧を DOM に流し込んでいたため、拒否画面の裏側で `<select>` にプロジェクト名が残る可能性があった。
+  - `_pmBootGate`：起動即時に body に `pm-gated` クラスを付与＋全面オーバーレイを被せ、`<body>` 直下の全要素を CSS で visibility:hidden 化。認証チェックが通ってから `_pmRevealApp` で本体表示と `_pmAppInit`（picker 生成／プロジェクト読込）を実行。
+  - 拒否時は `populateProjectPicker` / `switchToProject` を一度も呼ばないため、プロジェクト名を含む DOM が生成されない。
+  - APP_VERSION：2026.09.20.004 → 2026.09.20.005
+
 - (dev v2026.09.20.004) **pmboard に Firebase Auth/Firestore を直接組み込み、コンソールで許可されたアカウントで確実に入れるように**：
   - v.003 は access.json（静的 JSON）だけを見ていたため、Firestore コンソール側で追加した allowedEmails が反映されず「メンバーのはずなのに弾かれる」問題があった。
   - pmboard 自身に Firebase App / Auth / Firestore を組み込み、LayCAT と同じ `laycat-54ee4` プロジェクトに接続。`__laynaFB.loadAccess()` / `loadInvited()` を使って Firestore の最新の許可リストを直接マージ。
