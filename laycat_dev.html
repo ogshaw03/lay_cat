@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.054';
+const APP_VERSION='2026.09.19.055';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7131,18 +7131,23 @@ function roleLabel(node){const m=ROLE_META[roleOf(node)];return m?m.label:'';}
    タブ切替は廃止し、複数エピソード時は各カラム内で縦並び。
    pmPick キーは `stage::…` / `status::…` の prefix で種別を判別する。 */
 function renderProjProgress(main,cur){
-  state.pmParentIds=shotsParentsOf(cur);
-  const parents=state.pmParentIds;
+  /* v.055：進捗タブのフォルダ選択はショットタブ（shotsParentIds）から分離。
+     `cur.pmProgressFolderId`（単一フォルダ id）を進捗タブ専用の設定として保存。
+     未設定なら旧 `shotsParentIds`（単一 id の場合のみ）を読み取りだけ流用してレガシー UX を維持。
+     いずれも無ければプロジェクト直下（root）。書き込みは `pmProgressFolderId` にのみ行い、
+     `shotsParentIds` は一切変更しないので、ここで選んだフォルダはショットタブに波及しない。 */
+  const _legacyInherit=(!cur.pmProgressFolderId&&Array.isArray(cur.shotsParentIds)&&cur.shotsParentIds.length===1&&getNode(cur.shotsParentIds[0]))?cur.shotsParentIds[0]:null;
+  const _progFolderId=(cur.pmProgressFolderId&&getNode(cur.pmProgressFolderId))?cur.pmProgressFolderId:(_legacyInherit||cur.id);
+  const parents=[_progFolderId];
+  state.pmParentIds=parents;
   /* 工程（子ノード）を持つショットが1つでもあるか。無ければ「工程グラフ」は無意味なのでステータスのみ表示 */
   const hasStages=parents.some(pid=>childrenOf(pid).some(sh=>childrenOf(sh.id).length>0));
-  /* v.037：ショット親フォルダを「配下の全フォルダ（section 型）＋プロジェクト直下」のプルダウンで選択。
-     自動検出は廃止。ユーザーが明示的にどのフォルダ配下をショットとみなすかを選ぶ。 */
   const info=el('div','pm-sel');
   info.appendChild(el('label',null,'表示するフォルダ：'));
   const sel=el('select');
   sel.style.cssText='padding:4px 10px;font-size:12px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;min-width:220px;max-width:520px';
   /* root（プロジェクト直下）＋ 全ての section 型子孫を階層インデント付きで列挙。
-     v.042：レガシー shot container（section 直下が全て review = 実質ショットページ扱い）は
+     レガシー shot container（section 直下が全て review = 実質ショットページ扱い）は
      フォルダとみなさず除外。純粋な "フォルダ" のみプルダウンに出す。 */
   const _folderOptions=[];
   _folderOptions.push({id:cur.id,label:'プロジェクト直下（'+cur.name+'）',depth:0});
@@ -7157,12 +7162,12 @@ function renderProjProgress(main,cur){
   for(const opt of _folderOptions){
     const o=document.createElement('option');o.value=opt.id;o.textContent=opt.label;sel.appendChild(o);
   }
-  sel.value=(parents[0]&&_folderOptions.some(o=>o.id===parents[0]))?parents[0]:cur.id;
+  sel.value=_folderOptions.some(o=>o.id===_progFolderId)?_progFolderId:cur.id;
   sel.onchange=async()=>{
-    cur.shotsParentIds=[sel.value];
-    /* 単一プロジェクトのメタだけ更新するので persist（全体保存）を呼ぶ。REG 全体走査だが、
-       shot.json への versions 影響は無い（shotsParentIds はプロジェクト骨格 laycat.project.json 側のフィールド）。
-       ガード（v.033 A）は versions 縮小のみ検出するので通過。 */
+    /* 進捗タブ専用フィールドに保存。ショットタブが使う `shotsParentIds` は触らない。
+       書込境界：laycat.project.json の root ノード pmProgressFolderId のみ。 */
+    if(sel.value===cur.id)delete cur.pmProgressFolderId;
+    else cur.pmProgressFolderId=sel.value;
     try{await persist()}catch(_){}
     renderBody();resolveThumbs();
   };
