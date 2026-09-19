@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.031) **アイテムの設定の階層種別セレクタを 2 択（フォルダ／ショットページ）に統一**：
+  - 旧 3-way（エピソード／ショット／ショットページ）を撤回。Simple B に統一されたので 2 種類（フォルダ／ショットページ）のみ。
+  - 保存時の kind 派生ロジック（episode/cut）を削除。type のみで扱う。
+  - ラベル文言を「フォルダ」「ショットページ」に統一（「ショット」表記は撤去）。
+  - APP_VERSION：2026.09.20.030 → 2026.09.20.031
+
 - (dev v2026.09.20.030) **サイドバー含む残り 6 箇所の「レガシー shot section 判定」に Simple B ガードを追加**：
   - v.029 で 4 箇所修正したが、`renderTreeNode` の `_isLegacyShotContainer`（サイドバー描画）や `getShotStageForTag` / `renderReviewBody` / `renderProjProgress` の `_isShotSection` / `_hdrIsLegacyContainer` / `_isShotContainer` / `isLegacyShotContainer` にも同じパターンが残っていた。
   - 全 6 箇所に「子のいずれかが currentStage を持つならフォルダ扱いで false」を追加。
