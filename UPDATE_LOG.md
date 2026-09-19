@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.037) **ショットページ：工程プルダウン横の「🎞 工程」type-chip を撤去**：
+  - ショットページ h1 内のステータスバッジ直後に出ていた役割 type-chip（`role-task` の「工程」ラベル）は、隣の工程プルダウンと情報が重複するため削除。
+  - 影響範囲：`renderReviewBody` の h1 生成のみ。他のヘッダ（ツリー・カテゴリページ側の line 7622）はそのまま。
+  - APP_VERSION：2026.09.20.036 → 2026.09.20.037
+
 - (dev v2026.09.20.036) **Simple B 変換：1 ショットの save 失敗で project.json 全体書き込みが止まる問題を修正**：
   - **原因**：直接 saveShot が 1 件でも false を返すと、続く persist の `_saveShotWithLock` が「versions を潰す書込み拒否」ガードに引っかかり、`shotFailed>0` により `saveProjectSplit` が project.json 更新を skip → リロード時に古い骨格が復元されて工程 review が全部戻っていた。
   - **修正 1**：`window._bypassShotGuard=true` を変換中に立て、`_saveShotWithLock` のガード判定をスルー。変換完了後に解除。

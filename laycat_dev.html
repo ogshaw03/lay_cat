@@ -3792,7 +3792,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.036';
+const APP_VERSION='2026.09.20.037';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8065,7 +8065,7 @@ function renderReviewBody(s,cur,opts){
      バッジ表示・プルダウン書込みの両方で同じ対象を使う。 */
   const _statusTarget=_hdrIsLegacyContainer?shotSec:cur;
   const tst=stInfo(_statusTarget);const tbg=el('span','badge',tst.label);tbg.style.background=hexA(tst.color,.18);tbg.style.color=tst.color;h1.appendChild(tbg);
-  {const rl=roleOf(cur);const m=ROLE_META[rl]||ROLE_META.task;h1.appendChild(elIco('span','type-chip role-'+rl,m.ico,m.label));}
+  /* v.037：工程プルダウン横の「🎞 工程」type-chip は冗長なので撤去。 */
   topbar.appendChild(h1);
   topbar.appendChild(el('div','spacer')); /* ステータス切替・担当・設定・削除は画面右側へ */
   topbar.appendChild(buildStatusSelect(_statusTarget)); /* ステータス切替プルダウン（ショット単位。動画無し・オミット等でも変更可） */
