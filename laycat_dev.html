@@ -110,6 +110,9 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .tree-row.tree-drop-before{box-shadow:inset 0 2px 0 0 var(--accent)}
 .tree-row.tree-drop-after{box-shadow:inset 0 -2px 0 0 var(--accent)}
 .tree-row.tree-drop-inside{background:rgba(96,165,255,.15);box-shadow:inset 0 0 0 1px var(--accent)}
+/* v.039：複数選択ハイライト。active（現在ページ）とは別スタイルで併存可能に */
+.tree-row.multi-sel{background:rgba(96,165,255,.12);box-shadow:inset 3px 0 0 0 var(--accent)}
+.tree-row.multi-sel.active{background:rgba(96,165,255,.22)}
 .tree-row:hover{background:var(--bg4);color:var(--text)}
 .tree-row.active{background:rgba(255,255,255,.08);color:var(--text)}
 .tree-toggle{width:14px;text-align:center;color:var(--text3);flex-shrink:0;font-size:9px;transition:transform .1s}
@@ -3738,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.19.038';
+const APP_VERSION='2026.09.19.039';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5026,6 +5029,12 @@ function render(){invalidateStageColors();invalidateRoleMemo();renderSidebar();r
 let _mentionScanAt=0;
 function maybeScanMentions(){let now=0;try{now=Date.now()}catch(_){}if(now-_mentionScanAt<3000)return;_mentionScanAt=now;try{scanMentionsForMe()}catch(_){}}
 
+/* v.039：サイドバーツリーの複数選択状態。
+   - _treeSel: 選択中ノード ID の Set
+   - _treeSelAnchor: Shift+クリック範囲選択の起点 ID
+   - _treeVisibleOrder: 現在描画されているツリー行の ID を順序保持（範囲選択用に renderSidebar が rebuild） */
+let _treeSel=new Set(),_treeSelAnchor=null,_treeVisibleOrder=[];
+
 /* サイドバー：ツリー */
 function renderSidebar(){
   const sb=$('#sidebar');sb.innerHTML='';
@@ -5084,6 +5093,8 @@ function renderSidebar(){
   function paint(){
     treeC.innerHTML='';
     clr.style.display=(state.sideSearch||state.sideAssignee)?'':'none';
+    /* v.039：範囲選択用に「今表示している行の順序」をリセット。renderTreeNode 内で push される。 */
+    _treeVisibleOrder=[];
     const filt=computeSidebarVisible(root);
     const kids=childrenOf(root.id).filter(c=>!filt||filt.vis.has(c.id));
     if(!kids.length){treeC.appendChild(el('div','tree-empty',(state.sideSearch||state.sideAssignee)?'一致するアイテムがありません':'アイテムなし'));return}
@@ -5110,13 +5121,16 @@ function computeSidebarVisible(root){
 }
 function renderTreeNode(container,node,depth,filt){
   if(filt&&!filt.vis.has(node.id))return;
+  /* v.039：範囲選択用に表示順を記録 */
+  _treeVisibleOrder.push(node.id);
   /* v.035：レガシー multi-stage shot section は「ショット」として扱う。
      配下の工程（review）は左サイドバーに展開せず、行クリックで直接ショットページ（現在工程）を開く。
      判定：type==='section' で直下子が全て review。 */
   const _allKids=childrenOf(node.id);
   const _isLegacyShotContainer=!!(node.type==='section'&&_allKids.length>=1&&_allKids.every(k=>k.type==='review'));
   const kids=_isLegacyShotContainer?[]:_allKids.filter(c=>!filt||filt.vis.has(c.id));
-  const row=el('div','tree-row'+(node.id===state.currentId?' active':'')+(filt&&filt.matchIds.has(node.id)?' hit':''));
+  const _multiSel=_treeSel.has(node.id);
+  const row=el('div','tree-row'+(node.id===state.currentId?' active':'')+(_multiSel?' multi-sel':'')+(filt&&filt.matchIds.has(node.id)?' hit':''));
   row.style.paddingLeft=(6+depth*13)+'px';
   const expanded=filt?true:state.expanded.has(node.id); /* フィルタ中は一致枝を自動展開 */
   const tg=el('span','tree-toggle'+(kids.length&&expanded?' open':''),kids.length?'▶':'');
@@ -5137,9 +5151,35 @@ function renderTreeNode(container,node,depth,filt){
     if(vs)row.appendChild(el('span','tree-badge','▶'+vs));
   }
   else if(kids.length){const tb=elIco('span','tree-badge','folder',String(kids.length));row.appendChild(tb)}
-  /* クリック挙動：レガシー shot container なら currentStage の review へ直行（無ければ先頭 review）。
-     それ以外は従来どおり node.id へ go。 */
-  row.onclick=()=>{
+  /* クリック挙動（v.039：Ctrl/Cmd+click=個別トグル、Shift+click=範囲選択、通常=単一選択＋ナビゲート）：
+     レガシー shot container なら currentStage の review へ直行（無ければ先頭 review）。 */
+  row.onclick=(ev)=>{
+    const isCtrl=ev.ctrlKey||ev.metaKey;
+    const isShift=ev.shiftKey;
+    if(isShift&&_treeSelAnchor&&_treeVisibleOrder.length){
+      /* 範囲選択：anchor から node.id までの表示順スライスを選択に */
+      const ai=_treeVisibleOrder.indexOf(_treeSelAnchor);
+      const bi=_treeVisibleOrder.indexOf(node.id);
+      if(ai>=0&&bi>=0){
+        const lo=Math.min(ai,bi),hi=Math.max(ai,bi);
+        _treeSel=new Set(_treeVisibleOrder.slice(lo,hi+1));
+      }else{
+        _treeSel.add(node.id);
+      }
+      ev.preventDefault();
+      renderSidebar();
+      return;
+    }
+    if(isCtrl){
+      if(_treeSel.has(node.id))_treeSel.delete(node.id);
+      else _treeSel.add(node.id);
+      _treeSelAnchor=node.id;
+      renderSidebar();
+      return;
+    }
+    /* 通常クリック：単一選択にリセット＋ナビゲート */
+    _treeSel=new Set([node.id]);
+    _treeSelAnchor=node.id;
     if(_isLegacyShotContainer){
       const curName=node.currentStage||null;
       const target=(curName&&_allKids.find(k=>k.type==='review'&&k.name===curName))||_allKids[0];
@@ -5175,35 +5215,40 @@ function renderTreeNode(container,node,depth,filt){
     ev.preventDefault();ev.stopPropagation();
     document.querySelectorAll('#sidebar .tree-row').forEach(el=>el.classList.remove('tree-drop-before','tree-drop-after','tree-drop-inside'));
     let srcId=null;try{srcId=ev.dataTransfer.getData('text/plain')}catch(_){}
-    if(!srcId||srcId===node.id)return;
-    const src=getNode(srcId);if(!src||!src.parentId)return; /* project root は動かさない */
-    if(_isDescendantOrSelf(src.id,node.id))return; /* 循環防止 */
-    if(rootOfId(src)!==rootOfId(node))return; /* 別プロジェクト間の移動は禁止 */
+    if(!srcId)return;
+    /* v.039：複数選択対応。ドラッグ元が選択中なら選択全体を移動、そうでなければ単一。
+       表示順（_treeVisibleOrder）を維持して並べ替え。 */
+    let srcIds=(_treeSel.size>1&&_treeSel.has(srcId))?[..._treeSel]:[srcId];
+    srcIds=srcIds.map(id=>getNode(id)).filter(n=>n&&n.parentId&&!_isDescendantOrSelf(n.id,node.id)&&rootOfId(n)===rootOfId(node)).map(n=>n.id);
+    /* ドロップ先がドラッグ元自身なら no-op */
+    srcIds=srcIds.filter(id=>id!==node.id);
+    if(!srcIds.length)return;
     const rect=row.getBoundingClientRect();
     const relY=(ev.clientY-rect.top)/rect.height;
     const zone=relY<0.28?'before':(relY>0.72?'after':'inside');
     let newParent=null,insertBeforeIdx=-1;
     if(zone==='inside'&&node.type==='section'){
-      newParent=node.id; /* section の中に append */
+      newParent=node.id;
     }else{
       newParent=node.parentId;
       const tgtIdx=DB.nodes.indexOf(node);
       insertBeforeIdx=zone==='before'?tgtIdx:tgtIdx+1;
     }
-    if(!newParent)return; /* root 直下移動は許可済み（node.parentId が存在するのが上のガードで確認） */
-    /* DB.nodes を再構築：src を抜いて指定位置に差し込む。順序が childrenOf のソースなので順序管理は重要 */
-    const srcCurIdx=DB.nodes.indexOf(src);if(srcCurIdx<0)return;
-    src.parentId=newParent;
+    if(!newParent)return;
+    /* 表示順（_treeVisibleOrder）ベースで src を並べて、その順で target 位置に差し込む */
+    const orderedSrc=_treeVisibleOrder.filter(id=>srcIds.includes(id)).map(id=>getNode(id)).filter(Boolean);
+    for(const src of orderedSrc)src.parentId=newParent;
+    /* DB.nodes から src 群を一旦抜く */
+    DB.nodes=DB.nodes.filter(n=>!orderedSrc.includes(n));
+    /* 挿入位置を再計算（抜いた分ずれるので target を再参照） */
     if(insertBeforeIdx<0){
-      /* section 内に append：newParent 配下の最後の子ノードのすぐ後ろに挿入 */
-      const lastKidIdx=(()=>{let last=-1;for(let i=0;i<DB.nodes.length;i++){if(DB.nodes[i]!==src&&DB.nodes[i].parentId===newParent)last=i}return last})();
-      DB.nodes.splice(srcCurIdx,1);
-      const insertAt=lastKidIdx<0?DB.nodes.length:(lastKidIdx>=srcCurIdx?lastKidIdx:lastKidIdx+1);
-      DB.nodes.splice(Math.min(insertAt+1,DB.nodes.length),0,src);
+      const lastKidIdx=(()=>{let last=-1;for(let i=0;i<DB.nodes.length;i++){if(DB.nodes[i].parentId===newParent)last=i}return last})();
+      const insertAt=lastKidIdx<0?DB.nodes.length:lastKidIdx+1;
+      DB.nodes.splice(insertAt,0,...orderedSrc);
     }else{
-      DB.nodes.splice(srcCurIdx,1);
-      const adjIdx=insertBeforeIdx>srcCurIdx?insertBeforeIdx-1:insertBeforeIdx;
-      DB.nodes.splice(Math.max(0,Math.min(adjIdx,DB.nodes.length)),0,src);
+      const targetIdx=DB.nodes.indexOf(node);
+      const adjIdx=zone==='before'?targetIdx:targetIdx+1;
+      DB.nodes.splice(Math.max(0,Math.min(adjIdx,DB.nodes.length)),0,...orderedSrc);
     }
     try{await persist()}catch(_){}
     render();
