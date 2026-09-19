@@ -18,6 +18,10 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.013) **PM Board ボタンのリンク先を pmboard_dev.html に修正**：
+  - laycat_dev.html は Dev なので pmboard も Dev（pmboard_dev.html）を開くように変更。Beta 反映時に pmboard.html へ戻す想定（本体側 laycat.html は既に pmboard.html を指しているので、次回 Beta 反映で dev→dev、beta→beta の対応を維持する）。
+  - APP_VERSION：2026.09.20.012 → 2026.09.20.013
+
 - (dev v2026.09.20.012) **左上「進行管理」ボタンを「PM Board」に改名＋現在プロジェクトの pmboard を確実に開く**：
   - ラベル「進行管理」→「PM Board」に変更。
   - `onmousedown` の pid 取得を `state.currentPage`（未使用の typo）から `state.currentId` に修正し、現在開いているプロジェクトの pmboard を確実に開くように。project が未特定なら REG 先頭にフォールバック。
