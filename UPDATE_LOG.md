@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.032) **Simple B 変換が 3-way マージで巻き戻る問題を根本修正（shots/{sid}.json を直接書き込み）**：
+  - **原因**：`_saveShotWithLock` の 3-way マージがベースライン欠落時に「相手（disk 側の旧レガシー）」を保持する仕様のため、conversion 実行時に削除した子 review が復活していた（3-way マージの理論的挙動としては正しいが、この用途では意図と逆）。
+  - **修正**：`convertLegacyToSimpleB` の各ショット保存を `storage.saveShot` の直接書き込みに切替、3-way マージをバイパス。`_saveCache.shot` と `_revBucket().shots` も同期し、次回 `persist` で false-dirty にならないように。
+  - 削除した子 review の `status/{kidId}.json` も掃除（`storage.delStatus`）。
+  - APP_VERSION：2026.09.20.031 → 2026.09.20.032
+
 - (dev v2026.09.20.031) **アイテムの設定の階層種別セレクタを 2 択（フォルダ／ショットページ）に統一**：
   - 旧 3-way（エピソード／ショット／ショットページ）を撤回。Simple B に統一されたので 2 種類（フォルダ／ショットページ）のみ。
   - 保存時の kind 派生ロジック（episode/cut）を削除。type のみで扱う。

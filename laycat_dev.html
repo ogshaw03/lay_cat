@@ -3788,7 +3788,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.031';
+const APP_VERSION='2026.09.20.032';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10646,6 +10646,7 @@ function openLegacyToSimpleBModal(root){
    他プロジェクトの shot.json は _saveCache により未変更 → スキップ。 */
 async function convertLegacyToSimpleB(root,shots){
   if(!shots||!shots.length)return;
+  const pid=root.id;
   /* 事前：root.stages が空なら、変換対象ショットの子工程名（順序）から補完する。
      これをしないと変換後に工程プルダウンが空になり、Simple B UI から工程を選べなくなる。 */
   if(!Array.isArray(root.stages)||!root.stages.length){
@@ -10656,6 +10657,7 @@ async function convertLegacyToSimpleB(root,shots){
     }
     if(uniq.length)root.stages=uniq;
   }
+  const deletedKidIds=[];
   for(const sh of shots){
     const kids=childrenOf(sh.id).filter(k=>k.type==='review');
     if(!kids.length)continue;
@@ -10705,11 +10707,36 @@ async function convertLegacyToSimpleB(root,shots){
     delete sh.stages;
     /* 子工程 review を削除 */
     for(const k of kids){
+      deletedKidIds.push(k.id);
       const idx=DB.nodes.indexOf(k);
       if(idx>=0)DB.nodes.splice(idx,1);
     }
+    /* v.032：shots/{sid}.json を「直接書き込み」で強制上書き（3-way マージをバイパス）。
+       persist 経由の _saveShotWithLock は baseline 欠落時に「theirs=旧レガシー」が勝ってしまい
+       削除した子 review が復活する。直接書きでその窓を閉じる。
+       同時に _saveCache と _revBucket も更新し、次回 persist で false-dirty にならないように。 */
+    try{
+      const _stripS=n=>{const c=Object.assign({},n);if('status' in c)delete c.status;return c};
+      const shotFile={v:1,shotId:sh.id,nodes:[_stripS(sh)]};
+      shotFile._rev=((_revBucket(pid).shots[sh.id]|0)+1);
+      const ok=await storage.saveShot(pid,sh.id,shotFile);
+      if(ok){
+        _saveCache.shot[pid]=_saveCache.shot[pid]||{};
+        _saveCache.shot[pid][sh.id]=JSON.stringify({v:1,shotId:sh.id,nodes:[_stripS(sh)]});
+        _revBucket(pid).shots[sh.id]=shotFile._rev;
+      }
+    }catch(e){try{console.warn('convertLegacyToSimpleB: shot direct save failed',sh.id,e)}catch(_){}}
+  }
+  /* 削除した子 review の status/{kid}.json も掃除（残っても実害はないが、混乱防止＆
+     再ロード時に hydrate が孤児ステータスを掴んで不要ノードを作るのを防ぐ）。 */
+  for(const kidId of deletedKidIds){
+    try{await storage.delStatus(pid,kidId)}catch(_){}
+    try{delete _saveCache.shot[pid][kidId]}catch(_){}
+    try{delete _revBucket(pid).shots[kidId]}catch(_){}
   }
   normalizeNodes();
+  /* project.json（骨格＋root.stages 更新）だけは通常の persist で書く。
+     shot.json は既に直接書き込み済みなので false-dirty にならず skip される。 */
   await persist();
 }
 /* ============================================================
