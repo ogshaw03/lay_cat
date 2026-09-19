@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.009';
+const APP_VERSION='2026.09.20.010';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14450,6 +14450,9 @@ async function exportAnnotated(clipList,exportOpts){
      currentTime ポーリングよりデコーダ内部と一致するので、アノテとのフレーム同期が正確になる。
      rvfc 非対応環境（Firefox 古版など）は video.currentTime へフォールバック。 */
   let _lastMediaTime=0;
+  /* v.010 デバッグ用：書き出し中に累積で焼き込んだアノテストローク数を可視化。
+     ユーザーが「アノテ込み」を選んだのに動画に反映されない不具合を検証するため。 */
+  let _annoDrawn=0;
   const draw=(mediaTime)=>{
     if(cancelled)return;
     const clip=clips[curIdx];if(!clip)return;
@@ -14465,7 +14468,7 @@ async function exportAnnotated(clipList,exportOpts){
         if(!n||!n.drawing||!n.drawing.length||n.frame==null)continue;
         const dur=parseInt(n.dur)||1;
         if(f>=n.frame&&f<n.frame+dur){
-          try{paintStrokeList(ctx,W,H,n.drawing,1)}catch(_){}
+          try{paintStrokeList(ctx,W,H,n.drawing,1);_annoDrawn+=n.drawing.length}catch(_){}
         }
       }
     }
@@ -14478,7 +14481,8 @@ async function exportAnnotated(clipList,exportOpts){
     }
     pct=Math.max(0,Math.min(1,pct));
     bi.style.width=(pct*100).toFixed(1)+'%';
-    status.textContent='書き出し中 '+(curIdx+1)+' / '+clips.length+'  ('+Math.round(pct*100)+'%)';
+    status.textContent='書き出し中 '+(curIdx+1)+' / '+clips.length+'  ('+Math.round(pct*100)+'%)'+
+      (withAnnotations?('  ／ アノテ描画: '+_annoDrawn):'  ／ アノテ無し');
   };
   /* rvfc（requestVideoFrameCallback）ドライブ：ビデオが実際に新しいフレームを表示した瞬間に発火。
      デコーダーとの完全同期＝アノテのタイミングがフレーム精度で一致。
