@@ -3741,7 +3741,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.008';
+const APP_VERSION='2026.09.20.009';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -17320,27 +17320,45 @@ function openReel(){
   mkMenuItem('⬇ 書き出し…','',()=>{
     const cs=(reelUI&&reelUI.clips)||[];
     if(!cs.length){toast('REEL にクリップがありません');return}
-    /* v.008：書き出しオプション小窓を開く。アノテ有無をチェックボックスで選択。 */
+    /* v.009：書き出しオプション小窓。アノテ有無を明示的なトグルボタンで選択（初期値は「アノテ込み」）。
+       チェックボックス版（v.008）では iframe 内での見た目・状態同期に懸念があったため、
+       状態が視認しやすいトグル UI に変更。 */
+    let withAnno=true;
     const ov=ce(d,'div','ov');
     ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9700;display:flex;align-items:center;justify-content:center';
     const box=ce(d,'div','box');
-    box.style.cssText='background:#1c1c1f;border:1px solid #3a3a42;border-radius:10px;width:min(360px,92vw);padding:18px 20px;display:flex;flex-direction:column;gap:14px;color:#e8e8ec;font-family:system-ui,-apple-system,sans-serif';
+    box.style.cssText='background:#1c1c1f;border:1px solid #3a3a42;border-radius:10px;width:min(380px,92vw);padding:18px 20px;display:flex;flex-direction:column;gap:14px;color:#e8e8ec;font-family:system-ui,-apple-system,sans-serif';
     const title=ce(d,'div');title.style.cssText='font-size:15px;font-weight:700';title.textContent='書き出しオプション';
     box.appendChild(title);
-    const opt=ce(d,'label');opt.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px';
-    const cb=ce(d,'input');cb.type='checkbox';cb.checked=true;cb.style.cssText='width:15px;height:15px;cursor:pointer';
-    opt.appendChild(cb);opt.appendChild(ce(d,'span',null,'アノテーションを含める'));
-    box.appendChild(opt);
+    /* トグル群：アノテ込み / アノテ無し の 2 択セグメント */
+    const lbl=ce(d,'div');lbl.style.cssText='font-size:12px;color:#c8c8d0';lbl.textContent='アノテーション';
+    box.appendChild(lbl);
+    const seg=ce(d,'div');seg.style.cssText='display:flex;border:1px solid #3a3a42;border-radius:8px;overflow:hidden';
+    const onCol='#4da6ff',offCol='#1c1c1f';
+    const btnOn=ce(d,'button','btn','アノテ込み（焼き込む）');
+    const btnOff=ce(d,'button','btn','アノテ無し（素の動画）');
+    for(const b of [btnOn,btnOff]){b.style.cssText='flex:1;padding:8px 6px;border:0;background:'+offCol+';color:#e8e8ec;font-size:12px;font-weight:600;cursor:pointer;transition:background .12s ease'}
+    const paint=()=>{
+      btnOn.style.background=withAnno?onCol:offCol;
+      btnOn.style.color=withAnno?'#111':'#c8c8d0';
+      btnOff.style.background=(!withAnno)?onCol:offCol;
+      btnOff.style.color=(!withAnno)?'#111':'#c8c8d0';
+    };
+    btnOn.onclick=()=>{withAnno=true;paint()};
+    btnOff.onclick=()=>{withAnno=false;paint()};
+    seg.appendChild(btnOn);seg.appendChild(btnOff);
+    box.appendChild(seg);
+    paint();
     const hint=ce(d,'div');hint.style.cssText='font-size:11px;color:#9a9aaa';
     hint.textContent='※ REEL 全体（'+cs.length+' クリップ）を書き出します。';
     box.appendChild(hint);
     const btns=ce(d,'div');btns.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:4px';
-    const cancel=ce(d,'button','btn','キャンセル');cancel.onclick=()=>ov.remove();
+    const cancel=ce(d,'button','btn','キャンセル');cancel.style.cssText='background:transparent;border:1px solid #3a3a42;color:#c8c8d0;padding:6px 14px;border-radius:6px;cursor:pointer';cancel.onclick=()=>ov.remove();
     const go=ce(d,'button','btn primary','書き出し開始');go.style.cssText='background:#4da6ff;color:#111;border:0;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer';
     go.onclick=()=>{
-      const withAnno=cb.checked;
+      const flag=withAnno;
       ov.remove();
-      try{exportAnnotatedReelClips(cs,{annotations:withAnno})}catch(e){toast('書き出しに失敗しました：'+(e&&e.message||''))}
+      try{exportAnnotatedReelClips(cs,{annotations:flag})}catch(e){toast('書き出しに失敗しました：'+(e&&e.message||''))}
     };
     btns.appendChild(cancel);btns.appendChild(go);
     box.appendChild(btns);
