@@ -3797,7 +3797,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.043';
+const APP_VERSION='2026.09.20.044';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8176,9 +8176,19 @@ function renderReviewBody(s,cur,opts){
   const curStageName=getShotCurrentStage(cur);
   const rootStagesArr=projStageList(rootOf(cur));
   const stream=[];
+  /* v.044：アップロード時のコメント（version.uploadCommentId が指す comment）はメッセージストリームからは除外。
+     ログ側の「フレームコメント / FB」パネルと アノテ窓 に「📤 アップロード時」として別表示するため、
+     メッセージ欄で重複表示させない。 */
+  const _uploadCommentIds=new Set();
+  for(const rev of stageSiblings){
+    for(const v of (rev.versions||[]))if(v&&v.uploadCommentId)_uploadCommentIds.add(v.uploadCommentId);
+  }
   for(const rev of stageSiblings){
     for(const v of (rev.versions||[])) stream.push({t:v.uploadedAt||'',kind:'v',v,stageNode:rev,stageName:v.stage||null});
-    for(const c of (rev.comments||[])) stream.push({t:c.time||'',kind:'c',c,stageNode:rev,stageName:c.stage||null});
+    for(const c of (rev.comments||[])){
+      if(c&&c.id&&_uploadCommentIds.has(c.id))continue;
+      stream.push({t:c.time||'',kind:'c',c,stageNode:rev,stageName:c.stage||null});
+    }
   }
   if(!stream.length){s.appendChild(el('div','empty','まだ動画・画像がありません。右上の「＋ 動画」ボタンから追加してください。'));return}
   stream.sort((a,b)=>a.t<b.t?1:(a.t>b.t?-1:0));
