@@ -3797,7 +3797,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.042';
+const APP_VERSION='2026.09.20.043';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -9133,6 +9133,27 @@ async function downloadVersion(v){
   }catch(e){toast('ダウンロードに失敗しました: '+(e&&e.message||''))}
   finally{if(a)a.remove();if(dlurl)setTimeout(()=>{try{URL.revokeObjectURL(dlurl)}catch(_){}},60000)}
 }
+/* v.043：アップロード時のコメント（version.uploadCommentId → node.comments）を
+   1 個の「📤 アップロード時のメッセージ」ブロックとしてコンテナ先頭に append する。
+   ヘルパにしてアノテ窓（openReview の renderNotes）と log-side（フレームコメント / FB）で共用。
+   戻り値：解決できた comment オブジェクト（無ければ null）。呼び出し側は「空メッセージ」判定に使う。 */
+function _uploadCommentBlock(v,node,container){
+  const uc=v&&v.uploadCommentId?((node&&node.comments||[]).find(c=>c&&c.id===v.uploadCommentId)):null;
+  if(!uc||!uc.text||!container)return uc||null;
+  const wrap=el('div','log-note upload-comment');
+  wrap.style.cssText='background:linear-gradient(rgba(126,203,255,.08),transparent);border-left:3px solid #7ecbff;padding:8px 10px 8px 12px;margin-bottom:2px';
+  const meta=el('div','m');
+  const tag=el('span','who');tag.textContent='📤 アップロード時 — '+(uc.author||'');
+  meta.appendChild(tag);
+  const time=el('span','t2');time.style.cssText='margin-left:8px;font-size:11px;color:var(--text3);font-family:var(--font-code)';
+  try{time.textContent=(new Date(uc.time)).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}catch(_){time.textContent=uc.time||''}
+  meta.appendChild(time);
+  wrap.appendChild(meta);
+  const txt=el('div','t');try{renderMentionText(txt,uc.text,rootOf(node))}catch(_){txt.textContent=uc.text||''}
+  wrap.appendChild(txt);
+  container.appendChild(wrap);
+  return uc;
+}
 function logItem(node,v){
   const it=el('div','log-item');it.dataset.vid=v.id; /* 削除時に version id で確実に消せるよう識別子を付与 */
   // 大型メディア（動画はインライン再生可・画像はそのまま表示）
@@ -9219,12 +9240,14 @@ function logItem(node,v){
   const side=el('div','log-side');
   side.appendChild(el('div','log-side-head','フレームコメント / FB'));
   const notes=el('div','log-side-list');
+  /* v.043：アップロード時のコメントを一番上に「📤 アップロード時 — 」として表示（アノテ窓と統一）。 */
+  const _uc=_uploadCommentBlock(v,node,notes);
   /* 動画はフレーム付きコメントのみ、画像/EXR はフレーム概念が無いため全ノートを表示 */
   const _isImgItem=v.type!=='video';
   let arr=v.review.notes.filter(n=>(_isImgItem||n.frame!=null)&&!noteEmbedOnly(n));
   /* 常にフレーム番号順（同フレームは時系列）で並べる。画像/EXR は時系列のみ */
   arr.sort((a,b)=>((a.frame??1e9)-(b.frame??1e9))||String(a.time).localeCompare(String(b.time)));
-  if(!arr.length)notes.appendChild(el('div','log-empty-note',_isImgItem?'コメントはまだありません。FB画面（⤢）から追加してください。':'フレームコメントはまだありません。FB画面（⤢）または下の入力から。'));
+  if(!arr.length&&!_uc)notes.appendChild(el('div','log-empty-note',_isImgItem?'コメントはまだありません。FB画面（⤢）から追加してください。':'フレームコメントはまだありません。FB画面（⤢）または下の入力から。'));
   for(const n of arr)notes.appendChild(noteBlock(v,n,{refresh,onSeek:seekInline,shot}));
   side.appendChild(notes);
   /* フレームコメントの追加はFB画面（⤢）からのみ */
@@ -14081,22 +14104,9 @@ function openReview(nodeId,versionId,opts){
   function renderNotes(scrollEnd){
     list.innerHTML='';
     /* v.022：アップロード時のコメント（version.uploadCommentId 経由で node.comments から解決）を
-       アノテ窓のコメント欄の一番上に「📤 アップロード時のメッセージ」として表示。 */
-    const uc=v.uploadCommentId?((node.comments||[]).find(c=>c&&c.id===v.uploadCommentId)):null;
-    if(uc&&uc.text){
-      const wrap=el('div','log-note upload-comment');
-      wrap.style.cssText='background:linear-gradient(rgba(126,203,255,.08),transparent);border-left:3px solid #7ecbff;padding:8px 10px 8px 12px;margin-bottom:2px';
-      const meta=el('div','m');
-      const tag=el('span','who');tag.textContent='📤 アップロード時 — '+(uc.author||'');
-      meta.appendChild(tag);
-      const time=el('span','t2');time.style.cssText='margin-left:8px;font-size:11px;color:var(--text3);font-family:var(--font-code)';
-      try{time.textContent=(new Date(uc.time)).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}catch(_){time.textContent=uc.time||''}
-      meta.appendChild(time);
-      wrap.appendChild(meta);
-      const txt=el('div','t');try{renderMentionText(txt,uc.text,rootOf(node))}catch(_){txt.textContent=uc.text||''}
-      wrap.appendChild(txt);
-      list.appendChild(wrap);
-    }
+       アノテ窓のコメント欄の一番上に「📤 アップロード時のメッセージ」として表示。
+       v.043：ヘルパ化して log-side（フレームコメント / FB パネル）でも共用。 */
+    const uc=_uploadCommentBlock(v,node,list);
     /* シンクスケッチ風：フレーム順ソート（frame 昇順、frame 無しは末尾） */
     const shown=v.review.notes.filter(n=>!noteEmbedOnly(n)).slice()
       .sort((a,b)=>(((a.frame==null?1e9:a.frame))-((b.frame==null?1e9:b.frame)))||String(a.time||'').localeCompare(String(b.time||'')));
