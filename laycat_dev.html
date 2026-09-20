@@ -3812,7 +3812,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.045';
+const APP_VERSION='2026.09.20.046';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4673,7 +4673,19 @@ function initSizeBtns(){let cols=4;try{cols=parseInt(localStorage.getItem('layna
    サブミット — 複数ショットの提出をまとめてレビュー
    ============================================================ */
 const subS={};
-function submitStagesOf(shot){const kids=childrenOf(shot.id).filter(n=>n.type==='review');return kids.length?kids:[shot];}
+function submitStagesOf(shot){
+  /* v.046：Simple B に統一。サブミット提出単位は「1 ショット」なので工程チップは出さず、常に単一を返す。
+     - Simple B（shot 自身が type='review'）：shot 自体が対象
+     - レガシー shot section（type='section' で全子 review）：currentStage が指す review、
+       未設定なら先頭を対象に採用（旧仕様のように工程を個別選択させない） */
+  if(!shot)return [];
+  if(shot.type==='review')return [shot];
+  const kids=childrenOf(shot.id).filter(n=>n&&n.type==='review');
+  if(!kids.length)return [shot];
+  const curName=shot.currentStage||null;
+  const picked=(curName&&kids.find(k=>k.name===curName))||kids[0];
+  return [picked];
+}
 function subGenName(pid){const d=new Date();const ymd=''+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');let seq=1,name;do{name=ymd+'_'+String(seq).padStart(3,'0');seq++}while(DB.submits.some(s=>s.projectId===pid&&s.name===name));return name;}
 function openSubmit(){const root=subBuildModal();if(root)subShowList();}
 /* サブミットボタン → 作成画面を直接開く（一覧はショット隣の「サブミット」タブへ移動） */
@@ -4766,7 +4778,7 @@ function subShowCreate(){
   bcta.value=subS.blockComment||'';bcta.oninput=()=>subS.blockComment=bcta.value;bc.appendChild(bcta);
   wrap.appendChild(bc);
   wrap.appendChild(el('div','section-label','提出物（提出する動画）'));
-  if(!subS.blocks.length){wrap.appendChild(el('div','sub-empty','右上の「＋ ショットを追加」からショットと工程を選択してください。'));}
+  if(!subS.blocks.length){wrap.appendChild(el('div','sub-empty','右上の「＋ ショットを追加」から提出するショットを選択してください。'));}
   else{for(const b of subS.blocks)wrap.appendChild(subBlockEl(b));}
   const foot=el('div','sub-foot');
   const create=el('button','btn btn-primary','サブミットを作成');create.onclick=()=>createSubmitBlock();
@@ -4827,7 +4839,7 @@ function subBlockEl(block){
   drop.ondragleave=()=>drop.classList.remove('drag');
   drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');const fs=[...(e.dataTransfer.files||[])];pickFile(fs.find(isVideoFile)||fs[0])};
   bbody.appendChild(drop);
-  const cw=el('div','sub-cmt');cw.appendChild(el('label',null,'コメント（このショット工程へのコメント）'));
+  const cw=el('div','sub-cmt');cw.appendChild(el('label',null,'コメント（このショットへのコメント）'));
   const ta=el('textarea');ta.value=block.comment||'';ta.oninput=()=>block.comment=ta.value;cw.appendChild(ta);
   bbody.appendChild(cw);
   bl.appendChild(bbody);
@@ -4840,7 +4852,7 @@ function openSubPicker(){
   let filterAsg='';
   const modal=el('div','subpick');
   const pk=el('div','pk');
-  const pkh=el('div','pkh');pkh.appendChild(el('div',null,'提出するショット・工程を選択'));const hsp=el('div');hsp.style.flex='1';pkh.appendChild(hsp);
+  const pkh=el('div','pkh');pkh.appendChild(el('div',null,'提出するショットを選択'));const hsp=el('div');hsp.style.flex='1';pkh.appendChild(hsp);
   /* 作業者で絞り込み（検索付きプルダウン） */
   const ap=memberSearchPicker(root,'','作業者で絞り込み',v=>{filterAsg=(v||'').toLowerCase();buildGrid()},'— 全員');
   ap.row.classList.add('pk-asg');pkh.appendChild(ap.row);
