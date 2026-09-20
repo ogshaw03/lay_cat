@@ -3158,17 +3158,22 @@ function _isShotNodeForSave(n,allNodes){
     if(!kids.every(k=>k.type==='review'))return false;
     /* v.029：子のいずれかが `currentStage` を持つ（＝ Simple B ショット）なら、
        この section は「フォルダ」であってレガシー shot section ではない。
-       ショット扱いすると、フォルダを勝手に shots/{sid}.json に書き出してツリーが崩れる。 */
-    if(kids.some(k=>k.currentStage!=null))return false;
+       ショット扱いすると、フォルダを勝手に shots/{sid}.json に書き出してツリーが崩れる。
+       v.039：`kind:'shot'` マーカーも判定に加える（root.stages 空プロジェクトで currentStage が
+       未設定でも Simple B ショットと判別できるように）。 */
+    if(kids.some(k=>k.currentStage!=null||k.kind==='shot'))return false;
     return true;
   }
   if(n.type==='review'){
+    /* v.039：自分自身が kind:'shot' なら、親の状態に関わらずショット節点として保存する
+       （legacy 親判定に巻き込まれない）。 */
+    if(n.kind==='shot')return true;
     /* 親がレガシー shot section（＝子が全て review かつ Simple B ではない）なら、
        これは工程子なのでショット扱いしない */
     const parent=allNodes.find(x=>x.id===n.parentId);
     if(parent&&parent.type==='section'&&parent.parentId){
       const sibs=allNodes.filter(x=>x.parentId===parent.id);
-      if(sibs.length&&sibs.every(k=>k.type==='review')&&!sibs.some(k=>k.currentStage!=null))return false;
+      if(sibs.length&&sibs.every(k=>k.type==='review')&&!sibs.some(k=>k.currentStage!=null||k.kind==='shot'))return false;
     }
     return true;
   }
@@ -3203,7 +3208,7 @@ function getShotStageForTag(cur){
   const shotSec = cur.parentId ? getNode(cur.parentId) : null;
   if(shotSec && shotSec.type==='section'){
     const kids = DB.nodes.filter(n=>n.parentId===shotSec.id);
-    const isLegacyContainer = kids.length>=1 && kids.every(k=>k.type==='review') && !kids.some(k=>k.currentStage!=null);
+    const isLegacyContainer = kids.length>=1 && kids.every(k=>k.type==='review') && !kids.some(k=>k.currentStage!=null||k.kind==='shot');
     if(isLegacyContainer) return cur.name || null;
   }
   return getShotCurrentStage(cur);
@@ -3792,7 +3797,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.038';
+const APP_VERSION='2026.09.20.039';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5871,7 +5876,7 @@ function renderBodyMain(){
      currentStage（無ければ先頭工程）の review ページに自動転送。「ショット単位で 1 ページ」の運用に統一。 */
   if(cur.type==='section'){
     const _kids=DB.nodes.filter(n=>n.parentId===cur.id);
-    if(_kids.length>=1&&_kids.every(k=>k.type==='review')&&!_kids.some(k=>k.currentStage!=null)){
+    if(_kids.length>=1&&_kids.every(k=>k.type==='review')&&!_kids.some(k=>k.currentStage!=null||k.kind==='shot')){
       const curName=cur.currentStage||null;
       const target=(curName&&_kids.find(k=>k.name===curName))||_kids[0];
       if(target){renderReviewBody(s,target);return}
@@ -7354,7 +7359,7 @@ function renderProjProgress(main,cur){
      フォルダとみなさず除外。純粋な "フォルダ" のみプルダウンに出す。 */
   const _folderOptions=[];
   _folderOptions.push({id:cur.id,label:'プロジェクト直下（'+cur.name+'）',depth:0});
-  const _isShotSection=(n)=>{const kids=childrenOf(n.id);return kids.length>=1&&kids.every(k=>k.type==='review')&&!kids.some(k=>k.currentStage!=null)};
+  const _isShotSection=(n)=>{const kids=childrenOf(n.id);return kids.length>=1&&kids.every(k=>k.type==='review')&&!kids.some(k=>k.currentStage!=null||k.kind==='shot')};
   (function walk(pid,depth){
     const kids=childrenOf(pid).filter(n=>n.type==='section'&&!_isShotSection(n));
     for(const k of kids){
@@ -8052,7 +8057,7 @@ function renderReviewBody(s,cur,opts){
      shotSec が「shot section」（type=section で直下子が全て review）のときのみ書き込む。 */
   if(shotSec && shotSec.type==='section' && shotSec.currentStage!==cur.name){
     const _kids=DB.nodes.filter(n=>n.parentId===shotSec.id);
-    if(_kids.length>=1 && _kids.every(k=>k.type==='review') && !_kids.some(k=>k.currentStage!=null)){
+    if(_kids.length>=1 && _kids.every(k=>k.type==='review') && !_kids.some(k=>k.currentStage!=null||k.kind==='shot')){
       const _prev=shotSec.currentStage||null;
       shotSec.currentStage=cur.name;
       if(!Array.isArray(shotSec.stageHistory)) shotSec.stageHistory=[];
@@ -8119,7 +8124,7 @@ function renderReviewBody(s,cur,opts){
      バッジ表示は stageName を優先、無ければ stageNode.name をフォールバック。
      兄弟工程の抽出は「shot section の直下子だけ」に限定。Simple B ショットは兄弟なし＝自身のみ。 */
   const _shotKids=shotSec?DB.nodes.filter(n=>n.parentId===shotSec.id):[];
-  const _isShotContainer=!!(shotSec && shotSec.type==='section' && _shotKids.length>=1 && _shotKids.every(k=>k.type==='review') && !_shotKids.some(k=>k.currentStage!=null));
+  const _isShotContainer=!!(shotSec && shotSec.type==='section' && _shotKids.length>=1 && _shotKids.every(k=>k.type==='review') && !_shotKids.some(k=>k.currentStage!=null||k.kind==='shot'));
   const stageSiblings=_isShotContainer?_shotKids:[cur];
   const hasSiblings=stageSiblings.length>1;
   const curStageName=getShotCurrentStage(cur);
@@ -8225,7 +8230,7 @@ function buildStageStripInline(shot,curReviewId){
   const root=cur?rootOf(cur):null;
   const stages=projStageList(root);
   const directKids=shot?DB.nodes.filter(n=>n.parentId===shot.id):[];
-  const isLegacyShotContainer=!!(shot && shot.type==='section' && directKids.length>=1 && directKids.every(k=>k.type==='review') && !directKids.some(k=>k.currentStage!=null));
+  const isLegacyShotContainer=!!(shot && shot.type==='section' && directKids.length>=1 && directKids.every(k=>k.type==='review') && !directKids.some(k=>k.currentStage!=null||k.kind==='shot'));
   const siblings=isLegacyShotContainer?directKids:[];
   const useLegacy=isLegacyShotContainer && siblings.length>=2;
   /* v.044/v.045：工程プルダウンに工程設定の色を反映。

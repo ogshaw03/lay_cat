@@ -18,6 +18,19 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.039) **v.038 の kind:'shot' 判定を残り 6 箇所にも適用（フォルダがショットページ化する誤検出の完全修正）**：
+  - v.038 で更新した 4 箇所以外に、以下 6 箇所も同じ `currentStage!=null` 単体判定になっていて、`kind:'shot'` を見ていなかった：
+    1. `_isShotNodeForSave`（saveProjectSplit の Phase 2 判定・**最重要**）… 親フォルダが shots/{sid}.json に書き出される根本原因
+    2. `getShotStageForTag`（version/comment のタグ推定）
+    3. `render()` 内のセクション自動転送
+    4. `renderReviewBody` 冒頭の shotSec.currentStage 自動同期
+    5. `renderReviewBody` 内の `_isShotContainer`（stream 集約用）
+    6. `buildStageStripInline` 内の `isLegacyShotContainer`（工程プルダウン用）
+  - すべて `k.currentStage!=null||k.kind==='shot'` に統一。
+  - `_isShotNodeForSave` の review 分岐にも「自分が `kind:'shot'` なら親判定に関わらずショット節点」を追加。
+  - **結果**：`root.stages` 空プロジェクトで作った Simple B ショットが親フォルダを shot.json 化してしまう問題が根絶。次回保存時に誤って書かれた folder.shot.json は自動クリーンアップ経路（seenShots に含まれず → delShot）で削除される。
+  - APP_VERSION：2026.09.20.038 → 2026.09.20.039
+
 - (dev v2026.09.20.038) **ショットページ／工程ページのごちゃごちゃ問題を根本修正・新規追加モーダルを整理**：
   - **バグ**：`root.stages` が空のプロジェクトで「ショットページ」を連番作成すると、`currentStage` が未設定になり、`_isShotSectionLegacy` 等が親フォルダを **レガシー shot container** と誤判定 → 新規 s001/s002/… が **工程扱い** で表示され、変換対象検出も不安定になっていた。
   - **根本修正 1（明示マーカー導入）**：Simple B のショットページ `review` に `kind:'shot'` を打刻。
