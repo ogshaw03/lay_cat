@@ -3349,20 +3349,35 @@ function _applySubmitFileIntoDB(pid,submit){
 async function _shotSaveGuardWarn(pid,sid,newFile){
   /* A：既存 shot.json に versions がある review が、新ペイロードで空／消失している場合を検出。
      戻り値：{ok:true} なら通す、{ok:false, warnings:[...]} なら書込みを拒否する。
-     "意図的な全削除"（node 自体が削除された・意図的な reset）は現時点の実装フローには存在しないので、
-     versions が 0 → 0 以外の shrink は全て事故扱い。将来意図的な shrink を許すなら opts.allowShrink を追加。 */
+     v.045：ユーザーによる版の削除は `node._vtomb`（version tombstone）に記録される。
+     old にあって new に無い版がすべて tombstone に含まれていれば「意図的な削除」なので通す。
+     tombstone に無い版が消えている場合のみ「事故」として拒否する。 */
   let existing=null;try{existing=await storage.loadShot(pid,sid)}catch(_){}
   if(!existing||!Array.isArray(existing.nodes))return {ok:true};
   const newNodes=Array.isArray(newFile&&newFile.nodes)?newFile.nodes:[];
   const warnings=[];
   for(const oldN of existing.nodes){
     if(!oldN||oldN.type!=='review')continue;
-    const oldVCount=Array.isArray(oldN.versions)?oldN.versions.length:0;
-    if(oldVCount===0)continue;
+    const oldVersions=Array.isArray(oldN.versions)?oldN.versions:[];
+    if(!oldVersions.length)continue;
     const newN=newNodes.find(x=>x&&x.id===oldN.id);
-    if(!newN){warnings.push({id:oldN.id,name:oldN.name,reason:'review node removed from save',oldVCount,newVCount:'(missing)'});continue}
-    const newVCount=Array.isArray(newN.versions)?newN.versions.length:0;
-    if(newVCount<oldVCount){warnings.push({id:oldN.id,name:oldN.name,reason:'versions shrunk',oldVCount,newVCount})}
+    if(!newN){warnings.push({id:oldN.id,name:oldN.name,reason:'review node removed from save',oldVCount:oldVersions.length,newVCount:'(missing)'});continue}
+    const newVersions=Array.isArray(newN.versions)?newN.versions:[];
+    if(newVersions.length>=oldVersions.length)continue;
+    /* 版 id ベースで「消えた版」を洗い出す。_vtomb に含まれていれば削除意図。 */
+    const newIds=new Set(newVersions.map(v=>v&&v.id).filter(Boolean));
+    const tombIds=new Set((Array.isArray(newN._vtomb)?newN._vtomb:[]).map(t=>t&&t.vId).filter(Boolean));
+    const suspicious=[];
+    for(const ov of oldVersions){
+      if(!ov)continue;
+      if(!ov.id){suspicious.push('(no-id)');continue} /* id が無い旧データは判定不能 → 事故扱い */
+      if(newIds.has(ov.id))continue;
+      if(tombIds.has(ov.id))continue; /* 削除 tombstone にある → 意図的削除 */
+      suspicious.push(ov.id);
+    }
+    if(suspicious.length){
+      warnings.push({id:oldN.id,name:oldN.name,reason:'versions shrunk without tombstone',oldVCount:oldVersions.length,newVCount:newVersions.length,suspicious});
+    }
   }
   return {ok:warnings.length===0,warnings};
 }
@@ -3797,7 +3812,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.044';
+const APP_VERSION='2026.09.20.045';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
