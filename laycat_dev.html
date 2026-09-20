@@ -3797,7 +3797,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.039';
+const APP_VERSION='2026.09.20.040';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10180,22 +10180,68 @@ function openAddModal(parentId,initialType,role){
     [cntI,startI,stepI,digI,nameRow.f].forEach(i=>i.addEventListener('input',updPrev));
     seqCb.onchange=()=>{seqFields.style.display=seqCb.checked?'flex':'none';nameLab.textContent=seqCb.checked?'ベース名（例: cut → cut010, cut020 …）':(cur?'名前 / ベース名（例: ショット01 / cut）':'プロジェクト名');updPrev()};
     inner.appendChild(seqTop);inner.appendChild(seqFields);inner.appendChild(prev);
-    /* v.038：ショットページ作成時の初期工程プルダウン。
-       root.stages から候補を出し、任意で選択。省略時（＝「工程なし」）は currentStage 未設定のまま
-       作成される（Simple B は kind:'shot' マーカーで legacy と区別できるので currentStage が空でも OK）。 */
+    /* v.040：ショットページ作成時の工程設定エリア。以下 2 パートを持つ：
+        (A) 工程セット編集：プロジェクトの `root.stages` をこの場で編集（追加・削除・リネーム・
+            テンプレート適用）。保存時に root.stages に反映（プロジェクトが変更される）。
+        (B) 初期工程プルダウン：作成する review の `currentStage` を選択（root.stages の現在値
+            から選ぶ／「未設定」も可）。
+       ショットページ選択時のみ表示。 */
     const _rootForStages=cur?rootOf(cur):null;
-    const _stageOpts=_rootForStages?projStageList(_rootForStages):[];
-    stageInitBox=el('div');stageInitBox.style.cssText='margin-top:10px;display:'+((_initT==='review')?'':'none');
-    const _stgLab=el('div','form-label','初期工程（任意）');stageInitBox.appendChild(_stgLab);
-    const stageInitSel=el('select','form-input');stageInitSel.style.cssText='min-width:180px;max-width:260px';
-    const _optNone=el('option',null,'（未設定）');_optNone.value='';stageInitSel.appendChild(_optNone);
-    for(const s of _stageOpts){const o=el('option',null,s);o.value=s;stageInitSel.appendChild(o)}
-    if(_stageOpts.length)stageInitSel.value=_stageOpts[0];
-    stageInitBox.appendChild(stageInitSel);
-    if(!_stageOpts.length){
-      const _hint=el('div','form-label','（このプロジェクトには工程セット未登録。プロジェクト設定で工程セットを登録すると初期工程を選べます）');
-      _hint.style.color='var(--text3)';stageInitBox.appendChild(_hint);
+    let stagesEdit=Array.isArray(_rootForStages&&_rootForStages.stages)?_rootForStages.stages.slice():[];
+    stageInitBox=el('div');stageInitBox.style.cssText='margin-top:14px;padding-top:12px;border-top:1px solid var(--border);display:'+((_initT==='review')?'':'none');
+    stageInitBox.appendChild(el('div','settings-help','工程セット（プロジェクト共通）を編集し、このショットの初期工程を選べます。'));
+    /* (A) 工程セット編集 UI */
+    const setHead=el('div');setHead.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0';
+    setHead.appendChild(el('span','form-label','工程セット：'));
+    /* テンプレート適用プルダウン（root.stageTemplates から） */
+    const _tpls=_rootForStages?projectStageTemplates(_rootForStages):[];
+    if(_tpls.length){
+      const tplSel=el('select','form-input');tplSel.style.cssText='min-width:140px;max-width:200px';
+      for(const t of _tpls){const o=el('option',null,t.name||'(無名)');o.value=t.id;tplSel.appendChild(o)}
+      setHead.appendChild(tplSel);
+      const applyBtn=el('button','btn btn-ghost btn-sm','テンプレートを適用');applyBtn.type='button';
+      applyBtn.onclick=()=>{const t=_tpls.find(x=>x.id===tplSel.value);if(!t)return;stagesEdit=(t.stages||[]).slice();redrawStages();toast('テンプレート「'+(t.name||'')+'」を適用')};
+      setHead.appendChild(applyBtn);
     }
+    stageInitBox.appendChild(setHead);
+    const stageListWrap=el('div');stageListWrap.style.cssText='display:flex;flex-direction:column;gap:4px;margin-bottom:6px';
+    stageInitBox.appendChild(stageListWrap);
+    const addStageBtn=el('button','btn btn-ghost btn-sm','＋ 工程を追加');addStageBtn.type='button';
+    addStageBtn.onclick=()=>{stagesEdit.push('新工程');redrawStages()};
+    stageInitBox.appendChild(addStageBtn);
+    /* (B) 初期工程プルダウン */
+    const initRow=el('div');initRow.style.cssText='margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+    initRow.appendChild(el('span','form-label','初期工程（任意）：'));
+    const stageInitSel=el('select','form-input');stageInitSel.style.cssText='min-width:160px;max-width:220px';
+    initRow.appendChild(stageInitSel);
+    stageInitBox.appendChild(initRow);
+    const redrawStages=()=>{
+      stageListWrap.innerHTML='';
+      if(!stagesEdit.length){
+        stageListWrap.appendChild(el('div','form-label','（工程未登録。上の「＋ 工程を追加」またはテンプレートから設定できます）'));
+      }
+      stagesEdit.forEach((nm,i)=>{
+        const row=el('div');row.style.cssText='display:flex;align-items:center;gap:6px';
+        const sc=el('span');sc.style.cssText='width:12px;height:12px;border-radius:3px;flex-shrink:0;background:'+(function(){try{return stageColor(nm)}catch(_){return 'var(--text3)'}})();
+        const inp=el('input','form-input');inp.value=nm;inp.style.cssText='flex:1;min-width:100px;max-width:220px';
+        inp.oninput=()=>{stagesEdit[i]=inp.value;try{sc.style.background=stageColor(inp.value)}catch(_){}refreshInitSel()};
+        const del=el('button','btn btn-danger btn-sm','削除');del.type='button';
+        del.onclick=()=>{stagesEdit.splice(i,1);redrawStages()};
+        row.appendChild(sc);row.appendChild(inp);row.appendChild(del);stageListWrap.appendChild(row);
+      });
+      refreshInitSel();
+    };
+    const refreshInitSel=()=>{
+      const prev=stageInitSel.value;
+      stageInitSel.innerHTML='';
+      const _optNone=el('option',null,'（未設定）');_optNone.value='';stageInitSel.appendChild(_optNone);
+      const clean=stagesEdit.map(x=>String(x||'').trim()).filter(Boolean);
+      for(const s of clean){const o=el('option',null,s);o.value=s;stageInitSel.appendChild(o)}
+      if(prev&&clean.includes(prev))stageInitSel.value=prev;
+      else if(clean.length)stageInitSel.value=clean[0];
+      else stageInitSel.value='';
+    };
+    redrawStages();
     inner.appendChild(stageInitBox);
     const descRow=frow('説明（任意）','textarea');inner.appendChild(descRow.r);
     const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=closeModal;
@@ -10208,6 +10254,18 @@ function openAddModal(parentId,initialType,role){
         const cnt=Math.max(1,Math.min(200,parseInt(cntI.value)||1));
         const start=parseInt(startI.value)||0,step=parseInt(stepI.value)||1,dig=Math.max(0,parseInt(digI.value)||0);
         names=[];for(let i=0;i<cnt;i++)names.push(base+String(start+i*step).padStart(dig,'0'));
+      }
+      /* v.040：ショットページ作成時に工程セットが編集されていれば root.stages を更新。
+         書込境界：現プロジェクトの laycat.project.json（root ノードの stages 配列）のみ。
+         shot.json は触らない。 */
+      if(type==='review'&&_rootForStages){
+        const cleanStages=stagesEdit.map(x=>String(x||'').trim()).filter(Boolean);
+        const beforeStages=Array.isArray(_rootForStages.stages)?_rootForStages.stages.slice():[];
+        const changed=(JSON.stringify(beforeStages)!==JSON.stringify(cleanStages));
+        if(changed){
+          if(cleanStages.length)_rootForStages.stages=cleanStages;
+          else delete _rootForStages.stages;
+        }
       }
       const _initStage=stageInitSel.value||'';
       const createdIds=[];
