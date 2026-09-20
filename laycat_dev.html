@@ -3797,7 +3797,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.041';
+const APP_VERSION='2026.09.20.042';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7741,6 +7741,52 @@ function shotCommentInput(cur){
   wrap.appendChild(inp);
   return wrap;
 }
+/* v.042：コメント入力欄に画像添付機能を付けるヘルパ。
+   - container 内の sendBtn の直前に「＋」ボタンを差し込み、押下で <input type=file accept=image/*> を開く。
+   - container の先頭に添付プレビュー枠（サムネ＋× 削除）を差し込む。
+   - textarea にペーストイベントを付け、クリップボードの image/* を取り込む。
+   - 添付画像は最大辺 opts.maxSide（既定 800px）にリサイズして dataURL 化、`ta._attachImg` に格納。
+   - 返り値：{attached, clear}。送信側は attached() で dataURL を取り、note.attachImg として保存後 clear()。 */
+function attachImagePasteToInput(container,ta,sendBtn,opts){
+  opts=opts||{};const maxSide=opts.maxSide||800;
+  const fi=document.createElement('input');fi.type='file';fi.accept='image/*';fi.style.display='none';
+  const plus=document.createElement('button');plus.type='button';plus.className='btn btn-ghost btn-sm';
+  plus.textContent='＋';plus.title='画像を添付（クリップボードからのペーストも可）';
+  plus.style.flexShrink='0';
+  const preview=document.createElement('div');preview.className='sc-attach-preview';
+  preview.style.cssText='display:none;position:relative;flex-shrink:0;align-self:center';
+  const pimg=document.createElement('img');
+  pimg.style.cssText='max-width:64px;max-height:48px;border:1px solid var(--border);border-radius:6px;display:block;object-fit:cover;background:var(--bg3)';
+  preview.appendChild(pimg);
+  const rm=document.createElement('button');rm.type='button';rm.className='btn btn-danger btn-sm';
+  rm.textContent='✕';rm.title='添付を削除';
+  rm.style.cssText='position:absolute;top:-8px;right:-8px;padding:0 6px;font-size:10px;line-height:1.4;min-width:0';
+  const doClear=()=>{ta._attachImg=null;pimg.src='';preview.style.display='none';fi.value=''};
+  rm.onclick=doClear;preview.appendChild(rm);
+  const setAttach=async(file)=>{
+    if(!file||!file.type||!/^image\//i.test(file.type||'')){toast('画像ファイルのみ添付できます');return}
+    try{const du=await _noteResizeImage(file,maxSide);ta._attachImg=du;pimg.src=du;preview.style.display=''}
+    catch(_){toast('画像の読み込みに失敗しました')}
+  };
+  fi.onchange=()=>{const f=fi.files&&fi.files[0];if(f)setAttach(f);fi.value=''};
+  plus.onclick=()=>fi.click();
+  ta.addEventListener('paste',e=>{
+    const items=(e.clipboardData&&e.clipboardData.items)||[];
+    for(const it of items){
+      if(it.kind==='file'&&/^image\//i.test(it.type||'')){
+        e.preventDefault();
+        const f=it.getAsFile();if(f)setAttach(f);
+        return;
+      }
+    }
+  });
+  /* container の先頭に preview、send ボタン直前に + を差し込む。fi は非表示なので末尾で OK */
+  container.insertBefore(preview,container.firstChild);
+  if(sendBtn&&sendBtn.parentNode===container)container.insertBefore(plus,sendBtn);
+  else container.appendChild(plus);
+  container.appendChild(fi);
+  return {attached:()=>ta._attachImg||null,clear:doClear};
+}
 /* NOTE 画像を最大辺 maxSide にリサイズして dataURL 化。透過 PNG は PNG のまま、
    それ以外は JPEG 80% 品質で保存サイズを抑える。node.note (HTML 文字列) に埋め込まれるので
    極端に大きな画像を入れると persist が重くなる → 事前縮小が必須。 */
@@ -8928,7 +8974,9 @@ function buildFrameNotes(pending,opts){
   const who=opts.author||currentUser(),t=nowIso();
   const pdur=opts.dur||1;const txt=(opts.text||'').trim();
   const isVideo=opts.isVideo!==false;
-  if(!pending.length&&!txt)return [];
+  const attachImg=opts.attachImg||null;
+  /* v.042：画像添付があれば描画・テキストが無くてもノートを作る（画像だけの単発コメント） */
+  if(!pending.length&&!txt&&!attachImg)return [];
   const notes=[];
   if(pending.length){
     if(isVideo){
@@ -8961,6 +9009,16 @@ function buildFrameNotes(pending,opts){
         notes.push({author:who,text:txt,time:t,frame:cf,mentions:mns});
       }
     }
+  }
+  /* v.042：画像添付があれば、テキスト付きノートに優先で乗せる。テキストが無ければ描画ノートに、
+     どちらも無ければ画像だけの単発ノートを新規生成する。 */
+  if(attachImg){
+    let target=notes.find(n=>n.text&&String(n.text).trim())||notes.find(n=>n.drawing&&n.drawing.length)||notes[0];
+    if(!target){
+      target={author:who,text:'',time:t,frame:(opts.curFrame!=null?opts.curFrame:undefined)};
+      notes.push(target);
+    }
+    target.attachImg=attachImg;
   }
   for(const n of notes)if(!n.id)n.id=newId('nt'); /* #2: 新規noteに安定IDを付与（マージはid優先→内容キーでフォールバック。既存のid無しデータは従来どおり内容キーで突合されるため、ランダムidの後埋めはしない） */
   return notes;
@@ -9008,6 +9066,13 @@ function noteBlock(v,n,opts){
   else if(n.imgShot){
     const im=el('img','note-shot');im.src=n.imgShot;im.alt='送信時のスクショ';im.title='送信時にビューをスクショ保存';
     note.appendChild(im);
+  }
+  /* v.042：ユーザーがコメント入力欄で添付した画像（クリップボード or ファイル選択）を表示 */
+  if(n.attachImg){
+    const im2=el('img','note-shot');im2.src=n.attachImg;im2.alt='添付画像';im2.title='コメントに添付された画像';
+    im2.style.cssText='cursor:zoom-in';
+    im2.onclick=()=>{try{const w=window.open('','_blank');if(w){w.document.write('<img src="'+n.attachImg+'" style="max-width:100%">');w.document.close()}}catch(_){}};
+    note.appendChild(im2);
   }
   ed.onclick=()=>{
     if(note.querySelector('textarea'))return;
@@ -12645,9 +12710,11 @@ function openReview(nodeId,versionId,opts){
   side.appendChild(el('div','fb-side-head','コメント / FB'));
   const list=el('div','fb-notes');side.appendChild(list);
   const iw=el('div','fb-input');
-  const ta=el('textarea');ta.placeholder=isVideo?'このフレームにコメント…（@でメンション・Ctrl+Enterで送信）':'コメント…（@でメンション・Ctrl+Enterで送信）';
+  const ta=el('textarea');ta.placeholder=isVideo?'このフレームにコメント…（@でメンション・画像貼り付けOK・Ctrl+Enterで送信）':'コメント…（@でメンション・画像貼り付けOK・Ctrl+Enterで送信）';
   const sb=el('button','btn btn-primary btn-sm','送信');sb.title='コメント／アノテーションをショットページに反映（未送信を含めまとめて保存）';
   iw.appendChild(ta);iw.appendChild(sb);side.appendChild(iw);attachMention(ta,rootOf(node));
+  /* v.042：コメント入力欄に画像添付（＋ ボタン／クリップボード貼り付け）を配線 */
+  const fbAttach=attachImagePasteToInput(iw,ta,sb);
   /* 「保存」バーは非表示（送信 = そのままショットページに反映するように一段化）。
      未送信の残数表示だけは残しておいたほうが親切なので、状態インジケータとして薄く表示。 */
   const submitBar=el('div','fb-submit-bar');
@@ -14068,7 +14135,7 @@ function openReview(nodeId,versionId,opts){
     const cf=isVideo?dispFrame():null;
     const mine=isVideo?pending.filter(p=>(p.f!=null?p.f:cf)===cf):pending;
     const rest=isVideo?pending.filter(p=>(p.f!=null?p.f:cf)!==cf):[];
-    const notes=buildFrameNotes(mine,{text:ta.value,curFrame:cf,dur:parseInt(durSel.value)||1,isVideo,mentions:ta._mentions,root:rootOf(node)});
+    const notes=buildFrameNotes(mine,{text:ta.value,curFrame:cf,dur:parseInt(durSel.value)||1,isVideo,mentions:ta._mentions,root:rootOf(node),attachImg:fbAttach.attached()});
     if(!notes.length){
       if(!auto&&isVideo&&pending.length)toast('このフレームに送信する内容がありません。他フレームの未送信は、そのフレームを表示して送信してください。');
       return;
@@ -14086,15 +14153,15 @@ function openReview(nodeId,versionId,opts){
       }
     }
     drafts.push(...notes);pending=rest;stroke=null;headActive=null;redoStack=[];
-    ta.value='';ta._mentions=[];
+    ta.value='';ta._mentions=[];fbAttach.clear(); /* v.042：添付画像もクリア */
     if(!silent){renderNotes();drawAll();drawTimeline();updSubmit();}
   };
   /* 保存：送信済みの下書きに加え、まだ送信していない全フレームの pending・入力中コメントも
      まとめて（＝フレームを問わず全部）レビューページ(v.review.notes)へ反映する。
      ※「送信」は現在フレームのみ、「保存」は全フレーム一括、という2段構え。 */
   async function submit(){
-    if(pending.length||ta.value.trim()){ /* 未送信の pending を全フレーム分まとめて下書き化（描画のみはスクショ省略） */
-      const notes=buildFrameNotes(pending,{text:ta.value,curFrame:isVideo?dispFrame():null,dur:parseInt(durSel.value)||1,isVideo,mentions:ta._mentions,root:rootOf(node)});
+    if(pending.length||ta.value.trim()||fbAttach.attached()){ /* v.042：添付画像だけでも submit を通す */
+      const notes=buildFrameNotes(pending,{text:ta.value,curFrame:isVideo?dispFrame():null,dur:parseInt(durSel.value)||1,isVideo,mentions:ta._mentions,root:rootOf(node),attachImg:fbAttach.attached()});
       for(const n of notes){n._draft=true;if(n.drawing&&n.drawing.length&&!(n.text&&String(n.text).trim()))n.noShot=true;}
       /* 画像アイテムは「描画があるノートにのみ」ビューを焼き込む（テキストのみノートに勝手にスクショが付くのを防ぐ） */
       if(!isVideo){
@@ -14106,7 +14173,7 @@ function openReview(nodeId,versionId,opts){
           }
         }
       }
-      drafts.push(...notes);pending=[];stroke=null;headActive=null;redoStack=[];ta.value='';ta._mentions=[];
+      drafts.push(...notes);pending=[];stroke=null;headActive=null;redoStack=[];ta.value='';ta._mentions=[];fbAttach.clear();
     }
     if(!drafts.length)return;
     for(const n of drafts){delete n._draft;v.review.notes.push(n)}
@@ -16115,9 +16182,11 @@ function openReel(){
   reelUI.updHeader=updReelHeaderInfo;
   const clist=ce(d,'div','fb-notes');cside.appendChild(clist);
   const ciw=ce(d,'div','fb-input');
-  const cta=d.createElement('textarea');cta.placeholder='このフレームにコメント…（@でメンション・Ctrl+Enterで送信）';
+  const cta=d.createElement('textarea');cta.placeholder='このフレームにコメント…（@でメンション・画像貼り付けOK・Ctrl+Enterで送信）';
   const csend=ce(d,'button','btn on','送信');csend.title='コメント／アノテを送信（保存するまでショットページには反映されません）';
   ciw.appendChild(cta);ciw.appendChild(csend);cside.appendChild(ciw);attachMention(cta,curRoot());
+  /* v.042：REEL コメント欄にも画像添付（＋ ボタン／クリップボード貼り付け） */
+  const reelAttach=attachImagePasteToInput(ciw,cta,csend);
   rowEl.appendChild(cside);
 
   const rvData=()=>{const c=reelUI.clips[reelUI.cur];if(!c||!c.nodeId)return null;const n=getNode(c.nodeId);const vv=n&&n.versions.find(x=>x.id===c.vId);return vv?{node:n,v:vv}:null};
@@ -17427,7 +17496,7 @@ function openReel(){
        送信側もそれに合わせる。 */
     const inWin=p=>p.f!=null&&cf>=p.f&&cf<p.f+(parseInt(p.dur)||pdur);
     const cur=(c.pending||[]).filter(inWin);
-    if(!txt&&!cur.length){
+    if(!txt&&!cur.length&&!reelAttach.attached()){ /* v.042：添付画像だけの送信も許可 */
       /* silent early return 廃止：ユーザーに何が起きたか伝える。3 パターンに分岐：
          (a) 現在フレーム上に「既に送信済みの描画付きノート」がある → 「既に送信済」と説明
          (b) pending に描画はあるが frame ズレ → 最寄りフレームを案内
@@ -17453,6 +17522,8 @@ function openReel(){
     const newN={id:'nt_'+Math.random().toString(36).slice(2,10),author:who,time:now,frame:cf,dur:pdur};
     if(drawings.length)newN.drawing=drawings;
     if(txt){newN.text=txt;const mns=extractMentions(txt,root,c._mentions||[]);if(mns&&mns.length)newN.mentions=mns}
+    /* v.042：REEL コメント欄で貼り付け／ファイル選択された画像を添付として保存 */
+    {const _att=reelAttach.attached();if(_att)newN.attachImg=_att}
     /* 旧仕様は「描画のみで送信＝noShot=true でコメント欄に出さない」だったが、ユーザーが
        スライダーを描画済フレームに合わせて送信ボタンを押した意図＝「サムネ付きで送信したい」
        と解釈する方が自然。noShot は付けず、通常のコメントとして扱いサムネ生成させる。
@@ -17469,7 +17540,7 @@ function openReel(){
     if(!c.pending)c.pending=[];
     const kept=c.pending.filter(p=>!inWin(p));
     c.pending.splice(0,c.pending.length,...kept);
-    c.commentDraft='';cta.value='';cta._mentions=[];
+    c.commentDraft='';cta.value='';cta._mentions=[];reelAttach.clear(); /* v.042：添付画像もクリア */
     RV.stroke=null;
     try{reelAfterEdit(c,affected)}catch(_){}
     drawAnno();drawFTL();reelNotes(true);reelRender();updUnsent();
