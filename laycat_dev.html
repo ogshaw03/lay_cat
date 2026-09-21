@@ -3812,7 +3812,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.046';
+const APP_VERSION='2026.09.20.047';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -9271,7 +9271,9 @@ function logItem(node,v){
   const flexw=el('div','log-flex');
   const left=el('div','log-left');left.appendChild(media);flexw.appendChild(left);
   const refresh=async()=>{await persist();renderBody();resolveThumbs()};
-  const seekInline=v.type==='video'?f=>{const vd=media.querySelector('video');if(vd){vd.pause();vd.currentTime=f/(v.fps||24)+0.0001}}:null;
+  /* v.047：フレームコメントクリックは「そのフレームで FB（アノテ窓）を開く」挙動に変更。
+     ドキュメント側の動画をインラインでスクラブしていた seekInline は撤去。 */
+  const seekInline=v.type==='video'?f=>{try{openReview(node.id,v.id,{frame:f|0})}catch(_){}}:null;
   const shot={fileRef:v.file,fps:v.fps||24,isVideo:v.type==='video'};
   /* フレームコメント（frameあり）→ 動画の右側 */
   const side=el('div','log-side');
@@ -12836,7 +12838,11 @@ function openReview(nodeId,versionId,opts){
   }
   if(isVideo){
     media.loop=true; /* 既定でループ再生（loopBtn の初期 active に合わせる） */
-    media.addEventListener('loadedmetadata',()=>{setupDuration();fit();sync(true)});
+    media.addEventListener('loadedmetadata',()=>{
+      setupDuration();fit();sync(true);
+      /* v.047：opts.frame があれば初期表示フレームへジャンプ（フレームコメントクリックからの起動用） */
+      if(opts&&Number.isFinite(opts.frame)){try{media.pause();seekRT(Math.max(0,Math.min(totalFrames-1,opts.frame|0)))}catch(_){}}
+    });
     media.addEventListener('seeked',()=>{clearTimeout(seekGuard);seekBusy=false;if(seekPend>=0){const p=seekPend;seekPend=-1;seekRT(p)}else snapToFrame()});
     /* 範囲設定状態に合わせて media.loop を更新（範囲設定時は自前ループを使うため HTML5 loop 無効） */
     const _hasRange=()=>rangeIn!=null&&rangeOut!=null&&rangeOut>rangeIn;
@@ -12890,6 +12896,8 @@ function openReview(nodeId,versionId,opts){
        loop / in / out / rangeClr / fps / tl スクラブ）は video と共通のものを再利用する。 */
     setupDuration();
     media.addEventListener('load',()=>{fit();drawAll()});
+    /* v.047：opts.frame があれば初期表示フレームへジャンプ */
+    if(opts&&Number.isFinite(opts.frame)){try{seekRT(Math.max(0,Math.min(totalFrames-1,opts.frame|0)))}catch(_){}}
     const _hasRange=()=>rangeIn!=null&&rangeOut!=null&&rangeOut>rangeIn;
     const _stopSeqPlay=()=>{if(seqPlayTimer){clearInterval(seqPlayTimer);seqPlayTimer=null}playBtn.textContent='▶'};
     const _startSeqPlay=()=>{

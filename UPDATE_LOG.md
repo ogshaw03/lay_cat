@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.20.047) **フレームコメントクリックで FB（アノテ窓）をそのフレームで開く**：
+  - ショットページの動画ログ右側「フレームコメント / FB」のコメントをクリックすると、従来はインラインの動画をそのフレームまでシークするだけだったのを、そのフレームで FB（アノテ窓）を直接開くように変更。
+  - `openReview(nodeId, versionId, opts)` に `opts.frame` を受け付ける実装を追加（video / EXR seq どちらも対応）。loadedmetadata → setupDuration 後に seekRT で該当フレームへジャンプ。
+  - APP_VERSION：2026.09.20.046 → 2026.09.20.047
+
 - (dev v2026.09.20.046) **サブミット提出モーダルから工程選択 UI を撤去（Simple B 統一）**：
   - `submitStagesOf(shot)` を「常に単一を返す」形に統一。
     - Simple B（`type='review'` shot）：shot 自体
