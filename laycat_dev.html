@@ -3812,7 +3812,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.047';
+const APP_VERSION='2026.09.20.048';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14074,15 +14074,19 @@ function openReview(nodeId,versionId,opts){
   undoBtn.onclick=doUndo;redoBtn.onclick=doRedo;
   clearBtn.onclick=()=>{
     /* 現在フレームのアノテをクリア（pending＋現在フレームの動画埋め込み専用ノート）。他フレームは保持。
-       REEL で描いた embed ノート（noShot=true, reel_emb_... 含む）もこのクリアで消せるようにする。 */
+       REEL で描いた embed ノート（noShot=true, reel_emb_... 含む）もこのクリアで消せるようにする。
+       v.048：現在フレームに「送信済みの描画付きコメント」（noteEmbedOnly でない・drawing 有）
+       がある場合はクリアせず、コメント欄側から個別に削除するよう案内トーストを出す。 */
     const cf=isVideo?dispFrame():null;
+    const inWinN=n=>n&&n.frame!=null&&cf!=null&&cf>=n.frame&&cf<n.frame+(parseInt(n.dur)||1);
+    const sentAtCf=(v.review.notes||[]).some(n=>n&&!noteEmbedOnly(n)&&n.drawing&&n.drawing.length&&(isVideo?inWinN(n):true));
+    if(sentAtCf){toast('送信済みのアノテーションはクリア出来ません、コメント欄から削除してください',5000);return}
     if(isVideo){
       const pdur=parseInt(durSel.value)||1;
       const inWinP=p=>(p.f!=null?p.f:cf)===cf;
       pending=pending.filter(p=>!inWinP(p));
       if(stroke&&inWinP(stroke))stroke=null;
       /* v.review.notes 内の現在フレーム範囲の埋め込み専用ノートも削除＋_ntomb */
-      const inWinN=n=>n.frame!=null&&cf>=n.frame&&cf<n.frame+(parseInt(n.dur)||1);
       const removed=[];
       v.review.notes=v.review.notes.filter(n=>{
         if(noteEmbedOnly(n)&&inWinN(n)){removed.push(n);return false}
@@ -17405,9 +17409,17 @@ function openReel(){
   redoB.onclick=()=>{if(RV.histIdx>=RV.hist.length-1)return;RV.histIdx++;_restoreR(RV.hist[RV.histIdx]);drawAnno();drawFTL();updUnsent();try{reelAfterEdit(reelUI.clips[reelUI.cur])}catch(_){}};
   clrB.onclick=()=>{
     /* 現在フレーム（表示 dur 範囲内で可視のもの）の pending をクリア。他フレーム＆他クリップの未送信は保持。
-       クリア後は v.review.notes 側の REEL embed ノートも同期される（reelAfterEdit 内 → syncFrame で該当フレーム分削除）。 */
+       クリア後は v.review.notes 側の REEL embed ノートも同期される（reelAfterEdit 内 → syncFrame で該当フレーム分削除）。
+       v.048：現在フレームに「送信済みの描画付きコメント」（reel_emb_ でない・drawing 有）が
+       ある場合はクリアせず、コメント欄側から個別に削除するよう案内する。 */
     const cf=dispF();const pdur=parseInt(durS.value)||1;
     const inWin=p=>p.f!=null&&cf>=p.f&&cf<p.f+pdur;
+    const inWinN=n=>n&&n.frame!=null&&cf>=n.frame&&cf<n.frame+(parseInt(n.dur)||1);
+    const _cc=reelUI.clips[reelUI.cur];const _vv=_cc?vOf(_cc):null;
+    const isReelEmb=n=>n&&n.id&&String(n.id).indexOf('reel_emb_')===0;
+    const sentAtCf=_vv&&Array.isArray(_vv.review&&_vv.review.notes)?
+      _vv.review.notes.some(n=>n&&!isReelEmb(n)&&n.drawing&&n.drawing.length&&inWinN(n)):false;
+    if(sentAtCf){toastIn(d,'送信済みのアノテーションはクリア出来ません、コメント欄から削除してください',5000);return}
     const affected=new Set();for(const p of RV.pending)if(inWin(p)&&p.f!=null)affected.add(p.f);
     const kept=RV.pending.filter(p=>!inWin(p));
     RV.pending.splice(0,RV.pending.length,...kept);
