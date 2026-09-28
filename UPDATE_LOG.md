@@ -18,6 +18,14 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.29.057) **顔の向きガイド：ギズモ回転をキャラ LOCAL 軸の INTRINSIC 回転に修正**：
+  - v.056 で軸固定ドラッグを入れたが、実装が「該当 Euler 軸に angle を加算するだけ」だったため、(a) pitch/roll のリング接線が回転速度と逆向きで指と逆に動く、(b) 追加は最後に適用される yaw を除いて WORLD 軸まわりの回転になり、キャラの現在姿勢に沿った LOCAL 回転にならなかった（ユーザー指摘：「XZ が逆回転」「回転挙動が LOCAL ではなくなってる」）。
+  - マネキンと同じクォータニオン INTRINSIC 方式に置換：`_headEulerToQuat` / `_headQuatToEuler`（R=Ry*Rx*Rz で分解、gimbal lock 対応）を追加。ドラッグ開始時に `quat0` を保持し、Move では `delta = qFromAxisAngle(AXIS_LOCAL[axis], angle)` を `quat0 * delta`（右乗算＝INTRINSIC）で合成 → LOCAL 軸まわりの回転になる。
+  - `AXIS_LOCAL={yaw:[0,1,0], pitch:[1,0,0], roll:[0,0,1]}` はマネキンと同一。pitch/roll のリング parametrization dp/dt が回転速度と逆向きなので、その 2 軸だけ angle を反転。yaw は自然に一致するため反転不要。
+  - 保存互換のため合成後は `_headQuatToEuler` で yaw/pitch/roll に戻して s に書き戻す（既存の shot.json スキーマ・rotv 描画パスは不変）。書き込み経路（persist / \_saveShotWithLock）にも影響しない。
+  - アノテ窓 `headPointerDown/Move` と REEL `reelHeadDown/reelHeadMove` の両方に適用。
+  - APP_VERSION：2026.09.28.056 → 2026.09.29.057
+
 - (dev v2026.09.28.056) **顔の向きガイド：ギズモの軸固定ドラッグを実装（マネキンと同じ挙動）**：
   - v.055 でギズモを重ね描きしたが、ドラッグ挙動は従来通り「Drag=yaw+pitch」でリングを掴んでも軸固定にならず使いづらかった（ユーザー指摘：「ギズモで軸固定したい／マネキンの回転挙動に合わせて」）。
   - 新規ヘルパ `_headRingHitTest(s, x, y, W, H)` を追加。クリック位置が 3 リング（yaw/pitch/roll）のいずれかに近ければ、その点の接線 (tx, ty) と前面弧の周長を返す。ヒット許容は `max(10, R*0.14)` px、背面セグメントは除外。

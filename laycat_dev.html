@@ -3812,7 +3812,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.28.056';
+const APP_VERSION='2026.09.29.057';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8752,6 +8752,36 @@ function paintHead(ctx,W,H,s,alpha){
   if(nose[2]>=0){const nx=cx+R*nose[0],ny=cy-R*nose[1];ctx.beginPath();ctx.arc(nx,ny,Math.max(1.6,R*0.05),0,2*Math.PI);ctx.fillStyle=col;ctx.globalAlpha=alpha;ctx.fill();}
   /* ※移動ハンドルは編集UIのため paintHead では描かない（アノテ本体には出さない）。ホバー時に別途描画 */
   ctx.restore();
+}
+/* v.057：顔ガイドの Euler(yaw/pitch/roll, R=Ry*Rx*Rz) ↔ クォータニオン変換。
+   ギズモドラッグをキャラの LOCAL 軸で INTRINSIC 回転させるため、
+   ドラッグ中はクォータニオンで合成し、保存互換のため yaw/pitch/roll に分解し直す。 */
+function _headEulerToQuat(yaw, pitch, roll){
+  const qY=_qFromAxisAngle([0,1,0], yaw);
+  const qX=_qFromAxisAngle([1,0,0], pitch);
+  const qZ=_qFromAxisAngle([0,0,1], roll);
+  return _qNorm(_qMul(_qMul(qY, qX), qZ));
+}
+function _headQuatToEuler(q){
+  const x=q[0], y=q[1], z=q[2], w=q[3];
+  const xx=x*x, yy=y*y, zz=z*z;
+  const xy=x*y, xz=x*z, yz=y*z, wx=w*x, wy=w*y, wz=w*z;
+  /* R = Ry(yaw)*Rx(pitch)*Rz(roll) の成分から抽出：
+     R[1][2]=-sin(pitch), R[1][0]=cos(pitch)sin(roll), R[1][1]=cos(pitch)cos(roll),
+     R[0][2]=sin(yaw)cos(pitch), R[2][2]=cos(yaw)cos(pitch) */
+  const sinP=Math.max(-1, Math.min(1, 2*(wx - yz)));
+  const pitch=Math.asin(sinP);
+  const cp=Math.cos(pitch);
+  let yaw, roll;
+  if(Math.abs(cp)>1e-6){
+    roll=Math.atan2(2*(xy + wz), 1 - 2*(xx + zz));
+    yaw =Math.atan2(2*(xz + wy), 1 - 2*(xx + yy));
+  } else {
+    /* gimbal lock：roll=0 に固定して yaw を取り出す */
+    roll=0;
+    yaw =Math.atan2(2*(wy - xz), 1 - 2*(yy + zz));
+  }
+  return [yaw, pitch, roll];
 }
 /* v.056：顔ガイドの 3 軸ギズモリングのヒットテスト。
    クリック座標 (x,y は正規化 0-1、W,H はキャンバス実ピクセル) が
@@ -14208,7 +14238,9 @@ function openReview(nodeId,versionId,opts){
     else if(hit&&d<(s.r||0.12)*0.24)mode='move'; /* 中心の移動ハンドル内＝移動（新規配置は回転で開始） */
     /* 画面回転(Zm.rot)・ズーム・パンを逆変換した正規化座標(pt)で操作量・角度を計算する（回転表示中でも破綻しない） */
     const ang0=Math.atan2((y-s.cy)*aspect,(x-s.cx)); /* ロール用：掴んだ点の中心まわり角度（等方空間） */
-    headDrag={s,mode,gz,nx0:x,ny0:y,yaw0:s.yaw,pitch0:s.pitch,roll0:s.roll,r0:s.r,cx0:s.cx,cy0:s.cy,ang0,aspect};
+    /* v.057：ギズモモードは LOCAL 軸 INTRINSIC 回転で合成するため、開始時の Euler をクォータニオンに変換して保持 */
+    const quat0=(mode==='gizmo')?_headEulerToQuat(s.yaw||0, s.pitch||0, s.roll||0):null;
+    headDrag={s,mode,gz,quat0,nx0:x,ny0:y,yaw0:s.yaw,pitch0:s.pitch,roll0:s.roll,r0:s.r,cx0:s.cx,cy0:s.cy,ang0,aspect};
     headActive=s;drawAll();drawTimeline();updSubmit();
   }
   function headPointerMove(e){
@@ -14216,15 +14248,21 @@ function openReview(nodeId,versionId,opts){
     const [nx,ny]=pt(e);const s=headDrag.s;
     const ndx=nx-headDrag.nx0,ndy=ny-headDrag.ny0;
     if(headDrag.mode==='gizmo'){
-      /* v.056：軸固定回転。掴んだリング点の接線 (tx,ty) にドラッグ量を射影し、
-         前面弧の周長で正規化して角度に変換。該当 Euler 軸のみを更新する。 */
+      /* v.057：LOCAL 軸 INTRINSIC 回転（マネキンと同方式）。
+         掴んだリング点の接線 (tx,ty) にドラッグを射影 → 前面弧の周長で正規化して角度化 →
+         キャラの LOCAL 軸 (yaw:Y / pitch:X / roll:Z) のクォータニオン delta を作って
+         quat0 に **右乗算**（INTRINSIC）。結果を yaw/pitch/roll に分解し直して保存互換を維持。
+         pitch/roll はリング parametrization dp/dt がその軸の回転速度と逆向きなので angle を反転。 */
       const W=canvas.width, H=canvas.height;
       const dxPx=(nx-headDrag.nx0)*W, dyPx=(ny-headDrag.ny0)*H;
       const proj=dxPx*headDrag.gz.tx + dyPx*headDrag.gz.ty;
-      const angle=proj/Math.max(20, headDrag.gz.perim)*(Math.PI*2);
-      if(headDrag.gz.axis==='yaw')s.yaw=headDrag.yaw0+angle;
-      else if(headDrag.gz.axis==='pitch')s.pitch=headDrag.pitch0+angle;
-      else if(headDrag.gz.axis==='roll')s.roll=headDrag.roll0+angle;
+      let angle=proj/Math.max(20, headDrag.gz.perim)*(Math.PI*2);
+      if(headDrag.gz.axis==='pitch'||headDrag.gz.axis==='roll')angle=-angle;
+      const AXIS_LOCAL={yaw:[0,1,0], pitch:[1,0,0], roll:[0,0,1]};
+      const delta=_qFromAxisAngle(AXIS_LOCAL[headDrag.gz.axis], angle);
+      const q=_qNorm(_qMul(headDrag.quat0, delta));
+      const eul=_headQuatToEuler(q);
+      s.yaw=eul[0]; s.pitch=eul[1]; s.roll=eul[2];
     }
     else if(headDrag.mode==='rotate'){const cr=Math.cos(headDrag.roll0),sr=Math.sin(headDrag.roll0);const ldx=ndx*cr+ndy*sr,ldy=-ndx*sr+ndy*cr;s.yaw=headDrag.yaw0+ldx*Math.PI*2;s.pitch=headDrag.pitch0+ldy*Math.PI*2;} /* ロール分だけドラッグ方向を補正し、画面基準で回す */
     else if(headDrag.mode==='roll'){const ang1=Math.atan2((ny-s.cy)*headDrag.aspect,(nx-s.cx));s.roll=headDrag.roll0-(ang1-headDrag.ang0);} /* 掴んだ点が指に追従（回転方向は反転） */
@@ -17573,7 +17611,8 @@ function openReel(){
     else if(e.shiftKey)mode='roll';else if(e.ctrlKey||e.metaKey)mode='size';
     else if(hit&&d<(s.r||0.12)*0.24)mode='move';
     const ang0=Math.atan2((y-s.cy)*aspect,(x-s.cx));
-    rHeadDrag={s,mode,gz,nx0:x,ny0:y,yaw0:s.yaw,pitch0:s.pitch,roll0:s.roll,r0:s.r,cx0:s.cx,cy0:s.cy,ang0,aspect};
+    const quat0=(mode==='gizmo')?_headEulerToQuat(s.yaw||0, s.pitch||0, s.roll||0):null;
+    rHeadDrag={s,mode,gz,quat0,nx0:x,ny0:y,yaw0:s.yaw,pitch0:s.pitch,roll0:s.roll,r0:s.r,cx0:s.cx,cy0:s.cy,ang0,aspect};
     rHeadActive=s;drawAnno();drawFTL();updUnsent();
   }
   function reelHeadMove(e){
@@ -17581,13 +17620,17 @@ function openReel(){
     const [nx,ny]=ptA(e);const s=rHeadDrag.s;
     const ndx=nx-rHeadDrag.nx0,ndy=ny-rHeadDrag.ny0;
     if(rHeadDrag.mode==='gizmo'){
+      /* v.057：アノテ窓と同じ LOCAL 軸 INTRINSIC 回転（マネキン方式） */
       const W=anno.width, H=anno.height;
       const dxPx=(nx-rHeadDrag.nx0)*W, dyPx=(ny-rHeadDrag.ny0)*H;
       const proj=dxPx*rHeadDrag.gz.tx + dyPx*rHeadDrag.gz.ty;
-      const angle=proj/Math.max(20, rHeadDrag.gz.perim)*(Math.PI*2);
-      if(rHeadDrag.gz.axis==='yaw')s.yaw=rHeadDrag.yaw0+angle;
-      else if(rHeadDrag.gz.axis==='pitch')s.pitch=rHeadDrag.pitch0+angle;
-      else if(rHeadDrag.gz.axis==='roll')s.roll=rHeadDrag.roll0+angle;
+      let angle=proj/Math.max(20, rHeadDrag.gz.perim)*(Math.PI*2);
+      if(rHeadDrag.gz.axis==='pitch'||rHeadDrag.gz.axis==='roll')angle=-angle;
+      const AXIS_LOCAL={yaw:[0,1,0], pitch:[1,0,0], roll:[0,0,1]};
+      const delta=_qFromAxisAngle(AXIS_LOCAL[rHeadDrag.gz.axis], angle);
+      const q=_qNorm(_qMul(rHeadDrag.quat0, delta));
+      const eul=_headQuatToEuler(q);
+      s.yaw=eul[0]; s.pitch=eul[1]; s.roll=eul[2];
     }
     else if(rHeadDrag.mode==='rotate'){const cr=Math.cos(rHeadDrag.roll0),sr=Math.sin(rHeadDrag.roll0);const ldx=ndx*cr+ndy*sr,ldy=-ndx*sr+ndy*cr;s.yaw=rHeadDrag.yaw0+ldx*Math.PI*2;s.pitch=rHeadDrag.pitch0+ldy*Math.PI*2;}
     else if(rHeadDrag.mode==='roll'){const ang1=Math.atan2((ny-s.cy)*rHeadDrag.aspect,(nx-s.cx));s.roll=rHeadDrag.roll0-(ang1-rHeadDrag.ang0);}
