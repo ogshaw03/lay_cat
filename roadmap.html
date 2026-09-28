@@ -1,0 +1,1110 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>LayCAT ロードマップ 2026</title>
+<meta name="viewport" content="width=1280,initial-scale=1">
+<style>
+  :root{
+    --bg:#0a0a0d; --bg2:#141418; --bg3:#1c1c22; --bg4:#26262e;
+    --border:#2a2a32; --border2:#3a3a46;
+    --text:#eeeef2; --text2:#a0a0b0; --text3:#606070;
+    --purple:#A56BF0; --purpleGlow:rgba(165,107,240,.4);
+    --blue:#5A9BFF; --cyan:#5CC7EF;
+    --green:#5CB878; --amber:#F2C86B; --red:#EE6A6A;
+    --grad:linear-gradient(135deg,#5CC7EF 0%,#7A5CFF 100%);
+    --gradPurple:linear-gradient(135deg,#A56BF0 0%,#7A5CFF 100%);
+    --font-head:'Space Grotesk','Noto Sans JP',sans-serif;
+    --font-body:'Noto Sans JP',sans-serif;
+    --font-code:'Space Grotesk','Inter',monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--text);font-family:var(--font-body);line-height:1.55;-webkit-font-smoothing:antialiased}
+  body{scroll-snap-type:y mandatory;overflow-y:scroll;height:100vh}
+  .slide{
+    scroll-snap-align:start;
+    min-height:100vh;
+    padding:64px 72px;
+    display:flex;flex-direction:column;justify-content:center;
+    position:relative;
+    background:radial-gradient(ellipse at 20% 10%,rgba(92,199,239,.08),transparent 55%),
+               radial-gradient(ellipse at 80% 90%,rgba(165,107,240,.10),transparent 60%),
+               var(--bg);
+  }
+  .slide::before{
+    content:'';position:absolute;left:0;top:0;bottom:0;width:6px;
+    background:var(--grad);opacity:.7;
+  }
+  .slide .label{
+    display:inline-flex;align-items:center;gap:8px;
+    background:var(--bg3);border:1px solid var(--border2);
+    padding:6px 14px;border-radius:999px;
+    font-size:11px;font-weight:800;letter-spacing:2px;
+    color:var(--text2);text-transform:uppercase;font-family:var(--font-head);
+    margin-bottom:20px;
+  }
+  .slide .label .dot{width:8px;height:8px;border-radius:50%;background:var(--purple)}
+  .slide h1{
+    font-family:var(--font-head);
+    font-size:56px;font-weight:900;letter-spacing:-.02em;line-height:1.15;
+    margin-bottom:18px;
+  }
+  .slide h1 .accent{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .slide h2{
+    font-family:var(--font-head);
+    font-size:44px;font-weight:900;letter-spacing:-.02em;line-height:1.2;
+    margin-bottom:14px;
+  }
+  .slide h2 .accent{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .slide .lead{font-size:20px;color:var(--text2);max-width:900px;margin-bottom:28px}
+  .slide h3{font-family:var(--font-head);font-size:22px;font-weight:800;margin-bottom:12px}
+  .slide p{color:var(--text2);font-size:15px;margin-bottom:12px}
+  .slide ul{list-style:none;padding:0;margin:0}
+  .slide li{font-size:15px;color:var(--text2);padding:8px 0 8px 24px;position:relative}
+  .slide li::before{content:'';position:absolute;left:0;top:16px;width:12px;height:2px;background:var(--purple);border-radius:2px}
+  .slide li b{color:var(--text)}
+  .slide li code{background:var(--bg3);padding:2px 8px;border-radius:4px;font-family:var(--font-code);font-size:13px;color:var(--cyan)}
+
+  /* ------------- Layout helpers ------------- */
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px}
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px}
+  .card h3{color:var(--text)}
+  .card .tag{display:inline-block;background:var(--bg3);color:var(--text2);padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:1px;margin-bottom:12px;text-transform:uppercase;font-family:var(--font-head)}
+  .card.hi{border:1px solid rgba(165,107,240,.4);box-shadow:0 8px 30px rgba(165,107,240,.10)}
+  .card.hi .tag{background:var(--gradPurple);color:#fff}
+
+  /* Table */
+  table.cmp{width:100%;border-collapse:collapse;margin-top:12px}
+  table.cmp th,table.cmp td{padding:11px 14px;border-bottom:1px solid var(--border);font-size:13.5px;text-align:left;vertical-align:top}
+  table.cmp th{background:var(--bg3);color:var(--text);font-weight:700;font-family:var(--font-head);font-size:12px;letter-spacing:.5px;text-transform:uppercase}
+  table.cmp td{color:var(--text2)}
+  table.cmp tr.you td{background:linear-gradient(90deg,rgba(165,107,240,.12),transparent);color:var(--text)}
+  table.cmp tr.you td:first-child{color:var(--purple);font-weight:800}
+  table.cmp td b{color:var(--text)}
+  table.cmp td.good{color:var(--green);font-weight:700}
+  table.cmp td.mid{color:var(--amber);font-weight:700}
+  table.cmp td.bad{color:var(--red);font-weight:700}
+
+  /* Icon squircles */
+  .icoq{width:52px;height:52px;border-radius:14px;background:var(--gradPurple);display:inline-flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:14px;box-shadow:0 8px 24px var(--purpleGlow)}
+  .icoq.cyan{background:linear-gradient(135deg,#5CC7EF,#5A9BFF);box-shadow:0 8px 24px rgba(92,199,239,.4)}
+  .icoq.green{background:linear-gradient(135deg,#5CB878,#5A9BFF);box-shadow:0 8px 24px rgba(92,184,120,.4)}
+  .icoq.amber{background:linear-gradient(135deg,#F2C86B,#E08A4A);box-shadow:0 8px 24px rgba(242,200,107,.4)}
+
+  /* Slide number */
+  .num{position:absolute;right:32px;bottom:24px;font-family:var(--font-code);font-size:11px;color:var(--text3);letter-spacing:2px}
+  .brand{position:absolute;left:32px;bottom:24px;font-family:var(--font-head);font-weight:800;font-size:12px;letter-spacing:2px;color:var(--text3)}
+
+  /* Cover slide special */
+  .cover{
+    background:radial-gradient(ellipse at center,rgba(122,92,255,.20),transparent 55%),
+               radial-gradient(ellipse at 20% 80%,rgba(92,199,239,.15),transparent 60%),
+               var(--bg);
+    text-align:center;align-items:center;
+  }
+  .cover .title{font-size:96px;font-weight:900;font-family:var(--font-head);letter-spacing:-.03em;line-height:1;margin:20px 0}
+  .cover .title .accent{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .cover .subtitle{font-size:22px;color:var(--text2);margin-bottom:40px;max-width:900px}
+  .cover .meta{font-family:var(--font-code);font-size:12px;color:var(--text3);letter-spacing:2px;margin-top:36px}
+  .cover .badge{display:inline-block;background:var(--gradPurple);padding:8px 22px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:2px;color:#fff;box-shadow:0 12px 30px var(--purpleGlow)}
+
+  /* Section divider slide */
+  .section{
+    text-align:center;align-items:center;
+    background:linear-gradient(135deg,rgba(122,92,255,.15),transparent 55%),
+               radial-gradient(ellipse at 80% 20%,rgba(92,199,239,.10),transparent 60%),
+               var(--bg);
+  }
+  .section .no{font-family:var(--font-head);font-size:120px;font-weight:900;line-height:1;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;letter-spacing:-.05em;margin-bottom:12px}
+  .section .st{font-family:var(--font-head);font-size:64px;font-weight:900;letter-spacing:-.02em}
+
+  /* Timeline strip on top */
+  .strip{
+    display:flex;gap:8px;margin-bottom:32px;
+    font-family:var(--font-head);font-size:11px;letter-spacing:1.5px;color:var(--text3)
+  }
+  .strip span{padding:4px 10px;background:var(--bg3);border-radius:6px}
+  .strip span.on{background:var(--gradPurple);color:#fff;font-weight:800}
+
+  /* Chart cards */
+  .chart-grid{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-top:12px}
+  .chart-grid > .chart-row{display:contents}
+  .chart{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px}
+  .chart .ct{font-family:var(--font-head);font-size:12px;font-weight:700;color:var(--text2);letter-spacing:1px;margin-bottom:8px;text-transform:uppercase}
+  .chart svg{width:100%;height:auto;display:block}
+
+  /* ------------- PMB mockup panel ------------- */
+  .pmb-panel{background:#0a0a0e;border:1px solid #26262e;border-radius:10px;overflow:hidden;font-family:var(--font-head);color:#eeeef2;font-size:11px;box-shadow:0 12px 40px rgba(0,0,0,.4)}
+  .pmb-bar{background:#141418;border-bottom:1px solid #26262e;padding:9px 12px;display:flex;align-items:center;gap:10px;font-size:11px}
+  .pmb-brand{color:#eeeef2;font-weight:800;letter-spacing:.4px}
+  .pmb-brand .diamond{color:#A56BF0;margin-right:6px}
+  .pmb-ver{background:#26262e;color:#a0a0b0;padding:2px 7px;border-radius:4px;font-family:var(--font-code);font-size:9.5px}
+  .pmb-proj-dd{background:#1c1c22;border:1px solid #2a2a32;padding:4px 10px;border-radius:6px;color:#eeeef2;font-size:11px}
+  .pmb-user{color:#5CB878;font-size:10.5px;display:inline-flex;align-items:center;gap:5px}
+  .pmb-user::before{content:'';width:6px;height:6px;background:#5CB878;border-radius:50%;display:inline-block}
+  .pmb-tools{margin-left:auto;color:#a0a0b0;display:flex;align-items:center;gap:12px;font-size:10.5px}
+  .pmb-tools .seg{background:#1c1c22;border:1px solid #2a2a32;border-radius:5px;overflow:hidden;display:inline-flex}
+  .pmb-tools .seg span{padding:3px 8px;color:#a0a0b0}
+  .pmb-tools .seg span.on{background:#26262e;color:#eeeef2;font-weight:700}
+  .pmb-tools .csv{background:#1c1c22;border:1px solid #2a2a32;padding:3px 9px;border-radius:5px;color:#eeeef2}
+  .pmb-body{display:grid;grid-template-columns:180px 1fr}
+  .pmb-side{background:#0a0a0e;border-right:1px solid #26262e;padding:12px}
+  .pmb-s-h{color:#606070;font-size:9.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin:10px 0 6px}
+  .pmb-s-h:first-child{margin-top:0}
+  .pmb-s-name{font-size:14px;font-weight:800;color:#eeeef2}
+  .pmb-s-pills{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+  .pmb-s-pills span{background:#1c1c22;color:#a0a0b0;padding:2px 7px;border-radius:8px;font-size:9.5px}
+  .pmb-s-pills span.on{background:#F2C86B22;color:#F2C86B;border:1px solid #F2C86B44}
+  .pmb-s-kpis{display:flex;gap:10px;margin-top:4px}
+  .pmb-s-kpis span{color:#a0a0b0;font-size:9.5px;display:inline-flex;align-items:baseline;gap:2px}
+  .pmb-s-kpis span b{color:#eeeef2;font-size:14px;font-weight:800;font-family:var(--font-head)}
+  .pmb-s-kpis span sub{color:#606070;font-size:9px;vertical-align:baseline}
+  .pmb-donut{width:110px;height:110px;margin:6px auto 4px;display:block}
+  .pmb-legend{display:flex;align-items:center;gap:6px;font-size:10px;color:#a0a0b0;padding:1.5px 0}
+  .pmb-legend i{width:9px;height:9px;background:#5A9BFF;border-radius:2px;flex-shrink:0}
+  .pmb-legend b{margin-left:auto;color:#eeeef2;font-weight:800;font-size:10px}
+  .pmb-legend em{color:#606070;font-style:normal;font-size:9.5px;margin-left:6px;min-width:24px;text-align:right}
+  .pmb-main{padding:12px 16px;background:#0a0a0e}
+  .pmb-tabs{display:flex;gap:22px;border-bottom:1px solid #26262e;padding:0 0 9px;margin-bottom:12px;position:relative}
+  .pmb-tabs span{color:#606070;font-weight:700;font-size:12px;cursor:default;position:relative;padding-bottom:9px;margin-bottom:-9px;display:inline-flex;align-items:center;gap:5px}
+  .pmb-tabs span.on{color:#eeeef2;border-bottom:2px solid #eeeef2}
+  .pmb-tabs span .cnt{background:#26262e;color:#a0a0b0;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:600}
+  .pmb-tabs span.on .cnt{background:#F2C86B;color:#141418}
+  /* KPI cards */
+  .pmb-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px}
+  .pmb-kpi .k{background:#141418;border:1px solid #26262e;border-radius:8px;padding:11px 13px}
+  .pmb-kpi .k-l{color:#606070;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+  .pmb-kpi .k-v{font-size:24px;font-weight:900;color:#eeeef2;margin:5px 0 3px;font-family:var(--font-head)}
+  .pmb-kpi .k-v small{font-size:11px;color:#a0a0b0;font-weight:600;margin-left:2px}
+  .pmb-kpi .k-sub{color:#606070;font-size:9px}
+  /* Bar chart */
+  .pmb-bars-title{color:#eeeef2;font-size:12.5px;font-weight:800;margin-bottom:3px}
+  .pmb-bars-sub{color:#606070;font-size:9.5px;margin-bottom:8px}
+  .pmb-bars-sub b{color:#a0a0b0}
+  .pmb-bar-row{display:grid;grid-template-columns:110px 1fr 44px;gap:8px;align-items:center;padding:2px 0;font-size:10.5px}
+  .pmb-bar-row .b-lbl{color:#eeeef2;font-weight:700;font-family:var(--font-code)}
+  .pmb-bar-row .b-lbl em{color:#F2986B;font-style:normal;margin-left:5px;font-size:9.5px;font-weight:600}
+  .pmb-bar-row .b-lbl em.lay{color:#5A9BFF}
+  .pmb-bar-row .b-lbl em.anm{color:#5CB878}
+  .pmb-bar-row .b-fill{height:11px;background:#1c1c22;border-radius:4px;overflow:hidden}
+  .pmb-bar-row .b-fill i{display:block;height:100%;background:#c4c4c8;border-radius:4px}
+  .pmb-bar-row .b-val{color:#a0a0b0;font-family:var(--font-code);font-size:10px;text-align:right}
+  /* Gantt */
+  .pmb-gantt{background:#0a0a0e}
+  .pmb-g-tools{display:flex;gap:8px;margin-bottom:10px}
+  .pmb-g-tools .b{background:#1c1c22;border:1px solid #2a2a32;color:#eeeef2;padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700}
+  .pmb-g-tools .b.pri{background:#26262e}
+  .pmb-g-head{display:grid;grid-template-columns:200px 1fr;border-top:1px solid #26262e;border-bottom:1px solid #26262e;font-size:9.5px;color:#606070;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:5px 0}
+  .pmb-g-head .col{padding-left:8px}
+  .pmb-g-head .wks{display:grid;grid-template-columns:repeat(5,1fr);align-items:center}
+  .pmb-g-head .wks span{position:relative;text-align:center;padding:0 4px}
+  .pmb-g-head .wks span.today{color:#EE6A6A}
+  .pmb-g-row{display:grid;grid-template-columns:200px 1fr;align-items:center;border-bottom:1px solid #1c1c22;min-height:26px;font-size:10.5px}
+  .pmb-g-row .col{padding:5px 8px;display:flex;align-items:center;gap:6px}
+  .pmb-g-row .col .shot{color:#eeeef2;font-weight:700;font-family:var(--font-code);min-width:52px}
+  .pmb-g-row .col .stg{font-size:9.5px;color:#5A9BFF;font-weight:700}
+  .pmb-g-row .col .stg.anm{color:#5CB878}
+  .pmb-g-row .col .stg.sec{color:#F2986B}
+  .pmb-g-row .col .st{margin-left:auto;background:#26262e;color:#a0a0b0;font-size:9px;padding:2px 7px;border-radius:8px;font-weight:700}
+  .pmb-g-row .col .st.o{background:#5A9BFF33;color:#5A9BFF}
+  .pmb-g-row .col .st.y{background:#F2C86B;color:#141418}
+  .pmb-g-row .col .st.g{background:#5CB878;color:#141418}
+  .pmb-g-row .col .st.b{background:#5A9BFF;color:#141418}
+  .pmb-g-row .col .st.gray{background:#3a3a46;color:#a0a0b0}
+  .pmb-g-row .track{position:relative;height:22px;background:linear-gradient(to right,transparent 0,transparent calc(100% - 1px),#1c1c22 100%);background-size:20% 100%}
+  .pmb-g-row .track .today{position:absolute;top:-4px;bottom:-4px;width:1px;background:#EE6A6A;border-left:1px dashed #EE6A6A;left:68%}
+  .pmb-g-row .track .bar{position:absolute;top:5px;height:12px;border-radius:3px}
+  .pmb-g-row .track .bar.g{background:#5CB878}
+  .pmb-g-row .track .bar.b{background:#5A9BFF}
+  .pmb-g-row .track .bar.o{background:#F2986B}
+  .pmb-g-row .track .bar.y{background:#F2C86B}
+  .pmb-g-row .track .bar.txt{color:#141418;font-family:var(--font-code);font-size:9px;font-weight:800;padding:1px 4px;line-height:11px}
+  .pmb-cap{color:#606070;font-size:12px;margin-top:14px;text-align:center}
+
+  /* Nav dots */
+  .nav-dots{position:fixed;right:24px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px;z-index:100}
+  .nav-dots a{width:8px;height:8px;border-radius:50%;background:var(--border2);transition:all .2s;cursor:pointer;display:block}
+  .nav-dots a:hover{background:var(--text2);transform:scale(1.3)}
+  .nav-dots a.on{background:var(--purple);width:24px;border-radius:6px}
+  @media(max-width:900px){.nav-dots{display:none}}
+</style>
+</head>
+<body>
+
+<div class="nav-dots" id="navDots"></div>
+
+<!-- =============== SLIDE 1: COVER =============== -->
+<section class="slide cover">
+  <div class="badge">INTERNAL ROADMAP 2026</div>
+  <div class="title">LayCAT <span class="accent">ロードマップ</span></div>
+  <div class="subtitle">今後の開発方針・主要機能追加予定と実装スケジュール</div>
+  <div class="meta">2026 · Q3 → Q4 → 2027</div>
+  <div class="brand">LayCAT</div>
+</section>
+
+<!-- =============== SLIDE 2: AGENDA =============== -->
+<section class="slide">
+  <span class="label"><span class="dot"></span>Agenda</span>
+  <h2>本日ご紹介する <span class="accent">6 つのテーマ</span></h2>
+  <div class="lead">現状の到達点と、直近 6 か月＋中長期の方向性を、優先度の高い順にまとめました。</div>
+  <div class="row2" style="margin-top:20px">
+    <div>
+      <ul>
+        <li><b>1. 直近実現済み</b> — Beta v0.2.0（バグ修正・タブロック 等）</li>
+        <li><b>2. ユーザー基盤・役職システム</b> — 全員のプロフィールを Firestore で管理</li>
+        <li><b>3. 監査ログ</b>（フォルダ運用）— 誰が何をしたかを追跡可能に</li>
+      </ul>
+    </div>
+    <div>
+      <ul>
+        <li><b>4. 稼働期間・工数集計 & PMBoard</b> — <span style="color:var(--purple);font-weight:700">本命機能</span> · PMB として先行実装中 · 5 スライドで詳説</li>
+        <li><b>5. タイムリマップ 本実装</b> — REEL・書き出しに反映</li>
+        <li><b>6. 中長期の方向性</b> — マネキン強化・R2 移行 等</li>
+      </ul>
+    </div>
+  </div>
+  <div class="brand">LayCAT</div><div class="num">02 / 16</div>
+</section>
+
+<!-- =============== SLIDE 3: CURRENT STATE =============== -->
+<section class="slide">
+  <span class="label"><span class="dot"></span>1. Current — 直近実現済み</span>
+  <h2>Beta <span class="accent">v0.2.0</span> で反映済み</h2>
+  <div class="lead">2026-09-08 リリース済み。全ユーザーに影響する重要な信頼性向上と UX 改善が含まれます。</div>
+  <div class="row2" style="margin-top:20px">
+    <div class="card hi">
+      <span class="tag">Fix</span>
+      <h3>🎯 ステータス巻き戻り問題の恒久対策</h3>
+      <p>提出直後・「未着手に戻す」直後にステータスが古い値に戻る事象を根絶。多重タブ運用と autoRefresh の割り込みに対応。</p>
+    </div>
+    <div class="card">
+      <span class="tag">Feature</span>
+      <h3>🔒 タブロック機能</h3>
+      <p>タブの南京錠アイコンでロック → 「✕ すべて閉じる」で消えなくなる。localStorage で永続化。</p>
+    </div>
+    <div class="card">
+      <span class="tag">UX</span>
+      <h3>✨ ショットタブの操作性改善</h3>
+      <p>動画・サムネ部クリックで作業ページがタブ追加。グリッド・縦並び両方で挙動統一。</p>
+    </div>
+    <div class="card">
+      <span class="tag">Support</span>
+      <h3>📖 紹介ページ大幅リニューアル</h3>
+      <p>左サイドの目次追加、Export セクション新設、17 項目ジャンプ、スクロール連動ハイライト。</p>
+    </div>
+  </div>
+  <div class="brand">LayCAT</div><div class="num">03 / 16</div>
+</section>
+
+<!-- =============== SLIDE 4: SECTION DIVIDER Q3-Q4 =============== -->
+<section class="slide section">
+  <div class="no">Q3 → Q4</div>
+  <div class="st">今後 <span style="background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent">1〜2 ヶ月</span> の実装計画</div>
+  <p style="color:var(--text2);font-size:18px;margin-top:20px">利用体験の基盤・運用可視化の 3 本柱</p>
+  <div class="brand">LayCAT</div><div class="num">04 / 16</div>
+</section>
+
+<!-- =============== SLIDE 5: USER BASE / ROLES =============== -->
+<section class="slide">
+  <span class="label"><span class="dot"></span>2. Q3 · 基盤</span>
+  <h2><span class="accent">ユーザー基盤</span>・環境設定・役職システム</h2>
+  <div class="lead">Firebase に個人プロフィール・環境設定・役職を格納。端末間で同期される「マイページ」の土台。</div>
+
+  <div class="row2" style="margin-top:20px">
+    <div>
+      <div class="icoq">👤</div>
+      <h3>格納する情報</h3>
+      <ul>
+        <li><b>プロフィール</b> — 表示名・写真・所属会社</li>
+        <li><b>役職（複数）</b> — <code>animator</code>／<code>modeler</code>／<code>director</code> 等 15 種</li>
+        <li><b>ショートカット</b> — 各操作のキー割当をカスタム</li>
+        <li><b>デフォルト設定</b> — 通知 ON/OFF・色・ブラシ幅 等</li>
+      </ul>
+    </div>
+    <div>
+      <div class="icoq cyan">🎬</div>
+      <h3>UI での活用</h3>
+      <ul>
+        <li>タブ・コメント欄で <b>役職バッジ</b> 表示（田中太郎 [アニメーター]）</li>
+        <li>@メンションで <b>職種フィルタ</b>（@animator で一括）</li>
+        <li>プロジェクトメンバー追加で LayCAT 登録済みから選択</li>
+        <li>端末変更でも <b>環境設定が自動復元</b></li>
+      </ul>
+    </div>
+  </div>
+  <div class="row3" style="margin-top:24px">
+    <div class="card"><span class="tag" style="color:var(--cyan)">Phase 1</span><h3 style="font-size:15px">基盤（Firestore + Auth 連携）</h3><p style="font-size:13px">1 日</p></div>
+    <div class="card"><span class="tag" style="color:var(--cyan)">Phase 2</span><h3 style="font-size:15px">環境設定モーダル</h3><p style="font-size:13px">半日〜1 日</p></div>
+    <div class="card"><span class="tag" style="color:var(--cyan)">Phase 3-5</span><h3 style="font-size:15px">役職バッジ・活用</h3><p style="font-size:13px">2〜3 日</p></div>
+  </div>
+  <div class="brand">LayCAT</div><div class="num">05 / 16</div>
+</section>
+
+<!-- =============== SLIDE 6: AUDIT LOG =============== -->
+<section class="slide">
+  <span class="label"><span class="dot"></span>3. Q3 · 運用</span>
+  <h2>ローカル運用の <span class="accent">監査ログ</span></h2>
+  <div class="lead">現状 R2 モードでは自動記録されているログを、フォルダ運用でも <code>projects/{pid}/_audit/</code> に月別 JSONL として蓄積。「誰がいつ何をしたか」を後追い可能に。</div>
+
+  <div class="row2" style="margin-top:20px">
+    <div>
+      <div class="icoq green">📜</div>
+      <h3>記録対象イベント</h3>
+      <ul style="font-size:13.5px">
+        <li>版アップロード（動画・EXR）</li>
+        <li>ステータス変更・担当者変更</li>
+        <li>提出・アノテ送信・コメント追加</li>
+        <li>ショット・工程の追加削除</li>
+        <li>プロジェクトメンバー変更</li>
+        <li>ログイン・プロジェクト初回オープン</li>
+      </ul>
+    </div>
+    <div>
+      <div class="icoq amber">🔍</div>
+      <h3>閲覧・活用</h3>
+      <ul style="font-size:13.5px">
+        <li>プロジェクト設定に「監査ログ」タブ</li>
+        <li>日付・ユーザー・イベント種別でフィルタ</li>
+        <li>CSV エクスポート（Excel 分析）</li>
+        <li><b>「稼働期間集計」の生データとしても機能</b></li>
+      </ul>
+      <div style="margin-top:12px;padding:12px;background:var(--bg3);border-left:3px solid var(--amber);border-radius:6px">
+        <p style="font-size:12.5px;color:var(--text2);margin:0">
+          <b>※ 課題</b>：ローカルフォルダなので改ざん可能。監査目的の「参考ログ」として位置づけ。
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="brand">LayCAT</div><div class="num">06 / 16</div>
+</section>
+
+<!-- =============== SLIDE 7: TAB GROUPS =============== -->
+<section class="slide">
+  <span class="label"><span class="dot"></span>3. Q3 · UX</span>
+  <h2><span class="accent">タブグループ</span>作成機能</h2>
+  <div class="lead">ショットタブの既存複数選択機能で選んだショット群を、まとめてタブグループとして開く。並列作業の効率化。</div>
+
+  <div class="row2" style="margin-top:20px">
+    <div>
+      <div class="icoq">📂</div>
+      <h3>ユースケース</h3>
+      <ul>
+        <li>「今日チェックする 10 カット」を選んでグループ化</li>
+        <li>「シーンごとの全カット」をまとめて開く</li>
+        <li>グループ単位で一括閉じ・名前変更・色付け</li>
+        <li>ロック済みタブとの併用</li>
+      </ul>
+    </div>
+    <div>
+      <div class="card">
+        <span class="tag">Design</span>
+        <h3 style="margin-bottom:10px">実装イメージ</h3>
+        <p style="font-size:13px">タブ列にグループ名ラベル＋メンバータブ下線の色分けで視覚化。</p>
+        <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
+          <div style="background:var(--bg3);border-bottom:2px solid var(--cyan);padding:6px 14px;border-radius:6px 6px 0 0;font-size:12px;font-family:var(--font-code)"><b style="color:var(--cyan)">◤ Scene A</b></div>
+          <div style="background:var(--bg3);border-bottom:2px solid var(--cyan);padding:6px 14px;border-radius:6px 6px 0 0;font-size:12px;font-family:var(--font-code)">SC010</div>
+          <div style="background:var(--bg3);border-bottom:2px solid var(--cyan);padding:6px 14px;border-radius:6px 6px 0 0;font-size:12px;font-family:var(--font-code)">SC020</div>
+          <div style="background:var(--bg3);border-bottom:2px solid var(--purple);padding:6px 14px;border-radius:6px 6px 0 0;font-size:12px;font-family:var(--font-code)"><b style="color:var(--purple)">◤ 今日Check</b></div>
+          <div style="background:var(--bg3);border-bottom:2px solid var(--purple);padding:6px 14px;border-radius:6px 6px 0 0;font-size:12px;font-family:var(--font-code)">SC050</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="brand">LayCAT</div><div class="num">07 / 16</div>
+</section>
+
+<!-- =============== SLIDE 8: SECTION DIVIDER Q4 =============== -->
+<section class="slide section">
+  <div class="no">2027 Q1</div>
+  <div class="st">本命機能 <span style="background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent">稼働期間・工数集計</span></div>
+  <p style="color:var(--text2);font-size:18px;margin-top:20px">Artist の入力ゼロで、PM・経営陣に進捗トレンドを提供</p>
+  <div class="brand">LayCAT</div><div class="num">08 / 16</div>
+</section>
+
+<!-- =============== SLIDE 9: PMB SCHEDULE MOCKUP =============== -->
+<section class="slide">
+  <span class="label"><span class="dot"></span>4. 稼働期間・工数集計 · PMB (1/2)</span>
+  <h2>PMBoard — <span class="accent">スケジュールタブ</span>（ショット別ガント）</h2>
+  <div class="lead">本命機能はすでに姉妹ツール PMBoard として先行実装中。LayCAT のショット／ステータス履歴／アップロード履歴をそのまま参照し、Artist に一切追加入力を求めずに PM 視点のスケジュールと実績を可視化する。</div>
+
+  <div class="pmb-panel">
+    <div class="pmb-bar">
+      <span class="pmb-brand"><span class="diamond">◈</span>LayCAT</span>
+      <span style="color:#606070;letter-spacing:2px;font-size:10px">PMBOARD</span>
+      <span class="pmb-ver">2026.09.29.011</span>
+      <span class="pmb-proj-dd">PJ_Aurora (aurora) ▾</span>
+      <span class="pmb-user">aurora</span>
+      <span class="pmb-tools">
+        <span class="seg"><span class="on">日</span><span>週</span><span>月</span></span>
+        <span style="color:#606070;font-size:9.5px">最終更新 2026/09/29 00:26 (JST)</span>
+        <span class="csv">今日</span><span class="csv">CSV</span>
+      </span>
+    </div>
+    <div class="pmb-body">
+      <aside class="pmb-side">
+        <div class="pmb-s-h">プロジェクト</div>
+        <div class="pmb-s-name">PJ_Aurora</div>
+        <div class="pmb-s-pills"><span class="on">進行中</span><span>55 shots</span><span>9 members</span></div>
+        <div class="pmb-s-h">サマリ</div>
+        <div class="pmb-s-kpis"><span><b>35</b><sub>%</sub></span><span><b>19</b><sub>/55</sub></span><span><b>8</b><sub>日</sub></span></div>
+        <div style="display:flex;gap:6px;margin-top:2px;color:#606070;font-size:9px"><span style="width:33%">進捗</span><span style="width:33%">完了</span><span style="width:33%">残</span></div>
+        <div class="pmb-s-h">工程分布</div>
+        <svg class="pmb-donut" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="32" fill="none" stroke="#5A9BFF" stroke-width="14" stroke-dasharray="36 165" transform="rotate(-90 50 50)"/>
+          <circle cx="50" cy="50" r="32" fill="none" stroke="#5CB878" stroke-width="14" stroke-dasharray="8 193" transform="rotate(-25 50 50)"/>
+          <circle cx="50" cy="50" r="32" fill="none" stroke="#F2986B" stroke-width="14" stroke-dasharray="157 44" transform="rotate(4 50 50)"/>
+          <text x="50" y="52" text-anchor="middle" fill="#eeeef2" font-family="'Space Grotesk',sans-serif" font-size="16" font-weight="800">55</text>
+          <text x="50" y="64" text-anchor="middle" fill="#606070" font-size="6.5">ショット</text>
+        </svg>
+        <div class="pmb-legend"><i style="background:#5A9BFF"></i>LAY<b>10</b><em>18%</em></div>
+        <div class="pmb-legend"><i style="background:#5CB878"></i>ANM<b>2</b><em>4%</em></div>
+        <div class="pmb-legend"><i style="background:#F2986B"></i>SEC<b>43</b><em>78%</em></div>
+        <div class="pmb-s-h">ステータス分布</div>
+        <svg class="pmb-donut" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="32" fill="none" stroke="#5A9BFF" stroke-width="14" stroke-dasharray="15 186" transform="rotate(-90 50 50)"/>
+          <circle cx="50" cy="50" r="32" fill="none" stroke="#5CB878" stroke-width="14" stroke-dasharray="146 55" transform="rotate(-63 50 50)"/>
+          <circle cx="50" cy="50" r="32" fill="none" stroke="#F2C86B" stroke-width="14" stroke-dasharray="22 179" transform="rotate(200 50 50)"/>
+          <circle cx="50" cy="50" r="32" fill="none" stroke="#3a3a46" stroke-width="14" stroke-dasharray="18 183" transform="rotate(240 50 50)"/>
+          <text x="50" y="52" text-anchor="middle" fill="#eeeef2" font-family="'Space Grotesk',sans-serif" font-size="16" font-weight="800">55</text>
+          <text x="50" y="64" text-anchor="middle" fill="#606070" font-size="6.5">ショット</text>
+        </svg>
+        <div class="pmb-legend"><i style="background:#F2C86B"></i>チェック待ち<b>1</b><em>2%</em></div>
+        <div class="pmb-legend"><i style="background:#5CB878"></i>OK<b>4</b><em>7%</em></div>
+        <div class="pmb-legend"><i style="background:#3a3a46"></i>オミット<b>6</b><em>11%</em></div>
+        <div class="pmb-legend"><i style="background:#F2C86B"></i>ENGIチェック<b>6</b><em>11%</em></div>
+      </aside>
+      <main class="pmb-main">
+        <div class="pmb-tabs">
+          <span class="on">スケジュール<span class="cnt">32</span></span>
+          <span>工数<span class="cnt">A/B</span></span>
+          <span>リテイク<span class="cnt">73</span></span>
+          <span>アクティビティ<span class="cnt">30d</span></span>
+          <span>操作ログ<span class="cnt">1.2k</span></span>
+        </div>
+        <div class="pmb-g-tools">
+          <button class="b pri">ショットごと</button>
+          <button class="b">+ スケジュール追加</button>
+        </div>
+        <div class="pmb-g-head">
+          <span class="col">SHOT</span>
+          <div class="wks">
+            <span>9/12〜</span><span>9/19〜</span><span>9/26〜</span><span class="today">TODAY 9/29</span><span>10/3〜</span>
+          </div>
+        </div>
+        <div class="pmb-g-row">
+          <span class="col"><span class="shot">sh028</span><span class="stg">LAY</span><span class="st gray">オミット</span></span>
+          <div class="track"><div class="today"></div></div>
+        </div>
+        <div class="pmb-g-row">
+          <span class="col"><span class="shot">sh035</span><span class="stg">LAY</span><span class="st gray">オミット</span></span>
+          <div class="track"><div class="today"></div></div>
+        </div>
+        <div class="pmb-g-row">
+          <span class="col"><span class="shot">sh057</span><span class="stg">LAY</span><span class="st gray">オミット</span></span>
+          <div class="track"><div class="today"></div></div>
+        </div>
+        <div class="pmb-g-row">
+          <span class="col"><span class="shot">sh098</span><span class="stg">LAY</span><span class="st y">ENGIチェック</span></span>
+          <div class="track">
+            <div class="bar g" style="left:16%;width:5%"></div>
+            <div class="bar o" style="left:24%;width:4%"></div>
+            <div class="bar o" style="left:32%;width:12%"></div>
+            <div class="today"></div>
+          </div>
+        </div>
+        <div class="pmb-g-row">
+          <span class="col"><span class="shot">sh100</span><span class="stg anm">ANM</span><span class="st y">ENGIチェック</span></span>
+          <div class="track">
+            <div class="bar g" style="left:28%;width:4%"></div>
+            <div class="bar o" style="left:34%;width:14%"></div>
+            <div class="today"></div>
+          </div>
+        </div>
+        <div class="pmb-g-row">
+          <span class="col"><span class="shot">sh101</span><span class="stg anm">ANM</span><span class="st g">ENGI OK</span></span>
+          <div class="track">
+            <div class="bar b" style="left:15%;width:5%"></div>
+            <div class="bar g" style="left:22%;width:5%"></div>
+            <div class="bar o txt" style="left:30%;width:32%">8d</div>
+            <div class="today"></div>
+          </div>
+        </div>
+        <div class="pmb-g-row">
+          <span class="col"><span class="shot">sh102</span><span class="stg anm">ANM</span><span class="st y">ENGIチェック</span></span>
+          <div class="track">
+            <div class="bar g" style="left:20%;width:22%"></div>
+            <div class="bar o txt" style="left:43%;width:6%">1d</div>
+            <div class="bar g" style="left:50%;width:44%"></div>
+            <div class="today"></div>
+          </div>
+        </div>
+        <div class="pmb-g-row">
+          <span class="col"><span class="shot">sh103</span><span class="stg">LAY</span><span class="st b">完了</span></span>
+          <div class="track">
+            <div class="bar o" style="left:28%;width:4%"></div>
+            <div class="bar o txt" style="left:33%;width:32%">9d</div>
+            <div class="today"></div>
+          </div>
+        </div>
+        <div class="pmb-g-row">
+          <span class="col"><span class="shot">sh108</span><span class="stg anm">ANM</span><span class="st y">ENGIチェック</span></span>
+          <div class="track">
+            <div class="bar b" style="left:16%;width:4%"></div>
+            <div class="bar o" style="left:22%;width:60%"></div>
+            <div class="today"></div>
+          </div>
+        </div>
+        <div class="pmb-g-row">
+          <span class="col"><span class="shot">sh109</span><span class="stg anm">ANM</span><span class="st y">チェック待ち</span></span>
+          <div class="track">
+            <div class="bar b" style="left:18%;width:60%"></div>
+            <div class="today"></div>
+          </div>
+        </div>
+        <div class="pmb-g-row">
+          <span class="col"><span class="shot">sh112</span><span class="stg anm">ANM</span><span class="st y">ENGIチェック</span></span>
+          <div class="track">
+            <div class="bar b txt" style="left:30%;width:6%">1d</div>
+            <div class="bar o" style="left:37%;width:38%"></div>
+            <div class="today"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="brand">LayCAT</div><div class="num">09 / 16</div>
+</section>
+
+<!-- =============== SLIDE 10: PMB MAN-HOURS MOCKUP =============== -->
+<section class="slide">
+  <span class="label"><span class="dot"></span>4. 稼働期間・工数集計 · PMB (2/2)</span>
+  <h2>PMBoard — <span class="accent">工数タブ</span>（ショット別稼働日数）</h2>
+  <div class="lead">ステータス履歴から <b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間を日単位で自動算出。冗長度合いの高いショットが上位に来る。</div>
+
+  <div class="pmb-panel">
+    <div class="pmb-bar">
+      <span class="pmb-brand"><span class="diamond">◈</span>LayCAT</span>
+      <span style="color:#606070;letter-spacing:2px;font-size:10px">PMBOARD</span>
+      <span class="pmb-ver">2026.09.29.011</span>
+      <span class="pmb-proj-dd">PJ_Aurora (aurora) ▾</span>
+      <span class="pmb-user">aurora</span>
+      <span class="pmb-tools">
+        <span class="seg"><span class="on">日</span><span>週</span><span>月</span></span>
+        <span style="color:#606070;font-size:9.5px">最終更新 2026/09/29 00:26 (JST)</span>
+        <span class="csv">今日</span><span class="csv">CSV</span>
+      </span>
+    </div>
+    <div class="pmb-body">
+      <aside class="pmb-side">
+        <div class="pmb-s-h">プロジェクト</div>
+        <div class="pmb-s-name">PJ_Aurora</div>
+        <div class="pmb-s-pills"><span class="on">進行中</span><span>55 shots</span><span>9 members</span></div>
+        <div class="pmb-s-h">サマリ</div>
+        <div class="pmb-s-kpis"><span><b>35</b><sub>%</sub></span><span><b>19</b><sub>/55</sub></span><span><b>8</b><sub>日</sub></span></div>
+        <div class="pmb-s-h">工程分布</div>
+        <svg class="pmb-donut" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="32" fill="none" stroke="#5A9BFF" stroke-width="14" stroke-dasharray="36 165" transform="rotate(-90 50 50)"/>
+          <circle cx="50" cy="50" r="32" fill="none" stroke="#5CB878" stroke-width="14" stroke-dasharray="8 193" transform="rotate(-25 50 50)"/>
+          <circle cx="50" cy="50" r="32" fill="none" stroke="#F2986B" stroke-width="14" stroke-dasharray="157 44" transform="rotate(4 50 50)"/>
+          <text x="50" y="52" text-anchor="middle" fill="#eeeef2" font-family="'Space Grotesk',sans-serif" font-size="16" font-weight="800">55</text>
+          <text x="50" y="64" text-anchor="middle" fill="#606070" font-size="6.5">ショット</text>
+        </svg>
+        <div class="pmb-legend"><i style="background:#5A9BFF"></i>LAY<b>10</b><em>18%</em></div>
+        <div class="pmb-legend"><i style="background:#5CB878"></i>ANM<b>2</b><em>4%</em></div>
+        <div class="pmb-legend"><i style="background:#F2986B"></i>SEC<b>43</b><em>78%</em></div>
+      </aside>
+      <main class="pmb-main">
+        <div class="pmb-tabs">
+          <span>スケジュール<span class="cnt">32</span></span>
+          <span class="on">工数<span class="cnt">A/B</span></span>
+          <span>リテイク<span class="cnt">73</span></span>
+          <span>アクティビティ<span class="cnt">30d</span></span>
+          <span>操作ログ<span class="cnt">1.2k</span></span>
+        </div>
+        <div class="pmb-kpi">
+          <div class="k"><div class="k-l">総稼働日数</div><div class="k-v">395.2<small>日</small></div><div class="k-sub">42/55 ショットが稼働中or完了</div></div>
+          <div class="k"><div class="k-l">平均 PER SHOT</div><div class="k-v">9.4<small>日</small></div><div class="k-sub">稼働ショット平均</div></div>
+          <div class="k"><div class="k-l">最長ショット</div><div class="k-v">25.6<small>日</small></div><div class="k-sub">sh082</div></div>
+          <div class="k"><div class="k-l">ショット数</div><div class="k-v">55</div><div class="k-sub">プロジェクト全体</div></div>
+        </div>
+        <div class="pmb-bars-title">ショット別稼働日数（長い順）</div>
+        <div class="pmb-bars-sub"><b>ステータス履歴から自動算出。</b>作業ステータス（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）にあった期間を日単位で合計。</div>
+        <div class="pmb-bar-row"><span class="b-lbl">sh082<em>SEC</em></span><div class="b-fill"><i style="width:100%"></i></div><span class="b-val">25.6日</span></div>
+        <div class="pmb-bar-row"><span class="b-lbl">sh108<em>SEC</em></span><div class="b-fill"><i style="width:99%"></i></div><span class="b-val">25.3日</span></div>
+        <div class="pmb-bar-row"><span class="b-lbl">sh109<em>SEC</em></span><div class="b-fill"><i style="width:70%"></i></div><span class="b-val">17.8日</span></div>
+        <div class="pmb-bar-row"><span class="b-lbl">sh026<em>SEC</em></span><div class="b-fill"><i style="width:64%"></i></div><span class="b-val">16.5日</span></div>
+        <div class="pmb-bar-row"><span class="b-lbl">sh019<em>SEC</em></span><div class="b-fill"><i style="width:61%"></i></div><span class="b-val">15.6日</span></div>
+        <div class="pmb-bar-row"><span class="b-lbl">sh102<em>SEC</em></span><div class="b-fill"><i style="width:60%"></i></div><span class="b-val">15.3日</span></div>
+        <div class="pmb-bar-row"><span class="b-lbl">sh080<em>SEC</em></span><div class="b-fill"><i style="width:56%"></i></div><span class="b-val">14.4日</span></div>
+        <div class="pmb-bar-row"><span class="b-lbl">sh064<em>SEC</em></span><div class="b-fill"><i style="width:56%"></i></div><span class="b-val">14.4日</span></div>
+        <div class="pmb-bar-row"><span class="b-lbl">sh079<em>SEC</em></span><div class="b-fill"><i style="width:55%"></i></div><span class="b-val">14.2日</span></div>
+        <div class="pmb-bar-row"><span class="b-lbl">sh071<em>SEC</em></span><div class="b-fill"><i style="width:55%"></i></div><span class="b-val">14.2日</span></div>
+        <div class="pmb-bar-row"><span class="b-lbl">sh056<em>SEC</em></span><div class="b-fill"><i style="width:55%"></i></div><span class="b-val">14.1日</span></div>
+        <div class="pmb-bar-row"><span class="b-lbl">sh059<em class="anm">ANM</em></span><div class="b-fill"><i style="width:52%"></i></div><span class="b-val">13.3日</span></div>
+      </main>
+    </div>
+  </div>
+
+  <div class="brand">LayCAT</div><div class="num">10 / 16</div>
+</section>
+
+<!-- =============== SLIDE 11: MANHOURS - CONCEPT =============== -->
+<section class="slide">
+  <span class="label"><span class="dot"></span>4. 稼働期間・工数集計 · 集計方式 (1/3)</span>
+  <h2><span class="accent">「入力させない」</span> 集計エンジン</h2>
+  <div class="lead">従来ツール（ShotGrid・ftrack 等）は Artist が毎日タイムシートを提出する必要がある。LayCAT はステータス遷移・アップロード履歴・監査ログから <b>自動で稼働期間を算出</b>。現場負担ゼロ。</div>
+
+  <div class="row3" style="margin-top:24px">
+    <div class="card">
+      <div class="icoq cyan" style="width:44px;height:44px;font-size:20px">🔄</div>
+      <span class="tag">Method A</span>
+      <h3>状態遷移ベース</h3>
+      <p style="font-size:13.5px">「作業中 → チェック待ち」の切替時刻から稼働ウィンドウを切り出し。監査ログの status_change イベントを集計。</p>
+    </div>
+    <div class="card">
+      <div class="icoq amber" style="width:44px;height:44px;font-size:20px">📤</div>
+      <span class="tag">Method B</span>
+      <h3>アップロード履歴</h3>
+      <p style="font-size:13.5px">各版の <code>uploadedAt</code> から前回〜今回の間隔＝作業期間。イテレーション回数も同時集計。</p>
+    </div>
+    <div class="card hi">
+      <span class="tag">Method C（推奨）</span>
+      <h3>ハイブリッド</h3>
+      <p style="font-size:13.5px">A で稼働ウィンドウを、B でイテレーション情報を組み合わせ。監査ログでフィルタ（休日除外・営業時間外除外）。</p>
+    </div>
+  </div>
+
+  <div style="margin-top:24px;padding:20px 24px;background:var(--bg2);border-radius:12px;border:1px solid var(--border)">
+    <h3 style="margin-bottom:10px;font-size:18px">💡 なぜこのアプローチか</h3>
+    <div class="row2">
+      <ul>
+        <li><b>Artist の入力負担ゼロ</b> — タイムシート提出が不要</li>
+        <li><b>常に最新状態</b> — 手動申告の遅延・欠損がない</li>
+      </ul>
+      <ul>
+        <li><b>精度は「概算」で割り切る</b> — 傾向把握に十分</li>
+        <li><b>労務時間管理には <span style="color:var(--red)">使わない</span></b> — 別ツールと役割分担</li>
+      </ul>
+    </div>
+  </div>
+  <div class="brand">LayCAT</div><div class="num">11 / 16</div>
+</section>
+
+<!-- =============== SLIDE 10: MANHOURS - CHARTS =============== -->
+<section class="slide">
+  <span class="label"><span class="dot"></span>4. 稼働期間・工数集計 · 集計方式 (2/3)</span>
+  <h2>集計軸と <span class="accent">グラフ表現</span></h2>
+  <div class="lead">ショット単位・工程別・担当者別・職種別・期間別で切り出し可能。実装するグラフは 5 種類。</div>
+
+  <div class="chart-grid" style="margin-top:16px">
+    <!-- Gantt chart -->
+    <div class="chart">
+      <div class="ct">📅 ガントチャート — ショット別稼働期間</div>
+      <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g_bar1" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5CC7EF"/><stop offset="1" stop-color="#7A5CFF"/></linearGradient>
+          <linearGradient id="g_bar2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#A56BF0"/><stop offset="1" stop-color="#EE6A6A"/></linearGradient>
+          <linearGradient id="g_bar3" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5CB878"/><stop offset="1" stop-color="#5CC7EF"/></linearGradient>
+        </defs>
+        <!-- Grid vertical lines (week markers) -->
+        <g stroke="#26262e" stroke-width="1">
+          <line x1="90" y1="20" x2="90" y2="200"/>
+          <line x1="200" y1="20" x2="200" y2="200"/>
+          <line x1="310" y1="20" x2="310" y2="200"/>
+          <line x1="420" y1="20" x2="420" y2="200"/>
+          <line x1="530" y1="20" x2="530" y2="200"/>
+          <line x1="640" y1="20" x2="640" y2="200"/>
+        </g>
+        <!-- Week labels -->
+        <g fill="#606070" font-family="'Space Grotesk',monospace" font-size="9">
+          <text x="90" y="14">W36</text>
+          <text x="200" y="14">W37</text>
+          <text x="310" y="14">W38</text>
+          <text x="420" y="14">W39</text>
+          <text x="530" y="14">W40</text>
+          <text x="640" y="14">W41</text>
+        </g>
+        <!-- Shot rows -->
+        <g fill="#a0a0b0" font-family="'Space Grotesk',monospace" font-size="11">
+          <text x="12" y="40">SC010</text>
+          <text x="12" y="70">SC020</text>
+          <text x="12" y="100">SC030</text>
+          <text x="12" y="130">SC040</text>
+          <text x="12" y="160">SC050</text>
+          <text x="12" y="190">SC060</text>
+        </g>
+        <!-- Actual bars -->
+        <g rx="4">
+          <rect x="90" y="30" width="140" height="14" rx="3" fill="url(#g_bar1)"/>
+          <rect x="140" y="60" width="180" height="14" rx="3" fill="url(#g_bar3)"/>
+          <rect x="200" y="90" width="230" height="14" rx="3" fill="url(#g_bar2)" opacity=".9"/>
+          <rect x="260" y="120" width="120" height="14" rx="3" fill="url(#g_bar1)"/>
+          <rect x="310" y="150" width="180" height="14" rx="3" fill="url(#g_bar3)"/>
+          <rect x="420" y="180" width="200" height="14" rx="3" fill="url(#g_bar1)"/>
+        </g>
+        <!-- Estimated (dashed) -->
+        <g fill="none" stroke="#3a3a46" stroke-width="1.5" stroke-dasharray="4 3">
+          <rect x="90" y="30" width="110" height="14" rx="3"/>
+          <rect x="140" y="60" width="150" height="14" rx="3"/>
+        </g>
+        <!-- Today marker -->
+        <g stroke="#EE6A6A" stroke-width="2">
+          <line x1="480" y1="20" x2="480" y2="205"/>
+        </g>
+        <text x="484" y="26" fill="#EE6A6A" font-family="'Space Grotesk',monospace" font-size="10" font-weight="700">TODAY</text>
+      </svg>
+    </div>
+
+    <!-- Burndown -->
+    <div class="chart">
+      <div class="ct">📉 バーンダウン</div>
+      <svg viewBox="0 0 300 220" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g_area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A56BF0" stop-opacity=".5"/><stop offset="1" stop-color="#A56BF0" stop-opacity="0"/></linearGradient>
+        </defs>
+        <g stroke="#26262e" stroke-width="1">
+          <line x1="30" y1="180" x2="290" y2="180"/>
+          <line x1="30" y1="20" x2="30" y2="180"/>
+        </g>
+        <!-- Ideal line -->
+        <line x1="30" y1="30" x2="290" y2="180" stroke="#606070" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <!-- Actual line -->
+        <path d="M 30,30 L 70,58 L 110,72 L 150,110 L 190,120 L 230,155 L 270,163" fill="none" stroke="#A56BF0" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M 30,30 L 70,58 L 110,72 L 150,110 L 190,120 L 230,155 L 270,163 L 270,180 L 30,180 Z" fill="url(#g_area)"/>
+        <!-- Points -->
+        <g fill="#A56BF0">
+          <circle cx="30" cy="30" r="3"/>
+          <circle cx="70" cy="58" r="3"/>
+          <circle cx="110" cy="72" r="3"/>
+          <circle cx="150" cy="110" r="3"/>
+          <circle cx="190" cy="120" r="3"/>
+          <circle cx="230" cy="155" r="3"/>
+          <circle cx="270" cy="163" r="3"/>
+        </g>
+        <text x="34" y="18" fill="#606070" font-family="'Space Grotesk',monospace" font-size="8">Total Cuts</text>
+        <text x="270" y="200" fill="#606070" font-family="'Space Grotesk',monospace" font-size="8" text-anchor="end">Days</text>
+      </svg>
+    </div>
+
+    <!-- Role pie -->
+    <div class="chart">
+      <div class="ct">🎨 職種別 時間比率</div>
+      <svg viewBox="0 0 300 220" xmlns="http://www.w3.org/2000/svg">
+        <g transform="translate(105,110)">
+          <!-- Donut: aniamator 40%, modeler 20%, layout 15%, compositor 15%, other 10% -->
+          <circle cx="0" cy="0" r="70" fill="none" stroke="#A56BF0" stroke-width="26" stroke-dasharray="176 264" transform="rotate(-90)"/>
+          <circle cx="0" cy="0" r="70" fill="none" stroke="#5CC7EF" stroke-width="26" stroke-dasharray="88 352" transform="rotate(54)"/>
+          <circle cx="0" cy="0" r="70" fill="none" stroke="#F2C86B" stroke-width="26" stroke-dasharray="66 374" transform="rotate(126)"/>
+          <circle cx="0" cy="0" r="70" fill="none" stroke="#5CB878" stroke-width="26" stroke-dasharray="66 374" transform="rotate(180)"/>
+          <circle cx="0" cy="0" r="70" fill="none" stroke="#EE6A6A" stroke-width="26" stroke-dasharray="44 396" transform="rotate(234)"/>
+          <text y="6" fill="#eeeef2" font-family="'Space Grotesk',sans-serif" font-size="18" font-weight="800" text-anchor="middle">1,240h</text>
+        </g>
+        <!-- Legend -->
+        <g font-family="'Space Grotesk','Noto Sans JP',sans-serif" font-size="11">
+          <g transform="translate(200,50)">
+            <rect x="0" y="0" width="10" height="10" fill="#A56BF0"/>
+            <text x="16" y="9" fill="#a0a0b0">アニメーター 40%</text>
+          </g>
+          <g transform="translate(200,72)">
+            <rect x="0" y="0" width="10" height="10" fill="#5CC7EF"/>
+            <text x="16" y="9" fill="#a0a0b0">モデラー 20%</text>
+          </g>
+          <g transform="translate(200,94)">
+            <rect x="0" y="0" width="10" height="10" fill="#F2C86B"/>
+            <text x="16" y="9" fill="#a0a0b0">レイアウト 15%</text>
+          </g>
+          <g transform="translate(200,116)">
+            <rect x="0" y="0" width="10" height="10" fill="#5CB878"/>
+            <text x="16" y="9" fill="#a0a0b0">コンポジット 15%</text>
+          </g>
+          <g transform="translate(200,138)">
+            <rect x="0" y="0" width="10" height="10" fill="#EE6A6A"/>
+            <text x="16" y="9" fill="#a0a0b0">その他 10%</text>
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <!-- Heatmap -->
+    <div class="chart">
+      <div class="ct">🔥 曜日×時刻 稼働ヒートマップ</div>
+      <svg viewBox="0 0 300 220" xmlns="http://www.w3.org/2000/svg">
+        <!-- 7 days x 8 hour blocks -->
+        <g font-family="'Space Grotesk',monospace" font-size="8" fill="#606070">
+          <text x="6" y="30">月</text><text x="6" y="52">火</text><text x="6" y="74">水</text><text x="6" y="96">木</text><text x="6" y="118">金</text><text x="6" y="140">土</text><text x="6" y="162">日</text>
+          <text x="34" y="180">9</text><text x="70" y="180">11</text><text x="106" y="180">13</text><text x="142" y="180">15</text><text x="178" y="180">17</text><text x="214" y="180">19</text><text x="250" y="180">21</text>
+        </g>
+        <!-- Data cells (opacity = intensity) -->
+        <g>
+          <!-- Row 1 -->
+          <rect x="30" y="20" width="30" height="18" fill="#A56BF0" opacity=".3" rx="2"/>
+          <rect x="64" y="20" width="30" height="18" fill="#A56BF0" opacity=".7" rx="2"/>
+          <rect x="98" y="20" width="30" height="18" fill="#A56BF0" opacity=".85" rx="2"/>
+          <rect x="132" y="20" width="30" height="18" fill="#A56BF0" opacity=".9" rx="2"/>
+          <rect x="166" y="20" width="30" height="18" fill="#A56BF0" opacity=".8" rx="2"/>
+          <rect x="200" y="20" width="30" height="18" fill="#A56BF0" opacity=".5" rx="2"/>
+          <rect x="234" y="20" width="30" height="18" fill="#A56BF0" opacity=".25" rx="2"/>
+          <!-- Row 2 -->
+          <rect x="30" y="42" width="30" height="18" fill="#A56BF0" opacity=".4" rx="2"/>
+          <rect x="64" y="42" width="30" height="18" fill="#A56BF0" opacity=".8" rx="2"/>
+          <rect x="98" y="42" width="30" height="18" fill="#A56BF0" opacity=".95" rx="2"/>
+          <rect x="132" y="42" width="30" height="18" fill="#A56BF0" opacity="1" rx="2"/>
+          <rect x="166" y="42" width="30" height="18" fill="#A56BF0" opacity=".9" rx="2"/>
+          <rect x="200" y="42" width="30" height="18" fill="#A56BF0" opacity=".65" rx="2"/>
+          <rect x="234" y="42" width="30" height="18" fill="#A56BF0" opacity=".3" rx="2"/>
+          <!-- Row 3 -->
+          <rect x="30" y="64" width="30" height="18" fill="#A56BF0" opacity=".35" rx="2"/>
+          <rect x="64" y="64" width="30" height="18" fill="#A56BF0" opacity=".75" rx="2"/>
+          <rect x="98" y="64" width="30" height="18" fill="#A56BF0" opacity=".9" rx="2"/>
+          <rect x="132" y="64" width="30" height="18" fill="#A56BF0" opacity=".95" rx="2"/>
+          <rect x="166" y="64" width="30" height="18" fill="#A56BF0" opacity=".85" rx="2"/>
+          <rect x="200" y="64" width="30" height="18" fill="#A56BF0" opacity=".7" rx="2"/>
+          <rect x="234" y="64" width="30" height="18" fill="#A56BF0" opacity=".4" rx="2"/>
+          <!-- Row 4 (Thu) -->
+          <rect x="30" y="86" width="30" height="18" fill="#A56BF0" opacity=".3" rx="2"/>
+          <rect x="64" y="86" width="30" height="18" fill="#A56BF0" opacity=".7" rx="2"/>
+          <rect x="98" y="86" width="30" height="18" fill="#A56BF0" opacity=".85" rx="2"/>
+          <rect x="132" y="86" width="30" height="18" fill="#A56BF0" opacity=".9" rx="2"/>
+          <rect x="166" y="86" width="30" height="18" fill="#A56BF0" opacity=".85" rx="2"/>
+          <rect x="200" y="86" width="30" height="18" fill="#A56BF0" opacity=".65" rx="2"/>
+          <rect x="234" y="86" width="30" height="18" fill="#A56BF0" opacity=".55" rx="2"/>
+          <!-- Row 5 (Fri) -->
+          <rect x="30" y="108" width="30" height="18" fill="#A56BF0" opacity=".35" rx="2"/>
+          <rect x="64" y="108" width="30" height="18" fill="#A56BF0" opacity=".7" rx="2"/>
+          <rect x="98" y="108" width="30" height="18" fill="#A56BF0" opacity=".9" rx="2"/>
+          <rect x="132" y="108" width="30" height="18" fill="#A56BF0" opacity=".95" rx="2"/>
+          <rect x="166" y="108" width="30" height="18" fill="#A56BF0" opacity=".8" rx="2"/>
+          <rect x="200" y="108" width="30" height="18" fill="#A56BF0" opacity=".85" rx="2"/>
+          <rect x="234" y="108" width="30" height="18" fill="#A56BF0" opacity=".7" rx="2"/>
+          <!-- Row 6 (Sat) -->
+          <rect x="30" y="130" width="30" height="18" fill="#A56BF0" opacity=".15" rx="2"/>
+          <rect x="64" y="130" width="30" height="18" fill="#A56BF0" opacity=".25" rx="2"/>
+          <rect x="98" y="130" width="30" height="18" fill="#A56BF0" opacity=".3" rx="2"/>
+          <rect x="132" y="130" width="30" height="18" fill="#A56BF0" opacity=".35" rx="2"/>
+          <rect x="166" y="130" width="30" height="18" fill="#A56BF0" opacity=".3" rx="2"/>
+          <rect x="200" y="130" width="30" height="18" fill="#A56BF0" opacity=".2" rx="2"/>
+          <rect x="234" y="130" width="30" height="18" fill="#A56BF0" opacity=".15" rx="2"/>
+          <!-- Row 7 (Sun) -->
+          <rect x="30" y="152" width="30" height="18" fill="#A56BF0" opacity=".08" rx="2"/>
+          <rect x="64" y="152" width="30" height="18" fill="#A56BF0" opacity=".15" rx="2"/>
+          <rect x="98" y="152" width="30" height="18" fill="#A56BF0" opacity=".18" rx="2"/>
+          <rect x="132" y="152" width="30" height="18" fill="#A56BF0" opacity=".2" rx="2"/>
+          <rect x="166" y="152" width="30" height="18" fill="#A56BF0" opacity=".2" rx="2"/>
+          <rect x="200" y="152" width="30" height="18" fill="#A56BF0" opacity=".12" rx="2"/>
+          <rect x="234" y="152" width="30" height="18" fill="#A56BF0" opacity=".08" rx="2"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+  <div class="brand">LayCAT</div><div class="num">12 / 16</div>
+</section>
+
+<!-- =============== SLIDE 11: MANHOURS - COMPARISON =============== -->
+<section class="slide">
+  <span class="label"><span class="dot"></span>4. 稼働期間・工数集計 · 集計方式 (3/3)</span>
+  <h2>他ツールとの <span class="accent">比較・位置づけ</span></h2>
+  <div class="lead">ShotGrid / ftrack は Artist が手動でタイムシートを提出する労務時間管理型。LayCAT は自動導出型でポジションが異なる。</div>
+
+  <table class="cmp" style="margin-top:20px">
+    <thead>
+      <tr>
+        <th style="width:15%">ツール</th>
+        <th>記録方法</th>
+        <th>精度</th>
+        <th>現場負担</th>
+        <th>用途</th>
+        <th>コスト</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>ShotGrid</b><br><span style="color:var(--text3);font-size:11px">Autodesk</span></td>
+        <td>Artist 手動タイムシート・上司承認</td>
+        <td class="good">高</td>
+        <td class="bad">大（毎日入力）</td>
+        <td>労務・請求・分析</td>
+        <td>$30〜$70/席/月</td>
+      </tr>
+      <tr>
+        <td><b>ftrack</b><br><span style="color:var(--text3);font-size:11px">Backlight</span></td>
+        <td>Time Logger ウィジェット</td>
+        <td class="good">高</td>
+        <td class="bad">大</td>
+        <td>労務・請求</td>
+        <td>$20〜$70/席/月</td>
+      </tr>
+      <tr>
+        <td><b>Kitsu</b><br><span style="color:var(--text3);font-size:11px">CGWire</span></td>
+        <td>Task 単位で手動記録</td>
+        <td class="good">高</td>
+        <td class="bad">大</td>
+        <td>労務・分析</td>
+        <td>無料（OSS）or SaaS</td>
+      </tr>
+      <tr>
+        <td><b>Frame.io</b><br><span style="color:var(--text3);font-size:11px">Adobe</span></td>
+        <td>基本なし（レビュー中心）</td>
+        <td class="bad">‐</td>
+        <td class="good">‐</td>
+        <td>レビューのみ</td>
+        <td>CC バンドル</td>
+      </tr>
+      <tr class="you">
+        <td><b>LayCAT</b><br><span style="color:var(--text3);font-size:11px">当社</span></td>
+        <td><b>状態遷移から自動導出</b>（無入力）</td>
+        <td class="mid">概算</td>
+        <td class="good">ゼロ</td>
+        <td><b>進行管理・見積もり・傾向把握</b></td>
+        <td>ブラウザ＋既存基盤で完結</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div style="margin-top:24px;padding:20px 24px;background:linear-gradient(135deg,rgba(165,107,240,.10),rgba(92,199,239,.06));border:1px solid rgba(165,107,240,.3);border-radius:12px">
+    <h3 style="margin-bottom:8px;font-size:18px">🎯 LayCAT のポジショニング</h3>
+    <p style="font-size:14.5px;line-height:1.7;margin:0">
+      <b>「Artist に一切負担をかけずに、PM・経営陣に進捗傾向を提供する」ツール</b>。<br>
+      労務時間管理・請求書発行には従来ツール／別システムを使い、LayCAT は「進行の可視化」に特化。両立可能なポジション。
+    </p>
+  </div>
+
+  <div class="brand">LayCAT</div><div class="num">13 / 16</div>
+</section>
+
+<!-- =============== SLIDE 12: TIME REMAP FULL =============== -->
+<section class="slide">
+  <span class="label"><span class="dot"></span>5. Q4 · 機能拡張</span>
+  <h2><span class="accent">タイムリマップ</span>の本実装（REEL・書き出し反映）</h2>
+  <div class="lead">現状はビューア内プレビュー専用（v0.1.0 で明示バッジ表示済）。REEL 再生・アノテ焼き込み MP4 書き出しにも反映されるように。</div>
+
+  <div class="row2" style="margin-top:20px">
+    <div>
+      <div class="icoq amber">⧗</div>
+      <h3>影響範囲</h3>
+      <ul>
+        <li><b>REEL 再生</b> — リマップされたタメツメがそのまま再生される</li>
+        <li><b>アノテ焼き込み書き出し</b> — MP4 出力にもタメツメが乗る</li>
+        <li>版のサムネイル生成 — リマップ考慮</li>
+      </ul>
+    </div>
+    <div>
+      <div class="icoq green">🎬</div>
+      <h3>実務効果</h3>
+      <ul>
+        <li>ディレクター指示の <b>タメツメが最終確認まで一貫</b></li>
+        <li>クライアントへの試写用 MP4 が「そのまま送れる」状態に</li>
+        <li>タメツメの試行錯誤が REEL で即確認できる</li>
+      </ul>
+    </div>
+  </div>
+
+  <div style="margin-top:24px;padding:16px 20px;background:var(--bg2);border-radius:10px;border-left:3px solid var(--amber)">
+    <p style="font-size:13.5px;color:var(--text2);margin:0">
+      <b>技術的難所</b>：Canvas + MediaRecorder ベースの書き出しに timeRemap の displayFrame → sourceFrame 変換を挟む。フレーム精度同期が必要。
+    </p>
+  </div>
+  <div class="brand">LayCAT</div><div class="num">14 / 16</div>
+</section>
+
+<!-- =============== SLIDE 13: LONG TERM =============== -->
+<section class="slide">
+  <span class="label"><span class="dot"></span>6. Long term</span>
+  <h2>中長期の <span class="accent">方向性</span></h2>
+  <div class="lead">2027 以降を見据えた検討中の項目。</div>
+
+  <div class="row3" style="margin-top:20px">
+    <div class="card">
+      <div class="icoq" style="width:44px;height:44px;font-size:20px">🧍</div>
+      <h3>3D マネキン強化</h3>
+      <p style="font-size:13.5px">フレーム間ポーズ補間で簡易プレビズ化。ディレクター指示の 3D 化を加速。</p>
+    </div>
+    <div class="card">
+      <div class="icoq cyan" style="width:44px;height:44px;font-size:20px">☁</div>
+      <h3>ローカル → R2 移行</h3>
+      <p style="font-size:13.5px">フォルダ運用で始めたプロジェクトを、後から R2 に移せるように。</p>
+    </div>
+    <div class="card">
+      <div class="icoq green" style="width:44px;height:44px;font-size:20px">🔐</div>
+      <h3>多重ユーザー編集の完全対応</h3>
+      <p style="font-size:13.5px">R2 Worker 側で If-Match 相当の楽観ロックを実装。同時編集時の競合を完全解消。</p>
+    </div>
+    <div class="card">
+      <div class="icoq amber" style="width:44px;height:44px;font-size:20px">💼</div>
+      <h3>契約・権限モデル（サブスク）</h3>
+      <p style="font-size:13.5px">オーナー／管理者／エディター／レビュワーの 4 階層。席数管理と組み合わせて。</p>
+    </div>
+    <div class="card">
+      <div class="icoq" style="width:44px;height:44px;font-size:20px">🎞</div>
+      <h3>REEL 再生さらなる改善</h3>
+      <p style="font-size:13.5px">連続再生の完全シームレス化。frame 0 待ち時間の徹底最小化。</p>
+    </div>
+    <div class="card">
+      <div class="icoq cyan" style="width:44px;height:44px;font-size:20px">🎨</div>
+      <h3>UI カスタマイズ・テーマ</h3>
+      <p style="font-size:13.5px">環境設定システム完成後、テーマ・レイアウトのユーザー設定に対応。</p>
+    </div>
+  </div>
+  <div class="brand">LayCAT</div><div class="num">15 / 16</div>
+</section>
+
+<!-- =============== SLIDE 14: SUMMARY =============== -->
+<section class="slide section">
+  <div class="no" style="font-size:80px">Summary</div>
+  <div class="st" style="font-size:44px">Artist の負担ゼロで、<br><span style="background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent">進行管理・見積もり精度を大きく高める</span></div>
+  <div style="margin-top:36px;font-size:16px;color:var(--text2);max-width:800px">
+    <p style="margin-bottom:12px">✅ <b>Q3</b>：ユーザー基盤・監査ログ・タブグループ で基盤を整える</p>
+    <p style="margin-bottom:12px">✅ <b>Q4〜2027 Q1</b>：<span style="color:var(--purple);font-weight:700">稼働期間・工数集計</span> で経営視点の可視化を実現</p>
+    <p style="margin-bottom:12px">✅ <b>中長期</b>：3D 強化・R2 移行・サブスク運用整備</p>
+  </div>
+  <div style="margin-top:40px;padding:14px 28px;background:var(--gradPurple);border-radius:999px;font-size:12px;font-weight:800;letter-spacing:2px;color:#fff;box-shadow:0 12px 40px var(--purpleGlow)">
+    LayCAT · INTERNAL ROADMAP 2026
+  </div>
+  <div class="brand">LayCAT</div><div class="num">16 / 16</div>
+</section>
+
+<script>
+  // Simple side nav dots
+  (function(){
+    var slides = document.querySelectorAll('.slide');
+    var dots = document.getElementById('navDots');
+    slides.forEach(function(s, i){
+      var a = document.createElement('a');
+      a.title = 'Slide ' + (i+1);
+      a.addEventListener('click', function(){ s.scrollIntoView({behavior:'smooth'}); });
+      dots.appendChild(a);
+    });
+    var dotEls = dots.querySelectorAll('a');
+    if('IntersectionObserver' in window){
+      var obs = new IntersectionObserver(function(entries){
+        entries.forEach(function(e){
+          if(e.isIntersecting){
+            var idx = Array.prototype.indexOf.call(slides, e.target);
+            dotEls.forEach(function(d, i){ d.classList.toggle('on', i === idx); });
+          }
+        });
+      }, {threshold: 0.5});
+      slides.forEach(function(s){ obs.observe(s); });
+    }
+    // Arrow key navigation
+    document.addEventListener('keydown', function(e){
+      var cur = -1;
+      slides.forEach(function(s, i){
+        var r = s.getBoundingClientRect();
+        if(r.top < window.innerHeight * 0.5 && r.bottom > window.innerHeight * 0.5) cur = i;
+      });
+      if(e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown'){
+        e.preventDefault();
+        if(cur < slides.length - 1) slides[cur+1].scrollIntoView({behavior:'smooth'});
+      }
+      if(e.key === 'ArrowUp' || e.key === 'PageUp'){
+        e.preventDefault();
+        if(cur > 0) slides[cur-1].scrollIntoView({behavior:'smooth'});
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>
