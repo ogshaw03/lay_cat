@@ -3812,7 +3812,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.28.055';
+const APP_VERSION='2026.09.28.056';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8752,6 +8752,55 @@ function paintHead(ctx,W,H,s,alpha){
   if(nose[2]>=0){const nx=cx+R*nose[0],ny=cy-R*nose[1];ctx.beginPath();ctx.arc(nx,ny,Math.max(1.6,R*0.05),0,2*Math.PI);ctx.fillStyle=col;ctx.globalAlpha=alpha;ctx.fill();}
   /* ※移動ハンドルは編集UIのため paintHead では描かない（アノテ本体には出さない）。ホバー時に別途描画 */
   ctx.restore();
+}
+/* v.056：顔ガイドの 3 軸ギズモリングのヒットテスト。
+   クリック座標 (x,y は正規化 0-1、W,H はキャンバス実ピクセル) が
+   どのリング（yaw/pitch/roll）に最も近いか判定し、その点でのリング接線と
+   前面弧の周長を返す。ドラッグでその軸だけを回すのに使う（マネキンと同じ挙動）。 */
+function _headRingHitTest(s, x, y, W, H){
+  const cx=(s.cx||0)*W, cy=(s.cy||0)*H, R=Math.max(6,(s.r||0.12)*W);
+  const gizmoR=R*1.02, px=x*W, py=y*H;
+  const yaw=s.yaw||0, pitch=s.pitch||0, roll=s.roll||0;
+  const rotv=(vx,vy,vz)=>{
+    let c=Math.cos(roll),n=Math.sin(roll);let x1=c*vx-n*vy,y1=n*vx+c*vy,z1=vz;
+    c=Math.cos(pitch);n=Math.sin(pitch);let y2=c*y1-n*z1,z2=n*y1+c*z1,x2=x1;
+    c=Math.cos(yaw);n=Math.sin(yaw);let x3=c*x2+n*z2,z3=-n*x2+c*z2,y3=y2;
+    return [x3,y3,z3];
+  };
+  const AXES=[
+    {axis:'yaw',   fn:t=>[Math.sin(t),0,Math.cos(t)]},
+    {axis:'pitch', fn:t=>[0,Math.sin(t),Math.cos(t)]},
+    {axis:'roll',  fn:t=>[Math.sin(t),Math.cos(t),0]}
+  ];
+  const N=72;
+  const TOL=Math.max(10, R*0.14); /* px 単位のヒット許容 */
+  let best=null;
+  for(const ax of AXES){
+    const pts=[];
+    for(let i=0;i<=N;i++){
+      const t=i/N*2*Math.PI;const q=ax.fn(t);const r=rotv(q[0],q[1],q[2]);
+      pts.push([cx+gizmoR*r[0], cy-gizmoR*r[1], r[2]>=-0.02]);
+    }
+    let perim=0, hit=null;
+    for(let i=0;i<N;i++){
+      if(!pts[i][2]||!pts[i+1][2])continue; /* 背面セグメントは無視 */
+      const ax0=pts[i][0], ay0=pts[i][1], bx=pts[i+1][0], by=pts[i+1][1];
+      const dx=bx-ax0, dy=by-ay0, segL=Math.hypot(dx,dy);
+      perim+=segL;
+      const L2=dx*dx+dy*dy;
+      let u=L2?((px-ax0)*dx+(py-ay0)*dy)/L2:0;u=Math.max(0,Math.min(1,u));
+      const cxSeg=ax0+u*dx, cySeg=ay0+u*dy;
+      const d=Math.hypot(cxSeg-px, cySeg-py);
+      if(d<TOL && (!hit||d<hit.d)){
+        const L=segL||1;
+        hit={tx:dx/L, ty:dy/L, d};
+      }
+    }
+    if(hit && (!best||hit.d<best.d)){
+      best={axis:ax.axis, tx:hit.tx, ty:hit.ty, d:hit.d, perim:perim||(2*Math.PI*gizmoR)};
+    }
+  }
+  return best;
 }
 /* 図形注釈：四角 / 楕円 / 矢印。正規化座標の 2 頂点 (x0,y0)-(x1,y1) と線幅 w（正規化 x）／色を持つ。 */
 function paintShape(ctx,W,H,s,alpha){
@@ -14148,18 +14197,36 @@ function openReview(nodeId,versionId,opts){
     else{s={kind:'head',cx:x,cy:y,r:0.12,yaw:0,pitch:0,roll:0,color:colorIn.value,f:isVideo?f:null,layer:activeLayer};pending.push(s);redoStack=[]}
     const d=Math.hypot(s.cx-x,(s.cy-y)*aspect);
     let mode='rotate';
-    if(e.shiftKey)mode='roll';else if(e.ctrlKey||e.metaKey)mode='size';
+    /* v.056：既存ガイドを掴んで修飾キー無しなら、まず 3 軸リングのヒットを見る。
+       特定のリングを掴んでいたらその軸だけ回す（マネキンと同じ挙動）。 */
+    let gz=null;
+    if(hit && !e.shiftKey && !e.ctrlKey && !e.metaKey){
+      gz=_headRingHitTest(s, x, y, canvas.width, canvas.height);
+    }
+    if(gz)mode='gizmo';
+    else if(e.shiftKey)mode='roll';else if(e.ctrlKey||e.metaKey)mode='size';
     else if(hit&&d<(s.r||0.12)*0.24)mode='move'; /* 中心の移動ハンドル内＝移動（新規配置は回転で開始） */
     /* 画面回転(Zm.rot)・ズーム・パンを逆変換した正規化座標(pt)で操作量・角度を計算する（回転表示中でも破綻しない） */
     const ang0=Math.atan2((y-s.cy)*aspect,(x-s.cx)); /* ロール用：掴んだ点の中心まわり角度（等方空間） */
-    headDrag={s,mode,nx0:x,ny0:y,yaw0:s.yaw,pitch0:s.pitch,roll0:s.roll,r0:s.r,cx0:s.cx,cy0:s.cy,ang0,aspect};
+    headDrag={s,mode,gz,nx0:x,ny0:y,yaw0:s.yaw,pitch0:s.pitch,roll0:s.roll,r0:s.r,cx0:s.cx,cy0:s.cy,ang0,aspect};
     headActive=s;drawAll();drawTimeline();updSubmit();
   }
   function headPointerMove(e){
     if(!headDrag)return;
     const [nx,ny]=pt(e);const s=headDrag.s;
     const ndx=nx-headDrag.nx0,ndy=ny-headDrag.ny0;
-    if(headDrag.mode==='rotate'){const cr=Math.cos(headDrag.roll0),sr=Math.sin(headDrag.roll0);const ldx=ndx*cr+ndy*sr,ldy=-ndx*sr+ndy*cr;s.yaw=headDrag.yaw0+ldx*Math.PI*2;s.pitch=headDrag.pitch0+ldy*Math.PI*2;} /* ロール分だけドラッグ方向を補正し、画面基準で回す */
+    if(headDrag.mode==='gizmo'){
+      /* v.056：軸固定回転。掴んだリング点の接線 (tx,ty) にドラッグ量を射影し、
+         前面弧の周長で正規化して角度に変換。該当 Euler 軸のみを更新する。 */
+      const W=canvas.width, H=canvas.height;
+      const dxPx=(nx-headDrag.nx0)*W, dyPx=(ny-headDrag.ny0)*H;
+      const proj=dxPx*headDrag.gz.tx + dyPx*headDrag.gz.ty;
+      const angle=proj/Math.max(20, headDrag.gz.perim)*(Math.PI*2);
+      if(headDrag.gz.axis==='yaw')s.yaw=headDrag.yaw0+angle;
+      else if(headDrag.gz.axis==='pitch')s.pitch=headDrag.pitch0+angle;
+      else if(headDrag.gz.axis==='roll')s.roll=headDrag.roll0+angle;
+    }
+    else if(headDrag.mode==='rotate'){const cr=Math.cos(headDrag.roll0),sr=Math.sin(headDrag.roll0);const ldx=ndx*cr+ndy*sr,ldy=-ndx*sr+ndy*cr;s.yaw=headDrag.yaw0+ldx*Math.PI*2;s.pitch=headDrag.pitch0+ldy*Math.PI*2;} /* ロール分だけドラッグ方向を補正し、画面基準で回す */
     else if(headDrag.mode==='roll'){const ang1=Math.atan2((ny-s.cy)*headDrag.aspect,(nx-s.cx));s.roll=headDrag.roll0-(ang1-headDrag.ang0);} /* 掴んだ点が指に追従（回転方向は反転） */
     else if(headDrag.mode==='size'){s.r=Math.max(0.03,Math.min(0.6,headDrag.r0+ndx));}
     else if(headDrag.mode==='move'){s.cx=headDrag.cx0+ndx;s.cy=headDrag.cy0+ndy;}
@@ -17498,17 +17565,31 @@ function openReel(){
     else{s={kind:'head',cx:x,cy:y,r:0.12,yaw:0,pitch:0,roll:0,color:colorI.value,f,layer:RV.activeLayer};RV.pending.push(s)}
     const d=Math.hypot(s.cx-x,(s.cy-y)*aspect);
     let mode='rotate';
-    if(e.shiftKey)mode='roll';else if(e.ctrlKey||e.metaKey)mode='size';
+    let gz=null;
+    if(hit && !e.shiftKey && !e.ctrlKey && !e.metaKey){
+      gz=_headRingHitTest(s, x, y, anno.width, anno.height);
+    }
+    if(gz)mode='gizmo';
+    else if(e.shiftKey)mode='roll';else if(e.ctrlKey||e.metaKey)mode='size';
     else if(hit&&d<(s.r||0.12)*0.24)mode='move';
     const ang0=Math.atan2((y-s.cy)*aspect,(x-s.cx));
-    rHeadDrag={s,mode,nx0:x,ny0:y,yaw0:s.yaw,pitch0:s.pitch,roll0:s.roll,r0:s.r,cx0:s.cx,cy0:s.cy,ang0,aspect};
+    rHeadDrag={s,mode,gz,nx0:x,ny0:y,yaw0:s.yaw,pitch0:s.pitch,roll0:s.roll,r0:s.r,cx0:s.cx,cy0:s.cy,ang0,aspect};
     rHeadActive=s;drawAnno();drawFTL();updUnsent();
   }
   function reelHeadMove(e){
     if(!rHeadDrag)return;
     const [nx,ny]=ptA(e);const s=rHeadDrag.s;
     const ndx=nx-rHeadDrag.nx0,ndy=ny-rHeadDrag.ny0;
-    if(rHeadDrag.mode==='rotate'){const cr=Math.cos(rHeadDrag.roll0),sr=Math.sin(rHeadDrag.roll0);const ldx=ndx*cr+ndy*sr,ldy=-ndx*sr+ndy*cr;s.yaw=rHeadDrag.yaw0+ldx*Math.PI*2;s.pitch=rHeadDrag.pitch0+ldy*Math.PI*2;}
+    if(rHeadDrag.mode==='gizmo'){
+      const W=anno.width, H=anno.height;
+      const dxPx=(nx-rHeadDrag.nx0)*W, dyPx=(ny-rHeadDrag.ny0)*H;
+      const proj=dxPx*rHeadDrag.gz.tx + dyPx*rHeadDrag.gz.ty;
+      const angle=proj/Math.max(20, rHeadDrag.gz.perim)*(Math.PI*2);
+      if(rHeadDrag.gz.axis==='yaw')s.yaw=rHeadDrag.yaw0+angle;
+      else if(rHeadDrag.gz.axis==='pitch')s.pitch=rHeadDrag.pitch0+angle;
+      else if(rHeadDrag.gz.axis==='roll')s.roll=rHeadDrag.roll0+angle;
+    }
+    else if(rHeadDrag.mode==='rotate'){const cr=Math.cos(rHeadDrag.roll0),sr=Math.sin(rHeadDrag.roll0);const ldx=ndx*cr+ndy*sr,ldy=-ndx*sr+ndy*cr;s.yaw=rHeadDrag.yaw0+ldx*Math.PI*2;s.pitch=rHeadDrag.pitch0+ldy*Math.PI*2;}
     else if(rHeadDrag.mode==='roll'){const ang1=Math.atan2((ny-s.cy)*rHeadDrag.aspect,(nx-s.cx));s.roll=rHeadDrag.roll0-(ang1-rHeadDrag.ang0);}
     else if(rHeadDrag.mode==='size'){s.r=Math.max(0.03,Math.min(0.6,rHeadDrag.r0+ndx));}
     else if(rHeadDrag.mode==='move'){s.cx=rHeadDrag.cx0+ndx;s.cy=rHeadDrag.cy0+ndy;}
