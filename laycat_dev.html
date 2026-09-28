@@ -3812,7 +3812,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.20.048';
+const APP_VERSION='2026.09.28.049';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -15208,18 +15208,32 @@ async function openRetimer(node,v){
   const remapCb=el('input');remapCb.type='checkbox';remapCb.checked=!!(v.timeRemap&&v.timeRemap.enabled);remapCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
   remapWrap.appendChild(remapCb);remapWrap.appendChild(document.createTextNode('リタイム ON'));
   head.appendChild(remapWrap);
-  /* v.037 B-1/C-1 明示バッジ：現状はビューア内プレビュー専用。REEL 再生・書き出しには反映されない旨を UI で告知 */
+  /* v.049：アノテ表示 ON/OFF トグル（ビューアで確認しながら参考にできるように） */
+  const annoWrap=el('label');annoWrap.style.cssText='display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-size:12px';
+  const annoCb=el('input');annoCb.type='checkbox';annoCb.checked=true;annoCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
+  annoWrap.appendChild(annoCb);annoWrap.appendChild(document.createTextNode('アノテ表示'));
+  head.appendChild(annoWrap);
+  /* v.049：この版の動画を書き出し（アノテ焼き込みの ON/OFF はモーダル選択、アノテ窓と同じ挙動） */
+  const exportBtn=el('button','btn btn-ghost btn-sm','⬇ 書き出し');
+  exportBtn.title='この版の動画を書き出す（アノテ有無はモーダルで選択）';
+  head.appendChild(exportBtn);
+  /* v.037 B-1/C-1 明示バッジ：タイムリマップは書き出しに反映されない（動画本体はそのまま・アノテのみ焼き込み） */
   const previewNote=el('span');previewNote.style.cssText='font-size:11px;color:#e08a4a;background:rgba(224,138,74,.12);border:1px solid rgba(224,138,74,.4);border-radius:4px;padding:3px 8px;letter-spacing:.2px';
-  previewNote.textContent='※ ビューア内プレビュー専用（REEL・書き出しには反映されません）';
+  previewNote.textContent='※ タイムリマップは書き出しに反映されません（動画本体はそのまま・アノテのみ焼き込み）';
   head.appendChild(previewNote);
   const closeBtn=el('button','btn btn-ghost btn-sm','✕ 閉じる');
   head.appendChild(closeBtn);
   ov.appendChild(head);
-  /* 動画エリア */
+  /* 動画エリア（v.049：video に加えてアノテ表示用キャンバスを重ねる） */
   const stage=el('div');stage.style.cssText='flex:1;min-height:0;background:#000;position:relative;display:flex;align-items:center;justify-content:center;border-radius:8px;overflow:hidden;border:1px solid var(--border)';
   const video=el('video');video.style.cssText='max-width:100%;max-height:100%;object-fit:contain;display:block';
   video.preload='auto';video.playsInline=true;video.src=url;
   stage.appendChild(video);
+  /* アノテキャンバス：video と同じ letterbox で重なるように、絶対配置＋object-fit:contain。
+     内部 bitmap は video の intrinsic size に合わせて後で loadedmetadata で決定。 */
+  const annoCv=el('canvas');
+  annoCv.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:2';
+  stage.appendChild(annoCv);
   ov.appendChild(stage);
   /* 情報行 */
   const info=el('div');info.style.cssText='display:flex;align-items:center;gap:14px;font-size:12px;color:var(--text2);font-family:var(--font-code);font-variant-numeric:tabular-nums';
@@ -15522,6 +15536,9 @@ async function openRetimer(node,v){
     const src=isRemap()?_rmDisplayToSource(v,displayF):displayF;
     seekSourceFrame(src);
     updInfo();drawTL();drawGraph();syncKfEdit();
+    /* v.049：seek 完了後の seeked イベントでも drawAnno 呼ばれるが、seek しない場合や連続 seek で
+       確実に反映させるためここでも呼ぶ。 */
+    drawAnno();
   };
   /* 再生ループ（等倍再生：1s で FPS 表示フレーム進行）
      パフォーマンス方針：ネイティブ video.play + playbackRate で再生し、rAF は「表示F 追跡＋ドリフト補正」に徹する。
@@ -15561,6 +15578,8 @@ async function openRetimer(node,v){
       if(Math.abs(cur-expectedSrc)>0.5)video.currentTime=Math.max(0,Math.min(srcTotal-1,expectedSrc))/FPS;
     }
     updInfo();drawTL();drawGraph();
+    /* v.049：再生中もアノテを追従（video の timeupdate は 250ms 間隔で粗いため rAF ドライブでも呼ぶ） */
+    drawAnno();
     rafId=requestAnimationFrame(playTick);
   };
   const startPlay=()=>{
@@ -15673,10 +15692,36 @@ async function openRetimer(node,v){
   /* ウィンドウ外クリックで閉じない（誤操作防止） */
   const onResize=()=>{drawTL();drawGraph()};
   window.addEventListener('resize',onResize);
+  /* v.049：アノテ表示ヘルパ。現在ソースフレーム（video.currentTime * FPS）に対応するアノテを描画。
+     - annoCb（アノテ表示チェック）が OFF or 動画未読込のときは canvas をクリアするだけ。
+     - node.review.notes / v.review.notes をたどって frame 範囲内の drawing を paintStrokeList で焼く。 */
+  const drawAnno=()=>{
+    const cvW=annoCv.width,cvH=annoCv.height;
+    if(!cvW||!cvH)return;
+    const ctx=annoCv.getContext('2d');
+    ctx.clearRect(0,0,cvW,cvH);
+    if(!annoCb.checked)return;
+    const notes=(v.review&&v.review.notes)||[];
+    const srcF=Math.round((video.currentTime||0)*FPS);
+    for(const n of notes){
+      if(!n||!n.drawing||!n.drawing.length||n.frame==null)continue;
+      const dur=parseInt(n.dur)||1;
+      if(srcF>=n.frame&&srcF<n.frame+dur){
+        try{paintStrokeList(ctx,cvW,cvH,n.drawing,1)}catch(_){}
+      }
+    }
+  };
+  /* video 側の実 timeupdate でも追従（rvfc 未使用のフォールバック） */
+  video.addEventListener('timeupdate',drawAnno);
+  video.addEventListener('seeked',drawAnno);
+  annoCb.addEventListener('change',drawAnno);
   /* 動画メタデータ読込完了で総フレームを確定 */
   video.addEventListener('loadedmetadata',()=>{
     const dur=(isFinite(video.duration)&&video.duration>0)?video.duration:1;
     srcTotal=Math.max(1,Math.round(dur*FPS));
+    /* v.049：アノテキャンバスの内部解像度を動画の intrinsic size に合わせる（letterbox は object-fit:contain に任せる） */
+    annoCv.width=video.videoWidth||1280;
+    annoCv.height=video.videoHeight||720;
     /* v.035 H-1/H-3 修正：既存 v.timeRemap を新しい srcTotal に合わせてサニタイズ。
        - videoReady 前にトグル ON された場合の [{0,0},{0,0}] のような破綻状態を検知して再初期化
        - 動画差し替え・fps 変更で範囲外化したキーは clamp
@@ -15703,6 +15748,53 @@ async function openRetimer(node,v){
     if(pendingPlay){pendingPlay=false;startPlay()}
   });
   video.addEventListener('error',()=>{toast('リタイム：動画の読み込みに失敗しました');btnPlay.textContent='× 読込失敗';btnPlay.disabled=true});
+  /* v.049：書き出しボタン → アノテ有無選択モーダル → exportAnnotatedVersion。
+     REEL 側の書き出しモーダルと同じ 2 セグメント UI（アノテ込み ↔ アノテ無し）。 */
+  exportBtn.onclick=()=>{
+    let withAnno=true;
+    const modalOv=el('div');
+    modalOv.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9700;display:flex;align-items:center;justify-content:center';
+    const box=el('div');
+    box.style.cssText='background:#1c1c1f;border:1px solid #3a3a42;border-radius:10px;width:min(380px,92vw);padding:18px 20px;display:flex;flex-direction:column;gap:14px;color:#e8e8ec;font-family:system-ui,-apple-system,sans-serif';
+    const mTitle=el('div');mTitle.style.cssText='font-size:15px;font-weight:700';mTitle.textContent='書き出しオプション';
+    box.appendChild(mTitle);
+    const lbl=el('div');lbl.style.cssText='font-size:12px;color:#c8c8d0';lbl.textContent='アノテーション';
+    box.appendChild(lbl);
+    const seg=el('div');seg.style.cssText='display:flex;border:1px solid #3a3a42;border-radius:8px;overflow:hidden';
+    const onCol='#4da6ff',offCol='#1c1c1f';
+    const bOn=el('button','','アノテ込み（焼き込む）');
+    const bOff=el('button','','アノテ無し（素の動画）');
+    for(const b of [bOn,bOff]){b.style.cssText='flex:1;padding:8px 6px;border:0;background:'+offCol+';color:#e8e8ec;font-size:12px;font-weight:600;cursor:pointer;transition:background .12s ease'}
+    const paint=()=>{
+      bOn.style.background=withAnno?onCol:offCol;bOn.style.color=withAnno?'#111':'#c8c8d0';
+      bOff.style.background=(!withAnno)?onCol:offCol;bOff.style.color=(!withAnno)?'#111':'#c8c8d0';
+    };
+    bOn.onclick=()=>{withAnno=true;paint()};
+    bOff.onclick=()=>{withAnno=false;paint()};
+    seg.appendChild(bOn);seg.appendChild(bOff);
+    box.appendChild(seg);paint();
+    const hint=el('div');hint.style.cssText='font-size:11px;color:#9a9aaa';
+    hint.textContent='※ この版 1 本を書き出します。タイムリマップの尺は反映されません（元動画の長さで書き出し）。';
+    box.appendChild(hint);
+    const btns=el('div');btns.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:4px';
+    const cancel=el('button','','キャンセル');cancel.style.cssText='background:transparent;border:1px solid #3a3a42;color:#c8c8d0;padding:6px 14px;border-radius:6px;cursor:pointer';
+    cancel.onclick=()=>modalOv.remove();
+    const go=el('button','','書き出し開始');go.style.cssText='background:#4da6ff;color:#111;border:0;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer';
+    go.onclick=()=>{
+      const flag=withAnno;
+      modalOv.remove();
+      try{
+        /* リタイム窓の再生は書き出しに干渉するので停止 */
+        try{stopPlay()}catch(_){}
+        exportAnnotated([{node,v}],{title:(v.name||''),filename:((v.name||'video').replace(/[^\w\-.]/g,'_'))+(flag?'_annotated':''),annotations:flag});
+      }catch(e){toast('書き出しに失敗しました：'+(e&&e.message||''))}
+    };
+    btns.appendChild(cancel);btns.appendChild(go);
+    box.appendChild(btns);
+    modalOv.appendChild(box);
+    modalOv.addEventListener('click',(ev)=>{if(ev.target===modalOv)modalOv.remove()});
+    document.body.appendChild(modalOv);
+  };
   /* cleanup */
   const cleanup=()=>{
     stopPlay();
