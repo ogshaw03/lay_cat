@@ -18,6 +18,14 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.28.052) **リマップ書き出し：再生カクつき修正（AUTO モード + rAF 連続描画）**：
+  - 原因：v.051 の manual モード（`captureStream(0)` + `track.requestFrame()`）は各フレームを wall-clock ベースで emit するため、seek 時間で timestamp が不均等になり、プレイヤー側で「フレーム持続時間が可変」→ カクつき再生になっていた。
+  - 修正：`captureStream(FPS)` の AUTO モードに戻し、**rAF 連続再描画ループ**で常に「現在の source frame の video + アノテ」を canvas に載せ続ける。captureStream が一定 1/FPS 間隔でサンプリング → 出力タイムスタンプが完全に等間隔＝スムーズ再生。
+  - race 対策：rAF ループで毎フレーム全ペイントするため、`video のみ` の中途半端な状態でサンプリングされても次のティックで完全 frame に置き換わる。
+  - seek 遅延で pace より遅れた場合は canvas が保持され、captureStream は前フレームを重複サンプリング（出力は多少ゆっくり再生されるが、スムーズさは保たれる）。
+  - 既定ビットレートは 4M（軽量）を維持。
+  - APP_VERSION：2026.09.28.051 → 2026.09.28.052
+
 - (dev v2026.09.28.051) **リマップ書き出しでアノテが焼き込まれない不具合を修正**：
   - 原因：`canvas.captureStream(FPS)` の automatic モードは canvas 変更と非同期にサンプリングし、`drawImage(video)` を描き終えた瞬間にキャプチャされることがあった。続いて `paintStrokeList` でアノテを重ねても、その前にサンプリングが走ったフレームは「動画のみ」となり、結果的にアノテが飛ぶ。
   - 修正：`canvas.captureStream(0)` の manual モードに切替、各ループイテレーションで **video + アノテを描き終えた直後に `track.requestFrame()` を明示発行** して 1 フレームずつ確実に emit。
