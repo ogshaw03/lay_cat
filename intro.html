@@ -726,7 +726,7 @@
         </p>
         <ul>
           <li>ショット × 日付のガントで、予定と実績を並べて表示</li>
-          <li>ステータス色（完了／OK／チェック待ち／ENGI チェック 等）でひと目で状況把握</li>
+          <li>ステータス色（完了／OK／チェック待ち／1 次チェック 等）でひと目で状況把握</li>
           <li>TODAY マーカーで「今どこまで進んでいるべきか」が明確に</li>
           <li>プロジェクト単位で工程分布・ステータス分布を円グラフでサマリ</li>
         </ul>
@@ -762,6 +762,38 @@
               <div class="pmb-legend"><i style="background:#5A9BFF"></i>LAY<b>10</b><em>18%</em></div>
               <div class="pmb-legend"><i style="background:#5CB878"></i>ANM<b>2</b><em>4%</em></div>
               <div class="pmb-legend"><i style="background:#F2986B"></i>SEC<b>43</b><em>78%</em></div>
+              <div class="pmb-s-h">ステータス分布</div>
+              <svg class="pmb-donut" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5A9BFF" stroke-width="14" stroke-dasharray="139 62" transform="rotate(-90 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5CB878" stroke-width="14" stroke-dasharray="14 187" transform="rotate(49 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#3a3a46" stroke-width="14" stroke-dasharray="22 179" transform="rotate(63 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#F2986B" stroke-width="14" stroke-dasharray="22 179" transform="rotate(85 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#F2C86B" stroke-width="14" stroke-dasharray="4 197" transform="rotate(107 50 50)"/>
+                <text x="50" y="52" text-anchor="middle" fill="#eeeef2" font-family="Inter,sans-serif" font-size="15" font-weight="800">55</text>
+                <text x="50" y="63" text-anchor="middle" fill="#606070" font-size="6">ショット</text>
+              </svg>
+              <div class="pmb-legend"><i style="background:#5A9BFF"></i>完了<b>38</b><em>69%</em></div>
+              <div class="pmb-legend"><i style="background:#5CB878"></i>OK<b>4</b><em>7%</em></div>
+              <div class="pmb-legend"><i style="background:#3a3a46"></i>オミット<b>6</b><em>11%</em></div>
+              <div class="pmb-legend"><i style="background:#F2986B"></i>1次チェック<b>6</b><em>11%</em></div>
+              <div class="pmb-legend"><i style="background:#F2C86B"></i>チェック待ち<b>1</b><em>2%</em></div>
+              <div class="pmb-s-h">担当者</div>
+              <svg class="pmb-donut" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#A56BF0" stroke-width="14" stroke-dasharray="44 157" transform="rotate(-90 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5A9BFF" stroke-width="14" stroke-dasharray="36 165" transform="rotate(-46 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5CC7EF" stroke-width="14" stroke-dasharray="29 172" transform="rotate(-10 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5CB878" stroke-width="14" stroke-dasharray="25 176" transform="rotate(19 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#F2986B" stroke-width="14" stroke-dasharray="22 179" transform="rotate(45 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#606070" stroke-width="14" stroke-dasharray="44 157" transform="rotate(67 50 50)"/>
+                <text x="50" y="52" text-anchor="middle" fill="#eeeef2" font-family="Inter,sans-serif" font-size="15" font-weight="800">9</text>
+                <text x="50" y="63" text-anchor="middle" fill="#606070" font-size="6">名</text>
+              </svg>
+              <div class="pmb-legend"><i style="background:#A56BF0"></i>山田<b>12</b><em>22%</em></div>
+              <div class="pmb-legend"><i style="background:#5A9BFF"></i>佐藤<b>10</b><em>18%</em></div>
+              <div class="pmb-legend"><i style="background:#5CC7EF"></i>鈴木<b>8</b><em>15%</em></div>
+              <div class="pmb-legend"><i style="background:#5CB878"></i>田中<b>7</b><em>13%</em></div>
+              <div class="pmb-legend"><i style="background:#F2986B"></i>高橋<b>6</b><em>11%</em></div>
+              <div class="pmb-legend"><i style="background:#606070"></i>その他<b>12</b><em>22%</em></div>
             </aside>
             <main class="pmb-main">
               <div class="pmb-tabs">
@@ -782,14 +814,14 @@
               </div>
               <div class="pmb-g-row"><span class="col"><span class="shot">sh028</span><span class="stg">LAY</span><span class="st gray">オミット</span></span><div class="track"><div class="today"></div></div></div>
               <div class="pmb-g-row"><span class="col"><span class="shot">sh057</span><span class="stg">LAY</span><span class="st gray">オミット</span></span><div class="track"><div class="today"></div></div></div>
-              <div class="pmb-g-row"><span class="col"><span class="shot">sh098</span><span class="stg">LAY</span><span class="st y">ENGIチェック</span></span><div class="track"><div class="bar g" style="left:16%;width:5%"></div><div class="bar o" style="left:24%;width:4%"></div><div class="bar o" style="left:32%;width:12%"></div><div class="today"></div></div></div>
-              <div class="pmb-g-row"><span class="col"><span class="shot">sh100</span><span class="stg anm">ANM</span><span class="st y">ENGIチェック</span></span><div class="track"><div class="bar g" style="left:28%;width:4%"></div><div class="bar o" style="left:34%;width:14%"></div><div class="today"></div></div></div>
-              <div class="pmb-g-row"><span class="col"><span class="shot">sh101</span><span class="stg anm">ANM</span><span class="st g">ENGI OK</span></span><div class="track"><div class="bar b" style="left:15%;width:5%"></div><div class="bar g" style="left:22%;width:5%"></div><div class="bar o" style="left:30%;width:32%"></div><div class="today"></div></div></div>
-              <div class="pmb-g-row"><span class="col"><span class="shot">sh102</span><span class="stg anm">ANM</span><span class="st y">ENGIチェック</span></span><div class="track"><div class="bar g" style="left:20%;width:22%"></div><div class="bar o" style="left:43%;width:6%"></div><div class="bar g" style="left:50%;width:44%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh098</span><span class="stg">LAY</span><span class="st y">1次チェック</span></span><div class="track"><div class="bar g" style="left:16%;width:5%"></div><div class="bar o" style="left:24%;width:4%"></div><div class="bar o" style="left:32%;width:12%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh100</span><span class="stg anm">ANM</span><span class="st y">1次チェック</span></span><div class="track"><div class="bar g" style="left:28%;width:4%"></div><div class="bar o" style="left:34%;width:14%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh101</span><span class="stg anm">ANM</span><span class="st g">1次OK</span></span><div class="track"><div class="bar b" style="left:15%;width:5%"></div><div class="bar g" style="left:22%;width:5%"></div><div class="bar o" style="left:30%;width:32%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh102</span><span class="stg anm">ANM</span><span class="st y">1次チェック</span></span><div class="track"><div class="bar g" style="left:20%;width:22%"></div><div class="bar o" style="left:43%;width:6%"></div><div class="bar g" style="left:50%;width:44%"></div><div class="today"></div></div></div>
               <div class="pmb-g-row"><span class="col"><span class="shot">sh103</span><span class="stg">LAY</span><span class="st b">完了</span></span><div class="track"><div class="bar o" style="left:28%;width:4%"></div><div class="bar o" style="left:33%;width:32%"></div><div class="today"></div></div></div>
-              <div class="pmb-g-row"><span class="col"><span class="shot">sh108</span><span class="stg anm">ANM</span><span class="st y">ENGIチェック</span></span><div class="track"><div class="bar b" style="left:16%;width:4%"></div><div class="bar o" style="left:22%;width:60%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh108</span><span class="stg anm">ANM</span><span class="st y">1次チェック</span></span><div class="track"><div class="bar b" style="left:16%;width:4%"></div><div class="bar o" style="left:22%;width:60%"></div><div class="today"></div></div></div>
               <div class="pmb-g-row"><span class="col"><span class="shot">sh109</span><span class="stg anm">ANM</span><span class="st y">チェック待ち</span></span><div class="track"><div class="bar b" style="left:18%;width:60%"></div><div class="today"></div></div></div>
-              <div class="pmb-g-row"><span class="col"><span class="shot">sh112</span><span class="stg anm">ANM</span><span class="st y">ENGIチェック</span></span><div class="track"><div class="bar b" style="left:30%;width:6%"></div><div class="bar o" style="left:37%;width:38%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh112</span><span class="stg anm">ANM</span><span class="st y">1次チェック</span></span><div class="track"><div class="bar b" style="left:30%;width:6%"></div><div class="bar o" style="left:37%;width:38%"></div><div class="today"></div></div></div>
             </main>
           </div>
         </div>
@@ -843,6 +875,38 @@
               <div class="pmb-legend"><i style="background:#5A9BFF"></i>LAY<b>10</b><em>18%</em></div>
               <div class="pmb-legend"><i style="background:#5CB878"></i>ANM<b>2</b><em>4%</em></div>
               <div class="pmb-legend"><i style="background:#F2986B"></i>SEC<b>43</b><em>78%</em></div>
+              <div class="pmb-s-h">ステータス分布</div>
+              <svg class="pmb-donut" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5A9BFF" stroke-width="14" stroke-dasharray="139 62" transform="rotate(-90 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5CB878" stroke-width="14" stroke-dasharray="14 187" transform="rotate(49 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#3a3a46" stroke-width="14" stroke-dasharray="22 179" transform="rotate(63 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#F2986B" stroke-width="14" stroke-dasharray="22 179" transform="rotate(85 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#F2C86B" stroke-width="14" stroke-dasharray="4 197" transform="rotate(107 50 50)"/>
+                <text x="50" y="52" text-anchor="middle" fill="#eeeef2" font-family="Inter,sans-serif" font-size="15" font-weight="800">55</text>
+                <text x="50" y="63" text-anchor="middle" fill="#606070" font-size="6">ショット</text>
+              </svg>
+              <div class="pmb-legend"><i style="background:#5A9BFF"></i>完了<b>38</b><em>69%</em></div>
+              <div class="pmb-legend"><i style="background:#5CB878"></i>OK<b>4</b><em>7%</em></div>
+              <div class="pmb-legend"><i style="background:#3a3a46"></i>オミット<b>6</b><em>11%</em></div>
+              <div class="pmb-legend"><i style="background:#F2986B"></i>1次チェック<b>6</b><em>11%</em></div>
+              <div class="pmb-legend"><i style="background:#F2C86B"></i>チェック待ち<b>1</b><em>2%</em></div>
+              <div class="pmb-s-h">担当者</div>
+              <svg class="pmb-donut" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#A56BF0" stroke-width="14" stroke-dasharray="44 157" transform="rotate(-90 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5A9BFF" stroke-width="14" stroke-dasharray="36 165" transform="rotate(-46 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5CC7EF" stroke-width="14" stroke-dasharray="29 172" transform="rotate(-10 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5CB878" stroke-width="14" stroke-dasharray="25 176" transform="rotate(19 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#F2986B" stroke-width="14" stroke-dasharray="22 179" transform="rotate(45 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#606070" stroke-width="14" stroke-dasharray="44 157" transform="rotate(67 50 50)"/>
+                <text x="50" y="52" text-anchor="middle" fill="#eeeef2" font-family="Inter,sans-serif" font-size="15" font-weight="800">9</text>
+                <text x="50" y="63" text-anchor="middle" fill="#606070" font-size="6">名</text>
+              </svg>
+              <div class="pmb-legend"><i style="background:#A56BF0"></i>山田<b>12</b><em>22%</em></div>
+              <div class="pmb-legend"><i style="background:#5A9BFF"></i>佐藤<b>10</b><em>18%</em></div>
+              <div class="pmb-legend"><i style="background:#5CC7EF"></i>鈴木<b>8</b><em>15%</em></div>
+              <div class="pmb-legend"><i style="background:#5CB878"></i>田中<b>7</b><em>13%</em></div>
+              <div class="pmb-legend"><i style="background:#F2986B"></i>高橋<b>6</b><em>11%</em></div>
+              <div class="pmb-legend"><i style="background:#606070"></i>その他<b>12</b><em>22%</em></div>
             </aside>
             <main class="pmb-main">
               <div class="pmb-tabs">
