@@ -18,6 +18,14 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.28.050) **タイムリマップ尺を書き出しに反映（新関数 `exportRetimedAnnotated`）**：
+  - タイムリマップ ON かつ 2 点以上のキーフレームが定義されている場合、書き出しは新関数 `exportRetimedAnnotated(node, v, opts)` にルーティング。
+  - アルゴリズム：表示フレーム 0..displayTotal-1 を順に走査し、`_rmDisplayToSource(v, f)` で対応するソース時刻に seek → canvas に drawImage → アノテ焼き込み → `canvas.captureStream(FPS)` の automatic モードで MediaRecorder が拾う。wall-clock でフレーム間隔を pace（seek が速い場合は sleep、遅い場合は canvas 保持で追従）。
+  - 出力：**タイムリマップ尺の長さで書き出される。音声は含まない**（時間軸変換に伴う audio 再サンプリングは複雑・別対応）。
+  - リタイム OFF の場合は従来通り `exportAnnotated([{node,v}], ...)`（音声あり）に委譲。
+  - モーダルの hint テキストとヘッダ注記を「リタイム ON なら尺反映（音声なし）／OFF なら素の動画（音声あり）」に更新。
+  - APP_VERSION：2026.09.28.049 → 2026.09.28.050
+
 - (dev v2026.09.28.049) **タイムリマップ窓：アノテ表示トグルと動画書き出し UI を追加**：
   - ヘッダに 2 つの新コントロールを追加：
     1. **「アノテ表示」チェック**（既定 ON）— 現在ソースフレームに対応するアノテーションを video 上に重ねて表示。OFF で非表示。

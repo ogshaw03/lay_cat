@@ -3812,7 +3812,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.28.049';
+const APP_VERSION='2026.09.28.050';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -15161,6 +15161,125 @@ async function exportAnnotated(clipList,exportOpts){
 async function exportAnnotatedVersion(node,v){
   return exportAnnotated([{node,v}],{title:(v&&v.name)||'',filename:((v&&v.name)||'video').replace(/[^\w\-.]/g,'_')+'_annotated'});
 }
+/* v.050：タイムリマップの尺を反映して書き出す。
+   - 各表示フレームで `_rmDisplayToSource` により対応ソース時刻に seek して 1F ずつ canvas に焼き付け。
+   - `canvas.captureStream(FPS)` の automatic モードで MediaRecorder が実時間で拾う。ペースは wall-clock で
+     `(f+1) * (1000/FPS) ms` に揃える（seek が速い場合は sleep、遅い場合は canvas 保持で追従）。
+   - アノテはソースフレーム基準で表示（ノートは元動画のフレーム番号で保持されているため）。
+   - 音声は現状 mute（タイムリマップの音声側処理は複雑・別対応）。 */
+async function exportRetimedAnnotated(node,v,opts){
+  opts=opts||{};
+  if(!v||v.type!=='video'){toast('この機能は動画のみ対応です');return}
+  const withAnnotations=!(opts&&opts.annotations===false);
+  const url=await storage.getURL(v.file);if(!url){toast('動画ファイルが読み込めません');return}
+  const mimeCandidates=[
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=avc1',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm'
+  ];
+  let mimeType=mimeCandidates.find(m=>{try{return MediaRecorder.isTypeSupported(m)}catch(_){return false}});
+  if(!mimeType){toast('このブラウザは MediaRecorder に対応していません');return}
+  const isMp4=mimeType.indexOf('mp4')===0||mimeType.indexOf('/mp4')>=0;
+  const ext=isMp4?'mp4':'webm';
+  /* video 準備（音声は今回 mute） */
+  const video=document.createElement('video');
+  video.playsInline=true;video.muted=true;video.preload='auto';video.crossOrigin='anonymous';video.src=url;
+  await new Promise((res,rej)=>{video.onloadedmetadata=res;video.onerror=()=>rej(new Error('load failed'));setTimeout(()=>rej(new Error('timeout')),15000)}).catch(e=>{toast('動画の読み込みに失敗しました');throw e});
+  const FPS=v.fps||24;
+  const W=video.videoWidth||1280,H=video.videoHeight||720;
+  const srcTotal=Math.max(1,Math.round((video.duration||1)*FPS));
+  const displayTotal=_rmDisplayTotal(v,srcTotal);
+  const frameDurMs=1000/FPS;
+  /* Canvas + Stream */
+  const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  const canvasStream=canvas.captureStream(FPS);
+  /* Recorder */
+  const recorder=new MediaRecorder(canvasStream,{mimeType,videoBitsPerSecond:12_000_000});
+  const chunks=[];
+  recorder.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data)};
+  /* 進捗 UI（既存 exportAnnotated と同構成） */
+  const ov=el('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9600;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;gap:16px;padding:24px';
+  const title=el('div');title.style.cssText='font-size:16px;font-weight:700';
+  title.textContent='⬇ 書き出し中（リタイム反映'+(withAnnotations?'・アノテ込み':'・アノテ無し')+'） — '+((v&&v.name)||'');
+  const status=el('div');status.style.cssText='font-size:13px;color:#aaa;font-family:var(--font-code)';
+  status.textContent='準備中...';
+  const bar=el('div');bar.style.cssText='width:min(480px,80vw);height:8px;background:#222;border-radius:4px;overflow:hidden';
+  const bi=el('div');bi.style.cssText='width:0;height:100%;background:linear-gradient(90deg,#5cc7ef,#7a5cff);transition:width .2s';
+  bar.appendChild(bi);
+  const hint=el('div');hint.style.cssText='font-size:11px;color:#666';
+  hint.textContent='※ タイムリマップ尺で 1 フレームずつ焼き込みます（音声なし・形式: '+ext.toUpperCase()+'）';
+  const cancelBtn=el('button','btn btn-danger btn-sm','✕ 中断');
+  ov.appendChild(title);ov.appendChild(bar);ov.appendChild(status);ov.appendChild(hint);ov.appendChild(cancelBtn);
+  document.body.appendChild(ov);
+  let cancelled=false;
+  cancelBtn.onclick=()=>{cancelled=true;try{recorder.stop()}catch(_){}try{video.pause()}catch(_){}try{ov.remove()}catch(_){}toast('書き出しを中断しました')};
+  /* seek 完了を待つヘルパ（timeout 安全網付き） */
+  const seekTo=(t)=>new Promise((res)=>{
+    if(Math.abs(video.currentTime-t)<0.001){res();return}
+    const onSeeked=()=>{video.removeEventListener('seeked',onSeeked);res()};
+    video.addEventListener('seeked',onSeeked);
+    try{video.currentTime=Math.max(0,Math.min((srcTotal-1)/FPS,t))}catch(_){res()}
+    setTimeout(()=>{video.removeEventListener('seeked',onSeeked);res()},500);
+  });
+  const sleep=(ms)=>new Promise(r=>setTimeout(r,Math.max(0,ms)));
+  /* Recorder 開始 */
+  try{recorder.start(1000)}catch(e){toast('録画開始に失敗しました：'+(e&&e.message||''));try{ov.remove()}catch(_){}return}
+  const startTs=performance.now();
+  /* MediaRecorder が始まる前に canvas が空だと最初のフレームが飛ぶことがあるので、
+     まず frame 0 を焼いてから 1 回目の pace を回す。 */
+  try{await seekTo(0)}catch(_){}
+  try{ctx.drawImage(video,0,0,W,H)}catch(_){}
+  let _annoDrawn=0;
+  /* 表示フレーム 0..displayTotal-1 を順に描画 */
+  for(let f=0;f<displayTotal;f++){
+    if(cancelled)break;
+    const src=_rmDisplayToSource(v,f);
+    const srcTime=Math.max(0,Math.min(srcTotal-1,src))/FPS;
+    await seekTo(srcTime);
+    if(cancelled)break;
+    try{ctx.drawImage(video,0,0,W,H)}catch(_){}
+    if(withAnnotations){
+      const srcF=Math.round(src);
+      const notes=(v.review&&v.review.notes)||[];
+      for(const n of notes){
+        if(!n||!n.drawing||!n.drawing.length||n.frame==null)continue;
+        const dur=parseInt(n.dur)||1;
+        if(srcF>=n.frame&&srcF<n.frame+dur){
+          try{paintStrokeList(ctx,W,H,n.drawing,1);_annoDrawn+=n.drawing.length}catch(_){}
+        }
+      }
+    }
+    /* 表示 f 番目のフレームは wall-clock で startTs + (f+1)*frameDurMs 時点まで保持する */
+    const targetTs=startTs+(f+1)*frameDurMs;
+    const now=performance.now();
+    if(targetTs>now)await sleep(targetTs-now);
+    /* 進捗 */
+    const pct=(f+1)/displayTotal;
+    bi.style.width=(pct*100).toFixed(1)+'%';
+    status.textContent='書き出し中 F '+(f+1)+' / '+displayTotal+'  ('+Math.round(pct*100)+'%)'+(withAnnotations?('  ／ アノテ描画: '+_annoDrawn):'  ／ アノテ無し');
+  }
+  /* 停止 → 保存 */
+  try{recorder.stop()}catch(_){}
+  await new Promise((res)=>{recorder.addEventListener('stop',res,{once:true});setTimeout(res,2000)});
+  try{video.pause()}catch(_){}
+  if(cancelled){try{ov.remove()}catch(_){}return}
+  if(!chunks.length){try{ov.remove()}catch(_){}toast('書き出しデータがありません（録画失敗）');return}
+  const blob=new Blob(chunks,{type:mimeType});
+  const dlUrl=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=dlUrl;
+  const base=(opts.filename||((v&&v.name)||'video').replace(/[^\w\-.]/g,'_')+'_retimed'+(withAnnotations?'_annotated':''));
+  a.download=base+'_'+Date.now()+'.'+ext;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(dlUrl),8000);
+  try{ov.remove()}catch(_){}
+  toast('書き出し完了: '+a.download+'（'+(Math.round(blob.size/1024/1024*10)/10)+' MB）');
+}
 async function exportAnnotatedReelClips(reelClips,opts){
   const list=[];
   for(const c of (reelClips||[])){
@@ -15217,9 +15336,9 @@ async function openRetimer(node,v){
   const exportBtn=el('button','btn btn-ghost btn-sm','⬇ 書き出し');
   exportBtn.title='この版の動画を書き出す（アノテ有無はモーダルで選択）';
   head.appendChild(exportBtn);
-  /* v.037 B-1/C-1 明示バッジ：タイムリマップは書き出しに反映されない（動画本体はそのまま・アノテのみ焼き込み） */
-  const previewNote=el('span');previewNote.style.cssText='font-size:11px;color:#e08a4a;background:rgba(224,138,74,.12);border:1px solid rgba(224,138,74,.4);border-radius:4px;padding:3px 8px;letter-spacing:.2px';
-  previewNote.textContent='※ タイムリマップは書き出しに反映されません（動画本体はそのまま・アノテのみ焼き込み）';
+  /* v.050：タイムリマップは書き出しに反映される（リタイム ON なら尺反映＋音声なし、OFF なら素の動画＋音声あり） */
+  const previewNote=el('span');previewNote.style.cssText='font-size:11px;color:#4da6ff;background:rgba(77,166,255,.10);border:1px solid rgba(77,166,255,.4);border-radius:4px;padding:3px 8px;letter-spacing:.2px';
+  previewNote.textContent='※ 書き出し時、リタイム ON なら尺反映（音声なし）／OFF なら素の動画（音声あり）';
   head.appendChild(previewNote);
   const closeBtn=el('button','btn btn-ghost btn-sm','✕ 閉じる');
   head.appendChild(closeBtn);
@@ -15774,7 +15893,11 @@ async function openRetimer(node,v){
     seg.appendChild(bOn);seg.appendChild(bOff);
     box.appendChild(seg);paint();
     const hint=el('div');hint.style.cssText='font-size:11px;color:#9a9aaa';
-    hint.textContent='※ この版 1 本を書き出します。タイムリマップの尺は反映されません（元動画の長さで書き出し）。';
+    /* v.050：リタイム ON の場合はタイムリマップ尺・音声なしで書き出し。OFF の場合は従来通り。 */
+    const isRemapOn=()=>!!(v.timeRemap&&v.timeRemap.enabled&&Array.isArray(v.timeRemap.keyframes)&&v.timeRemap.keyframes.length>=2);
+    hint.textContent=isRemapOn()
+      ? '※ この版 1 本をタイムリマップ尺で書き出します（フレーム単位描画・音声なし）。'
+      : '※ この版 1 本を書き出します（元動画の長さ・音声あり）。';
     box.appendChild(hint);
     const btns=el('div');btns.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:4px';
     const cancel=el('button','','キャンセル');cancel.style.cssText='background:transparent;border:1px solid #3a3a42;color:#c8c8d0;padding:6px 14px;border-radius:6px;cursor:pointer';
@@ -15786,7 +15909,11 @@ async function openRetimer(node,v){
       try{
         /* リタイム窓の再生は書き出しに干渉するので停止 */
         try{stopPlay()}catch(_){}
-        exportAnnotated([{node,v}],{title:(v.name||''),filename:((v.name||'video').replace(/[^\w\-.]/g,'_'))+(flag?'_annotated':''),annotations:flag});
+        if(isRemapOn()){
+          exportRetimedAnnotated(node,v,{annotations:flag});
+        }else{
+          exportAnnotated([{node,v}],{title:(v.name||''),filename:((v.name||'video').replace(/[^\w\-.]/g,'_'))+(flag?'_annotated':''),annotations:flag});
+        }
       }catch(e){toast('書き出しに失敗しました：'+(e&&e.message||''))}
     };
     btns.appendChild(cancel);btns.appendChild(go);
