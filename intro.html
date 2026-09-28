@@ -222,6 +222,92 @@
     .feature-row.reverse .feature-text,.feature-row.reverse .feature-media{order:initial}
   }
 
+  /* ========== PMB mockup panel（進行管理ボードの UI 再現） ========== */
+  .feature-media.pmb-media{padding:0;background:transparent;border:none;box-shadow:none;overflow:hidden;border-radius:12px}
+  .pmb-panel{background:#0a0a0e;border:1px solid #26262e;border-radius:12px;overflow:hidden;font-family:'Inter','Noto Sans JP',sans-serif;color:#eeeef2;font-size:10.5px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+  .pmb-bar{background:#141418;border-bottom:1px solid #26262e;padding:8px 10px;display:flex;align-items:center;gap:8px;font-size:10.5px;flex-wrap:wrap}
+  .pmb-brand{color:#eeeef2;font-weight:800;letter-spacing:.4px;display:inline-flex;align-items:center;gap:5px}
+  .pmb-brand .diamond{color:#A56BF0}
+  .pmb-mod{color:#606070;letter-spacing:1.5px;font-size:9px}
+  .pmb-ver{background:#26262e;color:#a0a0b0;padding:1px 6px;border-radius:3px;font-family:'Inter',monospace;font-size:9px}
+  .pmb-proj-dd{background:#1c1c22;border:1px solid #2a2a32;padding:3px 8px;border-radius:5px;color:#eeeef2;font-size:10px}
+  .pmb-user{color:#5CB878;font-size:10px;display:inline-flex;align-items:center;gap:5px}
+  .pmb-user::before{content:'';width:6px;height:6px;background:#5CB878;border-radius:50%;display:inline-block}
+  .pmb-tools{margin-left:auto;color:#a0a0b0;display:flex;align-items:center;gap:6px;font-size:9.5px}
+  .pmb-tools .seg{background:#1c1c22;border:1px solid #2a2a32;border-radius:4px;overflow:hidden;display:inline-flex}
+  .pmb-tools .seg span{padding:2px 6px;color:#a0a0b0}
+  .pmb-tools .seg span.on{background:#26262e;color:#eeeef2;font-weight:700}
+  .pmb-tools .csv{background:#1c1c22;border:1px solid #2a2a32;padding:2px 7px;border-radius:4px;color:#eeeef2}
+  .pmb-body{display:grid;grid-template-columns:145px 1fr}
+  .pmb-side{background:#0a0a0e;border-right:1px solid #26262e;padding:10px}
+  .pmb-s-h{color:#606070;font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin:8px 0 5px}
+  .pmb-s-h:first-child{margin-top:0}
+  .pmb-s-name{font-size:13px;font-weight:800;color:#eeeef2}
+  .pmb-s-pills{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
+  .pmb-s-pills span{background:#1c1c22;color:#a0a0b0;padding:1px 6px;border-radius:8px;font-size:9px}
+  .pmb-s-pills span.on{background:#F2C86B22;color:#F2C86B;border:1px solid #F2C86B44}
+  .pmb-s-kpis{display:flex;gap:8px;margin-top:3px}
+  .pmb-s-kpis span{color:#a0a0b0;font-size:9px;display:inline-flex;align-items:baseline;gap:1px}
+  .pmb-s-kpis span b{color:#eeeef2;font-size:13px;font-weight:800}
+  .pmb-s-kpis span sub{color:#606070;font-size:8.5px;vertical-align:baseline}
+  .pmb-donut{width:96px;height:96px;margin:5px auto 3px;display:block}
+  .pmb-legend{display:flex;align-items:center;gap:5px;font-size:9.5px;color:#a0a0b0;padding:1px 0}
+  .pmb-legend i{width:8px;height:8px;background:#5A9BFF;border-radius:2px;flex-shrink:0}
+  .pmb-legend b{margin-left:auto;color:#eeeef2;font-weight:800;font-size:9.5px}
+  .pmb-legend em{color:#606070;font-style:normal;font-size:9px;margin-left:5px;min-width:22px;text-align:right}
+  .pmb-main{padding:10px 12px;background:#0a0a0e;min-width:0}
+  .pmb-tabs{display:flex;gap:16px;border-bottom:1px solid #26262e;padding:0 0 7px;margin-bottom:10px;flex-wrap:wrap}
+  .pmb-tabs span{color:#606070;font-weight:700;font-size:11px;position:relative;padding-bottom:7px;margin-bottom:-7px;display:inline-flex;align-items:center;gap:4px}
+  .pmb-tabs span.on{color:#eeeef2;border-bottom:2px solid #eeeef2}
+  .pmb-tabs span .cnt{background:#26262e;color:#a0a0b0;font-size:8.5px;padding:0 5px;border-radius:5px;font-weight:600}
+  .pmb-tabs span.on .cnt{background:#F2C86B;color:#141418}
+  /* KPI cards */
+  .pmb-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:10px}
+  .pmb-kpi .k{background:#141418;border:1px solid #26262e;border-radius:6px;padding:8px 10px}
+  .pmb-kpi .k-l{color:#606070;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+  .pmb-kpi .k-v{font-size:20px;font-weight:900;color:#eeeef2;margin:3px 0 2px;line-height:1}
+  .pmb-kpi .k-v small{font-size:10px;color:#a0a0b0;font-weight:600;margin-left:2px}
+  .pmb-kpi .k-sub{color:#606070;font-size:8.5px}
+  /* Bar chart */
+  .pmb-bars-title{color:#eeeef2;font-size:11px;font-weight:800;margin-bottom:2px}
+  .pmb-bars-sub{color:#606070;font-size:9px;margin-bottom:6px;line-height:1.4}
+  .pmb-bars-sub b{color:#a0a0b0}
+  .pmb-bar-row{display:grid;grid-template-columns:82px 1fr 36px;gap:6px;align-items:center;padding:1.5px 0;font-size:9.5px}
+  .pmb-bar-row .b-lbl{color:#eeeef2;font-weight:700;font-family:'Inter',monospace}
+  .pmb-bar-row .b-lbl em{color:#F2986B;font-style:normal;margin-left:4px;font-size:8.5px;font-weight:600}
+  .pmb-bar-row .b-lbl em.lay{color:#5A9BFF}
+  .pmb-bar-row .b-lbl em.anm{color:#5CB878}
+  .pmb-bar-row .b-fill{height:9px;background:#1c1c22;border-radius:3px;overflow:hidden}
+  .pmb-bar-row .b-fill i{display:block;height:100%;background:#c4c4c8;border-radius:3px}
+  .pmb-bar-row .b-val{color:#a0a0b0;font-family:'Inter',monospace;font-size:9px;text-align:right}
+  /* Gantt */
+  .pmb-g-tools{display:flex;gap:6px;margin-bottom:7px}
+  .pmb-g-tools .b{background:#1c1c22;border:1px solid #2a2a32;color:#eeeef2;padding:3px 8px;border-radius:4px;font-size:9px;font-weight:700}
+  .pmb-g-tools .b.pri{background:#26262e}
+  .pmb-g-head{display:grid;grid-template-columns:160px 1fr;border-top:1px solid #26262e;border-bottom:1px solid #26262e;font-size:9px;color:#606070;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:4px 0}
+  .pmb-g-head .col{padding-left:6px}
+  .pmb-g-head .wks{display:grid;grid-template-columns:repeat(5,1fr);align-items:center}
+  .pmb-g-head .wks span{text-align:center;padding:0 3px}
+  .pmb-g-head .wks span.today{color:#EE6A6A}
+  .pmb-g-row{display:grid;grid-template-columns:160px 1fr;align-items:center;border-bottom:1px solid #1c1c22;min-height:22px;font-size:9.5px}
+  .pmb-g-row .col{padding:3px 6px;display:flex;align-items:center;gap:5px}
+  .pmb-g-row .col .shot{color:#eeeef2;font-weight:700;font-family:'Inter',monospace;min-width:42px;font-size:10px}
+  .pmb-g-row .col .stg{font-size:8.5px;color:#5A9BFF;font-weight:700}
+  .pmb-g-row .col .stg.anm{color:#5CB878}
+  .pmb-g-row .col .stg.sec{color:#F2986B}
+  .pmb-g-row .col .st{margin-left:auto;background:#26262e;color:#a0a0b0;font-size:8px;padding:1.5px 5px;border-radius:6px;font-weight:700;white-space:nowrap}
+  .pmb-g-row .col .st.b{background:#5A9BFF;color:#141418}
+  .pmb-g-row .col .st.y{background:#F2C86B;color:#141418}
+  .pmb-g-row .col .st.g{background:#5CB878;color:#141418}
+  .pmb-g-row .col .st.gray{background:#3a3a46;color:#a0a0b0}
+  .pmb-g-row .track{position:relative;height:19px}
+  .pmb-g-row .track .today{position:absolute;top:-3px;bottom:-3px;width:0;border-left:1px dashed #EE6A6A;left:68%}
+  .pmb-g-row .track .bar{position:absolute;top:4.5px;height:10px;border-radius:2.5px}
+  .pmb-g-row .track .bar.g{background:#5CB878}
+  .pmb-g-row .track .bar.b{background:#5A9BFF}
+  .pmb-g-row .track .bar.o{background:#F2986B}
+  .pmb-g-row .track .bar.y{background:#F2C86B}
+
   /* ========== DIFFERENTIATORS ========== */
   .diff{background:var(--bg)}
   .diff-hero{margin-bottom:56px}
@@ -346,6 +432,8 @@
     <li><a href="#mannequin-feat">3D マネキン</a></li>
     <li><a href="#shots-view">ショット一覧</a></li>
     <li><a href="#progress">進捗管理</a></li>
+    <li><a href="#pmboard-schedule">PMBoard スケジュール</a></li>
+    <li><a href="#pmboard-hours">PMBoard 工数集計</a></li>
     <li><a href="#folder-usage">フォルダ運用</a></li>
     <li><a href="#review-queue">チェック待ち</a></li>
     <li><a href="#reel-feat">REEL</a></li>
@@ -624,6 +712,166 @@
       </div>
       <div class="feature-media">
         <img src="slides_assets/prog.png" alt="進捗グラフ">
+      </div>
+    </div>
+
+    <div class="feature-row" id="pmboard-schedule">
+      <div class="feature-text">
+        <span class="label-sm">PMBoard · Schedule</span>
+        <h3>ショット別ガントで、進行状況を一目で。</h3>
+        <p>
+          LayCAT と並列運用する進行管理ボード <b>PMBoard</b>。
+          ショット・ステータス履歴・アップロード履歴をそのまま参照するので、Artist に追加入力は不要。
+          PM が予定を組み、実績（アップロード履歴）を重ねて表示することで、遅延が即可視化されます。
+        </p>
+        <ul>
+          <li>ショット × 日付のガントで、予定と実績を並べて表示</li>
+          <li>ステータス色（完了／OK／チェック待ち／ENGI チェック 等）でひと目で状況把握</li>
+          <li>TODAY マーカーで「今どこまで進んでいるべきか」が明確に</li>
+          <li>プロジェクト単位で工程分布・ステータス分布を円グラフでサマリ</li>
+        </ul>
+      </div>
+      <div class="feature-media pmb-media">
+        <div class="pmb-panel">
+          <div class="pmb-bar">
+            <span class="pmb-brand"><span class="diamond">◈</span>LayCAT</span>
+            <span class="pmb-mod">PMBOARD</span>
+            <span class="pmb-ver">2026.09.29.011</span>
+            <span class="pmb-proj-dd">PJ_Aurora (aurora) ▾</span>
+            <span class="pmb-user">aurora</span>
+            <span class="pmb-tools">
+              <span class="seg"><span class="on">日</span><span>週</span><span>月</span></span>
+              <span class="csv">CSV</span>
+            </span>
+          </div>
+          <div class="pmb-body">
+            <aside class="pmb-side">
+              <div class="pmb-s-h">プロジェクト</div>
+              <div class="pmb-s-name">PJ_Aurora</div>
+              <div class="pmb-s-pills"><span class="on">進行中</span><span>55 shots</span></div>
+              <div class="pmb-s-h">サマリ</div>
+              <div class="pmb-s-kpis"><span><b>35</b><sub>%</sub></span><span><b>19</b><sub>/55</sub></span><span><b>8</b><sub>日</sub></span></div>
+              <div class="pmb-s-h">工程分布</div>
+              <svg class="pmb-donut" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5A9BFF" stroke-width="14" stroke-dasharray="36 165" transform="rotate(-90 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5CB878" stroke-width="14" stroke-dasharray="8 193" transform="rotate(-25 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#F2986B" stroke-width="14" stroke-dasharray="157 44" transform="rotate(4 50 50)"/>
+                <text x="50" y="52" text-anchor="middle" fill="#eeeef2" font-family="Inter,sans-serif" font-size="15" font-weight="800">55</text>
+                <text x="50" y="63" text-anchor="middle" fill="#606070" font-size="6">ショット</text>
+              </svg>
+              <div class="pmb-legend"><i style="background:#5A9BFF"></i>LAY<b>10</b><em>18%</em></div>
+              <div class="pmb-legend"><i style="background:#5CB878"></i>ANM<b>2</b><em>4%</em></div>
+              <div class="pmb-legend"><i style="background:#F2986B"></i>SEC<b>43</b><em>78%</em></div>
+            </aside>
+            <main class="pmb-main">
+              <div class="pmb-tabs">
+                <span class="on">スケジュール<span class="cnt">32</span></span>
+                <span>工数<span class="cnt">A/B</span></span>
+                <span>リテイク<span class="cnt">73</span></span>
+                <span>アクティビティ<span class="cnt">30d</span></span>
+              </div>
+              <div class="pmb-g-tools">
+                <button class="b pri">ショットごと</button>
+                <button class="b">+ スケジュール追加</button>
+              </div>
+              <div class="pmb-g-head">
+                <span class="col">SHOT</span>
+                <div class="wks">
+                  <span>9/12〜</span><span>9/19〜</span><span>9/26〜</span><span class="today">TODAY 9/29</span><span>10/3〜</span>
+                </div>
+              </div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh028</span><span class="stg">LAY</span><span class="st gray">オミット</span></span><div class="track"><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh057</span><span class="stg">LAY</span><span class="st gray">オミット</span></span><div class="track"><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh098</span><span class="stg">LAY</span><span class="st y">ENGIチェック</span></span><div class="track"><div class="bar g" style="left:16%;width:5%"></div><div class="bar o" style="left:24%;width:4%"></div><div class="bar o" style="left:32%;width:12%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh100</span><span class="stg anm">ANM</span><span class="st y">ENGIチェック</span></span><div class="track"><div class="bar g" style="left:28%;width:4%"></div><div class="bar o" style="left:34%;width:14%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh101</span><span class="stg anm">ANM</span><span class="st g">ENGI OK</span></span><div class="track"><div class="bar b" style="left:15%;width:5%"></div><div class="bar g" style="left:22%;width:5%"></div><div class="bar o" style="left:30%;width:32%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh102</span><span class="stg anm">ANM</span><span class="st y">ENGIチェック</span></span><div class="track"><div class="bar g" style="left:20%;width:22%"></div><div class="bar o" style="left:43%;width:6%"></div><div class="bar g" style="left:50%;width:44%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh103</span><span class="stg">LAY</span><span class="st b">完了</span></span><div class="track"><div class="bar o" style="left:28%;width:4%"></div><div class="bar o" style="left:33%;width:32%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh108</span><span class="stg anm">ANM</span><span class="st y">ENGIチェック</span></span><div class="track"><div class="bar b" style="left:16%;width:4%"></div><div class="bar o" style="left:22%;width:60%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh109</span><span class="stg anm">ANM</span><span class="st y">チェック待ち</span></span><div class="track"><div class="bar b" style="left:18%;width:60%"></div><div class="today"></div></div></div>
+              <div class="pmb-g-row"><span class="col"><span class="shot">sh112</span><span class="stg anm">ANM</span><span class="st y">ENGIチェック</span></span><div class="track"><div class="bar b" style="left:30%;width:6%"></div><div class="bar o" style="left:37%;width:38%"></div><div class="today"></div></div></div>
+            </main>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="feature-row reverse" id="pmboard-hours">
+      <div class="feature-text">
+        <span class="label-sm">PMBoard · Man-hours</span>
+        <h3>入力ゼロで、ショット別の稼働日数を自動集計。</h3>
+        <p>
+          ステータス履歴を読み取り、<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）
+          に滞在した期間を日単位で自動算出します。<b>Artist のタイムシート入力は不要。</b>
+          冗長度合いの高いショットが自動で上位に並ぶので、リテイク集中や停滞ポイントの発見に。
+        </p>
+        <ul>
+          <li>総稼働日数・平均 PER SHOT・最長ショット・ショット数を KPI カードで一望</li>
+          <li>ショット別バーチャートで長い順に並び、遅延ホットスポットが即分かる</li>
+          <li>Artist は普段どおりステータス操作するだけ、入力の追加負担なし</li>
+          <li>集計は概算だが、傾向把握と見積もり精度向上に十分</li>
+        </ul>
+      </div>
+      <div class="feature-media pmb-media">
+        <div class="pmb-panel">
+          <div class="pmb-bar">
+            <span class="pmb-brand"><span class="diamond">◈</span>LayCAT</span>
+            <span class="pmb-mod">PMBOARD</span>
+            <span class="pmb-ver">2026.09.29.011</span>
+            <span class="pmb-proj-dd">PJ_Aurora (aurora) ▾</span>
+            <span class="pmb-user">aurora</span>
+            <span class="pmb-tools">
+              <span class="seg"><span class="on">日</span><span>週</span><span>月</span></span>
+              <span class="csv">CSV</span>
+            </span>
+          </div>
+          <div class="pmb-body">
+            <aside class="pmb-side">
+              <div class="pmb-s-h">プロジェクト</div>
+              <div class="pmb-s-name">PJ_Aurora</div>
+              <div class="pmb-s-pills"><span class="on">進行中</span><span>55 shots</span></div>
+              <div class="pmb-s-h">サマリ</div>
+              <div class="pmb-s-kpis"><span><b>35</b><sub>%</sub></span><span><b>19</b><sub>/55</sub></span><span><b>8</b><sub>日</sub></span></div>
+              <div class="pmb-s-h">工程分布</div>
+              <svg class="pmb-donut" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5A9BFF" stroke-width="14" stroke-dasharray="36 165" transform="rotate(-90 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#5CB878" stroke-width="14" stroke-dasharray="8 193" transform="rotate(-25 50 50)"/>
+                <circle cx="50" cy="50" r="32" fill="none" stroke="#F2986B" stroke-width="14" stroke-dasharray="157 44" transform="rotate(4 50 50)"/>
+                <text x="50" y="52" text-anchor="middle" fill="#eeeef2" font-family="Inter,sans-serif" font-size="15" font-weight="800">55</text>
+                <text x="50" y="63" text-anchor="middle" fill="#606070" font-size="6">ショット</text>
+              </svg>
+              <div class="pmb-legend"><i style="background:#5A9BFF"></i>LAY<b>10</b><em>18%</em></div>
+              <div class="pmb-legend"><i style="background:#5CB878"></i>ANM<b>2</b><em>4%</em></div>
+              <div class="pmb-legend"><i style="background:#F2986B"></i>SEC<b>43</b><em>78%</em></div>
+            </aside>
+            <main class="pmb-main">
+              <div class="pmb-tabs">
+                <span>スケジュール<span class="cnt">32</span></span>
+                <span class="on">工数<span class="cnt">A/B</span></span>
+                <span>リテイク<span class="cnt">73</span></span>
+                <span>アクティビティ<span class="cnt">30d</span></span>
+              </div>
+              <div class="pmb-kpi">
+                <div class="k"><div class="k-l">総稼働日数</div><div class="k-v">395.2<small>日</small></div><div class="k-sub">42/55 稼働中or完了</div></div>
+                <div class="k"><div class="k-l">平均 PER SHOT</div><div class="k-v">9.4<small>日</small></div><div class="k-sub">稼働ショット平均</div></div>
+                <div class="k"><div class="k-l">最長ショット</div><div class="k-v">25.6<small>日</small></div><div class="k-sub">sh082</div></div>
+                <div class="k"><div class="k-l">ショット数</div><div class="k-v">55</div><div class="k-sub">プロジェクト全体</div></div>
+              </div>
+              <div class="pmb-bars-title">ショット別稼働日数（長い順）</div>
+              <div class="pmb-bars-sub"><b>ステータス履歴から自動算出。</b>作業ステータス（未着手／チェック待ち／クライアント待ち／完了系、を除く）にあった期間を日単位で合計。</div>
+              <div class="pmb-bar-row"><span class="b-lbl">sh082<em>SEC</em></span><div class="b-fill"><i style="width:100%"></i></div><span class="b-val">25.6日</span></div>
+              <div class="pmb-bar-row"><span class="b-lbl">sh108<em>SEC</em></span><div class="b-fill"><i style="width:99%"></i></div><span class="b-val">25.3日</span></div>
+              <div class="pmb-bar-row"><span class="b-lbl">sh109<em>SEC</em></span><div class="b-fill"><i style="width:70%"></i></div><span class="b-val">17.8日</span></div>
+              <div class="pmb-bar-row"><span class="b-lbl">sh026<em>SEC</em></span><div class="b-fill"><i style="width:64%"></i></div><span class="b-val">16.5日</span></div>
+              <div class="pmb-bar-row"><span class="b-lbl">sh019<em>SEC</em></span><div class="b-fill"><i style="width:61%"></i></div><span class="b-val">15.6日</span></div>
+              <div class="pmb-bar-row"><span class="b-lbl">sh102<em>SEC</em></span><div class="b-fill"><i style="width:60%"></i></div><span class="b-val">15.3日</span></div>
+              <div class="pmb-bar-row"><span class="b-lbl">sh080<em>SEC</em></span><div class="b-fill"><i style="width:56%"></i></div><span class="b-val">14.4日</span></div>
+              <div class="pmb-bar-row"><span class="b-lbl">sh064<em>SEC</em></span><div class="b-fill"><i style="width:56%"></i></div><span class="b-val">14.4日</span></div>
+              <div class="pmb-bar-row"><span class="b-lbl">sh079<em>SEC</em></span><div class="b-fill"><i style="width:55%"></i></div><span class="b-val">14.2日</span></div>
+              <div class="pmb-bar-row"><span class="b-lbl">sh059<em class="anm">ANM</em></span><div class="b-fill"><i style="width:52%"></i></div><span class="b-val">13.3日</span></div>
+            </main>
+          </div>
+        </div>
       </div>
     </div>
 
