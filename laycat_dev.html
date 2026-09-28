@@ -3812,7 +3812,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.28.052';
+const APP_VERSION='2026.09.28.053';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8594,11 +8594,106 @@ function paintStrokeList(ctx,W,H,list,alpha){
   }
   ctx.globalAlpha=1;
 }
+/* v.053：顔の向きガイド用 3D 頭部モデル レンダラ（グローバル・遅延初期化）。
+   `head_model.fbx` + `head_model_basecolor.jpg` を Three.js で読み込み、512×512 の WebGL canvas を
+   1 個だけ確保して yaw/pitch/roll ごとに再レンダー → 2D canvas に blit する。
+   全 head アノテで 1 個の renderer / scene / model を共有するので、複数個描画されてもメモリは一定。
+   モデル未ロード時は従来のジンバル描画にフォールバック、ロード完了後は自動で 3D 描画に切替。 */
+let _headRenderer=null,_headScene=null,_headCamera=null,_headModel=null,_headTHREE=null;
+let _headLoading=false,_headReady=false;
+const _headOnReadyCbs=new Set();
+async function _initHeadRenderer(){
+  if(_headReady||_headLoading)return _headReady;
+  _headLoading=true;
+  try{
+    const THREE=await import('https://esm.sh/three@0.155.0');
+    const fbxMod=await import('https://esm.sh/three@0.155.0/examples/jsm/loaders/FBXLoader.js');
+    const FBXLoader=fbxMod.FBXLoader;
+    _headTHREE=THREE;
+    const cv=document.createElement('canvas');cv.width=512;cv.height=512;
+    _headRenderer=new THREE.WebGLRenderer({canvas:cv,alpha:true,antialias:true,preserveDrawingBuffer:true});
+    _headRenderer.setSize(512,512,false);
+    _headRenderer.setClearColor(0x000000,0);
+    if('outputColorSpace' in _headRenderer)_headRenderer.outputColorSpace=THREE.SRGBColorSpace;
+    _headScene=new THREE.Scene();
+    _headScene.add(new THREE.AmbientLight(0xffffff,0.55));
+    const key=new THREE.DirectionalLight(0xffffff,0.9);key.position.set(3,5,4);_headScene.add(key);
+    const fill=new THREE.DirectionalLight(0xffffff,0.35);fill.position.set(-3,2,3);_headScene.add(fill);
+    const rim=new THREE.DirectionalLight(0xffffff,0.25);rim.position.set(0,2,-4);_headScene.add(rim);
+    _headCamera=new THREE.PerspectiveCamera(24,1,0.1,100);
+    _headCamera.position.set(0,0,5);_headCamera.lookAt(0,0,0);
+    /* テクスチャ + FBX */
+    const tex=await new Promise((res,rej)=>new THREE.TextureLoader().load('head_model_basecolor.jpg',res,undefined,rej));
+    if('colorSpace' in tex)tex.colorSpace=THREE.SRGBColorSpace;else if('encoding' in tex)tex.encoding=3001;
+    tex.flipY=false;
+    const model=await new Promise((res,rej)=>new FBXLoader().load('head_model.fbx',res,undefined,rej));
+    model.traverse(ch=>{if(ch.isMesh){ch.material=new THREE.MeshStandardMaterial({map:tex,roughness:0.72,metalness:0.02})}});
+    /* モデルを [-1,1] 立方体に正規化・中央寄せ */
+    const box=new THREE.Box3().setFromObject(model);
+    const size=box.getSize(new THREE.Vector3());
+    const maxDim=Math.max(size.x,size.y,size.z)||1;
+    const scale=1.9/maxDim;
+    model.scale.setScalar(scale);
+    const center=box.getCenter(new THREE.Vector3()).multiplyScalar(scale);
+    model.position.set(-center.x,-center.y,-center.z);
+    _headModel=model;
+    _headScene.add(model);
+    _headReady=true;_headLoading=false;
+    /* 待機中の再描画コールバックを起動（既に描画済みの head アノテを 3D に置き換える） */
+    for(const cb of _headOnReadyCbs){try{cb()}catch(_){}}
+    _headOnReadyCbs.clear();
+    return true;
+  }catch(e){try{console.warn('[LayCAT] 3D head model failed to load, falling back to gimbal:',e)}catch(_){}
+    _headLoading=false;return false;
+  }
+}
+/* head アノテを 512×512 に 1 個ずつ再レンダーして dataURL 化するのは重いので、
+   canvas 要素そのものを返して drawImage で焼く。model.rotation は毎回上書き。 */
+function _renderHeadTo(yaw,pitch,roll){
+  if(!_headReady||!_headModel||!_headRenderer)return null;
+  /* Euler order='YXZ'（yaw→pitch→roll、既存 rotv と同じ順序）に合わせる */
+  _headModel.rotation.set(pitch||0,yaw||0,roll||0,'YXZ');
+  _headRenderer.render(_headScene,_headCamera);
+  return _headRenderer.domElement;
+}
+/* head の描画中に「まだロード中／未ロード」なら自動起動 + drawAll コールバック登録 */
+function _ensureHeadRendererAsync(onReady){
+  if(_headReady)return;
+  if(typeof onReady==='function')_headOnReadyCbs.add(onReady);
+  if(!_headLoading)_initHeadRenderer();
+}
 /* 顔の向きガイド（ヘッドジンバル）を描画。単位球上の大円を yaw/pitch/roll で回転し正射影。
-   正中線（縦・顔の中心線）＋アイライン（横）＋鼻ベクトル（正面方向）。前面は実線、背面は破線で3D感を出す。 */
+   正中線（縦・顔の中心線）＋アイライン（横）＋鼻ベクトル（正面方向）。前面は実線、背面は破線で3D感を出す。
+   v.053：3D 頭部モデルがロード済みならモデル画像を焼き、ジンバル描画は fallback として残す。 */
 function paintHead(ctx,W,H,s,alpha){
   const cx=(s.cx||0)*W, cy=(s.cy||0)*H, R=Math.max(6,(s.r||0.12)*W);
   const yaw=s.yaw||0, pitch=s.pitch||0, roll=s.roll||0, col=s.color||'#ff4d4d';
+  /* v.053：ロード完了済みなら 3D 頭部を焼く。未ロードなら遅延起動 + fallback ジンバル。
+     どのウィンドウ／どの note render 経路（fb 窓・log-side・書き出し）でも共通で有効になる。 */
+  if(_headReady){
+    const cv=_renderHeadTo(yaw,pitch,roll);
+    if(cv){
+      ctx.save();ctx.globalAlpha=alpha;
+      /* 描画位置は従来と同じ中心 (cx,cy)・半径 R。3D 画像は 2R × 2R で貼る。 */
+      ctx.drawImage(cv,cx-R,cy-R,R*2,R*2);
+      /* 正面マーカー（鼻先の色ドット）— 直感的に向きが分かるように残す */
+      const c1=Math.cos(roll),n1=Math.sin(roll);
+      const c2=Math.cos(pitch),n2=Math.sin(pitch);
+      const c3=Math.cos(yaw),n3=Math.sin(yaw);
+      /* ローカル (0,0,1) を yaw→pitch→roll で回転 → 投影 */
+      const x1=0,y1=0,z1=1;
+      const x2=c1*x1-n1*y1,y2=n1*x1+c1*y1,z2=z1;
+      const x3=x2,y3=c2*y2-n2*z2,z3=n2*y2+c2*z2;
+      const x4=c3*x3+n3*z3,y4=y3,z4=-n3*x3+c3*z3;
+      if(z4>=0){const nx=cx+R*x4,ny=cy-R*y4;ctx.beginPath();ctx.arc(nx,ny,Math.max(1.6,R*0.05),0,2*Math.PI);ctx.fillStyle=col;ctx.fill();}
+      ctx.restore();
+      return;
+    }
+  }else{
+    /* ロード起動＋完了時に再描画（typeof drawAll==='function' の場合のみ） */
+    _ensureHeadRendererAsync(()=>{try{if(typeof drawAll==='function')drawAll()}catch(_){}});
+  }
+  /* Fallback：従来のジンバル描画（3D 未ロード時／ロード失敗時） */
   function rotv(x,y,z){
     /* roll（顔の前後軸まわり）→ pitch → yaw の順。roll では正面軸(0,0,1)＝正中線とアイラインの交点が動かない */
     let c=Math.cos(roll),n=Math.sin(roll);let x1=c*x-n*y,y1=n*x+c*y,z1=z;

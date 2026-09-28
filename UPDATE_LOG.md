@@ -18,6 +18,17 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.28.053) **顔の向きガイド：3D 頭部モデルで描画（ジンバル → 頭部モデル）**：
+  - リポジトリ直下に `head_model.fbx`（313KB）と `head_model_basecolor.jpg`（1.4MB）を追加。
+  - `paintHead()` の描画本体を 3D 頭部モデルレンダリングに切替：
+    - Three.js（esm.sh CDN） + FBXLoader を遅延ロード。共通の 512×512 WebGL canvas / scene / camera / model を 1 個だけ確保して yaw/pitch/roll ごとに再レンダー → 2D canvas に blit。
+    - Ambient + Directional 3 灯（key/fill/rim）で立体感を出しつつ、モデルは [-1,1] に正規化して中心寄せ。
+    - モデル未ロード時は従来のジンバル描画にフォールバック。ロード完了後は自動で 3D 描画に切替。
+    - 正面マーカー（鼻先の色ドット）は残し、直感的な向き把握を維持。
+    - Euler 順序は既存の `rotv`（roll → pitch → yaw）に合わせて Three.js の 'YXZ' で対応。
+  - どのウィンドウ（fb 窓・log-side・書き出し）でも共通で 3D 描画が有効。
+  - APP_VERSION：2026.09.28.052 → 2026.09.28.053
+
 - (dev v2026.09.28.052) **リマップ書き出し：再生カクつき修正（AUTO モード + rAF 連続描画）**：
   - 原因：v.051 の manual モード（`captureStream(0)` + `track.requestFrame()`）は各フレームを wall-clock ベースで emit するため、seek 時間で timestamp が不均等になり、プレイヤー側で「フレーム持続時間が可変」→ カクつき再生になっていた。
   - 修正：`captureStream(FPS)` の AUTO モードに戻し、**rAF 連続再描画ループ**で常に「現在の source frame の video + アノテ」を canvas に載せ続ける。captureStream が一定 1/FPS 間隔でサンプリング → 出力タイムスタンプが完全に等間隔＝スムーズ再生。
