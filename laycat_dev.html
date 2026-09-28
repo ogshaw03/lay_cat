@@ -3812,7 +3812,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.28.053';
+const APP_VERSION='2026.09.28.054';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8622,22 +8622,28 @@ async function _initHeadRenderer(){
     const rim=new THREE.DirectionalLight(0xffffff,0.25);rim.position.set(0,2,-4);_headScene.add(rim);
     _headCamera=new THREE.PerspectiveCamera(24,1,0.1,100);
     _headCamera.position.set(0,0,5);_headCamera.lookAt(0,0,0);
-    /* テクスチャ + FBX */
+    /* テクスチャ + FBX
+       v.054：flipY を FBX デフォルト（true）に戻す。false 指定で UV が上下反転して壊れて見えていた。
+       colorSpace は SRGB のまま（sRGB 空間の baseColor テクスチャ）。 */
     const tex=await new Promise((res,rej)=>new THREE.TextureLoader().load('head_model_basecolor.jpg',res,undefined,rej));
     if('colorSpace' in tex)tex.colorSpace=THREE.SRGBColorSpace;else if('encoding' in tex)tex.encoding=3001;
-    tex.flipY=false;
     const model=await new Promise((res,rej)=>new FBXLoader().load('head_model.fbx',res,undefined,rej));
     model.traverse(ch=>{if(ch.isMesh){ch.material=new THREE.MeshStandardMaterial({map:tex,roughness:0.72,metalness:0.02})}});
-    /* モデルを [-1,1] 立方体に正規化・中央寄せ */
+    /* v.054：モデルを Group でラップし、visual center を group 原点に寄せる。
+       group を回転させれば回転中心が視覚中心になる（従来はモデル自身を回転してその原点が
+       頭部の下側にあったため回転軸が顎あたりに来ていた）。 */
     const box=new THREE.Box3().setFromObject(model);
     const size=box.getSize(new THREE.Vector3());
+    const center=box.getCenter(new THREE.Vector3());
     const maxDim=Math.max(size.x,size.y,size.z)||1;
-    const scale=1.9/maxDim;
-    model.scale.setScalar(scale);
-    const center=box.getCenter(new THREE.Vector3()).multiplyScalar(scale);
-    model.position.set(-center.x,-center.y,-center.z);
-    _headModel=model;
-    _headScene.add(model);
+    /* まずモデル自体を visual center が原点に来るよう移動（unscaled 座標系で） */
+    model.position.sub(center);
+    /* Group を作ってスケール適用。Group の rotation を後段で書き換える → 視覚中心を軸に回転。 */
+    const holder=new THREE.Group();
+    holder.add(model);
+    holder.scale.setScalar(1.9/maxDim);
+    _headModel=holder;
+    _headScene.add(holder);
     _headReady=true;_headLoading=false;
     /* 待機中の再描画コールバックを起動（既に描画済みの head アノテを 3D に置き換える） */
     for(const cb of _headOnReadyCbs){try{cb()}catch(_){}}
@@ -8693,7 +8699,11 @@ function paintHead(ctx,W,H,s,alpha){
     /* ロード起動＋完了時に再描画（typeof drawAll==='function' の場合のみ） */
     _ensureHeadRendererAsync(()=>{try{if(typeof drawAll==='function')drawAll()}catch(_){}});
   }
-  /* Fallback：従来のジンバル描画（3D 未ロード時／ロード失敗時） */
+  /* v.054：3D 未ロード時のジンバル描画は撤去（ユーザー要望）。以下のコードはリファレンスとして
+     残すが、`if(false)` で無効化。ロード完了までは何も描かない（ボタン押下時に preload するので
+     実運用ではジンバルは事実上見えなくなる）。 */
+  return;
+  /* eslint-disable-next-line no-unreachable */
   function rotv(x,y,z){
     /* roll（顔の前後軸まわり）→ pitch → yaw の順。roll では正面軸(0,0,1)＝正中線とアイラインの交点が動かない */
     let c=Math.cos(roll),n=Math.sin(roll);let x1=c*x-n*y,y1=n*x+c*y,z1=z;
@@ -13449,7 +13459,12 @@ function openReview(nodeId,versionId,opts){
   eraserBtn.onclick=()=>setTool(tool==='erase'?null:'erase');
   lassoBtn.onclick=()=>setTool(tool==='lasso'?null:'lasso');
   shapeBtn.onclick=()=>setTool(tool==='shape'?null:'shape');
-  headBtn.onclick=()=>setTool(tool==='head'?null:'head');
+  headBtn.onclick=()=>{
+    /* v.054：ボタン押下時に 3D モデルを preload。次にキャンバスへ配置した時点で
+       ジンバル placeholder を経由せず、すぐにモデルで表示される。 */
+    try{_ensureHeadRendererAsync(()=>{try{drawAll()}catch(_){}})}catch(_){}
+    setTool(tool==='head'?null:'head');
+  };
   /* 3D マネキン：ボタンクリックで即エディタを開く。同フレーム＋同レイヤーに既存があれば再編集モード、無ければ新規作成。
      反映後は自動で `tool='mann'` に切替えてアノテ内で操作可能に。 */
   mannBtn.onclick=()=>{
@@ -17234,7 +17249,11 @@ function openReel(){
   reelWin.addEventListener('unload',()=>{try{_mannRedrawCbs.delete(_reelMannCb)}catch(_){}try{if(_reelMannActiveEditor)_reelMannActiveEditor.close()}catch(_){}try{if(_reelMannActiveHandler)window.removeEventListener('message',_reelMannActiveHandler)}catch(_){}});
   drawB.onclick=()=>setRTool(RV.tool==='draw'?null:'draw');
   eraseB.onclick=()=>setRTool(RV.tool==='erase'?null:'erase');
-  headB.onclick=()=>setRTool(RV.tool==='head'?null:'head');
+  headB.onclick=()=>{
+    /* v.054：REEL 側でも同様に preload */
+    try{_ensureHeadRendererAsync(()=>{try{if(typeof drawAnno==='function')drawAnno()}catch(_){}})}catch(_){}
+    setRTool(RV.tool==='head'?null:'head');
+  };
   shapeB.onclick=()=>setRTool(RV.tool==='shape'?null:'shape');
   lassoB.onclick=()=>setRTool(RV.tool==='lasso'?null:'lasso');
   /* マネキン：現在レイヤー×現在フレームの既存があれば再編集、なければ新規 */

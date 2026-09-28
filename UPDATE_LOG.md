@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.28.054) **顔の向きガイド 3D モデル：テクスチャ／回転軸／ボタン挙動を修正**：
+  - **テクスチャ壊れ修正**：`tex.flipY=false` を撤回（FBX デフォルトの `true` に戻す）。false 指定で UV が上下反転していた。
+  - **回転軸を頭部中心に**：モデルを `THREE.Group`（holder）でラップ。まず model の position を `-box.center` で移動して visual center を group 原点に寄せ、group の scale と rotation を操作する構成へ。従来はモデル自身を回転していたため、原点が頭部下部（首元）にあり回転軸が下に寄っていた。
+  - **ジンバル描画を非表示化**：`paintHead` のジンバル描画部分は `return;` で早期リターンして無効化（コードは reference として残置）。3D ロード完了までは何も描かない。
+  - **ボタン押下時にプリロード**：fb 窓の `headBtn.onclick` と REEL の `headB.onclick` で `_ensureHeadRendererAsync` を起動。ユーザーがキャンバスに配置する時点でモデルロード済みになるように。
+  - APP_VERSION：2026.09.28.053 → 2026.09.28.054
+
 - (dev v2026.09.28.053) **顔の向きガイド：3D 頭部モデルで描画（ジンバル → 頭部モデル）**：
   - リポジトリ直下に `head_model.fbx`（313KB）と `head_model_basecolor.jpg`（1.4MB）を追加。
   - `paintHead()` の描画本体を 3D 頭部モデルレンダリングに切替：
