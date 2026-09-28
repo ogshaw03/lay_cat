@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.09.28.051) **リマップ書き出しでアノテが焼き込まれない不具合を修正**：
+  - 原因：`canvas.captureStream(FPS)` の automatic モードは canvas 変更と非同期にサンプリングし、`drawImage(video)` を描き終えた瞬間にキャプチャされることがあった。続いて `paintStrokeList` でアノテを重ねても、その前にサンプリングが走ったフレームは「動画のみ」となり、結果的にアノテが飛ぶ。
+  - 修正：`canvas.captureStream(0)` の manual モードに切替、各ループイテレーションで **video + アノテを描き終えた直後に `track.requestFrame()` を明示発行** して 1 フレームずつ確実に emit。
+  - `requestFrame` 未対応ブラウザ用のフォールバック：`captureStream(FPS*4)` でオーバーサンプリング。
+  - アノテ描画部分を `drawFrame(srcF)` ヘルパに切り出して整理。
+  - APP_VERSION：2026.09.28.050 → 2026.09.28.051
+
 - (dev v2026.09.28.050) **タイムリマップ尺を書き出しに反映（新関数 `exportRetimedAnnotated`）**：
   - タイムリマップ ON かつ 2 点以上のキーフレームが定義されている場合、書き出しは新関数 `exportRetimedAnnotated(node, v, opts)` にルーティング。
   - アルゴリズム：表示フレーム 0..displayTotal-1 を順に走査し、`_rmDisplayToSource(v, f)` で対応するソース時刻に seek → canvas に drawImage → アノテ焼き込み → `canvas.captureStream(FPS)` の automatic モードで MediaRecorder が拾う。wall-clock でフレーム間隔を pace（seek が速い場合は sleep、遅い場合は canvas 保持で追従）。

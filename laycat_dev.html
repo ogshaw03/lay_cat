@@ -3812,7 +3812,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.28.050';
+const APP_VERSION='2026.09.28.051';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -15193,10 +15193,20 @@ async function exportRetimedAnnotated(node,v,opts){
   const srcTotal=Math.max(1,Math.round((video.duration||1)*FPS));
   const displayTotal=_rmDisplayTotal(v,srcTotal);
   const frameDurMs=1000/FPS;
-  /* Canvas + Stream */
+  /* Canvas + Stream（manual モード：requestFrame() 明示発行でフレームを流し込む。
+     automatic モードだと video のみを描き終えた瞬間にサンプリングされ、
+     続くアノテ描画が入る前のフレームがキャプチャされて「アノテが焼き込まれない」不具合が発生する。
+     requestFrame 未対応ブラウザは fallback で automatic 8×FPS モードにする（オーバーサンプリングで最終描画状態を高確率で拾う）。 */
   const canvas=document.createElement('canvas');canvas.width=W;canvas.height=H;
   const ctx=canvas.getContext('2d');
-  const canvasStream=canvas.captureStream(FPS);
+  let canvasStream=canvas.captureStream(0);
+  let track=canvasStream.getVideoTracks()[0];
+  let canRequestFrame=!!(track&&typeof track.requestFrame==='function');
+  if(!canRequestFrame){
+    /* fallback：高フレームレートでサンプリング */
+    canvasStream=canvas.captureStream(FPS*4);
+    track=canvasStream.getVideoTracks()[0];
+  }
   /* Recorder */
   const recorder=new MediaRecorder(canvasStream,{mimeType,videoBitsPerSecond:12_000_000});
   const chunks=[];
@@ -15230,30 +15240,35 @@ async function exportRetimedAnnotated(node,v,opts){
   /* Recorder 開始 */
   try{recorder.start(1000)}catch(e){toast('録画開始に失敗しました：'+(e&&e.message||''));try{ov.remove()}catch(_){}return}
   const startTs=performance.now();
-  /* MediaRecorder が始まる前に canvas が空だと最初のフレームが飛ぶことがあるので、
-     まず frame 0 を焼いてから 1 回目の pace を回す。 */
-  try{await seekTo(0)}catch(_){}
-  try{ctx.drawImage(video,0,0,W,H)}catch(_){}
+  /* 描画関数：video フレーム＋（withAnnotations なら）そのソースフレームの notes.drawing を焼く。
+     戻り値は焼き込んだ stroke 数（進捗表示用）。 */
+  const drawFrame=(srcF)=>{
+    try{ctx.drawImage(video,0,0,W,H)}catch(_){}
+    let drawn=0;
+    if(withAnnotations){
+      const notes=(v.review&&v.review.notes)||[];
+      for(const n of notes){
+        if(!n||!n.drawing||!n.drawing.length||n.frame==null)continue;
+        const dur=parseInt(n.dur)||1;
+        if(srcF>=n.frame&&srcF<n.frame+dur){
+          try{paintStrokeList(ctx,W,H,n.drawing,1);drawn+=n.drawing.length}catch(_){}
+        }
+      }
+    }
+    return drawn;
+  };
   let _annoDrawn=0;
-  /* 表示フレーム 0..displayTotal-1 を順に描画 */
+  /* 表示フレーム 0..displayTotal-1 を順に描画 → requestFrame() で明示 emit → pace 待ち。
+     manual モードなので描き終えるまで新フレームは流れない = video のみの状態がキャプチャされる race がない。 */
   for(let f=0;f<displayTotal;f++){
     if(cancelled)break;
     const src=_rmDisplayToSource(v,f);
     const srcTime=Math.max(0,Math.min(srcTotal-1,src))/FPS;
     await seekTo(srcTime);
     if(cancelled)break;
-    try{ctx.drawImage(video,0,0,W,H)}catch(_){}
-    if(withAnnotations){
-      const srcF=Math.round(src);
-      const notes=(v.review&&v.review.notes)||[];
-      for(const n of notes){
-        if(!n||!n.drawing||!n.drawing.length||n.frame==null)continue;
-        const dur=parseInt(n.dur)||1;
-        if(srcF>=n.frame&&srcF<n.frame+dur){
-          try{paintStrokeList(ctx,W,H,n.drawing,1);_annoDrawn+=n.drawing.length}catch(_){}
-        }
-      }
-    }
+    _annoDrawn+=drawFrame(Math.round(src));
+    /* video＋アノテ を焼き終えたこの瞬間に MediaRecorder へ 1 フレーム流し込む */
+    if(canRequestFrame){try{track.requestFrame()}catch(_){}}
     /* 表示 f 番目のフレームは wall-clock で startTs + (f+1)*frameDurMs 時点まで保持する */
     const targetTs=startTs+(f+1)*frameDurMs;
     const now=performance.now();
