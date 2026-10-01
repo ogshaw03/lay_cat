@@ -2893,6 +2893,15 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.018) **Phase 2 強化 — 中間遷移も証跡として採用・チェック担当者アクションは除外**：
+  - v.017 は segment の start/end のみを証跡として使っていたため、「リテイク→作業中」のような中間遷移（両方 work-status）が拾えなかった。
+  - v.018：segment 内の全 status 遷移時刻を証跡として採用。「リテイク→作業中」「作業中→チェック待ち」等の作業者アクションがその日の mask 拡張に寄与する。
+  - **フィルタ**：`h.from` がチェック待ちステータス（`isStatusCheckWait=true`）の遷移は **チェック担当者のアクション** と判定して証跡から除外。例：「チェック待ち→リテイク」の 23:00 遷移は作業者が働いた証拠ではないのでスキップ。
+  - 新規関数 `_collectWorkerEvidenceEvents(history, segStart, segEnd, isOpen, projStatuses)` で証跡抽出。`_intersectWithCoreHours` の引数も `evidenceEvents` 配列に変更。
+  - 工数タブ・ヒートマップ両方に反映。
+  - 書き込み発生なし。
+  - APP_VERSION：2026.10.02.017 → 2026.10.02.018
+
 - (dev v2026.10.02.017) **Phase 2 — 証跡ベースの残業拡張を実装**：
   - status 遷移時刻（workSegment の開始／終了）を証跡として、その日の稼働時間帯 (mask) を自動拡張。
   - 例：mask 10:30-19:30・22:00 に「完了」遷移があれば、その日の mask を 10:30-22:00 に拡張 → 残業時間を自動で拾う。
