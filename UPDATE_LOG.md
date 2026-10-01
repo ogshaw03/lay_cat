@@ -2906,6 +2906,15 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.020) **スケジュールタブ 実績バーにマスク反映（Option B：マスク外を薄く表示）**：
+  - 従来の実績バー（単色・濃さ均一）を 2 層構成に変更：
+    - **背景バー（opacity 0.3）**：「ステータスは作業中だったが集計外」を含むステータス滞在期間全体
+    - **オーバーレイバー（opacity 0.9／進行中は 0.7）**：マスク適用後の実質カウント部分（coreHours 内 + 残業拡張）
+  - 日単位で各日の extended mask と交差時間を計算してオーバーレイ描画。
+  - 新規 CSS：`.gantt-row .track .seg-actual-mask`（実績バーと同じ top/height でオーバーレイ、pointer-events: none）。
+  - 書き込み発生なし。
+  - APP_VERSION：2026.10.02.019 → 2026.10.02.020
+
 - (dev v2026.10.02.019) **工数集計で Firestore マイページ coreHours を読み込み・反映**：
   - LayCAT 本体 dev v2026.10.02.058 で保存されるマイページの coreHours を PMB の工数集計で使えるようにする。
   - `loadProjectData` 完了時にプロジェクトメンバー全員の `laycatUsers/{emailKey}` を Firestore から並列取得して `DATA.userProfiles` にキャッシュ。
