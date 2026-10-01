@@ -2906,6 +2906,16 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.019) **工数集計で Firestore マイページ coreHours を読み込み・反映**：
+  - LayCAT 本体 dev v2026.10.02.058 で保存されるマイページの coreHours を PMB の工数集計で使えるようにする。
+  - `loadProjectData` 完了時にプロジェクトメンバー全員の `laycatUsers/{emailKey}` を Firestore から並列取得して `DATA.userProfiles` にキャッシュ。
+  - `_getCoreHoursMinutes` の優先順位を変更：**マイページ > root.members[i].coreHours > root.manhours.coreHours > fallback**。
+  - Firebase 側に `loadUserProfile(email)` ヘルパ追加（LayCAT 本体と同じ API）。
+  - 失敗時（未ログイン・ルール未設定・ネット不良）はキャッシュ空のまま静かにフォールバック（従来の動作）に戻るため、既存プロジェクトに影響なし。
+  - 書き込み発生なし（Firestore 読み取りのみ）。
+  - UI 説明文に「LayCAT 本体のマイページで個別設定可」を追記。
+  - APP_VERSION：2026.10.02.018 → 2026.10.02.019
+
 - (dev v2026.10.02.018) **Phase 2 強化 — 中間遷移も証跡として採用・チェック担当者アクションは除外**：
   - v.017 は segment の start/end のみを証跡として使っていたため、「リテイク→作業中」のような中間遷移（両方 work-status）が拾えなかった。
   - v.018：segment 内の全 status 遷移時刻を証跡として採用。「リテイク→作業中」「作業中→チェック待ち」等の作業者アクションがその日の mask 拡張に寄与する。

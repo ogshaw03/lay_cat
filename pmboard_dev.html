@@ -611,7 +611,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.018';
+const APP_VERSION='2026.10.02.019';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -898,7 +898,16 @@ const DATA = {
   stageFilter: null, /* サイドバー「工程分布」ドーナツ／表クリックで選ばれた工程名。null=絞込なし */
   selectedPlan: null, /* 選択中の予定バー {shotId, stageId, custSchId?, custItemId?} */
   clipboardPlan: null, /* Ctrl+C で保存した予定 {stageName, days:N} */
+  /* 【v.019】マイページ Firestore プロフィールのキャッシュ。loadProjectData 終了時に全メンバー分を読み込む。
+     key = email を lower + 記号を _ に置換したキー、value = Firestore `laycatUsers/{key}` のドキュメント data。
+     coreHours 等が入っていれば工数集計で優先利用。 */
+  userProfiles: {}, /* {emailKey: {profile, coreHours, roles, ...}} */
 };
+/* email → Firestore ドキュメントキー変換（本体の変換ルールと一致させる） */
+function _emailToKey(email){
+  if(!email)return '';
+  return String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+}
 
 /* フィルタ状態：サイドバーのセレクタと連動 */
 const FILTERS = {
@@ -1100,7 +1109,27 @@ async function loadProjectData(){
   const days = Math.max(30, Math.round((end-start)/86400000)+1);
   DATA.timeline = {start, end, days};
   DATA.loaded = true;
+  /* 【v.019】マイページで保存されたユーザープロフィールを並列読み込み（Firestore）。
+     失敗しても (未ログイン・ネット不良・ルール未設定 等) 工数集計はフォールバックで動くので throw しない。 */
+  await loadAllUserProfiles();
   return {ok:true};
+}
+/* プロジェクトメンバー全員の Firestore プロフィールを並列取得して DATA.userProfiles にキャッシュする。
+   メンバー数ぶんの getDoc を並列で発行するが、通常は数名〜数十名なので問題にならない。 */
+async function loadAllUserProfiles(){
+  DATA.userProfiles = {};
+  if(!window.__laynaFB || !window.__laynaFB.loadUserProfile) return;
+  const nodes = (DATA.project && Array.isArray(DATA.project.nodes)) ? DATA.project.nodes : [];
+  const root = nodes.find(n => n.id === (DATA.project && DATA.project.id)) || nodes.find(n => !n.parentId);
+  if(!root || !Array.isArray(root.members)) return;
+  const emails = root.members.map(m => m && m.id).filter(x => x && String(x).includes('@'));
+  const promises = emails.map(async email => {
+    try{
+      const p = await window.__laynaFB.loadUserProfile(email);
+      if(p) DATA.userProfiles[_emailToKey(email)] = p;
+    }catch(_){}
+  });
+  await Promise.all(promises);
 }
 
 /* =========== カスタム（オリジナル）スケジュール =========== */
@@ -2346,7 +2375,7 @@ function buildOtherTabsPlaceholder(){
       </div>
       <div class="panel">
         <h4>ショット別稼働日数（長い順）</h4>
-        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間のうち、<b>各担当者の稼働時間帯</b>（デフォルト 10:30-19:30）に収まる分を合計。<b>残業対応</b>：定時外の作業者アクション（リテイク→作業中・作業中→チェック待ち 等）を証跡として、その日の稼働時間帯を自動拡張。チェック担当者のアクション（チェック待ち→*）は証跡から除外。「1 日」= 稼働時間帯の長さ（デフォルト 9 時間）換算。</div>
+        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間のうち、<b>各担当者の稼働時間帯</b>（LayCAT 本体のマイページで個別設定可／デフォルト 10:30-19:30）に収まる分を合計。<b>残業対応</b>：定時外の作業者アクション（リテイク→作業中・作業中→チェック待ち 等）を証跡として、その日の稼働時間帯を自動拡張。チェック担当者のアクション（チェック待ち→*）は証跡から除外。「1 日」= 稼働時間帯の長さ（デフォルト 9 時間）換算。</div>
         <div class="effort-list" id="effortList"></div>
       </div>
       <div class="panel">
@@ -2373,20 +2402,35 @@ function _hmToMinutes(hm){
   return h*60+mm;
 }
 /* 指定ステージの担当者 (assigneeId) に適用する coreHours を minute-of-day で返す。
-   assigneeId=null またはメンバー設定なしならプロジェクト既定、それも無ければハードコード fallback。 */
+   優先順位（v.019）：
+   1. マイページ Firestore プロフィール (DATA.userProfiles[emailKey].coreHours)
+   2. プロジェクトメンバー個別 (root.members[i].coreHours)
+   3. プロジェクト既定 (root.manhours.coreHours)
+   4. ハードコード fallback (10:30-19:30) */
 function _getCoreHoursMinutes(root, assigneeId){
-  if(assigneeId && root && Array.isArray(root.members)){
-    const key = String(assigneeId).toLowerCase();
-    const m = root.members.find(mm=>mm && String(mm.id).toLowerCase()===key);
-    if(m && m.coreHours){
-      const s=_hmToMinutes(m.coreHours.start), e=_hmToMinutes(m.coreHours.end);
+  if(assigneeId){
+    /* 1. マイページで保存した Firestore プロフィール（最優先） */
+    const prof = DATA.userProfiles && DATA.userProfiles[_emailToKey(assigneeId)];
+    if(prof && prof.coreHours){
+      const s=_hmToMinutes(prof.coreHours.start), e=_hmToMinutes(prof.coreHours.end);
       if(s!=null && e!=null && e>s) return {start:s, end:e};
     }
+    /* 2. プロジェクトメンバー個別（従来の fallback） */
+    if(root && Array.isArray(root.members)){
+      const key = String(assigneeId).toLowerCase();
+      const m = root.members.find(mm=>mm && String(mm.id).toLowerCase()===key);
+      if(m && m.coreHours){
+        const s=_hmToMinutes(m.coreHours.start), e=_hmToMinutes(m.coreHours.end);
+        if(s!=null && e!=null && e>s) return {start:s, end:e};
+      }
+    }
   }
+  /* 3. プロジェクト既定 */
   if(root && root.manhours && root.manhours.coreHours){
     const s=_hmToMinutes(root.manhours.coreHours.start), e=_hmToMinutes(root.manhours.coreHours.end);
     if(s!=null && e!=null && e>s) return {start:s, end:e};
   }
+  /* 4. fallback */
   return _COREHOURS_FALLBACK;
 }
 /* work segment [segStartMs, segEndMs] と、日ごとの mask [mask.start, mask.end]（minute-of-day）との
@@ -3653,6 +3697,17 @@ else { showInitialEmptyState(); }
       loadInvited:async()=>{try{
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);const snap=await m.getDoc(m.doc(fs,'laynaAccess','invited'));
+        return snap.exists()?snap.data():null;
+      }catch(e){return null}},
+      /* 【v.019】マイページ（LayCAT 本体 dev v2026.10.02.058）で保存されたユーザープロフィールを読む。
+         Firestore `laycatUsers/{emailKey}` のドキュメントを取得。無ければ null。
+         PMB の工数集計で coreHours を適用するために使う。 */
+      loadUserProfile:async(email)=>{try{
+        if(!email)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const snap=await m.getDoc(m.doc(fs,'laycatUsers',key));
         return snap.exists()?snap.data():null;
       }catch(e){return null}}
     };
