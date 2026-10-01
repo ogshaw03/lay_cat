@@ -329,6 +329,23 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .effort-list .row .bar .fill{position:absolute;top:0;bottom:0;left:0;background:var(--accent);border-radius:var(--radius2)}
 .effort-list .row .n{font-family:var(--font-code);font-size:12px;color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
 .effort-list .row .n .u{color:var(--text3);font-size:10px;margin-left:2px}
+/* v.013：日別稼働ヒートマップ（マスク適用）— 工数タブ下部 */
+.effort-heatmap{margin-top:4px}
+.effort-heatmap .eh-head{display:grid;grid-template-columns:160px 1fr;align-items:center;padding:4px 0 6px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text3)}
+.effort-heatmap .eh-head .eh-axis{position:relative;height:18px;font-family:var(--font-code)}
+.effort-heatmap .eh-head .eh-tick{position:absolute;top:0;transform:translateX(-50%);font-size:9.5px;color:var(--text3);white-space:nowrap}
+.effort-heatmap .eh-head .eh-today{position:absolute;top:0;bottom:-6px;width:1px;background:var(--red);border-left:1px dashed var(--red)}
+.effort-heatmap .eh-row{display:grid;grid-template-columns:160px 1fr;align-items:center;height:22px;border-bottom:1px solid var(--border)}
+.effort-heatmap .eh-row:last-child{border-bottom:none}
+.effort-heatmap .eh-row .eh-name{color:var(--text);font-family:var(--font-code);font-size:11px;font-weight:600;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.effort-heatmap .eh-row .eh-name .eh-stage{font-size:9.5px;margin-left:4px;font-weight:500}
+.effort-heatmap .eh-row .eh-track{position:relative;height:18px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;overflow:hidden}
+.effort-heatmap .eh-row .eh-cell{position:absolute;top:0;bottom:0;background:var(--accent)}
+.effort-heatmap .eh-row .eh-wknd{position:absolute;top:0;bottom:0;background:rgba(0,0,0,0.18)}
+.effort-heatmap .eh-row .eh-today{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--red);border-left:1px dashed var(--red);z-index:2}
+.effort-heatmap .eh-legend{display:flex;gap:14px;align-items:center;margin-top:10px;font-size:10.5px;color:var(--text3)}
+.effort-heatmap .eh-legend .eh-sw{display:inline-block;width:14px;height:10px;vertical-align:middle;border-radius:2px;margin-right:4px}
+.effort-heatmap .eh-legend .eh-grad{display:inline-block;width:120px;height:10px;background:linear-gradient(90deg,var(--bg3),var(--accent));border:1px solid var(--border);vertical-align:middle;margin:0 6px}
 
 /* =========== グラフパネル =========== */
 .chart-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
@@ -594,7 +611,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.012';
+const APP_VERSION='2026.10.02.013';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2331,6 +2348,11 @@ function buildOtherTabsPlaceholder(){
         <h4>ショット別稼働日数（長い順）</h4>
         <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間のうち、<b>各担当者の稼働時間帯</b>（デフォルト 10:30-19:30／メンバー個別設定可）に収まる分を合計。<b>「1 日」はプロジェクト既定稼働時間帯の長さ（デフォルト 9 時間）換算</b>。</div>
         <div class="effort-list" id="effortList"></div>
+      </div>
+      <div class="panel">
+        <h4>日別稼働ヒートマップ（マスク適用）</h4>
+        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">各ショットの各日の稼働時間（マスク適用後）を色の濃淡で表示。<b>濃い＝その日は稼働時間帯いっぱい作業</b>、<b>薄い＝一部だけ作業</b>、空白＝作業なし。グレー帯＝土日。縦線＝今日。</div>
+        <div class="effort-heatmap" id="effortHeatmap"></div>
       </div>`;
   }
 }
@@ -2470,6 +2492,121 @@ function renderEffortPane(){
       <div class="n">${fmtDays(r.days)}<span class="u">日</span></div>
     </div>`;
   }).join('');
+  /* v.013：日別稼働ヒートマップ（マスク適用後）。
+     ショットごとに DATA.timeline の start〜end の各日の稼働時間を計算し、
+     coreHours 長さに対する比率を色の濃淡で表示。 */
+  renderEffortHeatmap(rows, root, dayDivisorMs);
+}
+
+/* 日別稼働ヒートマップのレンダ：
+   - rows: renderEffortPane と同じ順（長い順）
+   - root: coreHours 判定用
+   - dayDivisorMs: その日の最大稼働時間 ms（色濃度の分母に使う） */
+function renderEffortHeatmap(rows, root, dayDivisorMs){
+  const container = document.getElementById('effortHeatmap');
+  if(!container) return;
+  if(!DATA.timeline || !DATA.timeline.days){
+    container.innerHTML = '<div class="sb-empty">タイムライン未初期化</div>';
+    return;
+  }
+  const tStart = DATA.timeline.start.getTime();
+  const totalDays = DATA.timeline.days;
+  const todayIdx = dayIdx(new Date());
+  const pxPerDay = 100 / totalDays; /* % */
+
+  /* ヘッダ軸：月初め or 10 日単位で ticks を表示（粗く） */
+  const ticks = [];
+  const d0 = new Date(tStart);
+  for(let i=0;i<totalDays;i++){
+    const d = new Date(tStart + i*86400000);
+    /* 月の 1 日目と 15 日目に tick */
+    const date = d.getDate();
+    if(date===1 || date===15){
+      const label = (date===1 ? (d.getMonth()+1)+'月' : '15');
+      ticks.push({idx:i, label});
+    }
+  }
+  const todayTick = (todayIdx>=0 && todayIdx<=totalDays)
+    ? `<div class="eh-today" style="left:${todayIdx*pxPerDay}%"></div>` : '';
+  const tickHtml = ticks.map(t=>`<div class="eh-tick" style="left:${t.idx*pxPerDay}%">${escapeHtml(t.label)}</div>`).join('');
+
+  /* 各行：ショットの各日マスク適用時間を計算 → cells を描画 */
+  const htmlRows = rows.map(r=>{
+    const shot = DATA.shots.find(s=>s.sectionNode.id === r.shotId);
+    if(!shot) return '';
+    const daily = _shotDailyMaskedMs(shot, root, tStart, totalDays);
+    /* セル描画：連続した非ゼロ日はまとめず各日を div で描画（コードシンプル化） */
+    const cells = [];
+    /* 土日ハッチング */
+    for(let i=0;i<totalDays;i++){
+      const d = new Date(tStart + i*86400000);
+      const wk = d.getDay();
+      if(wk===0 || wk===6){
+        cells.push(`<div class="eh-wknd" style="left:${i*pxPerDay}%;width:${pxPerDay}%"></div>`);
+      }
+    }
+    /* 稼働セル */
+    for(let i=0;i<totalDays;i++){
+      const ms = daily[i];
+      if(ms <= 0) continue;
+      const ratio = Math.min(1, ms / dayDivisorMs);
+      const alpha = 0.15 + ratio * 0.85; /* 最低でも薄っすら見える */
+      const d = new Date(tStart + i*86400000);
+      const hours = (ms/3600000).toFixed(1);
+      cells.push(`<div class="eh-cell" style="left:${i*pxPerDay}%;width:${pxPerDay}%;opacity:${alpha}" title="${fmtJstDate(d)} ${hours}h"></div>`);
+    }
+    const todayLine = (todayIdx>=0 && todayIdx<=totalDays)
+      ? `<div class="eh-today" style="left:${todayIdx*pxPerDay}%"></div>` : '';
+    return `<div class="eh-row">
+      <div class="eh-name">${escapeHtml(r.name)} <span class="eh-stage" style="color:${resolveColor(r.stageColor)}">${escapeHtml(r.stageName)}</span></div>
+      <div class="eh-track">${cells.join('')}${todayLine}</div>
+    </div>`;
+  }).filter(x=>x).join('');
+
+  container.innerHTML = `
+    <div class="eh-head">
+      <div></div>
+      <div class="eh-axis">${tickHtml}${todayTick}</div>
+    </div>
+    ${htmlRows || '<div class="sb-empty">データなし</div>'}
+    <div class="eh-legend">
+      <span>稼働強度：</span>
+      <span>低</span><span class="eh-grad"></span><span>高（稼働時間帯いっぱい）</span>
+      <span style="margin-left:14px"><span class="eh-sw" style="background:rgba(0,0,0,0.18)"></span>土日</span>
+    </div>`;
+}
+
+/* 1 ショットの各日の稼働時間（マスク適用後 ms）を配列で返す。
+   インデックス 0 = タイムライン start 日、インデックス totalDays-1 = end 日。 */
+function _shotDailyMaskedMs(shot, root, tStartMs, totalDays){
+  const daily = new Array(totalDays).fill(0);
+  const nowMs = Date.now();
+  for(const st of (shot.stages||[])){
+    const mask = _getCoreHoursMinutes(root, st.assignee);
+    for(const seg of (st.workSegments||[])){
+      const sMs = seg.start ? seg.start.getTime() : null;
+      if(sMs == null) continue;
+      const eMs = seg.end ? seg.end.getTime() : nowMs;
+      /* セグメントが跨ぐ各日について coreHours 窓との交差を計算 */
+      const d = new Date(sMs);
+      d.setHours(0,0,0,0);
+      let dMs = d.getTime();
+      while(dMs < eMs){
+        const winStart = dMs + mask.start*60000;
+        const winEnd   = dMs + mask.end*60000;
+        const a = Math.max(sMs, winStart);
+        const b = Math.min(eMs, winEnd);
+        if(b > a){
+          const idx = Math.round((dMs - tStartMs) / 86400000);
+          if(idx >= 0 && idx < totalDays){
+            daily[idx] += (b - a);
+          }
+        }
+        dMs += 86400000;
+      }
+    }
+  }
+  return daily;
 }
 
 /* =========== プロジェクト切替とフォルダ接続 =========== */

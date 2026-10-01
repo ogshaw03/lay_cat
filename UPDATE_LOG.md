@@ -2893,6 +2893,15 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.013) **工数タブに「日別稼働ヒートマップ（マスク適用）」を追加**：
+  - 既存のショット別棒グラフの下に、プロジェクト全期間 × ショット別の日別稼働強度ヒートマップを追加。
+  - 各セル：その日のマスク適用後稼働時間（0h〜coreHours 長さ）を opacity 0.15〜1.0 で表現。濃いほど「稼働時間帯いっぱい作業」、薄いほど「一部だけ作業」。
+  - 土日は半透明グレーのハッチングで識別。TODAY マーカー（赤縦線）あり。月初・15 日に日付 tick を表示。
+  - 新規関数：`renderEffortHeatmap(rows, root, dayDivisorMs)` と `_shotDailyMaskedMs(shot, root, tStartMs, totalDays)`（読み取り専用）。
+  - DOM 要素：`#effortHeatmap`。CSS：`.effort-heatmap .eh-*` 系。
+  - 影響範囲：pmboard_dev.html の工数タブ表示のみ。書き込み発生なし。
+  - APP_VERSION：2026.10.02.012 → 2026.10.02.013
+
 - (dev v2026.10.02.012) **工数タブに稼働時間帯マスク (coreHours) を導入 — Phase 1**：
   - 従来の「ステータス滞在時間を 24h 単位で合算」から、「各担当者の稼働時間帯に収まる作業時間だけを合算」に変更。
   - 設定の階層：**メンバー個別 (`root.members[].coreHours`) > プロジェクト既定 (`root.manhours.coreHours`) > ハードコード fallback (10:30-19:30)**。読み取りのみで、persist は呼ばない（書き込み発生なし）。
