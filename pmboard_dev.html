@@ -594,7 +594,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.09.20.011';
+const APP_VERSION='2026.10.02.012';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2329,31 +2329,108 @@ function buildOtherTabsPlaceholder(){
       </div>
       <div class="panel">
         <h4>ショット別稼働日数（長い順）</h4>
-        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）にあった期間を日単位で合計。冗長度合いの高いショットが上位に来ます。</div>
+        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間のうち、<b>各担当者の稼働時間帯</b>（デフォルト 10:30-19:30／メンバー個別設定可）に収まる分を合計。<b>「1 日」はプロジェクト既定稼働時間帯の長さ（デフォルト 9 時間）換算</b>。</div>
         <div class="effort-list" id="effortList"></div>
       </div>`;
   }
 }
+/* ============================================================
+   稼働時間帯マスク（coreHours）ヘルパ — Phase 1
+   TODO.md「稼働期間集計：時間帯マスク＋証跡ベースの残業拡張」より抜粋実装。
+   設定の階層：メンバー個別 (root.members[].coreHours) > プロジェクト既定 (root.manhours.coreHours) > ハードコード fallback (10:30-19:30)
+   土日祝除外・日境界 04:00・監査ログ窓拡張は Phase 2 以降（本実装では未対応）。
+   書き込み一切なし：既存 project.json を読むだけ、persist は呼ばない。
+   ============================================================ */
+const _COREHOURS_FALLBACK = {start:10*60+30, end:19*60+30}; /* 10:30-19:30 */
+function _hmToMinutes(hm){
+  if(!hm || typeof hm!=='string') return null;
+  const m = hm.match(/^(\d{1,2}):(\d{2})$/);
+  if(!m) return null;
+  const h=parseInt(m[1],10), mm=parseInt(m[2],10);
+  if(h<0||h>24||mm<0||mm>59) return null;
+  return h*60+mm;
+}
+/* 指定ステージの担当者 (assigneeId) に適用する coreHours を minute-of-day で返す。
+   assigneeId=null またはメンバー設定なしならプロジェクト既定、それも無ければハードコード fallback。 */
+function _getCoreHoursMinutes(root, assigneeId){
+  if(assigneeId && root && Array.isArray(root.members)){
+    const key = String(assigneeId).toLowerCase();
+    const m = root.members.find(mm=>mm && String(mm.id).toLowerCase()===key);
+    if(m && m.coreHours){
+      const s=_hmToMinutes(m.coreHours.start), e=_hmToMinutes(m.coreHours.end);
+      if(s!=null && e!=null && e>s) return {start:s, end:e};
+    }
+  }
+  if(root && root.manhours && root.manhours.coreHours){
+    const s=_hmToMinutes(root.manhours.coreHours.start), e=_hmToMinutes(root.manhours.coreHours.end);
+    if(s!=null && e!=null && e>s) return {start:s, end:e};
+  }
+  return _COREHOURS_FALLBACK;
+}
+/* work segment [segStartMs, segEndMs] と、日ごとの mask [mask.start, mask.end]（minute-of-day）との
+   交差時間を ms で合算して返す。日をまたいでも各日の mask と交差させる。
+   土日祝・日境界 04:00 等の調整は Phase 1 では行わない（Phase 2 以降で監査ログと併せて対応）。 */
+function _intersectWithCoreHours(segStartMs, segEndMs, mask){
+  if(!(segEndMs > segStartMs)) return 0;
+  const dayMs = 86400000;
+  let totalMs = 0;
+  const d = new Date(segStartMs);
+  d.setHours(0,0,0,0);
+  let dayStart = d.getTime();
+  while(dayStart < segEndMs){
+    const winStart = dayStart + mask.start*60000;
+    const winEnd   = dayStart + mask.end*60000;
+    const a = Math.max(segStartMs, winStart);
+    const b = Math.min(segEndMs,   winEnd);
+    if(b > a) totalMs += (b - a);
+    dayStart += dayMs;
+  }
+  return totalMs;
+}
+/* プロジェクト既定 coreHours の長さ（ms）。「1 日 = X 時間」の換算分母に使う。 */
+function _projectDayDurationMs(root){
+  const ch = _getCoreHoursMinutes(root, null); /* メンバーをスキップしてプロジェクト／fallback 側を取る */
+  return (ch.end - ch.start) * 60000;
+}
+function _formatCoreHoursLabel(ch){
+  const toHM = min => {
+    const h=Math.floor(min/60), m=min%60;
+    return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  };
+  return toHM(ch.start)+'-'+toHM(ch.end);
+}
+
 /* 工数計算：全ショットの全 workSegment を舐めて期間を合算。
-   ステータス履歴の作業区間（isWorkStatus）を秒数で積算し、日単位に換算して表示。 */
+   v.012：各担当者の coreHours マスク（デフォルト 10:30-19:30）と交差した時間だけを合算する方式に変更。
+   「1 日」= プロジェクト既定 coreHours の長さ（デフォルト 9 時間）換算。 */
 function renderEffortPane(){
   const eff = document.querySelector('.pane[data-pane="effort"]');
   if(!eff) return;
   const shots = DATA.shots || [];
   const now = Date.now();
+  /* v.012：root ノードを取得して coreHours マスクを引けるようにする。
+     root が無い（loadProjectData 前）場合は fallback (10:30-19:30・9h) になる。 */
+  const nodes = (DATA.project && Array.isArray(DATA.project.nodes)) ? DATA.project.nodes : [];
+  const root  = nodes.find(n => n.id === (DATA.project && DATA.project.id)) || nodes.find(n => !n.parentId) || null;
+  const dayDivisorMs = _projectDayDurationMs(root);
+  const projMask = _getCoreHoursMinutes(root, null); /* 表示ラベル用 */
   const rows = [];
   for(const shot of shots){
     let totalMs = 0, segs = 0;
     for(const st of (shot.stages||[])){
+      /* ステージ担当者 (assignee) の coreHours を引く。無ければプロジェクト既定、それも無ければ fallback。 */
+      const mask = _getCoreHoursMinutes(root, st.assignee);
       for(const seg of (st.workSegments||[])){
         const startMs = seg.start ? seg.start.getTime() : null;
         if(startMs == null) continue;
         const endMs = seg.end ? seg.end.getTime() : now;
-        const d = endMs - startMs;
+        /* v.012：単純な期間ではなく coreHours マスクとの交差時間を合算（Phase 1） */
+        const d = _intersectWithCoreHours(startMs, endMs, mask);
         if(d > 0){ totalMs += d; segs++; }
       }
     }
-    const days = totalMs / 86400000;
+    /* 「1 日」はプロジェクト既定 coreHours の長さ（例：9h）換算 */
+    const days = totalMs / dayDivisorMs;
     const cur = shotCurrentStage(shot);
     rows.push({
       shotId: shot.sectionNode.id,
