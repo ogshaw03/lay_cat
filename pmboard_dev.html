@@ -611,7 +611,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.016';
+const APP_VERSION='2026.10.02.017';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2346,12 +2346,12 @@ function buildOtherTabsPlaceholder(){
       </div>
       <div class="panel">
         <h4>ショット別稼働日数（長い順）</h4>
-        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間のうち、<b>各担当者の稼働時間帯</b>（デフォルト 10:30-19:30／メンバー個別設定可）に収まる分を合計。<b>「1 日」はプロジェクト既定稼働時間帯の長さ（デフォルト 9 時間）換算</b>（例：マスク適用後 45 h → 5 稼働日分）。</div>
+        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間のうち、<b>各担当者の稼働時間帯</b>（デフォルト 10:30-19:30）に収まる分を合計。<b>残業対応</b>：定時外のステータス遷移時刻を証跡として、その日の稼働時間帯を自動拡張（例：22:00 に完了遷移があれば 19:30→22:00 まで含む）。「1 日」= 稼働時間帯の長さ（デフォルト 9 時間）換算。</div>
         <div class="effort-list" id="effortList"></div>
       </div>
       <div class="panel">
         <h4>日別稼働ヒートマップ（マスク適用）</h4>
-        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">各ショットの各日の稼働時間（マスク適用後）を色の濃淡で表示。<b>濃い＝その日は稼働時間帯いっぱい作業</b>、<b>薄い＝一部だけ作業</b>、空白＝作業なし。グレー帯＝土日。縦線＝今日。</div>
+        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">各ショットの各日の稼働時間（マスク適用後・残業拡張あり）を色の濃淡で表示。<b>濃い＝その日は稼働時間帯いっぱい作業</b>、<b>薄い＝一部だけ作業</b>、空白＝作業なし。グレー帯＝土日。縦線＝今日。</div>
         <div class="effort-heatmap" id="effortHeatmap"></div>
       </div>`;
   }
@@ -2391,8 +2391,11 @@ function _getCoreHoursMinutes(root, assigneeId){
 }
 /* work segment [segStartMs, segEndMs] と、日ごとの mask [mask.start, mask.end]（minute-of-day）との
    交差時間を ms で合算して返す。日をまたいでも各日の mask と交差させる。
-   土日祝・日境界 04:00 等の調整は Phase 1 では行わない（Phase 2 以降で監査ログと併せて対応）。 */
-function _intersectWithCoreHours(segStartMs, segEndMs, mask){
+   v.017 (Phase 2)：segStartMs / segEndMs は status 遷移時刻＝証跡として使い、
+   その時刻が default mask より早い／遅い場合はその日の mask を拡張する。
+   例：mask 10:30-19:30 のところ、22:00 に 完了 遷移があれば その日の mask を 10:30-22:00 に拡大。
+   isOpenSegment=true（seg.end==null で現在時刻までの推定）の場合は segEndMs は証跡として扱わない。 */
+function _intersectWithCoreHours(segStartMs, segEndMs, defaultMask, isOpenSegment){
   if(!(segEndMs > segStartMs)) return 0;
   const dayMs = 86400000;
   let totalMs = 0;
@@ -2400,8 +2403,24 @@ function _intersectWithCoreHours(segStartMs, segEndMs, mask){
   d.setHours(0,0,0,0);
   let dayStart = d.getTime();
   while(dayStart < segEndMs){
-    const winStart = dayStart + mask.start*60000;
-    const winEnd   = dayStart + mask.end*60000;
+    const dayEnd = dayStart + dayMs;
+    let maskStartMin = defaultMask.start;
+    let maskEndMin = defaultMask.end;
+    /* 開始イベント（status 遷移時刻）がこの日にあれば証跡として mask を拡張 */
+    if(segStartMs >= dayStart && segStartMs < dayEnd){
+      const mod = (segStartMs - dayStart) / 60000;
+      if(mod < maskStartMin) maskStartMin = mod;
+      if(mod > maskEndMin)   maskEndMin   = mod;
+    }
+    /* 終了イベント（status 遷移時刻）がこの日にあれば証跡として mask を拡張。
+       ただし open segment（seg.end==null）の場合は segEndMs=now は証跡ではないのでスキップ。 */
+    if(!isOpenSegment && segEndMs >= dayStart && segEndMs < dayEnd){
+      const mod = (segEndMs - dayStart) / 60000;
+      if(mod < maskStartMin) maskStartMin = mod;
+      if(mod > maskEndMin)   maskEndMin   = mod;
+    }
+    const winStart = dayStart + maskStartMin*60000;
+    const winEnd   = dayStart + maskEndMin*60000;
     const a = Math.max(segStartMs, winStart);
     const b = Math.min(segEndMs,   winEnd);
     if(b > a) totalMs += (b - a);
@@ -2445,9 +2464,11 @@ function renderEffortPane(){
       for(const seg of (st.workSegments||[])){
         const startMs = seg.start ? seg.start.getTime() : null;
         if(startMs == null) continue;
-        const endMs = seg.end ? seg.end.getTime() : now;
-        /* v.012：単純な期間ではなく coreHours マスクとの交差時間を合算（Phase 1） */
-        const d = _intersectWithCoreHours(startMs, endMs, mask);
+        const isOpen = (seg.end == null);
+        const endMs = isOpen ? now : seg.end.getTime();
+        /* v.017：Phase 2 — 開始/終了遷移時刻を証跡として mask を拡張（残業時間を拾う）。
+           seg.end==null の open segment は 'now' が終端で証跡ではないので isOpen を渡す。 */
+        const d = _intersectWithCoreHours(startMs, endMs, mask, isOpen);
         if(d > 0){ totalMs += d; segs++; }
       }
     }
@@ -2584,23 +2605,40 @@ function renderEffortHeatmap(rows, root, dayDivisorMs){
 }
 
 /* 1 ショットの各日の稼働時間（マスク適用後 ms）を配列で返す。
+   v.017：Phase 2 — status 遷移時刻を証跡として mask を拡張（残業時間を拾う）。
    インデックス 0 = タイムライン start 日、インデックス totalDays-1 = end 日。 */
 function _shotDailyMaskedMs(shot, root, tStartMs, totalDays){
   const daily = new Array(totalDays).fill(0);
   const nowMs = Date.now();
   for(const st of (shot.stages||[])){
-    const mask = _getCoreHoursMinutes(root, st.assignee);
+    const defaultMask = _getCoreHoursMinutes(root, st.assignee);
     for(const seg of (st.workSegments||[])){
       const sMs = seg.start ? seg.start.getTime() : null;
       if(sMs == null) continue;
-      const eMs = seg.end ? seg.end.getTime() : nowMs;
-      /* セグメントが跨ぐ各日について coreHours 窓との交差を計算 */
+      const isOpen = (seg.end == null);
+      const eMs = isOpen ? nowMs : seg.end.getTime();
+      /* セグメントが跨ぐ各日について拡張 mask との交差を計算 */
       const d = new Date(sMs);
       d.setHours(0,0,0,0);
       let dMs = d.getTime();
       while(dMs < eMs){
-        const winStart = dMs + mask.start*60000;
-        const winEnd   = dMs + mask.end*60000;
+        const dayEnd = dMs + 86400000;
+        let maskStartMin = defaultMask.start;
+        let maskEndMin = defaultMask.end;
+        /* 開始遷移時刻がこの日にあれば mask 拡張 */
+        if(sMs >= dMs && sMs < dayEnd){
+          const mod = (sMs - dMs) / 60000;
+          if(mod < maskStartMin) maskStartMin = mod;
+          if(mod > maskEndMin)   maskEndMin   = mod;
+        }
+        /* 終了遷移時刻がこの日にあり、open segment でなければ mask 拡張 */
+        if(!isOpen && eMs >= dMs && eMs < dayEnd){
+          const mod = (eMs - dMs) / 60000;
+          if(mod < maskStartMin) maskStartMin = mod;
+          if(mod > maskEndMin)   maskEndMin   = mod;
+        }
+        const winStart = dMs + maskStartMin*60000;
+        const winEnd   = dMs + maskEndMin*60000;
         const a = Math.max(sMs, winStart);
         const b = Math.min(eMs, winEnd);
         if(b > a){
