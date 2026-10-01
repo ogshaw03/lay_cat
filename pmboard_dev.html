@@ -611,7 +611,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.014';
+const APP_VERSION='2026.10.02.015';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2346,7 +2346,7 @@ function buildOtherTabsPlaceholder(){
       </div>
       <div class="panel">
         <h4>ショット別稼働日数（長い順）</h4>
-        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間のうち、<b>各担当者の稼働時間帯</b>（デフォルト 10:30-19:30／メンバー個別設定可）に収まる分を合計。<b>「1 日」はプロジェクト既定稼働時間帯の長さ（デフォルト 9 時間）換算</b>。</div>
+        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間のうち、<b>各担当者の稼働時間帯</b>（デフォルト 10:30-19:30／メンバー個別設定可）に収まる分を合計。<b>日単位（24 h 換算）</b>で表示：例「5 日間ずっと作業中」のステータスはマスク適用で 45 h → 1.9 日として算出。</div>
         <div class="effort-list" id="effortList"></div>
       </div>
       <div class="panel">
@@ -2451,8 +2451,9 @@ function renderEffortPane(){
         if(d > 0){ totalMs += d; segs++; }
       }
     }
-    /* 「1 日」はプロジェクト既定 coreHours の長さ（例：9h）換算 */
-    const days = totalMs / dayDivisorMs;
+    /* v.015：分母を 24h に戻す。マスクで削った時間が数字に反映されるようにする。
+       例：5 日間連続で「作業中」なら、マスク適用 45h ÷ 24h = 1.875 日（旧 9h 分母だと 5 日のまま変化なしだった）。 */
+    const days = totalMs / 86400000;
     const cur = shotCurrentStage(shot);
     rows.push({
       shotId: shot.sectionNode.id,
