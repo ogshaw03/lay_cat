@@ -613,7 +613,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.020';
+const APP_VERSION='2026.10.02.021';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -3152,28 +3152,16 @@ function stageOrderCmp(a,b){
    これで既存プロジェクトも「切り替え不要」で LayCAT のプルダウン表示（動画優先＋status ベース）と
    常に一致する。 */
 function shotCurrentStage(shot){
+  /* v.021：フォールバック撤廃。ユーザーが LayCAT のプルダウンで明示的に設定した
+     currentStage のみを「現在の工程」として扱う。未設定なら null。
+     これによりガントバー色・ドーナツ集計・左列ドット色の整合性が保たれる
+     （以前は動画有無 / status 有無で曖昧にフォールバックしていたため、バー無し工程が
+      "現在" 扱いされて左列と色不一致が起きていた）。 */
   const stages = shot.stages||[];
   if(!stages.length) return null;
-  /* Priority 1：ユーザーがプルダウンで選択した明示的な currentStage */
   const explicit = shot.sectionNode && shot.sectionNode.currentStage;
-  if(explicit){
-    const hit = stages.find(st => (st.stageName||st.label||'') === explicit);
-    if(hit) return hit;
-  }
-  /* Priority 2：動画がある工程のうち動画時刻が最新のもの（LayCAT primary） */
-  const withVideo = stages.filter(st => st.latestVideoTime);
-  if(withVideo.length){
-    const sorted = withVideo.slice().sort((a,b)=>{
-      const ta=a.latestVideoTime||'', tb=b.latestVideoTime||'';
-      return ta<tb?-1:ta>tb?1:0;
-    });
-    return sorted[sorted.length-1];
-  }
-  /* Priority 3：status セット済みの工程のうち stageOrderCmp で最後（プロジェクトの工程順を優先） */
-  const withStatus = stages.filter(st => st.currentStatus);
-  if(!withStatus.length) return null;
-  const sorted = withStatus.slice().sort((a,b)=>stageOrderCmp(a.stageName||a.label||'', b.stageName||b.label||''));
-  return sorted[sorted.length-1];
+  if(!explicit) return null;
+  return stages.find(st => (st.stageName||st.label||'') === explicit) || null;
 }
 
 function renderStageDonut(){
