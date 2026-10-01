@@ -18,6 +18,19 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.058) **マイページ機能を追加（Phase A：プロフィール表示・稼働時間帯・役職）**：
+  - 右上のアカウント表示（photo+名前）をクリックするとマイページモーダルが開く。ログアウトリンクは別領域で従来通り。
+  - **プロフィール**：メール（読み取り専用）／表示名（編集可）／アイコン表示（Google 認証から取得）
+  - **稼働時間帯 (coreHours)**：開始・終了を time input で設定（デフォルト 10:30-19:30）
+  - **役職（複数選択）**：15 種の役職から選択（アニメーター／モデラー／ディレクター 等）
+  - **保存先**：Firestore `laycatUsers/{emailKey}` ドキュメント。`merge:true` で部分更新。
+  - **書き込み境界**：マイページの「保存」押下時のみ Firestore 書き込み。既存プロジェクトデータ（laycat.project.json / shot.json / status.json）への影響ゼロ。
+  - 新規関数：`openMyPageModal()`（本体）、`loadUserProfile(email)` / `saveUserProfile(email, data)`（Firebase 側）
+  - PMB 側は coreHours を参照するため、本機能で設定した値が自動的に PMB 工数集計に反映される（ただし Firestore 読み取り経路は別途要実装）。
+  - Phase B（通知設定・UI カスタマイズ）、Phase C（自動シフト検出 等）は後続で追加予定。
+  - **Firestore ルール（要設定）**：`match /laycatUsers/{emailKey} { allow read: if request.auth != null; allow write: if request.auth != null && request.resource.data.profile.email.lower() == request.auth.token.email.lower(); }`
+  - APP_VERSION：2026.09.29.057 → 2026.10.02.058
+
 - (dev v2026.09.29.057) **顔の向きガイド：ギズモ回転をキャラ LOCAL 軸の INTRINSIC 回転に修正**：
   - v.056 で軸固定ドラッグを入れたが、実装が「該当 Euler 軸に angle を加算するだけ」だったため、(a) pitch/roll のリング接線が回転速度と逆向きで指と逆に動く、(b) 追加は最後に適用される yaw を除いて WORLD 軸まわりの回転になり、キャラの現在姿勢に沿った LOCAL 回転にならなかった（ユーザー指摘：「XZ が逆回転」「回転挙動が LOCAL ではなくなってる」）。
   - マネキンと同じクォータニオン INTRINSIC 方式に置換：`_headEulerToQuat` / `_headQuatToEuler`（R=Ry*Rx*Rz で分解、gimbal lock 対応）を追加。ドラッグ開始時に `quat0` を保持し、Move では `delta = qFromAxisAngle(AXIS_LOCAL[axis], angle)` を `quat0 * delta`（右乗算＝INTRINSIC）で合成 → LOCAL 軸まわりの回転になる。

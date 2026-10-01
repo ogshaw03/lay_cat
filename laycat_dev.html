@@ -911,6 +911,40 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;z-index:1000;padding:24px}
 .modal-overlay.hidden{display:none}
+/* ===== マイページ モーダル（Phase A）===== */
+.auth-clickable{cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:2px 6px;border-radius:8px;transition:background 0.15s}
+.auth-clickable:hover{background:rgba(255,255,255,.08)}
+.mypage-modal{max-width:620px;width:100%;max-height:82vh;overflow:hidden;display:flex;flex-direction:column;background:var(--bg2);border:1px solid var(--border);border-radius:12px}
+.mp-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.mp-title{margin:0;font-size:16px;font-weight:700;color:var(--text);font-family:var(--font-head)}
+.mp-close{background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:20px;padding:0 6px;line-height:1;border-radius:4px}
+.mp-close:hover{color:var(--text);background:rgba(255,255,255,.08)}
+.mp-body{padding:16px 20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:20px}
+.mp-section{display:flex;flex-direction:column;gap:8px}
+.mp-section-title{margin:0;font-size:11px;font-weight:700;color:var(--text3);letter-spacing:1.2px;text-transform:uppercase;font-family:var(--font-head)}
+.mp-help{font-size:11px;color:var(--text3);line-height:1.5}
+.mp-profile-row{display:flex;gap:14px;align-items:center}
+.mp-photo{width:60px;height:60px;border-radius:50%;object-fit:cover;background:var(--bg3);flex-shrink:0}
+.mp-photo-placeholder{display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--text2);font-family:var(--font-head)}
+.mp-profile-fields{flex:1;display:flex;flex-direction:column;gap:8px}
+.mp-field{display:flex;align-items:center;gap:10px}
+.mp-label{min-width:48px;font-size:11px;color:var(--text3);font-weight:600;font-family:var(--font-head)}
+.mp-input{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-size:13px;font-family:var(--font-body)}
+.mp-input:focus{outline:none;border-color:var(--accent)}
+.mp-readonly{color:var(--text2);background:var(--bg)}
+.mp-time-row{display:flex;align-items:center;gap:10px}
+.mp-field-time{flex:0 0 auto}
+.mp-time-sep{color:var(--text3);font-size:14px}
+.mp-roles-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.mp-role-item{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;font-size:12px;color:var(--text);transition:background 0.15s}
+.mp-role-item:hover{background:var(--bg4)}
+.mp-role-item input{margin:0;cursor:pointer}
+.mp-role-item input:checked + span{color:var(--accent);font-weight:600}
+.mp-foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);background:var(--bg)}
+@media (max-width:620px){
+  .mp-roles-grid{grid-template-columns:repeat(2,1fr)}
+  .mp-profile-row{flex-direction:column;align-items:flex-start}
+}
 .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.6);animation:in .25s cubic-bezier(.16,1,.3,1)}
 .modal.lg{max-width:940px}
 @keyframes in{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:none}}
@@ -3812,7 +3846,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.09.29.057';
+const APP_VERSION='2026.10.02.058';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19239,11 +19273,112 @@ function renderDenied(user){authScreen(box=>{
 function showAuthedHeader(){
   $('#nameField').classList.add('hidden');
   const bx=$('#authUserBox');bx.classList.remove('hidden');bx.innerHTML='';
-  if(authUser.photo){const img=el('img','avatar');img.src=authUser.photo;img.referrerPolicy='no-referrer';bx.appendChild(img)}
+  /* クリックでマイページを開くクリッカブル部（photo + name）。ログアウトはクリック対象外。 */
+  const clickable=el('span','auth-clickable');
+  clickable.title='クリックでマイページを開く';
+  if(authUser.photo){const img=el('img','avatar');img.src=authUser.photo;img.referrerPolicy='no-referrer';clickable.appendChild(img)}
   /* v.017：役職を 3 段階（運営 / 管理者 / メンバー）でヘッダーに明示。
      operator=運営（メンテ閲覧可）、admin=管理者（一般と同扱い）、member=なし。 */
-  bx.appendChild(el('span',null,authUser.name+(authUser.role==='operator'?'（運営）':(authUser.role==='admin'?'（管理者）':''))));
-  const lo=el('span','lo','ログアウト');lo.onclick=async()=>{if(window.__laynaFB)await window.__laynaFB.logout()};bx.appendChild(lo);
+  clickable.appendChild(el('span',null,authUser.name+(authUser.role==='operator'?'（運営）':(authUser.role==='admin'?'（管理者）':''))));
+  clickable.onclick=()=>{try{openMyPageModal()}catch(e){toast('マイページを開けませんでした: '+e.message)}};
+  bx.appendChild(clickable);
+  const lo=el('span','lo','ログアウト');lo.onclick=async(e)=>{e.stopPropagation();if(window.__laynaFB)await window.__laynaFB.logout()};bx.appendChild(lo);
+}
+/* ===== マイページ（Phase A：プロフィール表示・稼働時間帯・役職）=====
+   dev v2026.10.02 追加。Firestore(laycatUsers/{emailKey}) に保存。
+   書き込み境界：このモーダルの「保存」押下時のみ、Firestore 側（既存プロジェクトデータへの影響ゼロ）。 */
+const MYPAGE_ROLES=[
+  {id:'animator',   label:'アニメーター'},
+  {id:'modeler',    label:'モデラー'},
+  {id:'rigger',     label:'リガー'},
+  {id:'compositor', label:'コンポジター'},
+  {id:'director',   label:'ディレクター'},
+  {id:'layout',     label:'レイアウト'},
+  {id:'art',        label:'アート'},
+  {id:'motion',     label:'モーションデザイナー'},
+  {id:'vfx',        label:'VFX アーティスト'},
+  {id:'lookdev',    label:'ルックデブ'},
+  {id:'lighting',   label:'ライティング'},
+  {id:'editor',     label:'エディター'},
+  {id:'producer',   label:'プロデューサー'},
+  {id:'pm',         label:'制作進行'},
+  {id:'reviewer',   label:'レビュワー'},
+];
+async function openMyPageModal(){
+  if(!authUser||!authUser.email){toast('ログインが必要です');return}
+  if(!window.__laynaFB||!window.__laynaFB.loadUserProfile){toast('Firestore 未初期化');return}
+  const email=authUser.email;
+  let profile=null;
+  try{profile=await window.__laynaFB.loadUserProfile(email)}catch(_){}
+  profile=profile||{};
+  const curName=(profile.profile&&profile.profile.displayName)||authUser.name||email;
+  const curStart=(profile.coreHours&&profile.coreHours.start)||'10:30';
+  const curEnd=(profile.coreHours&&profile.coreHours.end)||'19:30';
+  const curRoles=new Set(Array.isArray(profile.roles)?profile.roles:[]);
+  openModal(body=>{
+    body.classList.add('mypage-modal');
+    const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const photoHtml=authUser.photo?`<img src="${esc(authUser.photo)}" referrerpolicy="no-referrer" class="mp-photo">`:`<div class="mp-photo mp-photo-placeholder">${esc((curName||'?').slice(0,1))}</div>`;
+    const rolesHtml=MYPAGE_ROLES.map(r=>`<label class="mp-role-item"><input type="checkbox" class="mp-role" value="${r.id}"${curRoles.has(r.id)?' checked':''}><span>${esc(r.label)}</span></label>`).join('');
+    body.innerHTML=`
+      <div class="mp-head">
+        <h3 class="mp-title">マイページ</h3>
+        <button class="mp-close" title="閉じる">×</button>
+      </div>
+      <div class="mp-body">
+        <!-- プロフィール -->
+        <section class="mp-section">
+          <h4 class="mp-section-title">プロフィール</h4>
+          <div class="mp-profile-row">
+            ${photoHtml}
+            <div class="mp-profile-fields">
+              <label class="mp-field"><span class="mp-label">メール</span><input type="text" class="mp-input mp-readonly" value="${esc(email)}" readonly></label>
+              <label class="mp-field"><span class="mp-label">表示名</span><input type="text" class="mp-input" id="mpName" value="${esc(curName)}"></label>
+            </div>
+          </div>
+        </section>
+        <!-- 稼働時間帯 -->
+        <section class="mp-section">
+          <h4 class="mp-section-title">稼働時間帯（coreHours）</h4>
+          <div class="mp-help">この時間帯内のステータス滞在だけが工数集計で加算されます。残業時はステータス遷移時刻を根拠に自動拡張されます。</div>
+          <div class="mp-time-row">
+            <label class="mp-field mp-field-time"><span class="mp-label">開始</span><input type="time" class="mp-input" id="mpStart" value="${esc(curStart)}"></label>
+            <span class="mp-time-sep">〜</span>
+            <label class="mp-field mp-field-time"><span class="mp-label">終了</span><input type="time" class="mp-input" id="mpEnd" value="${esc(curEnd)}"></label>
+          </div>
+        </section>
+        <!-- 役職 -->
+        <section class="mp-section">
+          <h4 class="mp-section-title">役職（複数選択可）</h4>
+          <div class="mp-roles-grid">${rolesHtml}</div>
+        </section>
+      </div>
+      <div class="mp-foot">
+        <button class="btn btn-ghost mp-cancel">キャンセル</button>
+        <button class="btn btn-primary mp-save">保存</button>
+      </div>`;
+    body.querySelector('.mp-close').onclick=closeModal;
+    body.querySelector('.mp-cancel').onclick=closeModal;
+    body.querySelector('.mp-save').onclick=async()=>{
+      const name=body.querySelector('#mpName').value.trim();
+      const start=body.querySelector('#mpStart').value;
+      const end=body.querySelector('#mpEnd').value;
+      /* 簡易バリデーション */
+      if(!name){toast('表示名を入力してください');return}
+      if(!/^\d{2}:\d{2}$/.test(start)||!/^\d{2}:\d{2}$/.test(end)){toast('稼働時間帯の形式が不正です');return}
+      const roles=Array.from(body.querySelectorAll('.mp-role')).filter(x=>x.checked).map(x=>x.value);
+      const data={
+        profile:{displayName:name,email:email,photoUrl:authUser.photo||''},
+        coreHours:{start:start,end:end},
+        roles:roles,
+      };
+      const btn=body.querySelector('.mp-save');btn.disabled=true;btn.textContent='保存中…';
+      const ok=await window.__laynaFB.saveUserProfile(email,data);
+      btn.disabled=false;btn.textContent='保存';
+      if(ok){toast('マイページを保存しました');closeModal()}
+      else{toast('保存に失敗しました（Firestore ルール要確認）')}
+    };
+  });
 }
 /* ===== メンテナンス / 全体お知らせ（運営コンソールから制御。OGREF相当） ===== */
 let _maintActive=false, _signalsWired=false;
@@ -19365,6 +19500,30 @@ initApp();
           try{m.onSnapshot(m.doc(fs,'laynaAccess','broadcast'),s=>{try{onBcast&&onBcast(s.data()||{})}catch(_){}},()=>{})}catch(_){}
         }).catch(()=>{});
       }catch(_){}},
+      /* マイページ用：ユーザーの個人プロフィールを Firestore(laycatUsers/{emailKey}) から読む。
+         無ければ null。dev v2026.10.02 追加（Phase A：プロフィール/稼働時間帯/役職）。 */
+      loadUserProfile:async(email)=>{try{
+        if(!email)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const snap=await m.getDoc(m.doc(fs,'laycatUsers',key));
+        return snap.exists()?snap.data():null;
+      }catch(e){return null}},
+      /* マイページ用：ユーザーの個人プロフィールを Firestore(laycatUsers/{emailKey}) に保存。
+         merge:true で部分更新。他のフィールドを壊さない。成否を返す。 */
+      saveUserProfile:async(email,data)=>{try{
+        if(!email||!data)return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const payload=Object.assign({},data,{updatedAt:new Date().toISOString()});
+        /* 常に profile.email を含めて書く（Firestore ルール判定用） */
+        if(!payload.profile)payload.profile={};
+        payload.profile.email=email;
+        await m.setDoc(m.doc(fs,'laycatUsers',key),payload,{merge:true});
+        return true;
+      }catch(e){return false}},
       /* 招待トークンを照合し、有効なら自分を invited に登録（承認なしでメンバー化）。成否を返す。 */
       redeemInvite:async(tok,u)=>{try{
         if(!tok||!u||!u.email)return false;
