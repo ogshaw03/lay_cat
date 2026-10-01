@@ -611,7 +611,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.013';
+const APP_VERSION='2026.10.02.014';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2514,17 +2514,22 @@ function renderEffortHeatmap(rows, root, dayDivisorMs){
   const todayIdx = dayIdx(new Date());
   const pxPerDay = 100 / totalDays; /* % */
 
-  /* ヘッダ軸：月初め or 10 日単位で ticks を表示（粗く） */
+  /* ヘッダ軸：毎週月曜日に tick。月初は "M/D"（月付き）、それ以外は日付のみ "D"。
+     長期プロジェクト対応：300 日以上なら隔週に間引く。 */
   const ticks = [];
-  const d0 = new Date(tStart);
+  const stride = totalDays >= 300 ? 14 : 7; /* 日数 */
   for(let i=0;i<totalDays;i++){
     const d = new Date(tStart + i*86400000);
-    /* 月の 1 日目と 15 日目に tick */
+    const wk = d.getDay();
+    if(wk !== 1) continue; /* 月曜日だけ */
+    /* stride 間引き：i を stride で割った剰余で間引く（連続する月曜を近似的に間引く） */
+    const weekIndex = Math.floor(i/7);
+    if(stride===14 && weekIndex%2!==0) continue;
     const date = d.getDate();
-    if(date===1 || date===15){
-      const label = (date===1 ? (d.getMonth()+1)+'月' : '15');
-      ticks.push({idx:i, label});
-    }
+    const month = d.getMonth()+1;
+    /* 月初週（date <= 7）は "M/D" 表記、それ以外は "D" のみ */
+    const label = (date<=7) ? `${month}/${date}` : `${date}`;
+    ticks.push({idx:i, label});
   }
   const todayTick = (todayIdx>=0 && todayIdx<=totalDays)
     ? `<div class="eh-today" style="left:${todayIdx*pxPerDay}%"></div>` : '';
