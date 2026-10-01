@@ -348,6 +348,16 @@ service cloud.firestore {
         allow write:        if false;
       }
     }
+
+    // ===== マイページ（個人プロフィール：表示名 / 稼働時間帯 / 役職）=====
+    // 保存先：laycatUsers/{emailKey}。本体のマイページモーダルからユーザー自身が編集。
+    // 読取は認証者全員（メンバー表示・担当者 pickup・PMB の coreHours 参照のため）。
+    // 書込は自分の emailKey ドキュメントのみ。削除は運営のみ（退職者整理）。
+    match /laycatUsers/{key} {
+      allow read:           if signedIn();
+      allow create, update: if signedIn() && key == myKey();
+      allow delete:         if isStaff();
+    }
   }
 }`;
 

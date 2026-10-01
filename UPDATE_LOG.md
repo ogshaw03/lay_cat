@@ -28,7 +28,7 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
   - 新規関数：`openMyPageModal()`（本体）、`loadUserProfile(email)` / `saveUserProfile(email, data)`（Firebase 側）
   - PMB 側は coreHours を参照するため、本機能で設定した値が自動的に PMB 工数集計に反映される（ただし Firestore 読み取り経路は別途要実装）。
   - Phase B（通知設定・UI カスタマイズ）、Phase C（自動シフト検出 等）は後続で追加予定。
-  - **Firestore ルール（要設定）**：`match /laycatUsers/{emailKey} { allow read: if request.auth != null; allow write: if request.auth != null && request.resource.data.profile.email.lower() == request.auth.token.email.lower(); }`
+  - **Firestore ルール**：access-console.html の RULES 定数に `match /laycatUsers/{key}` を追記（read=認証者／write=自分の emailKey のみ／delete=運営）。アクセス管理コンソールの「ルールをコピー」からそのまま Firestore コンソールへ貼り付ければ適用完了。
   - APP_VERSION：2026.09.29.057 → 2026.10.02.058
 
 - (dev v2026.09.29.057) **顔の向きガイド：ギズモ回転をキャラ LOCAL 軸の INTRINSIC 回転に修正**：
