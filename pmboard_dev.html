@@ -290,8 +290,6 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .drag-tip .lbl{color:var(--text3);font-size:10px;margin-right:6px;letter-spacing:.5px}
 .gantt-row .track .seg-actual{position:absolute;top:18px;height:12px;border-radius:var(--radius2)}
 .gantt-row .track .seg-actual.wip{border-right:1px dashed rgba(255,255,255,.35)}
-/* v.020：マスク適用部分（実質カウントされた時間）のオーバーレイ。実績バーの上に重ねて濃く表示。 */
-.gantt-row .track .seg-actual-mask{position:absolute;top:18px;height:12px;border-radius:var(--radius2);pointer-events:none}
 .gantt-row .track .seg-actual .seg-actual-lbl{position:absolute;right:5px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;color:#16161a;font-family:var(--font-code);font-weight:700;letter-spacing:.2px;white-space:nowrap}
 .gantt-row .track .milestone{position:absolute;top:11px;width:10px;height:10px;background:var(--amber);transform:rotate(45deg);z-index:3}
 
@@ -613,7 +611,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.021';
+const APP_VERSION='2026.10.02.022';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1506,14 +1504,12 @@ function buildGantt(){
          クライアントチェック待ち期間はセグメント間の隙間として自然に「除外」される。
          最終セグメント（end==null）は open：今日まで伸長し、右端に「進行中」ラベル。
          それ以外のセグメントは日数ラベル（Nd）。
-         v.020：背景バーを薄く描き、マスク適用後の実効時間部分を濃いオーバーレイで重ねる。
-         "見た目のステータス滞在期間" と "工数集計で加算された部分" の両方が視覚化される。 */
-      const projStatusesForEvidence = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
+         v.022：v.020 の「マスク外を薄く表示」オーバーレイ方式はバーが読みづらく不評のため、
+         従来の単色バー（opacity 0.9 完了／0.7 進行中）表示に戻した。マスク効果は工数タブと
+         ヒートマップで引き続き確認可能。 */
       for(const st of stages){
         const segs = st.workSegments || [];
         if(!segs.length) continue;
-        const defaultMaskForStage = _getCoreHoursMinutes(rootNode, st.assignee);
-        const historyForStage = st.history || [];
         let totalWorkDays = 0;
         segs.forEach((seg, idx) => {
           const a1 = dayIdx(seg.start);
@@ -1523,53 +1519,12 @@ function buildGantt(){
           const w = Math.max(px*0.5, (a2-a1)*px);
           const isLast = idx === segs.length-1;
           const isWip = openEnd && !st.isDone && isLast;
-          /* v.020：背景バーは薄く（opacity 0.3）、マスク外は "ステータスは作業中だが集計外" として dimmed に。 */
-          const bgOpacity = 0.3;
-          const maskOverlayOpacity = isWip ? 0.7 : 0.9;
-          const style = `background:${st.color};opacity:${bgOpacity}`;
+          const style = `background:${st.color};opacity:${isWip?'.7':'.9'}`;
           totalWorkDays += Math.max(1, a2-a1);
           let labelText = '';
           if(isWip) labelText = '進行中';
           else if(isLast) labelText = `${totalWorkDays}d`;
-          /* 1. 背景バー（薄い）：見た目のステータス滞在期間を表示 */
           track.push(`<div class="seg-actual ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}" title="実績：${escapeHtml(fmtJstDate(seg.start))} 〜 ${openEnd?'今日':escapeHtml(fmtJstDate(seg.end))}"><span class="seg-actual-lbl">${labelText}</span></div>`);
-          /* 2. マスク適用部分のオーバーレイ（濃い）：工数集計で実質カウントされた部分を描画 */
-          const sMs = seg.start.getTime();
-          const eMs = openEnd ? Date.now() : seg.end.getTime();
-          const evidenceEvents = _collectWorkerEvidenceEvents(historyForStage, sMs, eMs, openEnd, projStatusesForEvidence);
-          const tStartMs = start.getTime();
-          const d0 = new Date(sMs);
-          d0.setHours(0,0,0,0);
-          let dMs = d0.getTime();
-          while(dMs < eMs){
-            const dayEndMs = dMs + 86400000;
-            let maskStartMin = defaultMaskForStage.start;
-            let maskEndMin = defaultMaskForStage.end;
-            for(const tMs of evidenceEvents){
-              if(tMs >= dMs && tMs < dayEndMs){
-                const mod = (tMs - dMs) / 60000;
-                if(mod < maskStartMin) maskStartMin = mod;
-                if(mod > maskEndMin)   maskEndMin   = mod;
-              }
-            }
-            const winStartMs = dMs + maskStartMin*60000;
-            const winEndMs   = dMs + maskEndMin*60000;
-            const aMs = Math.max(sMs, winStartMs);
-            const bMs = Math.min(eMs, winEndMs);
-            if(bMs > aMs){
-              const dayIdxInt = Math.round((dMs - tStartMs) / 86400000);
-              if(dayIdxInt >= 0 && dayIdxInt < days){
-                const aFrac = (aMs - dMs) / 86400000;
-                const bFrac = (bMs - dMs) / 86400000;
-                const leftPct = (dayIdxInt + aFrac) * px;
-                const widthPct = (bFrac - aFrac) * px;
-                if(widthPct > 0.001){
-                  track.push(`<div class="seg-actual-mask" style="left:${leftPct}%;width:${widthPct}%;background:${st.color};opacity:${maskOverlayOpacity}"></div>`);
-                }
-              }
-            }
-            dMs += 86400000;
-          }
         });
       }
       /* Milestones */
