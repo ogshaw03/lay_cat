@@ -18,6 +18,18 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.059) **プロジェクト設定に「現在工程を一括反映」ボタン追加（pmboard 整合用マイグレーション）**：
+  - pmboard v.021 で `shotCurrentStage` のフォールバック撤廃により、`shot.currentStage` 未設定のショットが pmboard で工程表示されなくなった。
+  - 本機能：pmboard の挙動変更に合わせて、`shot.currentStage` 未設定ショットに「既存の表示工程」を明示的に書き出すマイグレーション。
+  - 選定ロジック：
+    - **legacy shots**（section + review 子）：最新 version の工程 → status 設定済み最後 → 先頭 review
+    - **Simple B shots**（review + stageHistory or kind='shot'）：stageHistory 最後の to → root.stages[0]
+  - 変更は `setShotCurrentStage` 相当（`stageHistory` にも `(migration)` 付きで追記）→ `persist()` で saveProjectSplit 経由保存。
+  - UI：プロジェクト設定モーダルに「🧮 現在工程を一括反映」ボタンを追加。実行後にトーストで適用/既設定/判定不能の件数を表示。
+  - 書き込み境界：**laycat.project.json / shots/{sid}.json** のみ（status.json 不変・persist は通常の saveProjectSplit 経由）。
+  - 既設定ショットは一切変更しない。
+  - APP_VERSION：2026.10.02.058 → 2026.10.02.059
+
 - (dev v2026.10.02.058) **マイページ機能を追加（Phase A：プロフィール表示・稼働時間帯・役職）**：
   - 右上のアカウント表示（photo+名前）をクリックするとマイページモーダルが開く。ログアウトリンクは別領域で従来通り。
   - **プロフィール**：メール（読み取り専用）／表示名（編集可）／アイコン表示（Google 認証から取得）

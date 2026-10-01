@@ -3257,6 +3257,78 @@ function setShotCurrentStage(n, newStage){
   n.stageHistory.push({ts:new Date().toISOString(), by:currentUser(), from:prev||null, to:newStage});
   return true;
 }
+/* ========================================================================
+   v.059：pmboard の currentStage フォールバック撤廃に合わせて、既存の暗黙 "現在工程"
+   を shot.currentStage に明示的に書き出す一括マイグレーション。
+   対象：pid の全ショットのうち currentStage 未設定のもの。
+   選定ロジック：
+     legacy shots (section + review children)：
+       1. 最新 version の工程（uploadedAt 最新）
+       2. status 設定済み工程のうち最後
+       3. 先頭 review の名前
+     Simple B shots (review 型 + stageHistory or kind='shot')：
+       1. stageHistory の最後の to
+       2. root.stages[0]（先頭工程）
+   書込：DB.nodes を更新 → persist() で saveProjectSplit 経由保存。
+   ======================================================================== */
+async function migrateImplicitCurrentStages(pid){
+  if(!DB || !Array.isArray(DB.nodes)) return {ok:false, msg:'DB 未初期化'};
+  if(!pid){
+    try{pid = state && state.currentPage ? rootOfId(getNode(state.currentPage)) : null}catch(_){}
+    if(!pid){const first = REG && REG[0]; if(first) pid=first.id}
+  }
+  if(!pid) return {ok:false, msg:'プロジェクトが特定できません'};
+  const allNodes = DB.nodes;
+  const root = allNodes.find(n => n.id === pid);
+  if(!root) return {ok:false, msg:'root ノードが見つかりません'};
+  const projStages = projStageList(root);
+  const shots = allNodes.filter(n => _isShotNodeForSave(n, allNodes) && rootOfId(n) === pid);
+  const applied = [];
+  const skipped = [];
+  const nolabel = [];
+  for(const shot of shots){
+    if(shot.currentStage){ skipped.push(shot); continue; }
+    let picked = null;
+    if(shot.type === 'section'){
+      /* legacy：子 review のうち最新 version 工程 → status 済み最後 → 先頭 */
+      const children = allNodes.filter(n => n.parentId === shot.id && n.type === 'review');
+      if(!children.length){ nolabel.push(shot); continue; }
+      let bestVideoChild = null, bestVideoTime = '';
+      for(const c of children){
+        const vers = Array.isArray(c.versions) ? c.versions : [];
+        for(const v of vers){
+          const t = v && v.uploadedAt;
+          if(t && t > bestVideoTime){ bestVideoTime = t; bestVideoChild = c; }
+        }
+      }
+      if(bestVideoChild){ picked = bestVideoChild.name; }
+      else {
+        const withStatus = children.filter(c => c.status && c.status !== 'empty');
+        if(withStatus.length) picked = withStatus[withStatus.length - 1].name;
+        else picked = children[0].name;
+      }
+    } else if(shot.type === 'review'){
+      /* Simple B：stageHistory の最後の to → root.stages[0] */
+      if(Array.isArray(shot.stageHistory) && shot.stageHistory.length){
+        const last = shot.stageHistory[shot.stageHistory.length - 1];
+        if(last && last.to) picked = last.to;
+      }
+      if(!picked && projStages.length) picked = projStages[0];
+    }
+    if(picked){
+      shot.currentStage = picked;
+      if(!Array.isArray(shot.stageHistory)) shot.stageHistory = [];
+      shot.stageHistory.push({ts:new Date().toISOString(), by:currentUser()+' (migration)', from:null, to:picked});
+      applied.push({id:shot.id, name:shot.name||shot.id.slice(-8), picked});
+    } else {
+      nolabel.push(shot);
+    }
+  }
+  if(applied.length){
+    try{await persist()}catch(e){return {ok:false, msg:'保存失敗: '+(e && e.message), applied, skipped, nolabel}}
+  }
+  return {ok:true, applied, skipped, nolabel};
+}
 /* 骨格として project.json に残す時の "重量フィールド抜き" コピー */
 function _skeletonNode(n){
   const out={};for(const k in n){if(k==='versions'||k==='comments'||k==='_vtomb')continue;out[k]=n[k]}
@@ -3846,7 +3918,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.058';
+const APP_VERSION='2026.10.02.059';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10926,6 +10998,30 @@ function openRename(node){
       auditWrap.appendChild(el('span','form-label','今月のステータス変更履歴を確認します（source ハイライト・CSV 書き出し対応）。'));
       const auditBtn=el('button','btn btn-ghost btn-sm','📜 監査ログを見る');auditBtn.type='button';auditBtn.onclick=()=>{closeModal();openStatusAuditModal(node.id)};auditWrap.appendChild(auditBtn);
       inner.appendChild(auditWrap);
+      /* v.059：pmboard の currentStage 整合用マイグレーション。shot.currentStage 未設定のショットに、
+         既存の暗黙優先順位（video → status → 先頭）で選ばれた工程を明示的に書き込む。 */
+      sec(secN++,'🧮','現在工程の整合（pmboard 連動）','現在「現在の工程」プルダウンで未設定のショットに、既存の表示工程を明示的に書き込みます。pmboard のバー色と左列の工程色が一致するようになります。');
+      const migWrap=el('div');migWrap.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px';
+      migWrap.appendChild(el('span','form-label','このプロジェクトのショットを一括処理します（既に設定済みのショットは変更しません）。'));
+      const migBtn=el('button','btn btn-ghost btn-sm','🧮 現在工程を一括反映');migBtn.type='button';
+      migBtn.onclick=async()=>{
+        migBtn.disabled=true;migBtn.textContent='処理中…';
+        try{
+          const r=await migrateImplicitCurrentStages(node.id);
+          if(r && r.ok){
+            toast(`現在工程を一括反映しました：適用 ${r.applied.length} 件 / 既設定 ${r.skipped.length} 件 / 判定不能 ${r.nolabel.length} 件`);
+            try{console.log('[migrateImplicitCurrentStages] result:', r)}catch(_){}
+          }else{
+            toast('一括反映に失敗しました：'+(r && r.msg || '不明なエラー'));
+          }
+        }catch(e){
+          toast('一括反映エラー：'+(e && e.message || e));
+        }finally{
+          migBtn.disabled=false;migBtn.textContent='🧮 現在工程を一括反映';
+        }
+      };
+      migWrap.appendChild(migBtn);
+      inner.appendChild(migWrap);
       /* このユーザーの接続を解除・プロジェクトの削除 */
       sec(secN++,'⚠️','危険な操作','プロジェクトの接続を外す・削除するなど、取り消しにくい操作です。');
       const dcWrap=el('div');dcWrap.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px';
