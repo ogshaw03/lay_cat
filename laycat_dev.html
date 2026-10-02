@@ -4001,7 +4001,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.071';
+const APP_VERSION='2026.10.02.072';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19427,7 +19427,8 @@ function roleFor(email){
   if(!accessCfg||!email)return null;const e=email.toLowerCase();
   const has=arr=>(arr||[]).some(x=>String(x).toLowerCase()===e);
   if(has(accessCfg.operatorEmails))return 'operator';
-  if(has(accessCfg.adminEmails))return 'admin';
+  /* Phase M3b：全体 admin（adminEmails）を廃止。テナント内 admin ロールへ移行済み。
+     Firestore 側の adminEmails データが残っていても参照しない。 */
   if(has(accessCfg.allowedEmails))return 'member';
   /* Phase M3c：グローバル allowedDomains の判定を廃止。
      ドメインベースのアクセスはテナント単位の allowDomainAutoJoin（M3b）に集約。
@@ -19459,13 +19460,12 @@ function showAuthedHeader(){
   const clickable=el('span','auth-clickable');
   clickable.title='クリックでマイページを開く';
   if(authUser.photo){const img=el('img','avatar');img.src=authUser.photo;img.referrerPolicy='no-referrer';clickable.appendChild(img)}
-  /* v.017：役職を 3 段階（運営 / 管理者 / メンバー）でヘッダーに明示。
-     Phase M3a：テナント内役職（owner/admin）もバッジ対象に加える（全体 admin との統合準備）。
-     表示優先：運営 > 契約者 > 管理者（全体 admin or テナント admin） > なし。 */
+  /* Phase M3b：役職バッジはテナント内役職ベースに完全統合。
+     表示優先：運営 > 契約者 > 管理者（テナント内 admin） > なし。 */
   let roleBadge = '';
   if(authUser.role === 'operator') roleBadge = '（運営）';
   else if(authUser.tenantRole === 'owner') roleBadge = '（契約者）';
-  else if(authUser.role === 'admin' || authUser.tenantRole === 'admin') roleBadge = '（管理者）';
+  else if(authUser.tenantRole === 'admin') roleBadge = '（管理者）';
   clickable.appendChild(el('span',null,authUser.name+roleBadge));
   clickable.onclick=()=>{try{openMyPageModal()}catch(e){toast('マイページを開けませんでした: '+e.message)}};
   bx.appendChild(clickable);
@@ -19627,15 +19627,14 @@ async function _calEnsureCompany(){
 }
 async function openCalendarModal(){
   if(!authUser){toast('ログインが必要です');return}
-  /* Phase M3a：編集権限をテナント役職ベースに統合。
+  /* Phase M3b：編集権限をテナント役職ベースに完全統合。
      - 運営（operator）：全テナントの会社休日を編集可能（SaaS 運営の最高権限）
      - テナント owner / admin：自テナントの会社休日のみ編集可能
-     - 既存の全体 admin 役職は後方互換のため維持（Phase M3b で廃止予定） */
+     - 旧全体 admin 経路は Phase M3b で撤去 */
   const canEdit = (
     authUser.role === 'operator' ||
     authUser.tenantRole === 'owner' ||
-    authUser.tenantRole === 'admin' ||
-    authUser.role === 'admin' /* 後方互換：Phase M3b で削除予定 */
+    authUser.tenantRole === 'admin'
   );
   const now=new Date();
   _calCache.state={year:now.getFullYear(),month:now.getMonth(),canEdit};

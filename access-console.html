@@ -249,7 +249,7 @@
       <!-- アクセス管理 -->
       <div class="card">
         <div class="card-title">🔐 アクセス管理 / 権限付与</div>
-        <div class="card-desc">3区分でアクセスを管理します。<b>運営</b>=この設定を編集可・監査ログ閲覧可・メンテ中でも閲覧可、<b>管理者</b>=一般メンバーと同じログイン権限だがヘッダーに「（管理者）」バッジ表示、<b>メンバー</b>=LayCAT にログインできる（プロジェクト参加は各プロジェクト側で管理）。許可したメールアドレスの Google アカウントが LayCAT を利用できます。行ごとのボタンで権限を変更・削除できます。</div>
+        <div class="card-desc">2 区分でアクセスを管理します。<b>運営</b>=この設定を編集可・監査ログ閲覧可・メンテ中でも閲覧可、<b>メンバー</b>=LayCAT にログインできる（プロジェクト参加は各プロジェクト側で管理）。許可したメールアドレスの Google アカウントが LayCAT を利用できます。<b>テナント内の admin/契約者</b>は LayCAT 本体のテナント管理モーダルから設定します。</div>
 
         <div class="counts" id="counts" style="margin:6px 0 12px"></div>
         <button class="btn btn-primary" id="openAccessBtn">🪟 別ウィンドウで開く（ユーザー追加・権限変更・削除）</button>
@@ -302,24 +302,18 @@ service cloud.firestore {
     // ===== 共通ヘルパ =====
     function signedIn() { return request.auth != null; }
 
-    // アクセス設定（未作成なら空扱い）。運営／管理者の判定に使う。
-    // 2026-09-20：役職を「運営(operatorEmails) / 管理者(adminEmails) / メンバー(allowedEmails)」の 3 段階に復活。
+    // アクセス設定（未作成なら空扱い）。運営の判定に使う。
+    // Phase M3b：全体 admin（adminEmails）廃止。SaaS 運営は operatorEmails、
+    // テナント内の admin 権限は tenants/{tid}/members/{emailKey}.role に移行済み。
     function cfgData() {
       return exists(/databases/$(database)/documents/laynaAccess/config)
         ? get(/databases/$(database)/documents/laynaAccess/config).data
         : {};
     }
-    // 運営（最高権限）：メンテ・お知らせ・招待・監査などの管理系
+    // 運営（最高権限）：メンテ・お知らせ・招待・監査・アクセス設定編集
     function isStaff() {
       return signedIn() &&
         request.auth.token.email in cfgData().get('operatorEmails', []);
-    }
-    // 運営 or 管理者：アクセス管理コンソールの設定編集（メンバー追加／権限変更／許可ドメイン）
-    function isConfigEditor() {
-      return signedIn() && (
-        request.auth.token.email in cfgData().get('operatorEmails', []) ||
-        request.auth.token.email in cfgData().get('adminEmails', [])
-      );
     }
 
     // 本体/コンソールが使うメールキー（emailを小文字化し記号を _ に）。
@@ -334,11 +328,12 @@ service cloud.firestore {
         .affectedKeys().hasOnly([myKey()]);
     }
 
-    // ===== アクセス設定（読取=認証者／編集=運営 or 管理者） =====
+    // ===== アクセス設定（読取=認証者／編集=運営のみ） =====
+    // Phase M3b：旧「管理者（adminEmails）」の編集権限を撤回。運営のみが設定を変更可能。
     match /laynaAccess/config {
       allow read:           if signedIn();          // 本体が許可判定のため読む
       allow create:         if signedIn();          // 初回ブートストラップ（作成者を運営に）
-      allow update:         if isConfigEditor();    // 運営 or 管理者
+      allow update:         if isStaff();           // 運営のみ
       allow delete:         if false;
     }
 
@@ -488,14 +483,13 @@ service cloud.firestore {
     // ドキュメント内容：{ dates: [{date:"YYYY-MM-DD", name, addedBy, addedAt}], updatedAt }
     // 会社固有の休業日（夏季休業・年末年始の長期休暇など）。
     // 読取は認証者全員。
-    // 書込（Phase M3a 更新）：
+    // 書込（Phase M3b 更新）：
     //   - 運営（operator）：全テナントの会社休日を編集可
     //   - 当該テナントの ownerEmail or admin ロール：自テナントの会社休日のみ編集可
-    //   - 旧「全体 admin」経路（isConfigEditor）は後方互換のため維持（Phase M3b で廃止予定）
+    //   - 旧「全体 admin」経路（isConfigEditor）は Phase M3b で削除
     match /companyHolidays/{tenantId} {
       allow read:           if signedIn();
       allow write:          if isStaff()
-                               || isConfigEditor()
                                || (signedIn() && request.auth.token.email == _tenantOwner(tenantId))
                                || (signedIn() && _myTenantRole(tenantId) == 'admin');
     }
@@ -514,31 +508,25 @@ $('rulesPre')&&($('rulesPre').textContent=RULES);
 $('rulesPre2')&&($('rulesPre2').textContent=RULES);
 
 /* ---- 役割リストの取り出し ----
-   2026-09-20：役職を「運営 / 管理者 / メンバー」の 3 段階に戻した（旧 2026-07-24 の 2 段階統一を撤回）。
-   - operator (運営)：この設定を編集可・監査ログ閲覧可・メンテ中も閲覧可
-   - admin (管理者)：一般メンバーと同ログイン権限だが LayCAT ヘッダーに「（管理者）」バッジ
-   - member (メンバー)：一般
-   adminEmails は独立して扱い、allowedEmails / operatorEmails とは重複させない。 */
+   Phase M3b：全体 admin（adminEmails）を廃止。役職は「運営（operator）/ メンバー（member）」の
+   2 段階に戻す（+ テナント内 owner/admin は tenants/{tid}/members で別軸管理）。
+   - operator (運営)：SaaS 全体の設定編集・監査ログ閲覧・メンテ中も閲覧可
+   - member (メンバー)：ログインのみ
+   - テナント内役職（契約者/admin）は LayCAT 本体のテナント管理モーダルから設定
+   adminEmails フィールドは Firestore に残っているかもしれないが参照しない（M3b で未使用化）。 */
 const arr=v=>Array.isArray(v)?[...v]:[];
 function tiers(data){
   const opSet=new Set(arr(data.operatorEmails).map(lc));
-  const adminSet=new Set(arr(data.adminEmails).map(lc).filter(e=>!opSet.has(e)));
-  const explicitMembers=new Set(arr(data.allowedEmails).map(lc).filter(e=>!opSet.has(e)&&!adminSet.has(e)));
+  const explicitMembers=new Set(arr(data.allowedEmails).map(lc).filter(e=>!opSet.has(e)));
   const operators=[...opSet];
-  const admins=[...adminSet];
   const members=[...explicitMembers];
   const domains=arr(data.allowedDomains).map(d=>String(d).replace(/^@/,''));
-  return {operators,admins,members,domains};
+  return {operators,admins:[],members,domains};
 }
-/* 運営のみ（メンテ・お知らせ・招待・監査など） */
+/* 運営のみ（コンソールの全操作：アクセス管理・メンテ・お知らせ・招待・監査・テナント定義） */
 function isEditor(){ if(!cfg)return true; const t=tiers(cfg); return t.operators.map(lc).includes(lc(me.email)); }
-/* 2026-09-20：管理者もコンソールを閲覧＋アクセス管理／許可ドメインの編集ができる。
-   運営専用（data-op-only）のカード（監査ログ・認証・メンテ・お知らせ・招待リンク・セットアップ・R2 再構築）は非表示。
-   isConfigEditor() = 運営 OR 管理者。アクセス管理／ドメイン編集はこれで判定。 */
-function isAdmin(){ if(!cfg)return true; const t=tiers(cfg); const em=lc(me.email); return t.operators.map(lc).includes(em)||(t.admins||[]).map(lc).includes(em); }
-function isConfigEditor(){ return isAdmin(); }
-/* 監査ログは運営（operatorEmails）のみアクセス可。
-   ※ 2026-07-24 「管理者(adminEmails)」廃止後は isEditor と同義（運営 = editor = auditor）。 */
+function isAdmin(){ return isEditor(); } /* Phase M3b 後方互換：旧 isAdmin() は isEditor() と同義 */
+function isConfigEditor(){ return isEditor(); } /* Phase M3b 後方互換 */
 function isAuditor(){ return isEditor(); }
 /* loggedUsers(email→表示名) から名前索引を作る。名前つき表示・ドメインログイン者の表示に使用 */
 function rebuildNames(){nameByEmail={};for(const u of Object.values(luUsers||{})){if(u&&u.email&&u.displayName){const k=lc(u.email);if(!nameByEmail[k])nameByEmail[k]=u.displayName}} if(me&&me.email&&me.name&&!nameByEmail[lc(me.email)])nameByEmail[lc(me.email)]=me.name;}
@@ -671,7 +659,7 @@ function render(){
 }
 
 function paint(){
-  const {operators,admins,members,domains}=tiers(cfg);
+  const {operators,members,domains}=tiers(cfg);
   // authRequired
   const on=cfg.authRequired!==false;
   $('authRequired').checked=on;
@@ -693,8 +681,8 @@ function paint(){
     });
     return row;
   };
-  /* ユーザー一覧（運営/管理者/メンバー）は別ウィンドウに描画。inline はサマリのみ */
-  $('counts').textContent=`運営 ${operators.length} ・ 管理者 ${(admins||[]).length} ・ メンバー ${members.length}`;
+  /* ユーザー一覧（運営／メンバー）は別ウィンドウに描画。inline はサマリのみ。 */
+  $('counts').textContent=`運営 ${operators.length} ・ メンバー ${members.length}`;
   paintAccessWin();
   /* 監査ログカード：カード自体は常に表示。ボタンは operatorEmails 登録者のみ活性化、
      それ以外は「未登録のため閲覧不可」の案内文を出す（何もないと機能に気づけないため）。*/
@@ -816,22 +804,21 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 </style></head><body>
 <div id="awNote"></div>
 <h1>🔐 アクセス管理 / 権限付与</h1>
-<div class="desc"><b>運営</b>=この設定を編集可・監査ログ閲覧可・メンテ中も閲覧可。<b>管理者</b>=一般メンバーと同ログイン権限＋ヘッダー「（管理者）」バッジ。<b>メンバー</b>=LayCAT にログインできる（プロジェクト参加は各プロジェクト側で管理）。行ごとのボタンで権限を変更・削除できます。</div>
+<div class="desc"><b>運営</b>=この設定を編集可・監査ログ閲覧可・メンテ中も閲覧可。<b>メンバー</b>=LayCAT にログインできる（プロジェクト参加は各プロジェクト側で管理）。<b>テナント内の管理者／契約者</b>は LayCAT 本体のテナント管理モーダルから設定します。行ごとのボタンで権限を変更・削除できます。</div>
 <div class="add-row">
   <input id="awAddEmail" type="email" placeholder="user@example.com" autocomplete="off">
-  <select id="awAddRole"><option value="member">メンバー</option><option value="admin">管理者</option><option value="operator">運営</option></select>
+  <select id="awAddRole"><option value="member">メンバー</option><option value="operator">運営</option></select>
   <button class="btn btn-primary" id="awAddBtn">追加</button>
 </div>
 <div class="search"><input id="awSearch" type="text" placeholder="メールアドレスで検索…" autocomplete="off"></div>
 <div class="counts" id="awCounts"></div>
 <div class="sub-label">運営（この設定を編集可・監査ログ閲覧可・メンテ中も閲覧可）</div><div class="u-list" id="awOpList"></div>
-<div class="sub-label">管理者（一般メンバーと同ログイン権限＋ヘッダーに「（管理者）」バッジ）</div><div class="u-list" id="awAdminList"></div>
 <div class="sub-label">メンバー（ログインのみ）</div><div class="u-list" id="awMemberList"></div>
 <div class="sub-label">🏢 テナント所属（マルチテナント・各テナントの契約者が LayCAT 本体から管理）</div>
 <div id="awTenantList"></div>
 </body></html>`;
 async function openAccessWindow(){
-  if(!cfg||!isConfigEditor()){ notify('運営／管理者のみ操作できます'); return; }
+  if(!cfg||!isEditor()){ notify('運営のみ操作できます'); return; }
   if(accessWin&&!accessWin.closed){ accessWin.focus(); await _awFetchTenants(); paintAccessWin(); return; }
   accessWin=window.open('','laycat_access','width=780,height=880');
   if(!accessWin){ notify('ポップアップがブロックされました。ポップアップを許可してから再度お試しください。'); return; }
@@ -847,10 +834,10 @@ async function openAccessWindow(){
 function paintAccessWin(){
   if(!accessWin||accessWin.closed||!cfg)return;
   const d=accessWin.document;
-  const {operators,admins,members,domains}=tiers(cfg);
+  const {operators,members}=tiers(cfg);
   const q=lc((accessQuery||'').trim());
   const flt=a=>q?a.filter(e=>lc(e).includes(q)):a;
-  const editor=isConfigEditor();
+  const editor=isEditor();
   const idHtml=(email,self)=>{const nm=nameOf(email);return nm?`<span class="u-name">${escH(nm)}${self}</span><span class="u-mail">${escH(email)}</span>`:`<span class="u-name">${escH(email)}${self}</span>`;};
   const mkRow=(email,role,btns)=>{
     const self=(me&&email===me.email)?'（あなた）':'';
@@ -860,19 +847,16 @@ function paintAccessWin(){
     btns.forEach(([label,fn,danger])=>{const b=d.createElement('button');b.className='btn btn-sm'+(danger?' btn-danger':'');b.textContent=label;b.disabled=!editor;b.onclick=fn;row.appendChild(b);});
     return row;
   };
-  const opL=d.getElementById('awOpList'),adL=d.getElementById('awAdminList'),meL=d.getElementById('awMemberList');
-  opL.innerHTML='';if(adL)adL.innerHTML='';meL.innerHTML='';
-  const fo=flt(operators),fa=flt(admins||[]),fm=flt(members);
-  fo.forEach(e=>opL.appendChild(mkRow(e,{cls:'op',label:'運営'},[['→管理者',()=>setRole(e,'admin')],['→メンバー',()=>setRole(e,'member')],['削除',()=>setRole(e,'remove'),true]])));
+  const opL=d.getElementById('awOpList'),meL=d.getElementById('awMemberList');
+  opL.innerHTML='';meL.innerHTML='';
+  const fo=flt(operators),fm=flt(members);
+  fo.forEach(e=>opL.appendChild(mkRow(e,{cls:'op',label:'運営'},[['→メンバー',()=>setRole(e,'member')],['削除',()=>setRole(e,'remove'),true]])));
   if(!fo.length)opL.innerHTML='<div class="empty">'+(q?'該当なし':'運営はいません')+'</div>';
-  if(adL){
-    fa.forEach(e=>adL.appendChild(mkRow(e,{cls:'admin',label:'管理者'},[['→運営',()=>setRole(e,'operator')],['→メンバー',()=>setRole(e,'member')],['削除',()=>setRole(e,'remove'),true]])));
-    if(!fa.length)adL.innerHTML='<div class="empty">'+(q?'該当なし':'管理者はいません')+'</div>';
-  }
-  fm.forEach(e=>meL.appendChild(mkRow(e,{cls:'member',label:'メンバー'},[['→管理者',()=>setRole(e,'admin')],['→運営',()=>setRole(e,'operator')],['削除',()=>setRole(e,'remove'),true]])));
+  fm.forEach(e=>meL.appendChild(mkRow(e,{cls:'member',label:'メンバー'},[['→運営',()=>setRole(e,'operator')],['削除',()=>setRole(e,'remove'),true]])));
   if(!fm.length)meL.innerHTML='<div class="empty">'+(q?'該当なし':'メンバーはいません')+'</div>';
-  /* Phase M3c：旧「ドメインで許可中のメンバーリスト」はテナント所属に集約されたため削除。 */
-  d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ 管理者 ${(admins||[]).length} ・ メンバー ${members.length} ・ テナント ${_awTenants.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fa.length+fm.length}件`:'');
+  /* Phase M3c：旧「ドメインで許可中のメンバーリスト」はテナント所属に集約されたため削除。
+     Phase M3b：旧「管理者」セクションも削除（テナント内 admin に移行）。 */
+  d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ メンバー ${members.length} ・ テナント ${_awTenants.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fm.length}件`:'');
   /* マルチテナント：テナント別メンバー一覧 */
   const tnList=d.getElementById('awTenantList');
   if(tnList){
@@ -954,8 +938,8 @@ function renderInvites(){
   // 招待リンクから参加したメンバー（明示的な運営/管理者/メンバー登録済みの人は除く）
   const ilist=$('invitedList');
   if(ilist){
-    const {operators,admins,members}=tiers(cfg||{});
-    const explicit=new Set([...operators,...(admins||[]),...members].map(lc));
+    const {operators,members}=tiers(cfg||{});
+    const explicit=new Set([...operators,...members].map(lc));
     let arrv=Object.entries(invitedEmails||{}).map(([k,v])=>({key:k,...(v||{})})).filter(v=>v.email&&!explicit.has(lc(v.email)));
     const q=lc(query.trim());
     if(q)arrv=arrv.filter(v=>lc(v.email).includes(q)||lc(nameOf(v.email)||v.name||'').includes(q));
@@ -1029,33 +1013,37 @@ async function setRole(email,target){
   } else if(target==='remove'){
     if(!awConfirm(email+' を削除しますか？'))return;
   }
+  /* Phase M3b：admin target は廃止。入ってきたら member に正規化。 */
+  if(target==='admin') target='member';
   try{
-    /* 3 リストを再構築：どのリストにも email が入らないところから、target に応じて追加 */
+    /* 2 リスト（+ 旧 admin リスト掃除）を再構築 */
     let operators=arr(data.operatorEmails).map(lc).filter(e=>e!==email);
-    let admins=arr(data.adminEmails).map(lc).filter(e=>e!==email);
     let members=arr(data.allowedEmails).map(lc).filter(e=>e!==email);
+    /* Phase M3b：旧 adminEmails に残っているユーザーが居たら、member に自動移行して掃除。
+       target 対象の email は上で除外済み。 */
+    const legacyAdmins=arr(data.adminEmails).map(lc).filter(e=>e!==email);
+    for(const e of legacyAdmins){ if(!operators.includes(e) && !members.includes(e)) members.push(e); }
     if(target==='operator')operators.push(email);
-    else if(target==='admin')admins.push(email);
     else if(target==='member')members.push(email);
     /* 重複除去（順序保持） */
     operators=[...new Set(operators)];
-    admins=[...new Set(admins)].filter(e=>!operators.includes(e));
-    members=[...new Set(members)].filter(e=>!operators.includes(e)&&!admins.includes(e));
-    await setDoc(doc(db,...CFG_PATH),{operatorEmails:operators,adminEmails:admins,allowedEmails:members,updatedBy:me.email,updatedAt:new Date().toISOString()},{merge:true});
+    members=[...new Set(members)].filter(e=>!operators.includes(e));
+    /* adminEmails フィールドは空にして保存（旧データのクリーンアップ） */
+    await setDoc(doc(db,...CFG_PATH),{operatorEmails:operators,adminEmails:[],allowedEmails:members,updatedBy:me.email,updatedAt:new Date().toISOString()},{merge:true});
     awNotify(target==='remove'?('削除しました: '+email):(roleLabel[target]+'に変更しました: '+email));
   }catch(e){notify('失敗: '+e.message)}
 }
 
 async function addUser(){
-  if(!isConfigEditor())return awNotify('運営／管理者のみ実行できます');
+  if(!isEditor())return awNotify('運営のみ実行できます');
   const eEl=(accessWin&&!accessWin.closed)?accessWin.document.getElementById('awAddEmail'):null;
   const rEl=(accessWin&&!accessWin.closed)?accessWin.document.getElementById('awAddRole'):null;
   const email=lc(((eEl&&eEl.value)||'').trim());
   if(!email)return awNotify('メールアドレスを入力してください');
   const role=(rEl&&rEl.value)||'member';
   const data=await readConfig();
-  const {operators,admins,members}=tiers(data);
-  if(operators.includes(email)||(admins||[]).includes(email)||members.includes(email))return awNotify('既に追加されています（権限変更は一覧のボタンから）');
+  const {operators,members}=tiers(data);
+  if(operators.includes(email)||members.includes(email))return awNotify('既に追加されています（権限変更は一覧のボタンから）');
   await setRole(email,role);
   if(eEl)eEl.value=''; if(rEl)rEl.value='member';
 }
