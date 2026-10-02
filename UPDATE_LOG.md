@@ -18,6 +18,14 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.076) **LayCAT テナント管理モーダル：loggedUsers 索引で name 未設定メンバーの表示名を補完**：
+  - 問題：v.075 で name フィールドを追加したが、既存メンバー（name 未設定）は LayCAT 側で email のみ表示されていた（access-console は loggedUsers 索引で補完済み）。
+  - 新規ヘルパ `window.__laynaFB.loadLoggedUsers()`：`laynaAccess/loggedUsers` から全ユーザーの `{emailLc → displayName}` マップを取得。
+  - `_tnRender` 内で loggedUsers マップを 1 回ロードし、各メンバー行で `member.name || loggedUsersMap[emailLc]` のフォールバックで表示。
+  - 既存メンバー（name 未設定）も、過去にログイン済みなら Google displayName が表示される。
+  - access-console とフォールバック挙動が揃った。
+  - APP_VERSION：2026.10.02.075 → 2026.10.02.076
+
 - (dev v2026.10.02.075) **テナントメンバーに name フィールド追加・UI に名前表示**：
   - **Firestore スキーマ拡張**：`tenants/{tid}/members/{emailKey}` に `name` フィールド追加（文字列）。
   - **laycat `addTenantMember`**：引数 `nameHint` を受け取り、無ければ `laycatUsers/{emailKey}.profile.displayName` から自動取得して保存。

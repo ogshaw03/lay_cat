@@ -4001,7 +4001,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.075';
+const APP_VERSION='2026.10.02.076';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19846,9 +19846,11 @@ async function _tnRender(state){
   bodyEl.innerHTML = '<div class="tn-empty">読み込み中…</div>';
   const esc = s => String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const tid = state.tenantId;
-  let tenant = null, members = [];
+  let tenant = null, members = [], loggedUsersMap = {};
   try{ tenant = await window.__laynaFB.loadTenant(tid); }catch(_){}
   try{ members = await window.__laynaFB.loadTenantMembers(tid) || []; }catch(_){}
+  /* v.076：loggedUsers 索引を取得（name 未設定メンバーの display name フォールバック） */
+  try{ loggedUsersMap = (window.__laynaFB.loadLoggedUsers ? await window.__laynaFB.loadLoggedUsers() : {}) || {}; }catch(_){}
   if(!tenant){ bodyEl.innerHTML = '<div class="tn-empty">テナント情報を取得できませんでした</div>'; return; }
   /* 契約者が members に未登録なら仮想メンバーで補完（v.067 以前作成テナントの救済）。
      ライセンス枠カウントも owner 分 1 枠を正しく反映する。 */
@@ -19884,7 +19886,8 @@ async function _tnRender(state){
     const canDelete = !isOwner && !mm.virtual; /* 契約者は削除不可・仮想行も削除不可 */
     const assignedAtStr = mm.assignedAt ? String(mm.assignedAt).slice(0,10) : '';
     const virtualTag = mm.virtual ? '<span class="meta" style="font-style:italic">（members 未同期）</span>' : '';
-    const displayName = String(mm.name||'').trim();
+    /* v.076：name フィールド優先、無ければ loggedUsers から Google displayName を補完 */
+    const displayName = String(mm.name||'').trim() || (loggedUsersMap[em.toLowerCase()] || '');
     const nameHtml = displayName ? `<span style="font-weight:600;color:var(--text)">${esc(displayName)}</span> <span style="color:var(--text3);font-size:11px">${esc(em)}</span>` : `<span>${esc(em)}</span>`;
     return `<div class="tn-row" data-email="${esc(em)}">
       <div class="email">${nameHtml}</div>
@@ -20210,6 +20213,23 @@ initApp();
       }catch(e){return false}},
       /* マルチテナント化 Phase M2：テナントのメンバー一覧を取得。
          tenants/{tid}/members サブコレクションを列挙。戻り値：[{emailKey, email, role, assignedBy, assignedAt}, ...] / 失敗時 null。 */
+      /* v.076：laynaAccess/loggedUsers から全ユーザーの display name 索引を取得。
+         戻り値：{ emailLc → displayName }。失敗時は空オブジェクト。
+         テナント管理モーダルで member.name 未設定時のフォールバック表示に使う。 */
+      loadLoggedUsers:async()=>{try{
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const snap=await m.getDoc(m.doc(fs,'laynaAccess','loggedUsers'));
+        if(!snap.exists()) return {};
+        const data=snap.data()||{};
+        const users=data.users||{};
+        const map={};
+        for(const key of Object.keys(users)){
+          const u=users[key]||{};
+          if(u.email && u.displayName) map[String(u.email).toLowerCase()] = u.displayName;
+        }
+        return map;
+      }catch(e){return {}}},
       loadTenantMembers:async(tenantId)=>{try{
         if(!tenantId)return null;
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
