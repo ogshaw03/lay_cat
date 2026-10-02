@@ -611,7 +611,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.023';
+const APP_VERSION='2026.10.02.024';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1112,6 +1112,8 @@ async function loadProjectData(){
   /* 【v.019】マイページで保存されたユーザープロフィールを並列読み込み（Firestore）。
      失敗しても (未ログイン・ネット不良・ルール未設定 等) 工数集計はフォールバックで動くので throw しない。 */
   await loadAllUserProfiles();
+  /* 【v.024】祝日（国の祝日 + 会社休日）を Firestore から読み込む。失敗しても静かにフォールバック。 */
+  await loadHolidaysForTimeline();
   return {ok:true};
 }
 /* プロジェクトメンバー全員の Firestore プロフィールを並列取得して DATA.userProfiles にキャッシュする。
@@ -1130,6 +1132,31 @@ async function loadAllUserProfiles(){
     }catch(_){}
   });
   await Promise.all(promises);
+}
+/* 【v.024】祝日（国の祝日 + 会社休日）を Firestore から読み込んで DATA.holidays にキャッシュ。
+   DATA.timeline の start/end から必要年を算出して並列ロード。
+   戻り値は使わず、DATA.holidays = ["YYYY-MM-DD", ...] の文字列配列を結果として置く。
+   失敗時（未ログイン・ルール未設定・ネット不良）は空配列で静かにフォールバック。 */
+async function loadHolidaysForTimeline(){
+  DATA.holidays = [];
+  if(!window.__laynaFB) return;
+  if(!DATA.timeline || !DATA.timeline.start || !DATA.timeline.end) return;
+  const startY = DATA.timeline.start.getFullYear();
+  const endY   = DATA.timeline.end.getFullYear();
+  const years = [];
+  for(let y = startY; y <= endY; y++) years.push(y);
+  const [pubMap, coDoc] = await Promise.all([
+    (window.__laynaFB.loadPublicHolidaysMulti ? window.__laynaFB.loadPublicHolidaysMulti('JP', years) : Promise.resolve({})),
+    (window.__laynaFB.loadCompanyHolidays ? window.__laynaFB.loadCompanyHolidays('default') : Promise.resolve(null)),
+  ]);
+  const set = new Set();
+  for(const y of Object.keys(pubMap||{})){
+    for(const d of (pubMap[y]||[])){ if(d && d.date) set.add(d.date); }
+  }
+  if(coDoc && Array.isArray(coDoc.dates)){
+    for(const d of coDoc.dates){ if(d && d.date) set.add(d.date); }
+  }
+  DATA.holidays = Array.from(set).sort();
 }
 
 /* =========== カスタム（オリジナル）スケジュール =========== */
@@ -2508,13 +2535,17 @@ function _projectDayDurationMs(root){
 /* v.023：マンアワー関連の集計オプション。root.manhours から読む。
    - dayBoundaryHour: 1 日の境界時刻（デフォルト 4 = 午前 4 時）。深夜作業を前日分として集計するため。
    - excludeWeekend: 土日は coreHours デフォルトを適用せず、イベント証跡があるときのみ稼働帯を認める（デフォルト true）
-   - holidays: ["YYYY-MM-DD", ...] 形式の祝日リスト（任意・デフォルト空）。土日と同じ扱い。 */
+   - holidays: ["YYYY-MM-DD", ...] 形式の祝日リスト。土日と同じ扱い。
+   v.024：holidays の取得元を Firestore 一本化。
+     - 国の祝日（publicHolidays/JP/years/{year}）+ 会社休日（companyHolidays/default）を
+       プロジェクト読込時に `DATA.holidays` にキャッシュ済み。
+     - 旧 `root.manhours.holidays` 配列は非対応（Phase 5 で廃止）。 */
 function _getManhoursOptions(root){
   const m = (root && root.manhours) || {};
   return {
     dayBoundaryHour: (typeof m.dayBoundaryHour === 'number' && m.dayBoundaryHour>=0 && m.dayBoundaryHour<=12) ? m.dayBoundaryHour : 4,
     excludeWeekend: m.excludeWeekend !== false, /* undefined/true → true */
-    holidays: Array.isArray(m.holidays) ? m.holidays : [],
+    holidays: Array.isArray(DATA.holidays) ? DATA.holidays : [],
   };
 }
 /* workday 開始 (ms) を返す。timestamp が workday 境界より前なら前日に属する扱い。 */
@@ -3768,6 +3799,33 @@ else { showInitialEmptyState(); }
         const fs=m.getFirestore(app);
         const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         const snap=await m.getDoc(m.doc(fs,'laycatUsers',key));
+        return snap.exists()?snap.data():null;
+      }catch(e){return null}},
+      /* 【v.024】祝日カレンダー（Phase 5）：国の祝日 1 年分を読む。publicHolidays/JP/years/{year} */
+      loadPublicHolidays:async(country,year)=>{try{
+        if(!country||!year)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const snap=await m.getDoc(m.doc(fs,'publicHolidays',String(country),'years',String(year)));
+        return snap.exists()?snap.data():null;
+      }catch(e){return null}},
+      /* 複数年並列ロード。戻り値：{ "2026": [{date,name}], "2027": [...] } */
+      loadPublicHolidaysMulti:async(country,years)=>{try{
+        if(!country||!Array.isArray(years)||!years.length)return {};
+        const results=await Promise.all(years.map(async y=>{
+          try{return [y, await window.__laynaFB.loadPublicHolidays(country,y)];}
+          catch(_){return [y,null];}
+        }));
+        const map={};
+        for(const [y,data] of results){ if(data&&Array.isArray(data.dates)) map[y]=data.dates; }
+        return map;
+      }catch(e){return {}}},
+      /* 会社休日を読む。companyHolidays/{tenantId}（デフォルト "default"） */
+      loadCompanyHolidays:async(tenantId)=>{try{
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const tid=String(tenantId||'default');
+        const snap=await m.getDoc(m.doc(fs,'companyHolidays',tid));
         return snap.exists()?snap.data():null;
       }catch(e){return null}}
     };

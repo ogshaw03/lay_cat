@@ -2944,6 +2944,20 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.024) **祝日カレンダー Phase 5：工数集計を Firestore 祝日に一本化**：
+  - 旧実装（v.023）：`root.manhours.holidays` 配列（プロジェクト設定内の手動定義）を参照。
+    LayCAT のカレンダー UI（Phase 4）から追加する会社休日とは別経路で、二重管理になっていた。
+  - 新実装：**holidays の取得元を Firestore 一本化**。
+    - 国の祝日：`publicHolidays/JP/years/{year}`（内閣府 CSV 由来・アクセス管理コンソールから更新）
+    - 会社休日：`companyHolidays/default`（LayCAT カレンダーから管理者が追加）
+    - プロジェクト読込時に `DATA.timeline` の年範囲ぶんを並列ロードして `DATA.holidays` にキャッシュ。
+  - `_getManhoursOptions` が `DATA.holidays` を返す（`root.manhours.holidays` は読まない＝廃止）。
+  - 新規追加：`window.__laynaFB` に `loadPublicHolidays` / `loadPublicHolidaysMulti` / `loadCompanyHolidays` を追加。
+  - 新規追加：`loadHolidaysForTimeline()` を `loadProjectData` 末尾で呼び出し、祝日を Firestore から取得。
+  - 失敗時（未ログイン・ルール未設定・ネット不良 等）は空配列で静かにフォールバック。
+  - 書き込み発生なし（Firestore 読み取りのみ）。
+  - APP_VERSION：2026.10.02.023 → 2026.10.02.024
+
 - (dev v2026.10.02.023) **工数集計 土日祝除外・日境界 04:00 を導入**：
   - 旧実装：カレンダー日（00:00 境界）で日を区切り、全日に coreHours デフォルト（10:30-19:30）を一律適用。土日もフルでカウントされていた。
   - 新実装：
