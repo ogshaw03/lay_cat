@@ -210,6 +210,8 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* 日スケール（hourly）：時間数字を少し大きめ、週セルは広めに */
 .gantt.scale-hourly .gantt-hdr .timeline .days .d{font-size:10px}
 .gantt.scale-hourly .gantt-hdr .timeline .weeks .w{font-size:12px;letter-spacing:.3px}
+/* v.029：hourly モード coreHours 外時間セルは薄暗色（マスク境界を視覚化） */
+.gantt.scale-hourly .gantt-hdr .timeline .days .d.mask-out{color:var(--text3);opacity:.55;background:rgba(0,0,0,.2)}
 .gantt-hdr .lbl{padding:11px 14px;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;border-right:1px solid var(--border)}
 .gantt-hdr .timeline{position:relative;overflow:hidden}
 .gantt-hdr .timeline .weeks{display:flex;font-family:var(--font-code);font-size:10px;color:var(--text3);letter-spacing:.5px;height:22px;align-items:center;border-bottom:1px solid var(--border)}
@@ -631,7 +633,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.028';
+const APP_VERSION='2026.10.02.029';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1313,11 +1315,19 @@ function _buildPublicHolidaySet(){
 function _buildCompanyHolidaySet(){
   return new Set(Array.isArray(DATA.companyHolidays) ? DATA.companyHolidays : []);
 }
+/* v.029：プロジェクトの root ノード取得（複数箇所から参照する便利関数） */
+function _getProjectRoot(){
+  const nodes = (DATA.project && Array.isArray(DATA.project.nodes)) ? DATA.project.nodes : [];
+  return nodes.find(n => n.id === (DATA.project && DATA.project.id)) || nodes.find(n => !n.parentId) || null;
+}
 /* v.025／v.026：ガントの各トラックに「土日祝オーバーレイ」セルの HTML 配列を返す。
    優先順位：公的祝日（緑）> 会社休日（黄）> 土日（暗色）。
-   pointer-events:none なのでバーのドラッグ・リサイズを邪魔しない。 */
-function _trackOffDayOverlayHtml(start, days, px, publicSet, companySet){
+   pointer-events:none なのでバーのドラッグ・リサイズを邪魔しない。
+   v.029：hourly スケール（日=1 日 24h 表示）では平日に coreHours 外時間帯を
+   マスク暗色でオーバーレイ表示（視覚的に非稼働時間を明示）。 */
+function _trackOffDayOverlayHtml(start, days, px, publicSet, companySet, root){
   const html = [];
+  const hourly = !!(DATA.timeline && DATA.timeline.hourly);
   for(let i=0;i<days;i++){
     const dt = new Date(start.getTime()+i*86400000);
     const p = jstParts(dt);
@@ -1331,6 +1341,20 @@ function _trackOffDayOverlayHtml(start, days, px, publicSet, companySet){
       html.push(`<div class="day co-dim" style="left:${i*px}%;width:${px}%"></div>`);
     }else if(isWknd){
       html.push(`<div class="day off-dim" style="left:${i*px}%;width:${px}%"></div>`);
+    }else if(hourly && root){
+      /* v.029：平日の hourly モードで coreHours 外時間帯を暗色オーバーレイ */
+      const mask = _getCoreHoursMinutes(root, null); /* プロジェクト既定 */
+      const dayW = px; /* その 1 日の width %（hourly では px=100） */
+      /* 00:00 → coreHours.start までの前半、coreHours.end → 24:00 までの後半 */
+      const preW = (mask.start / (24*60)) * dayW;
+      const postStart = (mask.end / (24*60)) * dayW;
+      const postW = dayW - postStart;
+      if(preW > 0){
+        html.push(`<div class="day off-dim" style="left:${i*px}%;width:${preW}%"></div>`);
+      }
+      if(postW > 0){
+        html.push(`<div class="day off-dim" style="left:${(i*px)+postStart}%;width:${postW}%"></div>`);
+      }
     }
   }
   return html;
@@ -1342,7 +1366,8 @@ function buildTimelineHdr(){
   hdr.innerHTML='';
   if(!DATA.loaded) return;
   const {start, days, hourly} = DATA.timeline;
-  /* v.028：hourly スケール（日=1 日 24h）は専用ヘッダー。年/月/日のラベル行 + 時間行。 */
+  /* v.028：hourly スケール（日=1 日 24h）は専用ヘッダー。年/月/日のラベル行 + 時間行。
+     v.029：coreHours 範囲内の時間セルは標準色、範囲外は薄暗色でマスク境界を視覚化。 */
   if(hourly){
     const topRow = document.createElement('div'); topRow.className='weeks';
     const topCell = document.createElement('div'); topCell.className='w';
@@ -1351,11 +1376,19 @@ function buildTimelineHdr(){
     topCell.style.flex='24 0 0';
     topRow.appendChild(topCell);
     const hrRow = document.createElement('div'); hrRow.className='days';
+    /* プロジェクト既定 coreHours を取得して hour セルに mask-in/out を区別 */
+    const root = _getProjectRoot();
+    const mask = root ? _getCoreHoursMinutes(root, null) : _COREHOURS_FALLBACK;
+    const maskStartHr = mask.start / 60;
+    const maskEndHr   = mask.end / 60;
     for(let h=0;h<24;h++){
       const d = document.createElement('div'); d.className='d';
       d.textContent = String(h).padStart(2,'0');
       d.style.fontSize='10px';
-      d.title = `${String(h).padStart(2,'0')}:00`;
+      /* 時間セルが coreHours 外なら薄暗色 */
+      const insideMask = (h + 1 > maskStartHr && h < maskEndHr); /* セルの一部でもマスク内なら inside */
+      if(!insideMask){ d.classList.add('mask-out'); }
+      d.title = `${String(h).padStart(2,'0')}:00` + (insideMask?'（稼働帯内）':'（稼働帯外）');
       hrRow.appendChild(d);
     }
     hdr.appendChild(topRow); hdr.appendChild(hrRow);
@@ -1649,7 +1682,7 @@ function buildGantt(){
         });
       }
       /* v.025／v.026：土日祝オーバーレイ（バーの上・マイルストーンの下）。bar.z-index(default) < overlay.z-index(3) < milestone.z-index */
-      for(const h of _trackOffDayOverlayHtml(start, days, px, _pubSet, _coSet)) track.push(h);
+      for(const h of _trackOffDayOverlayHtml(start, days, px, _pubSet, _coSet, _getProjectRoot())) track.push(h);
       /* Milestones */
       for(const m of (shot.milestones||[])){
         if(!m.ts) continue;
@@ -1911,7 +1944,7 @@ function buildCustomGantt(scheduleId){
       track.push(`<div class="seg-plan seg-placeholder" data-cust-sch="${sch.id}" data-cust-item="${it.id}" style="left:${p1*px}%;width:${w}%;border-color:${it.color};background:transparent;opacity:.55" title="ドラッグして「${escapeHtml(it.name)}」の予定を設定"><span class="seg-lbl" style="color:${it.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">+ ${escapeHtml(it.name)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
     }
     /* v.025／v.026：土日祝オーバーレイ（バーに重ねる半透明） */
-    for(const h of _trackOffDayOverlayHtml(start, days, px, _pubSet2, _coSet2)) track.push(h);
+    for(const h of _trackOffDayOverlayHtml(start, days, px, _pubSet2, _coSet2, _getProjectRoot())) track.push(h);
 
     row.innerHTML = `
       <div class="shot">
