@@ -894,7 +894,10 @@ function paintAccessWin(){
             const assignedAtStr=m.assignedAt?String(m.assignedAt).slice(0,10):'';
             const row=d.createElement('div'); row.className='tn-member-row';
             const virtualTag = m.virtual ? '<span style="font-size:9px;color:var(--text3);font-style:italic">（members 未同期）</span>' : '';
-            row.innerHTML=`<span class="em">${escH(em)}</span><span class="role ${roleCls}">${roleLabel}</span>${virtualTag}<span style="font-size:10px;color:var(--text3)">${escH(assignedAtStr)}</span>`;
+            /* v.075：name フィールド優先、無ければ loggedUsers から fallback、それも無ければ email のみ */
+            const displayName = String(m.name||'').trim() || nameOf(em) || '';
+            const emHtml = displayName ? `<span style="font-weight:600;color:var(--text)">${escH(displayName)}</span> <span style="color:var(--text3);font-size:11px">${escH(em)}</span>` : escH(em);
+            row.innerHTML=`<span class="em">${emHtml}</span><span class="role ${roleCls}">${roleLabel}</span>${virtualTag}<span style="font-size:10px;color:var(--text3)">${escH(assignedAtStr)}</span>`;
             mems.appendChild(row);
           }
           if(!mems.children.length){

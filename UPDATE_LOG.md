@@ -18,6 +18,19 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.075) **テナントメンバーに name フィールド追加・UI に名前表示**：
+  - **Firestore スキーマ拡張**：`tenants/{tid}/members/{emailKey}` に `name` フィールド追加（文字列）。
+  - **laycat `addTenantMember`**：引数 `nameHint` を受け取り、無ければ `laycatUsers/{emailKey}.profile.displayName` から自動取得して保存。
+  - **laycat `tryJoinByDomain`**：自己参加時に Firebase auth の `displayName` を name に保存。
+  - **laycat テナント管理モーダル**：
+    - メンバー一覧で `名前 email` の形式で表示（名前なしは email のみ）。
+    - メンバー追加フォームに「名前（任意・空欄なら自動取得）」入力欄追加。
+  - **access-console テナント所属セクション**：
+    - name フィールド優先、無ければ `loggedUsers` から表示名を補完、それも無ければ email のみ。
+    - 既存メンバー（name 未設定）も loggedUsers 索引で名前表示される。
+  - Firestore ルール変更なし（既存の create/update 権限で name 追加は許可されている）。
+  - APP_VERSION：2026.10.02.074 → 2026.10.02.075
+
 - (dev v2026.10.02.074) **テナントのライセンス席数で「0 = 無制限」を許可**：
   - access-console のテナント定義フォーム：席数入力欄の min を 1 → 0 に、placeholder に「0=無制限」を明記。
   - tnAdd / tnEdit のバリデーション：`limit<1` → `limit<0`（0 を受容）。

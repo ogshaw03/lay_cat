@@ -4001,7 +4001,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.074';
+const APP_VERSION='2026.10.02.075';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19884,8 +19884,10 @@ async function _tnRender(state){
     const canDelete = !isOwner && !mm.virtual; /* 契約者は削除不可・仮想行も削除不可 */
     const assignedAtStr = mm.assignedAt ? String(mm.assignedAt).slice(0,10) : '';
     const virtualTag = mm.virtual ? '<span class="meta" style="font-style:italic">（members 未同期）</span>' : '';
+    const displayName = String(mm.name||'').trim();
+    const nameHtml = displayName ? `<span style="font-weight:600;color:var(--text)">${esc(displayName)}</span> <span style="color:var(--text3);font-size:11px">${esc(em)}</span>` : `<span>${esc(em)}</span>`;
     return `<div class="tn-row" data-email="${esc(em)}">
-      <div class="email">${esc(em)}</div>
+      <div class="email">${nameHtml}</div>
       <span class="role-badge ${roleCls}">${roleLabel}</span>
       <span class="meta">${esc(assignedAtStr)}</span>
       ${virtualTag}
@@ -19916,6 +19918,7 @@ async function _tnRender(state){
     <h4 class="tn-section-title">メンバー追加</h4>
     <div class="tn-add">
       <input id="tnAddEmail" type="email" placeholder="メール（例：a@example.com）" autocomplete="off">
+      <input id="tnAddName" type="text" placeholder="名前（任意・空欄なら自動取得）" autocomplete="off" style="flex:0 0 180px">
       <select id="tnAddRole">
         <option value="member">member</option>
         <option value="admin">admin</option>
@@ -19963,18 +19966,21 @@ async function _tnRender(state){
   const addBtn = bodyEl.querySelector('#tnAddBtn');
   if(addBtn && !isFull) addBtn.onclick = async ()=>{
     const emIn = bodyEl.querySelector('#tnAddEmail');
+    const nameIn = bodyEl.querySelector('#tnAddName');
     const roleIn = bodyEl.querySelector('#tnAddRole');
     const em = String(emIn.value||'').trim().toLowerCase();
+    const nm = String(nameIn && nameIn.value || '').trim();
     const role = String(roleIn.value||'member');
     if(!em || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ toast('メール形式が不正です'); return; }
     /* 枠オーバー再チェック（他タブからの変更対策） */
     if(limit>0 && used>=limit){ toast(`ライセンス枠が満杯です（${used}/${limit}）`); return; }
     /* 既存チェック */
     if(members.find(x=>String(x.email).toLowerCase()===em)){ toast('既に登録済みのメンバーです'); return; }
-    const ok = await window.__laynaFB.addTenantMember(tid, em, role, authUser.email);
+    const ok = await window.__laynaFB.addTenantMember(tid, em, role, authUser.email, nm);
     if(!ok){ toast('追加に失敗しました（権限不足？）'); return; }
     toast(`${em} を ${role} として追加しました`);
     emIn.value = '';
+    if(nameIn) nameIn.value = '';
     _tnRender(state);
   };
 }
@@ -20216,14 +20222,26 @@ initApp();
       /* マルチテナント化 Phase M2：テナントにメンバーを追加／更新（既存同メールは role 等を上書き）。
          この書き込み後、laycatUsers/{emailKey}.tenantId も自動的に当該テナントに同期する。
          ライセンス枠（licenseLimit）の超過チェックは呼び出し側で済ませておく。 */
-      addTenantMember:async(tenantId, email, role, assignedBy)=>{try{
+      addTenantMember:async(tenantId, email, role, assignedBy, nameHint)=>{try{
         if(!tenantId||!email)return false;
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);
         const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         const nowIso=new Date().toISOString();
+        /* v.075：name を含めて保存。優先度：引数 nameHint > laycatUsers.profile.displayName > 空。 */
+        let name = String(nameHint||'').trim();
+        if(!name){
+          try{
+            const snap = await m.getDoc(m.doc(fs,'laycatUsers',key));
+            if(snap.exists()){
+              const d = snap.data()||{};
+              name = (d.profile && d.profile.displayName) || '';
+            }
+          }catch(_){}
+        }
         await m.setDoc(m.doc(fs,'tenants',String(tenantId),'members',key),{
           email:String(email).toLowerCase(),
+          name:name||'',
           role:(role==='admin')?'admin':'member',
           assignedBy:String(assignedBy||''),
           assignedAt:nowIso,
@@ -20312,9 +20330,12 @@ initApp();
           /* 自分を member として追加（Firestore ルールの _canSelfJoinByDomain で検証される） */
           const key=emailLc.replace(/[.@#$/\[\]]/g,'_');
           const nowIso=new Date().toISOString();
+          /* v.075：Firebase auth の displayName を name に（自己参加時） */
+          const selfName = (auth.currentUser && auth.currentUser.displayName) || '';
           try{
             await m.setDoc(m.doc(fs,'tenants',td.id,'members',key),{
               email:emailLc,
+              name:selfName,
               role:'member',
               assignedBy:'(domain-auto-join)',
               assignedAt:nowIso,
