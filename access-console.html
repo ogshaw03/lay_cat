@@ -269,17 +269,6 @@
         <div class="u-list" id="invitedList"></div>
       </div>
 
-      <!-- 許可ドメイン -->
-      <div class="card">
-        <div class="card-title">🌐 許可ドメイン</div>
-        <div class="card-desc">このドメインのメール全員を自動的にメンバー扱いにします（例: <b>studio.jp</b>）。<code>@</code> は不要。</div>
-        <div class="add-row">
-          <input id="domInput" type="text" placeholder="studio.jp" autocomplete="off">
-          <button class="btn btn-primary" id="domAddBtn">追加</button>
-        </div>
-        <div class="u-list" id="domList" style="margin-top:12px"></div>
-      </div>
-
       <!-- セットアップ（ルール） -->
       <div class="card" data-op-only="1">
         <div class="card-title">⚙ セットアップ（Firebase コンソール・初回のみ）</div>
@@ -717,19 +706,8 @@ function paint(){
   if(auditNo)auditNo.classList.toggle('hidden',isAudit);
   if(auditMe&&me)auditMe.textContent=me.email;
 
-  // domains
-  const dL=$('domList');dL.innerHTML='';
-  const fd=flt(domains);
-  fd.forEach(dom=>{
-    const row=document.createElement('div');row.className='u-row';
-    row.innerHTML=`<span class="u-email">@${escH(dom)}</span><span class="role dom">ドメイン</span>`;
-    const b=document.createElement('button');b.className='btn btn-sm btn-danger';b.textContent='削除';b.disabled=!editor;b.onclick=()=>removeDomain(dom);row.appendChild(b);
-    dL.appendChild(row);
-  });
-  if(!fd.length)dL.innerHTML='<div class="empty">'+(q?'該当なし':'許可ドメインはありません')+'</div>';
-
-  /* ドメイン許可でログイン中のアカウント一覧はメイン画面から削除。
-     権限付与ウィンドウ（openAccessWindow → awDomUserList）に集約済み。 */
+  /* Phase M3c：許可ドメインリスト UI は廃止。テナント単位のドメイン自動参加（M3b）に移行済み。
+     Firestore ルールの allowedDomains チェックは互換のため残置（将来廃止予定）。 */
   renderInvites();
 }
 
@@ -849,7 +827,6 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 <div class="sub-label">運営（この設定を編集可・監査ログ閲覧可・メンテ中も閲覧可）</div><div class="u-list" id="awOpList"></div>
 <div class="sub-label">管理者（一般メンバーと同ログイン権限＋ヘッダーに「（管理者）」バッジ）</div><div class="u-list" id="awAdminList"></div>
 <div class="sub-label">メンバー（ログインのみ）</div><div class="u-list" id="awMemberList"></div>
-<div class="sub-label">ドメイン許可でログイン中（明示登録なし・許可ドメインに一致するアカウント）</div><div class="u-list" id="awDomUserList"></div>
 <div class="sub-label">🏢 テナント所属（マルチテナント・各テナントの契約者が LayCAT 本体から管理）</div>
 <div id="awTenantList"></div>
 </body></html>`;
@@ -894,28 +871,8 @@ function paintAccessWin(){
   }
   fm.forEach(e=>meL.appendChild(mkRow(e,{cls:'member',label:'メンバー'},[['→管理者',()=>setRole(e,'admin')],['→運営',()=>setRole(e,'operator')],['削除',()=>setRole(e,'remove'),true]])));
   if(!fm.length)meL.innerHTML='<div class="empty">'+(q?'該当なし':'メンバーはいません')+'</div>';
-  /* ドメイン許可で実際にログイン中のアカウント：明示登録（運営／管理者／メンバー）に含まれていないユーザーで、
-     許可ドメインに一致するメールを持つ人を表示。「→メンバーに固定」で明示メンバーへ昇格できる。 */
-  const duL=d.getElementById('awDomUserList');
-  if(duL){
-    const explicit=new Set([...operators,...(admins||[]),...members].map(lc));
-    let dusers=Object.values(luUsers||{}).filter(u=>u&&u.email&&!explicit.has(lc(u.email))&&(domains||[]).some(dom=>lc(u.email).endsWith('@'+lc(dom))));
-    if(q)dusers=dusers.filter(u=>lc(u.email).includes(q)||lc(u.displayName||'').includes(q));
-    dusers.sort((a,b)=>lc(a.displayName||a.email).localeCompare(lc(b.displayName||b.email)));
-    duL.innerHTML='';
-    dusers.forEach(u=>duL.appendChild(mkRow(u.email,{cls:'dom',label:'ドメイン'},[['→メンバーに固定',()=>setRole(u.email,'member')]])));
-    if(!dusers.length){
-      let msg;
-      if(luErr)msg='loggedUsers を読み込めません（'+escH(luErr)+'）';
-      else if(q)msg='該当なし';
-      else if(!(domains||[]).length)msg='許可ドメインが未設定です';
-      else msg='ドメイン許可でログインしたアカウントはまだありません';
-      duL.innerHTML='<div class="empty">'+msg+'</div>';
-    }
-    d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ 管理者 ${(admins||[]).length} ・ メンバー ${members.length} ・ ドメインログイン ${dusers.length} ・ テナント ${_awTenants.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fa.length+fm.length+dusers.length}件`:'');
-  }else{
-    d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ 管理者 ${(admins||[]).length} ・ メンバー ${members.length} ・ テナント ${_awTenants.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fa.length+fm.length}件`:'');
-  }
+  /* Phase M3c：旧「ドメインで許可中のメンバーリスト」はテナント所属に集約されたため削除。 */
+  d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ 管理者 ${(admins||[]).length} ・ メンバー ${members.length} ・ テナント ${_awTenants.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fa.length+fm.length}件`:'');
   /* マルチテナント：テナント別メンバー一覧 */
   const tnList=d.getElementById('awTenantList');
   if(tnList){
@@ -1137,8 +1094,6 @@ $('bootBtn').onclick=async()=>{
 };
 
 $('openAccessBtn').onclick=openAccessWindow;
-$('domAddBtn').onclick=addDomain;
-$('domInput').addEventListener('keydown',e=>{if(e.key==='Enter')addDomain();});
 $('invCreateBtn').onclick=createInvite;
 $('invLabel').addEventListener('keydown',e=>{if(e.key==='Enter')createInvite();});
 

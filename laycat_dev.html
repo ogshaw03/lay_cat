@@ -4001,7 +4001,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.070';
+const APP_VERSION='2026.10.02.071';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19429,8 +19429,9 @@ function roleFor(email){
   if(has(accessCfg.operatorEmails))return 'operator';
   if(has(accessCfg.adminEmails))return 'admin';
   if(has(accessCfg.allowedEmails))return 'member';
-  const dom=e.split('@')[1]||'';
-  if((accessCfg.allowedDomains||[]).some(d=>String(d).toLowerCase().replace(/^@/,'')===dom))return 'member';
+  /* Phase M3c：グローバル allowedDomains の判定を廃止。
+     ドメインベースのアクセスはテナント単位の allowDomainAutoJoin（M3b）に集約。
+     Firestore 側の allowedDomains データは互換のため残しているが参照しない。 */
   return null;
 }
 function authScreen(build){chrome(false);let s=$('#authScreen');if(s)s.remove();s=el('div','gate');s.id='authScreen';const box=el('div','gate-box');build(box);s.appendChild(box);document.body.appendChild(s)}
@@ -20044,7 +20045,7 @@ async function onAuthChanged(u){
         setTimeout(()=>{try{toast('招待リンクからメンバーとして参加しました')}catch(_){}},900);}
     }catch(_){}
   }
-  /* マルチテナント化 Phase M2b：既存ルート（allowedEmails/allowedDomains/invited/招待トークン）で許可されなかった場合、
+  /* マルチテナント化 Phase M2b：既存ルート（allowedEmails/invited/招待トークン）で許可されなかった場合、
      いずれかのテナントのメンバーに登録されていれば自動的に member として許可する。
      契約者がライセンスを割り当てた直後からそのユーザーは LayCAT を使えるようになる。 */
   if(!role && window.__laynaFB && window.__laynaFB.findUserTenants){
@@ -20055,10 +20056,10 @@ async function onAuthChanged(u){
       }
     }catch(_){}
   }
-  /* マルチテナント化 Phase M3b：まだ許可されていなければ、ドメインベース自己参加を試みる。
+  /* マルチテナント化 Phase M3b/M3c：まだ許可されていなければ、ドメインベース自己参加を試みる。
      - 自分のメールドメインが一致 かつ allowDomainAutoJoin=true のテナントがあれば自動参加
      - ライセンス枠に空きがあれば member として参加・LayCAT 使用可能に
-     - 枠満杯なら参加できず、デフォルトで拒否（従来の allowedDomains グローバル経路との差）  */
+     - 枠満杯なら参加できず、デフォルトで拒否（旧グローバル allowedDomains 経路は Phase M3c で廃止済み）  */
   if(!role && window.__laynaFB && window.__laynaFB.tryJoinByDomain){
     try{
       const joined = await window.__laynaFB.tryJoinByDomain(u.email);
