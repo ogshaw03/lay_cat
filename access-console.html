@@ -699,6 +699,45 @@ function paint(){
 
 /* ===== アクセス管理を別ウィンドウで表示（確認ダイアログをその窓で出すため。OGREF相当） ===== */
 let accessWin=null, accessQuery='';
+/* マルチテナント対応：ウィンドウ表示時にテナント一覧＋メンバー一覧をキャッシュ。
+   emailLc → [{tenantId, tenantName, role, isOwner}] のマップで各ユーザーの所属を描画。 */
+let _awTenants=[], _awMembersByEmail={};
+async function _awFetchTenants(){
+  _awTenants=[]; _awMembersByEmail={};
+  try{
+    const tsnap=await getDocs(collection(db,'tenants'));
+    for(const td of tsnap.docs){
+      const tenant={id:td.id,...td.data(),members:[]};
+      try{
+        const msnap=await getDocs(collection(db,'tenants',td.id,'members'));
+        msnap.forEach(md=>{
+          const member={emailKey:md.id,...md.data()};
+          tenant.members.push(member);
+          const em=lc(member.email||'');
+          if(em){
+            const isOwner=(lc(tenant.ownerEmail||'')===em);
+            (_awMembersByEmail[em]=_awMembersByEmail[em]||[]).push({
+              tenantId:tenant.id,
+              tenantName:tenant.name||tenant.id,
+              role:member.role||'member',
+              isOwner,
+            });
+          }
+        });
+      }catch(_){}
+      _awTenants.push(tenant);
+    }
+    _awTenants.sort((a,b)=>String(a.name||a.id).localeCompare(String(b.name||b.id)));
+  }catch(e){ console.warn('_awFetchTenants failed',e); }
+}
+function _awTenantBadgesHtml(emailLc){
+  const list=_awMembersByEmail[emailLc]||[];
+  if(!list.length) return '';
+  return list.map(x=>{
+    const role=x.isOwner?'owner':(x.role==='admin'?'admin':'member');
+    return `<span class="tenant-badge" title="${escH(x.tenantName)} (${escH(x.tenantId)}) ${escH(role)}">${escH(x.tenantName)}<span class="tn-role">${escH(role)}</span></span>`;
+  }).join('');
+}
 function awNotify(msg){ try{ if(accessWin&&!accessWin.closed){ const n=accessWin.document.getElementById('awNote'); if(n){ n.textContent=msg; n.style.display='block'; clearTimeout(n._t); n._t=setTimeout(()=>{n.style.display='none';},3500);} } }catch(_){} notify(msg); }
 function awConfirm(msg){ const w=(accessWin&&!accessWin.closed)?accessWin:window; return w.confirm(msg); }
 const ACCESS_WIN_HTML=`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>アクセス管理 / 権限付与 — LayCAT</title><style>
@@ -724,7 +763,19 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 .role.admin{background:rgba(140,180,240,.14);color:#8cb4f0;border:1px solid rgba(140,180,240,.34)}
 .role.member{background:rgba(127,191,154,.14);color:#7fbf9a;border:1px solid rgba(127,191,154,.34)}
 .role.dom{background:rgba(154,154,170,.12);color:#9a9aaa;border:1px solid rgba(154,154,170,.3)}
+.role.owner{background:rgba(214,169,95,.24);color:#e8c37f;border:1px solid rgba(214,169,95,.5)}
 .empty{font-size:12px;color:var(--text3);padding:6px 2px}
+.tenant-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 7px;border-radius:9px;font-weight:600;background:rgba(140,180,240,.08);color:#8cb4f0;border:1px solid rgba(140,180,240,.25);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tenant-badge .tn-role{font-size:9px;opacity:.75}
+.tn-card{border:1px solid var(--border2);border-radius:10px;padding:12px;background:var(--bg3);margin-bottom:10px}
+.tn-card-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.tn-card-name{font-weight:700;color:var(--text);font-size:13px}
+.tn-card-id{font-size:10px;color:var(--text3);font-family:monospace}
+.tn-card-meta{font-size:11px;color:var(--text2);margin-left:auto}
+.tn-card-meta .license-full{color:var(--red)}
+.tn-card-members{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+.tn-member-row{display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg2);border-radius:6px;border:1px solid var(--border2)}
+.tn-member-row .em{flex:1;font-size:12px;color:var(--text);word-break:break-all}
 #awNote{display:none;position:fixed;top:0;left:0;right:0;background:#2d3550;color:#fff;padding:9px;text-align:center;font-size:12px;z-index:10}
 </style></head><body>
 <div id="awNote"></div>
@@ -741,10 +792,12 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 <div class="sub-label">管理者（一般メンバーと同ログイン権限＋ヘッダーに「（管理者）」バッジ）</div><div class="u-list" id="awAdminList"></div>
 <div class="sub-label">メンバー（ログインのみ）</div><div class="u-list" id="awMemberList"></div>
 <div class="sub-label">ドメイン許可でログイン中（明示登録なし・許可ドメインに一致するアカウント）</div><div class="u-list" id="awDomUserList"></div>
+<div class="sub-label">🏢 テナント所属（マルチテナント・各テナントの契約者が LayCAT 本体から管理）</div>
+<div id="awTenantList"></div>
 </body></html>`;
-function openAccessWindow(){
+async function openAccessWindow(){
   if(!cfg||!isConfigEditor()){ notify('運営／管理者のみ操作できます'); return; }
-  if(accessWin&&!accessWin.closed){ accessWin.focus(); paintAccessWin(); return; }
+  if(accessWin&&!accessWin.closed){ accessWin.focus(); await _awFetchTenants(); paintAccessWin(); return; }
   accessWin=window.open('','laycat_access','width=780,height=880');
   if(!accessWin){ notify('ポップアップがブロックされました。ポップアップを許可してから再度お試しください。'); return; }
   accessWin.document.open(); accessWin.document.write(ACCESS_WIN_HTML); accessWin.document.close();
@@ -753,6 +806,7 @@ function openAccessWindow(){
   d.getElementById('awAddEmail').addEventListener('keydown',e=>{if(e.key==='Enter')addUser();});
   const sb=d.getElementById('awSearch'); sb.addEventListener('input',()=>{ accessQuery=sb.value; paintAccessWin(); });
   accessWin.addEventListener('beforeunload',()=>{ accessWin=null; });
+  await _awFetchTenants();
   paintAccessWin();
 }
 function paintAccessWin(){
@@ -766,7 +820,8 @@ function paintAccessWin(){
   const mkRow=(email,role,btns)=>{
     const self=(me&&email===me.email)?'（あなた）':'';
     const row=d.createElement('div');row.className='u-row';
-    row.innerHTML=`<span class="u-email">${idHtml(email,self)}</span><span class="role ${role.cls}">${role.label}</span>`;
+    const badges=_awTenantBadgesHtml(lc(email));
+    row.innerHTML=`<span class="u-email">${idHtml(email,self)}</span><span class="role ${role.cls}">${role.label}</span>${badges}`;
     btns.forEach(([label,fn,danger])=>{const b=d.createElement('button');b.className='btn btn-sm'+(danger?' btn-danger':'');b.textContent=label;b.disabled=!editor;b.onclick=fn;row.appendChild(b);});
     return row;
   };
@@ -799,9 +854,57 @@ function paintAccessWin(){
       else msg='ドメイン許可でログインしたアカウントはまだありません';
       duL.innerHTML='<div class="empty">'+msg+'</div>';
     }
-    d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ 管理者 ${(admins||[]).length} ・ メンバー ${members.length} ・ ドメインログイン ${dusers.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fa.length+fm.length+dusers.length}件`:'');
+    d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ 管理者 ${(admins||[]).length} ・ メンバー ${members.length} ・ ドメインログイン ${dusers.length} ・ テナント ${_awTenants.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fa.length+fm.length+dusers.length}件`:'');
   }else{
-    d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ 管理者 ${(admins||[]).length} ・ メンバー ${members.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fa.length+fm.length}件`:'');
+    d.getElementById('awCounts').textContent=`運営 ${operators.length} ・ 管理者 ${(admins||[]).length} ・ メンバー ${members.length} ・ テナント ${_awTenants.length}`+(q?`　／　「${accessQuery}」で絞込: ${fo.length+fa.length+fm.length}件`:'');
+  }
+  /* マルチテナント：テナント別メンバー一覧 */
+  const tnList=d.getElementById('awTenantList');
+  if(tnList){
+    if(!_awTenants.length){
+      tnList.innerHTML='<div class="empty">テナント未登録。上の「🏢 テナント定義」カードから追加できます。</div>';
+    }else{
+      tnList.innerHTML='';
+      for(const t of _awTenants){
+        const used=(t.members||[]).length;
+        const limit=(typeof t.licenseLimit==='number')?t.licenseLimit:0;
+        const isFull=(limit>0 && used>=limit);
+        const card=d.createElement('div'); card.className='tn-card';
+        const head=d.createElement('div'); head.className='tn-card-head';
+        head.innerHTML=`<span class="tn-card-name">${escH(t.name||t.id)}</span><span class="tn-card-id">${escH(t.id)}</span><span class="tn-card-meta">plan: <b>${escH(t.plan||'—')}</b> ・ <span class="${isFull?'license-full':''}">${used}/${limit||'—'}</span> 席 ・ owner: ${escH(t.ownerEmail||'未設定')}</span>`;
+        card.appendChild(head);
+        const mems=d.createElement('div'); mems.className='tn-card-members';
+        if(!(t.members||[]).length){
+          mems.innerHTML='<div class="empty">メンバー未登録</div>';
+        }else{
+          /* 契約者を先頭に、admin→member の順 */
+          const sorted=(t.members||[]).slice().sort((a,b)=>{
+            const ao=(lc(a.email||'')===lc(t.ownerEmail||''))?0:1;
+            const bo=(lc(b.email||'')===lc(t.ownerEmail||''))?0:1;
+            if(ao!==bo) return ao-bo;
+            const ar=(a.role==='admin')?0:1, br=(b.role==='admin')?0:1;
+            if(ar!==br) return ar-br;
+            return String(a.email||'').localeCompare(String(b.email||''));
+          });
+          for(const m of sorted){
+            if(q && !lc(m.email||'').includes(q)) continue;
+            const em=String(m.email||'');
+            const isOwner=(lc(em)===lc(t.ownerEmail||''));
+            const roleCls=isOwner?'owner':(m.role==='admin'?'admin':'member');
+            const roleLabel=isOwner?'owner':(m.role==='admin'?'admin':'member');
+            const assignedAtStr=m.assignedAt?String(m.assignedAt).slice(0,10):'';
+            const row=d.createElement('div'); row.className='tn-member-row';
+            row.innerHTML=`<span class="em">${escH(em)}</span><span class="role ${roleCls}">${roleLabel}</span><span style="font-size:10px;color:var(--text3)">${escH(assignedAtStr)}</span>`;
+            mems.appendChild(row);
+          }
+          if(!mems.children.length){
+            mems.innerHTML=`<div class="empty">「${escH(accessQuery)}」に該当するメンバーなし</div>`;
+          }
+        }
+        card.appendChild(mems);
+        tnList.appendChild(card);
+      }
+    }
   }
 }
 
@@ -1117,6 +1220,12 @@ $('hhClearBtn').onclick=()=>{
 /* ===== テナント定義（マルチテナント化 Phase M1）===== */
 /* tenants/{tenantId} の list + add/edit/delete。
    M1 ではスキーマ基盤のみ：ここで作ったドキュメントは LayCAT 初回ログイン時のドメイン自動判定で参照される。 */
+/* テナント CRUD 後、アクセス管理ウィンドウが開いていればキャッシュを再取得して再描画 */
+async function _awRefreshIfOpen(){
+  if(accessWin && !accessWin.closed){
+    try{ await _awFetchTenants(); paintAccessWin(); }catch(_){}
+  }
+}
 async function tnLoadList(){
   const list=$('tnList'); if(!list) return;
   list.textContent='読み込み中…';
@@ -1196,6 +1305,7 @@ async function tnAdd(){
     $('tnNameInput').value='';$('tnOwnerInput').value='';$('tnDomainsInput').value='';$('tnDescInput').value='';
     $('tnLimitInput').value='10';$('tnPlanInput').value='team';
     tnLoadList();
+    _awRefreshIfOpen();
   }catch(e){ notify('失敗: '+e.message); }
 }
 function tnEdit(id, cur){
@@ -1232,6 +1342,7 @@ function tnEdit(id, cur){
       if(owner) await tnEnsureOwnerAsMember(id, owner);
       notify('更新しました: '+id);
       tnLoadList();
+      _awRefreshIfOpen();
     }catch(e){ notify('失敗: '+e.message); }
   })();
 }
@@ -1241,6 +1352,7 @@ async function tnDelete(id){
     await deleteDoc(doc(db,'tenants',id));
     notify('削除しました: '+id);
     tnLoadList();
+    _awRefreshIfOpen();
   }catch(e){ notify('失敗: '+e.message); }
 }
 $('tnAddBtn').onclick=tnAdd;
