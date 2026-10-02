@@ -222,10 +222,15 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt.scrubbing *{cursor:grabbing!important}
 .gantt-hdr .lbl{padding:11px 14px;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;border-right:1px solid var(--border)}
 .gantt-hdr .timeline{position:relative;overflow:hidden}
-.gantt-hdr .timeline .weeks{display:flex;font-family:var(--font-code);font-size:10px;color:var(--text3);letter-spacing:.5px;height:22px;align-items:center;border-bottom:1px solid var(--border)}
-.gantt-hdr .timeline .weeks .w{flex:1;padding:0 8px;border-right:1px solid var(--border);white-space:nowrap;overflow:hidden}
-.gantt-hdr .timeline .days{display:flex;font-family:var(--font-code);font-size:9px;color:var(--text3);height:20px;align-items:center}
-.gantt-hdr .timeline .days .d{flex:1;text-align:center;border-right:1px solid var(--bg2);height:100%;padding-top:3px}
+/* v.033：hourly スケール時のみ flex、non-hourly は absolute 配置（スクラブ時の日境界ずれ対策） */
+.gantt-hdr .timeline .weeks{font-family:var(--font-code);font-size:10px;color:var(--text3);letter-spacing:.5px;height:22px;border-bottom:1px solid var(--border);position:relative}
+.gantt.scale-hourly .gantt-hdr .timeline .weeks{display:flex;align-items:center}
+.gantt-hdr .timeline .weeks .w{padding:0 8px;border-right:1px solid var(--border);white-space:nowrap;overflow:hidden;position:absolute;top:0;bottom:0;display:flex;align-items:center;box-sizing:border-box}
+.gantt.scale-hourly .gantt-hdr .timeline .weeks .w{flex:1;position:static}
+.gantt-hdr .timeline .days{font-family:var(--font-code);font-size:9px;color:var(--text3);height:20px;position:relative}
+.gantt.scale-hourly .gantt-hdr .timeline .days{display:flex;align-items:center}
+.gantt-hdr .timeline .days .d{text-align:center;border-right:1px solid var(--bg2);height:100%;padding-top:3px;position:absolute;top:0;box-sizing:border-box}
+.gantt.scale-hourly .gantt-hdr .timeline .days .d{flex:1;position:static}
 .gantt-hdr .timeline .days .d.wknd{background:rgba(255,255,255,.02);color:var(--text3)}
 
 .gantt-body{position:relative}
@@ -641,7 +646,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.033';
+const APP_VERSION='2026.10.02.034';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1339,34 +1344,49 @@ function _getProjectRoot(){
 function _trackOffDayOverlayHtml(start, days, px, publicSet, companySet, root){
   const html = [];
   const hourly = !!(DATA.timeline && DATA.timeline.hourly);
-  for(let i=0;i<days;i++){
-    const dt = new Date(start.getTime()+i*86400000);
+  const viewStartMs = start.getTime();
+  const viewTotalMs = days * 86400000;
+  const viewEndMs = viewStartMs + viewTotalMs;
+  if(hourly){
+    /* hourly モード：従来のロジック（1 日固定）。
+       土日祝なら全日ダイム、平日なら coreHours 外オーバーレイ。 */
+    const dt = new Date(viewStartMs);
     const p = jstParts(dt);
     const iso = p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');
     const isPub = publicSet && publicSet.has(iso);
     const isCo  = companySet && companySet.has(iso);
     const isWknd = (p.wk===0 || p.wk===6);
     if(isPub){
-      html.push(`<div class="day pub-dim" style="left:${i*px}%;width:${px}%"></div>`);
+      html.push(`<div class="day pub-dim" style="left:0%;width:100%"></div>`);
     }else if(isCo){
-      html.push(`<div class="day co-dim" style="left:${i*px}%;width:${px}%"></div>`);
+      html.push(`<div class="day co-dim" style="left:0%;width:100%"></div>`);
     }else if(isWknd){
-      html.push(`<div class="day off-dim" style="left:${i*px}%;width:${px}%"></div>`);
-    }else if(hourly && root){
-      /* v.029：平日の hourly モードで coreHours 外時間帯を暗色オーバーレイ */
-      const mask = _getCoreHoursMinutes(root, null); /* プロジェクト既定 */
-      const dayW = px; /* その 1 日の width %（hourly では px=100） */
-      /* 00:00 → coreHours.start までの前半、coreHours.end → 24:00 までの後半 */
-      const preW = (mask.start / (24*60)) * dayW;
-      const postStart = (mask.end / (24*60)) * dayW;
-      const postW = dayW - postStart;
-      if(preW > 0){
-        html.push(`<div class="day off-dim" style="left:${i*px}%;width:${preW}%"></div>`);
-      }
-      if(postW > 0){
-        html.push(`<div class="day off-dim" style="left:${(i*px)+postStart}%;width:${postW}%"></div>`);
-      }
+      html.push(`<div class="day off-dim" style="left:0%;width:100%"></div>`);
+    }else if(root){
+      const mask = _getCoreHoursMinutes(root, null);
+      const preW = (mask.start / (24*60)) * 100;
+      const postStart = (mask.end / (24*60)) * 100;
+      const postW = 100 - postStart;
+      if(preW > 0) html.push(`<div class="day off-dim" style="left:0%;width:${preW}%"></div>`);
+      if(postW > 0) html.push(`<div class="day off-dim" style="left:${postStart}%;width:${postW}%"></div>`);
     }
+    return html;
+  }
+  /* v.033：非 hourly は midnight-aligned で absolute 配置（スクラブ時の日境界ずれ対策） */
+  const firstMid = jstMidnightMs(new Date(viewStartMs));
+  const lastMid  = jstMidnightMs(new Date(viewEndMs - 1));
+  for(let mid = firstMid; mid <= lastMid; mid += 86400000){
+    const dt = new Date(mid);
+    const p = jstParts(dt);
+    const iso = p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');
+    const isPub = publicSet && publicSet.has(iso);
+    const isCo  = companySet && companySet.has(iso);
+    const isWknd = (p.wk===0 || p.wk===6);
+    if(!(isPub || isCo || isWknd)) continue;
+    const leftPct  = (mid - viewStartMs) / viewTotalMs * 100;
+    const widthPct = 86400000 / viewTotalMs * 100;
+    const cls = isPub ? 'pub-dim' : (isCo ? 'co-dim' : 'off-dim');
+    html.push(`<div class="day ${cls}" style="left:${leftPct}%;width:${widthPct}%"></div>`);
   }
   return html;
 }
@@ -1405,29 +1425,29 @@ function buildTimelineHdr(){
     hdr.appendChild(topRow); hdr.appendChild(hrRow);
     return;
   }
+  /* v.033：非 hourly スケールは midnight-aligned で絶対配置。
+     viewAnchor が midnight でない時（スクラブ中）でも日セルが実際の日付境界に正しく並ぶ。 */
   const weeks = document.createElement('div'); weeks.className='weeks';
   const dow = document.createElement('div'); dow.className='days';
-  const weekCount = Math.ceil(days/7);
-  for(let i=0;i<weekCount;i++){
-    const w = document.createElement('div'); w.className='w';
-    const d0 = new Date(start.getTime()+i*7*86400000);
-    const p = jstParts(d0);
-    w.textContent = `${p.m}/${p.d}〜`;
-    const daysInWeek = Math.min(7, days - i*7);
-    w.style.flex = `${daysInWeek} 0 0`;
-    weeks.appendChild(w);
-  }
+  const viewStartMs = start.getTime();
+  const viewTotalMs = days * 86400000;
+  const viewEndMs = viewStartMs + viewTotalMs;
+  const firstMid = jstMidnightMs(new Date(viewStartMs));
+  const lastMid  = jstMidnightMs(new Date(viewEndMs - 1));
   const pubSet = _buildPublicHolidaySet();
   const coSet  = _buildCompanyHolidaySet();
-  for(let i=0;i<days;i++){
+  /* 日セル（midnight 位置に配置） */
+  for(let mid = firstMid; mid <= lastMid; mid += 86400000){
+    const leftPct  = (mid - viewStartMs) / viewTotalMs * 100;
+    const widthPct = 86400000 / viewTotalMs * 100;
     const d = document.createElement('div'); d.className='d';
-    const dt = new Date(start.getTime()+i*86400000);
+    d.style.left  = leftPct + '%';
+    d.style.width = widthPct + '%';
+    const dt = new Date(mid);
     const p = jstParts(dt);
     if(p.wk===0||p.wk===6) d.classList.add('wknd');
     d.textContent = p.d;
-    /* v.007：日付セルクリックでマイルストーン追加 */
     const iso = p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');
-    /* v.025／v.026：国民の祝日は緑、会社の休日は黄でハイライト（公的優先） */
     if(pubSet.has(iso)) d.classList.add('holiday');
     else if(coSet.has(iso)) d.classList.add('co-holiday');
     d.dataset.iso = iso;
@@ -1435,6 +1455,21 @@ function buildTimelineHdr(){
     d.title = iso + ' — クリックでマイルストーン追加';
     d.addEventListener('click', ()=>openMilestoneAddPopup(iso, d));
     dow.appendChild(d);
+  }
+  /* 週セル（月曜に align）：最初に表示される月曜から開始、7 日おきに次の月曜 */
+  const firstDow = (new Date(firstMid)).getDay(); /* 0=Sun,1=Mon,...,6=Sat */
+  const toMon = (firstDow === 1) ? 0 : (firstDow === 0 ? 1 : 8 - firstDow);
+  let wkMid = firstMid + toMon * 86400000;
+  while(wkMid < viewEndMs){
+    const leftPct  = (wkMid - viewStartMs) / viewTotalMs * 100;
+    const widthPct = 7 * 86400000 / viewTotalMs * 100;
+    const w = document.createElement('div'); w.className='w';
+    w.style.left  = leftPct + '%';
+    w.style.width = widthPct + '%';
+    const p = jstParts(new Date(wkMid));
+    w.textContent = `${p.m}/${p.d}〜`;
+    weeks.appendChild(w);
+    wkMid += 7 * 86400000;
   }
   hdr.appendChild(weeks); hdr.appendChild(dow);
 }
