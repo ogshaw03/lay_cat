@@ -945,6 +945,47 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
   .mp-roles-grid{grid-template-columns:repeat(2,1fr)}
   .mp-profile-row{flex-direction:column;align-items:flex-start}
 }
+/* ===== カレンダーモーダル（Phase 4：祝日・会社休日） ===== */
+.calendar-modal{max-width:720px;width:100%;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;background:var(--bg2);border:1px solid var(--border);border-radius:12px}
+.cal-head{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border)}
+.cal-title{margin:0;font-size:16px;font-weight:700;color:var(--text);font-family:var(--font-head);flex:0 0 auto}
+.cal-nav{display:flex;align-items:center;gap:6px;flex:1;justify-content:center}
+.cal-nav-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:30px;height:30px;border-radius:6px;cursor:pointer;font-size:14px;line-height:1}
+.cal-nav-btn:hover{background:var(--bg4)}
+.cal-ym{font-family:var(--font-head);font-size:15px;font-weight:700;min-width:120px;text-align:center;font-variant-numeric:tabular-nums}
+.cal-body{padding:16px 20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:10px}
+.cal-grid-head{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-size:11px;color:var(--text3);text-align:center;font-family:var(--font-head);font-weight:700}
+.cal-grid-head > div{padding:4px 0}
+.cal-grid-head > div:first-child{color:var(--red)}
+.cal-grid-head > div:last-child{color:#6fa8e8}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-cell{min-height:62px;padding:5px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;display:flex;flex-direction:column;gap:3px;position:relative;transition:background 0.15s}
+.cal-empty{background:transparent;border-color:transparent}
+.cal-day{font-family:var(--font-code);font-size:13px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.cal-cell.cal-sun .cal-day{color:var(--red)}
+.cal-cell.cal-sat .cal-day{color:#6fa8e8}
+.cal-cell.cal-today{box-shadow:inset 0 0 0 2px var(--accent)}
+.cal-cell.cal-public{background:rgba(220,80,80,.12);border-color:rgba(220,80,80,.4)}
+.cal-cell.cal-company{background:rgba(214,169,95,.14);border-color:rgba(214,169,95,.42)}
+.cal-cell.cal-public.cal-company{background:linear-gradient(135deg,rgba(220,80,80,.14) 50%,rgba(214,169,95,.14) 50%)}
+.cal-cell.cal-editable:hover{background:var(--bg4);border-color:var(--accent)}
+.cal-cell.cal-public.cal-editable:hover{background:rgba(220,80,80,.18)}
+.cal-cell.cal-company.cal-editable:hover{background:rgba(214,169,95,.22)}
+.cal-label{font-size:10px;color:var(--text2);line-height:1.25;word-break:break-all;overflow:hidden}
+.cal-cell.cal-public .cal-label{color:var(--red)}
+.cal-cell.cal-company .cal-label{color:#c99657}
+.cal-legend{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:8px 2px;border-top:1px dashed var(--border);font-size:11px;color:var(--text3)}
+.cal-lg-item{display:inline-flex;align-items:center;gap:5px}
+.cal-lg-sw{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid var(--border)}
+.cal-lg-sw.public{background:rgba(220,80,80,.3);border-color:rgba(220,80,80,.5)}
+.cal-lg-sw.company{background:rgba(214,169,95,.3);border-color:rgba(214,169,95,.5)}
+.cal-lg-sw.weekend{background:var(--bg3)}
+.cal-lg-note{margin-left:auto;font-style:italic;color:var(--text3)}
+@media (max-width:720px){
+  .cal-cell{min-height:48px;padding:3px 4px}
+  .cal-day{font-size:11px}
+  .cal-label{font-size:9px}
+}
 .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.6);animation:in .25s cubic-bezier(.16,1,.3,1)}
 .modal.lg{max-width:940px}
 @keyframes in{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:none}}
@@ -1087,6 +1128,7 @@ textarea.form-input{height:70px;resize:vertical}
     <button class="btn btn-ghost" id="submitBtn" title="サブミット — 複数ショットの提出をまとめてレビュー"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/></svg>サブミット</button>
     <a class="btn btn-ghost" id="pmboardBtn" href="pmboard_dev.html" target="_blank" rel="noopener" title="PM Board — このプロジェクトの進行管理ボード（スケジュール・工数・リテイク）を別タブで開く" style="text-decoration:none" onmousedown="try{var p=(state&&state.currentId)?rootOfId(getNode(state.currentId)):(REG&&REG[0]&&REG[0].id);this.href=p?('pmboard_dev.html?pid='+encodeURIComponent(p)):'pmboard_dev.html'}catch(_){}"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="12" rx="1.2"/><path d="M7 8h6M7 11h4M7 14h5"/></svg>PM Board</a>
     <div class="folder-status" id="folderStatus" title="このプロジェクトの保存先 / クリックでプロジェクト設定"><span class="dot"></span><span id="folderName">ブラウザ内保存</span></div>
+    <button class="hd-bell" id="calBtn" title="カレンダー（祝日・会社休日）"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="12" rx="1.5"/><path d="M3 8h14M7 2.5v3M13 2.5v3"/></svg></button>
     <button class="hd-bell" id="notifBtn" title="通知"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a4 4 0 0 1 8 0c0 4 1.5 5 1.5 5h-11S6 12 6 8z"/><path d="M8.5 16a1.7 1.7 0 0 0 3 0"/></svg><span class="nb-badge hidden" id="notifBadge">0</span></button>
     <label class="user-field" id="nameField"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="3"/><path d="M4.5 16.5a5.5 5.5 0 0 1 11 0"/></svg><input id="currentUser" type="text" placeholder="名前" /></label>
     <a class="btn btn-ghost" id="guideBtn" href="guide.html" target="_blank" rel="noopener" title="はじめ方ガイド（新しいタブで開きます）" style="display:none">📖 はじめ方ガイド</a>
@@ -3918,7 +3960,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.060';
+const APP_VERSION='2026.10.02.061';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19231,6 +19273,7 @@ $('#folderStatus').onclick=()=>{const cur=state.currentId?getNode(state.currentI
 $('#reelBtn').onclick=()=>{if(storage.mode)openReel()};
 $('#submitBtn').onclick=()=>{if(storage.mode)openSubmitCreate()};
 $('#notifBtn').onclick=e=>{e.stopPropagation();toggleNotifPanel()};
+$('#calBtn').onclick=e=>{e.stopPropagation();try{openCalendarModal()}catch(err){toast('カレンダーを開けませんでした: '+err.message)}};
 /* テーマ切替（ダーク / ライト）— localStorage 永続化。既定はダーク。 */
 (function initTheme(){
   const KEY='laycat_theme';
@@ -19475,6 +19518,150 @@ async function openMyPageModal(){
       else{toast('保存に失敗しました（Firestore ルール要確認）')}
     };
   });
+}
+/* ===== カレンダーモーダル（Phase 4：祝日・会社休日の閲覧・編集）=====
+   dev v2026.10.02 追加。Firestore(publicHolidays/JP/years/{year} + companyHolidays/default) 参照。
+   閲覧は全メンバー、会社休日の追加／削除は管理者以上（authUser.role in ['operator','admin']）のみ。
+   国の祝日は内閣府 CSV 由来（アクセス管理コンソールから更新）なので編集不可。
+   書き込み境界：日付クリック時のみ companyHolidays/{tenantId} を書き込み。既存プロジェクトデータへの影響ゼロ。 */
+const CAL_TENANT_ID='default';
+const _calCache={public:{},company:null,state:null};
+async function _calEnsurePublicYear(year){
+  if(_calCache.public[year]!==undefined)return;
+  _calCache.public[year]=[]; /* ロード中・失敗時は空扱い */
+  if(window.__laynaFB&&window.__laynaFB.loadPublicHolidays){
+    try{
+      const data=await window.__laynaFB.loadPublicHolidays('JP',year);
+      _calCache.public[year]=(data&&Array.isArray(data.dates))?data.dates:[];
+    }catch(_){}
+  }
+}
+async function _calEnsureCompany(){
+  if(_calCache.company!==null)return;
+  _calCache.company=[];
+  if(window.__laynaFB&&window.__laynaFB.loadCompanyHolidays){
+    try{
+      const data=await window.__laynaFB.loadCompanyHolidays(CAL_TENANT_ID);
+      _calCache.company=(data&&Array.isArray(data.dates))?data.dates:[];
+    }catch(_){}
+  }
+}
+async function openCalendarModal(){
+  if(!authUser){toast('ログインが必要です');return}
+  const canEdit=(authUser.role==='operator'||authUser.role==='admin');
+  const now=new Date();
+  _calCache.state={year:now.getFullYear(),month:now.getMonth(),canEdit};
+  openModal(body=>{
+    body.classList.add('calendar-modal');
+    body.innerHTML=`
+      <div class="cal-head">
+        <h3 class="cal-title">カレンダー</h3>
+        <div class="cal-nav">
+          <button class="cal-nav-btn" id="calPrev" title="前月">←</button>
+          <span class="cal-ym" id="calYm">—</span>
+          <button class="cal-nav-btn" id="calNext" title="翌月">→</button>
+        </div>
+        <button class="mp-close" title="閉じる">×</button>
+      </div>
+      <div class="cal-body">
+        <div class="cal-grid-head"><div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div></div>
+        <div class="cal-grid" id="calGrid"><div style="grid-column:1/-1;text-align:center;color:var(--text3);font-size:12px;padding:20px">読み込み中…</div></div>
+        <div class="cal-legend">
+          <span class="cal-lg-item"><span class="cal-lg-sw public"></span>国の祝日</span>
+          <span class="cal-lg-item"><span class="cal-lg-sw company"></span>会社休日</span>
+          <span class="cal-lg-item"><span class="cal-lg-sw weekend"></span>平日/土日</span>
+          <span class="cal-lg-note">${canEdit?'管理者権限：平日クリックで会社休日を追加／削除':'閲覧のみ（会社休日の変更は管理者以上）'}</span>
+        </div>
+      </div>`;
+    body.querySelector('.mp-close').onclick=closeModal;
+    body.querySelector('#calPrev').onclick=()=>_calNavigate(-1);
+    body.querySelector('#calNext').onclick=()=>_calNavigate(+1);
+  });
+  await Promise.all([_calEnsurePublicYear(_calCache.state.year),_calEnsureCompany()]);
+  _calRender();
+}
+async function _calNavigate(delta){
+  const s=_calCache.state;if(!s)return;
+  s.month+=delta;
+  if(s.month<0){s.month=11;s.year--}
+  if(s.month>11){s.month=0;s.year++}
+  await _calEnsurePublicYear(s.year);
+  _calRender();
+}
+function _calRender(){
+  const s=_calCache.state;if(!s)return;
+  const ymEl=document.getElementById('calYm');
+  const grid=document.getElementById('calGrid');
+  if(!grid||!ymEl)return;
+  ymEl.textContent=`${s.year}年${s.month+1}月`;
+  const first=new Date(s.year,s.month,1);
+  const firstDow=first.getDay();
+  const daysInMonth=new Date(s.year,s.month+1,0).getDate();
+  const pubList=_calCache.public[s.year]||[];
+  const coList=_calCache.company||[];
+  const pubMap={};for(const d of pubList)if(d&&d.date)pubMap[d.date]=d.name||'';
+  const coMap={};for(const d of coList)if(d&&d.date)coMap[d.date]=d.name||'';
+  const today=new Date();
+  const todayStr=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let html='';
+  for(let i=0;i<firstDow;i++)html+='<div class="cal-cell cal-empty"></div>';
+  for(let d=1;d<=daysInMonth;d++){
+    const mm=String(s.month+1).padStart(2,'0');
+    const dd=String(d).padStart(2,'0');
+    const dateStr=`${s.year}-${mm}-${dd}`;
+    const dow=(firstDow+d-1)%7;
+    const cls=['cal-cell'];
+    if(dow===0)cls.push('cal-sun');
+    if(dow===6)cls.push('cal-sat');
+    if(dateStr===todayStr)cls.push('cal-today');
+    const pName=pubMap[dateStr];
+    const cName=coMap[dateStr];
+    if(pName)cls.push('cal-public');
+    if(cName)cls.push('cal-company');
+    /* 編集可：管理者以上 かつ 国の祝日ではない */
+    const editable=s.canEdit&&!pName;
+    if(editable)cls.push('cal-editable');
+    const label=pName||cName||'';
+    html+=`<div class="${cls.join(' ')}" data-date="${dateStr}">
+      <div class="cal-day">${d}</div>
+      ${label?`<div class="cal-label">${esc(label)}</div>`:''}
+    </div>`;
+  }
+  grid.innerHTML=html;
+  if(s.canEdit){
+    grid.querySelectorAll('.cal-editable').forEach(cell=>{
+      cell.onclick=()=>_calCellClicked(cell.dataset.date,coMap[cell.dataset.date]||null);
+    });
+  }
+}
+async function _calCellClicked(dateStr,existingName){
+  const s=_calCache.state;
+  if(!s||!s.canEdit)return;
+  if(!window.__laynaFB||!window.__laynaFB.saveCompanyHoliday){toast('Firestore 未初期化');return}
+  if(existingName!=null){
+    if(!confirm(`会社休日「${existingName}」(${dateStr}) を削除しますか？`))return;
+    const ok=await window.__laynaFB.deleteCompanyHoliday(dateStr,CAL_TENANT_ID);
+    if(!ok){toast('削除に失敗しました');return}
+    _calCache.company=(_calCache.company||[]).filter(d=>!d||d.date!==dateStr);
+    _calRender();
+    toast(`削除：${dateStr}`);
+  }else{
+    const name=prompt(`${dateStr} を会社休日として追加します。\n休日の名前（例：夏季休業、創立記念日）：`,'');
+    if(name===null)return;
+    const t=String(name).trim();
+    if(!t){toast('名前を入力してください');return}
+    const email=(authUser&&authUser.email)||'';
+    const ok=await window.__laynaFB.saveCompanyHoliday(dateStr,t,email,CAL_TENANT_ID);
+    if(!ok){toast('追加に失敗しました（権限不足？ Firestore ルール要確認）');return}
+    _calCache.company=_calCache.company||[];
+    const idx=_calCache.company.findIndex(d=>d&&d.date===dateStr);
+    const entry={date:dateStr,name:t,addedBy:email,addedAt:new Date().toISOString()};
+    if(idx>=0)_calCache.company[idx]=entry;else _calCache.company.push(entry);
+    _calCache.company.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    _calRender();
+    toast(`追加：${dateStr} ${t}`);
+  }
 }
 /* ===== メンテナンス / 全体お知らせ（運営コンソールから制御。OGREF相当） ===== */
 let _maintActive=false, _signalsWired=false;
