@@ -1018,7 +1018,8 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .tn-domain-chk.disabled input{cursor:not-allowed}
 .tn-domain-list{font-size:11px;color:var(--text2);padding-left:22px}
 .tn-domain-list code{background:var(--bg2);padding:1px 6px;border-radius:4px;font-size:11px;color:var(--text);border:1px solid var(--border);font-family:var(--font-code)}
-.tn-add{display:flex;gap:6px;align-items:center;padding:8px;background:var(--bg3);border:1px dashed var(--border);border-radius:6px}
+.tn-add{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px;background:var(--bg3);border:1px dashed var(--border);border-radius:6px}
+.tn-add input{min-width:0}
 .tn-add input{flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:6px 9px;border-radius:5px;font-size:12px}
 .tn-add select{background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:6px 9px;border-radius:5px;font-size:12px}
 .tn-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--border);background:var(--bg)}
@@ -4001,7 +4002,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='beta v0.3.0';
+const APP_VERSION='beta v0.3.1';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5256,9 +5257,11 @@ async function subSendToReel(sb){
 /* ============================================================
    ナビ / レンダリング
    ============================================================ */
-function go(id){state.currentId=id;state.search='';state.pmPick=null;state.reviewOpen=null;$('#searchInput').value='';const nn=getNode(id);state.projTab=(nn&&nn.type==='review')?'browse':'timeline';/* レビューを開くときはタブ強調とハッシュを本文表示(browse)に合わせる */if(nn&&nn.type==='review'){state.openTasks=(state.openTasks||[]).filter(x=>x!==id);state.openTasks.push(id)}/* v.043：ターゲットまでの先祖のみ expanded に追加（ターゲット自身は展開しない）。
+function go(id,opts){state.currentId=id;state.search='';state.pmPick=null;state.reviewOpen=null;$('#searchInput').value='';const nn=getNode(id);state.projTab=(nn&&nn.type==='review')?'browse':'timeline';/* レビューを開くときはタブ強調とハッシュを本文表示(browse)に合わせる */if(nn&&nn.type==='review'){state.openTasks=(state.openTasks||[]).filter(x=>x!==id);state.openTasks.push(id)}/* v.043：ターゲットまでの先祖のみ expanded に追加（ターゲット自身は展開しない）。
   フォルダをクリックしたときに自動で開かないようにするため。以前は pathOf(id) 全体だったので、
-  フォルダを選択する度に自身も展開されていた。 */for(const n of pathOf(id))if(n.id!==id)state.expanded.add(n.id);render();syncHash();autoRefresh()}
+  フォルダを選択する度に自身も展開されていた。
+  v.080：opts.keepSidebar=true のときは先祖展開もスキップ（ショットタブからショットページを
+  開くときなどに、既存の左サイドバーの開閉状態を保ったまま遷移する）。 */if(!(opts&&opts.keepSidebar)){for(const n of pathOf(id))if(n.id!==id)state.expanded.add(n.id);}render();syncHash();autoRefresh()}
 /* ============================================================
    URLルーティング（ハッシュ）— 画面ごとに固有URL・作業者間でリンク共有
    #/                     ホーム
@@ -6605,7 +6608,7 @@ function renderProjShots(main,cur){
         const inSel=(state.shotSel&&state.shotSel.size>0);
         if(inSel||ev.ctrlKey||ev.metaKey)return; /* 選択モード時はタイル本体の onclick に委譲（stopPropagation しない） */
         ev.stopPropagation();
-        go(lv.node.id);
+        go(lv.node.id,{keepSidebar:true}); /* v.080：ショットタブからの遷移では左ツリーを展開しない */
       };
     }
     tile.appendChild(th);
@@ -6668,7 +6671,7 @@ function renderProjShots(main,cur){
     const th=el('img','shot-row-th');if(lv&&lv.v.thumb)th.dataset.ref=lv.v.thumb;
     /* 縦並び表示のサムネクリック：以前はアノテ窓（openReview modal）を開いていたが、
        ユーザー要望によりショットページ（タブ）追加＝go に変更。行本体クリックの右スライドはそのまま。 */
-    if(lv){th.title='クリックでショットページ（タブ）に追加';th.onclick=ev=>{ev.stopPropagation();go(lv.node.id)}}
+    if(lv){th.title='クリックでショットページ（タブ）に追加';th.onclick=ev=>{ev.stopPropagation();go(lv.node.id,{keepSidebar:true})}} /* v.080：ショットタブからの遷移では左ツリーを展開しない */
     it.appendChild(th);
     it.appendChild(el('span','shot-row-nm',sh.name)); /* ショット名 */
     if(rep){const stg=el('span','tl-stage',rep.name);stg.style.background=lv?stageBadgeColor(rep):hexA(stageBadgeColor(rep),.45);it.appendChild(stg);} /* 工程（全工程未着手なら先頭工程を控えめ色で表示） */
@@ -8418,20 +8421,19 @@ function renderReviewBody(s,cur,opts){
       /* 表示ラベル：v.stage/c.stage を優先、無ければ所有 review ノード名 */
       const label=it.stageName||(it.stageNode&&it.stageNode.name)||'?';
       const isCurrent=(hasSiblings ? it.stageNode.id===cur.id : (it.stageName? it.stageName===curStageName : false));
-      /* 色：旧モデルは review ノード自身のステータス色、新モデルは工程順のシード色 */
+      /* v.081：工程バッジの色は工程設定（root.stageColors / 既定パレット）に揃える。
+         以前は旧モデル=ステータス色、新モデル=工程順ハードコード HSL と、工程設定で選んだ色と
+         まったく一致していなかった（例：工程設定で lay=緑を選んでも、バッジは赤で描画されていた）。
+         stageColorFor(root, name) は工程設定の #hex／既定の STAGE_COLOR_MAP／ハッシュパレットを
+         順に見るので、工程設定モーダル・ショット一覧タイル・タイムラインと同じ色で描画される。 */
       let color='var(--text3)';
-      if(hasSiblings){color=stInfo(it.stageNode).color}
-      else if(rootStagesArr.length){
-        const idx=rootStagesArr.indexOf(label);if(idx>=0){const hues=[210,150,50,300,180,20,270,90];const h=hues[idx%hues.length];color=`hsl(${h} 55% 60%)`}
-      }
+      try{const _c=stageColorFor(rootOf(cur), label);if(_c)color=_c;}catch(_){}
       const badge=el('span','log-stg-badge'+(isCurrent?' cur':''));
+      /* v.082：現在工程も他工程も「枠＋工程色の文字」で統一（outlined 表示）。
+         以前は現在工程だけ塗り＋暗い文字で強調していたが、工程ごとで表示パターンが混在して
+         見づらいため LAY_ANM 風の outlined に揃える。 */
       badge.style.borderColor=color;
-      /* 現在工程は「工程色で塗り＋暗い文字」で強調、他工程は「枠のみ＋工程色の文字」。
-         以前 CSS で `.cur{background:currentColor;color:var(--bg)!important}` としていたが、
-         currentColor が上書き後の color を参照するため背景と文字が同じ暗色になって文字が
-         見えなくなっていた。inline で両方明示的にセットして解消。 */
-      if(isCurrent){badge.style.background=color;badge.style.color='var(--bg)'}
-      else{badge.style.color=color}
+      badge.style.color=color;
       badge.textContent=label;
       badge.title='工程：'+label+(isCurrent?'（現在）':'');
       /* v.012：工程バッジのクリック（switchStageInTab）は廃止。
@@ -19846,9 +19848,11 @@ async function _tnRender(state){
   bodyEl.innerHTML = '<div class="tn-empty">読み込み中…</div>';
   const esc = s => String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const tid = state.tenantId;
-  let tenant = null, members = [];
+  let tenant = null, members = [], loggedUsersMap = {};
   try{ tenant = await window.__laynaFB.loadTenant(tid); }catch(_){}
   try{ members = await window.__laynaFB.loadTenantMembers(tid) || []; }catch(_){}
+  /* v.076：loggedUsers 索引を取得（name 未設定メンバーの display name フォールバック） */
+  try{ loggedUsersMap = (window.__laynaFB.loadLoggedUsers ? await window.__laynaFB.loadLoggedUsers() : {}) || {}; }catch(_){}
   if(!tenant){ bodyEl.innerHTML = '<div class="tn-empty">テナント情報を取得できませんでした</div>'; return; }
   /* 契約者が members に未登録なら仮想メンバーで補完（v.067 以前作成テナントの救済）。
      ライセンス枠カウントも owner 分 1 枠を正しく反映する。 */
@@ -19884,8 +19888,11 @@ async function _tnRender(state){
     const canDelete = !isOwner && !mm.virtual; /* 契約者は削除不可・仮想行も削除不可 */
     const assignedAtStr = mm.assignedAt ? String(mm.assignedAt).slice(0,10) : '';
     const virtualTag = mm.virtual ? '<span class="meta" style="font-style:italic">（members 未同期）</span>' : '';
+    /* v.076：name フィールド優先、無ければ loggedUsers から Google displayName を補完 */
+    const displayName = String(mm.name||'').trim() || (loggedUsersMap[em.toLowerCase()] || '');
+    const nameHtml = displayName ? `<span style="font-weight:600;color:var(--text)">${esc(displayName)}</span> <span style="color:var(--text3);font-size:11px">${esc(em)}</span>` : `<span>${esc(em)}</span>`;
     return `<div class="tn-row" data-email="${esc(em)}">
-      <div class="email">${esc(em)}</div>
+      <div class="email">${nameHtml}</div>
       <span class="role-badge ${roleCls}">${roleLabel}</span>
       <span class="meta">${esc(assignedAtStr)}</span>
       ${virtualTag}
@@ -19900,7 +19907,7 @@ async function _tnRender(state){
     <div class="tn-contract">
       <div class="cell"><span class="lbl">プラン</span><span class="val">${esc(tenant.plan||'—')}</span></div>
       <div class="cell"><span class="lbl">契約者</span><span class="val">${esc(owner||'未設定')}</span></div>
-      <div class="cell"><span class="lbl">ライセンス</span><span class="val ${isFull?'license-full':'license-ok'}">${used} / ${limit||'—'}</span></div>
+      <div class="cell"><span class="lbl">ライセンス</span><span class="val ${isFull?'license-full':'license-ok'}">${used} / ${limit>0?limit:'無制限'}</span></div>
       <div class="cell"><span class="lbl">あなたの役職</span><span class="val">${esc(myRole)}</span></div>
     </div>
     <h4 class="tn-section-title">ドメインアクセス</h4>
@@ -19911,38 +19918,45 @@ async function _tnRender(state){
       </label>
       <div class="tn-domain-list">対象ドメイン：${tenantDomains.length ? tenantDomains.map(d=>`<code>${esc(d)}</code>`).join(' ') : '<span style="color:var(--text3)">未設定（アクセス管理コンソールで設定）</span>'}</div>
     </div>
+    <h4 class="tn-section-title">定時（coreHours）</h4>
+    <div class="tn-domain-box">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text2)">開始</span>
+        <input type="time" id="tnCoreStart" value="${esc((tenant.coreHours&&tenant.coreHours.start)||'10:30')}" ${canToggleDomain?'':'disabled'} style="background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:12px">
+        <span style="color:var(--text3)">〜</span>
+        <span style="font-size:12px;color:var(--text2)">終了</span>
+        <input type="time" id="tnCoreEnd" value="${esc((tenant.coreHours&&tenant.coreHours.end)||'19:30')}" ${canToggleDomain?'':'disabled'} style="background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:12px">
+        <button class="btn btn-primary" id="tnCoreSaveBtn" ${canToggleDomain?'':'disabled'} style="padding:5px 12px;font-size:12px">保存</button>
+      </div>
+      <div class="tn-domain-list" style="margin-top:4px">テナント既定の定時。PM Board の工数集計で「個人のマイページ未設定」のユーザーに適用されます。<br>※ 変更後は PM Board の工数タブをリロードしてください。</div>
+    </div>
     <h4 class="tn-section-title">メンバー（${members.length}）</h4>
-    <div class="tn-members">${memberRows || '<div class="tn-empty">メンバー未登録</div>'}</div>
-    <h4 class="tn-section-title">メンバー追加</h4>
-    <div class="tn-add">
-      <input id="tnAddEmail" type="email" placeholder="メール（例：a@example.com）" autocomplete="off">
-      <select id="tnAddRole">
-        <option value="member">member</option>
-        <option value="admin">admin</option>
-      </select>
-      <button class="btn btn-primary" id="tnAddBtn" ${isFull?'disabled title="ライセンス枠満杯"':''}>＋ 追加</button>
+    <div style="padding:4px 0">
+      <button class="btn btn-primary" id="tnOpenMemberModal">👥 メンバー管理（追加・権限変更・削除）</button>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">メンバーの追加・権限変更・削除は専用モーダルで行います（契約者／管理者／メンバー別に表示・検索可）。</div>
     </div>`;
-  /* イベント：role 切替・削除 */
-  bodyEl.querySelectorAll('.tn-row').forEach(row=>{
-    const em = row.dataset.email;
-    const btnToggle = row.querySelector('button[data-act="toggle"]');
-    const btnDel = row.querySelector('button[data-act="del"]');
-    if(btnToggle) btnToggle.onclick = async ()=>{
-      const cur = members.find(x=>String(x.email).toLowerCase()===em.toLowerCase());
-      const newRole = (cur && cur.role==='admin') ? 'member' : 'admin';
-      const ok = await window.__laynaFB.updateTenantMemberRole(tid, em, newRole, authUser.email);
-      if(!ok){ toast('変更に失敗しました（権限不足？）'); return; }
-      toast(`${em} を ${newRole} に変更しました`);
-      _tnRender(state);
+  /* v.079：メンバー管理モーダル化。インラインの個別イベントは削除。 */
+  const openModalBtn = bodyEl.querySelector('#tnOpenMemberModal');
+  if(openModalBtn) openModalBtn.onclick = () => openTenantMemberModal(tid, ()=>_tnRender(state));
+  /* v.077：定時（coreHours）保存ボタン */
+  const tnCoreSaveBtn = bodyEl.querySelector('#tnCoreSaveBtn');
+  if(tnCoreSaveBtn && canToggleDomain){
+    tnCoreSaveBtn.onclick = async ()=>{
+      const sEl = bodyEl.querySelector('#tnCoreStart');
+      const eEl = bodyEl.querySelector('#tnCoreEnd');
+      const s = String(sEl.value||'').trim();
+      const e = String(eEl.value||'').trim();
+      if(!/^\d{2}:\d{2}$/.test(s) || !/^\d{2}:\d{2}$/.test(e)){ toast('時刻の形式が不正です'); return; }
+      /* 開始 < 終了のバリデーション */
+      const toMin = v => { const m=v.match(/^(\d{2}):(\d{2})$/); return parseInt(m[1],10)*60+parseInt(m[2],10); };
+      if(toMin(s) >= toMin(e)){ toast('開始は終了より前にしてください'); return; }
+      tnCoreSaveBtn.disabled = true;
+      const ok = await window.__laynaFB.updateTenantCoreHours(tid, {start:s, end:e}, authUser.email);
+      tnCoreSaveBtn.disabled = false;
+      if(!ok){ toast('保存に失敗しました（権限不足？）'); return; }
+      toast(`テナント既定の定時を ${s}〜${e} に設定しました`);
     };
-    if(btnDel) btnDel.onclick = async ()=>{
-      if(!confirm(`${em} をこのテナントから削除します。削除後は LayCAT にログインできなくなります（他テナントに所属していなければ）。続行しますか？`)) return;
-      const ok = await window.__laynaFB.removeTenantMember(tid, em);
-      if(!ok){ toast('削除に失敗しました'); return; }
-      toast(`${em} を削除しました`);
-      _tnRender(state);
-    };
-  });
+  }
   /* ドメイン自動許可トグル */
   const tnAutoJoinEl = bodyEl.querySelector('#tnAutoJoin');
   if(tnAutoJoinEl && canToggleDomain){
@@ -19959,24 +19973,185 @@ async function _tnRender(state){
       toast(next ? '弊社ドメインの自動アクセスを ON にしました' : '弊社ドメインの自動アクセスを OFF にしました');
     };
   }
-  /* 追加ボタン */
-  const addBtn = bodyEl.querySelector('#tnAddBtn');
-  if(addBtn && !isFull) addBtn.onclick = async ()=>{
-    const emIn = bodyEl.querySelector('#tnAddEmail');
-    const roleIn = bodyEl.querySelector('#tnAddRole');
-    const em = String(emIn.value||'').trim().toLowerCase();
-    const role = String(roleIn.value||'member');
-    if(!em || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ toast('メール形式が不正です'); return; }
-    /* 枠オーバー再チェック（他タブからの変更対策） */
-    if(limit>0 && used>=limit){ toast(`ライセンス枠が満杯です（${used}/${limit}）`); return; }
-    /* 既存チェック */
-    if(members.find(x=>String(x.email).toLowerCase()===em)){ toast('既に登録済みのメンバーです'); return; }
-    const ok = await window.__laynaFB.addTenantMember(tid, em, role, authUser.email);
-    if(!ok){ toast('追加に失敗しました（権限不足？）'); return; }
-    toast(`${em} を ${role} として追加しました`);
-    emIn.value = '';
-    _tnRender(state);
+  /* v.079：メンバーの追加・role 変更・削除はメンバー管理モーダル（openTenantMemberModal）に移管。 */
+}
+/* v.079：テナントメンバー管理モーダル（契約者／管理者／メンバー 3 セクション＋検索＋追加）。
+   メインのテナント管理モーダルの上にオーバーレイで表示する。 */
+let _tenMemberQuery = '';
+let _tenMemberCurrentTid = null;
+let _tenMemberOnChange = null; /* メイン モーダルの再描画コールバック */
+async function openTenantMemberModal(tid, onChange){
+  if(!tid){ toast('テナント ID が不正です'); return; }
+  _tenMemberCurrentTid = tid;
+  _tenMemberOnChange = onChange || null;
+  _tenMemberQuery = '';
+  /* 既存モーダルがあれば除去（二重オープン防止） */
+  const prev = document.getElementById('tenantMemberModal');
+  if(prev) prev.remove();
+  const modal = document.createElement('div');
+  modal.id = 'tenantMemberModal';
+  modal.className = 'modal-overlay';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10050;display:flex;align-items:center;justify-content:center;padding:24px';
+  modal.innerHTML = `
+    <div class="modal-panel" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;width:min(820px,96vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 48px rgba(0,0,0,.5)">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg3)">
+        <span style="font-size:14px;font-weight:700">👥 テナントメンバー管理</span>
+        <span id="tmTenantName" style="color:var(--text3);font-size:12px"></span>
+        <span style="flex:1"></span>
+        <button class="btn btn-ghost btn-sm" id="tmCloseBtn" title="閉じる" style="padding:4px 10px">✕</button>
+      </div>
+      <div style="padding:14px 16px;overflow-y:auto">
+        <div style="color:var(--text3);font-size:11px;margin-bottom:12px;line-height:1.6">メンバーの追加・権限変更・削除を行います。<b>契約者</b>は削除・権限変更不可。<b>管理者</b>はテナント内の管理操作が可能。</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <input id="tmAddEmail" type="email" placeholder="メール（例：a@example.com）" autocomplete="off" style="flex:1;min-width:160px;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px">
+          <input id="tmAddName" type="text" placeholder="名前（任意）" title="空欄なら自動取得（マイページ or Google 名）" autocomplete="off" style="flex:0 0 160px;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px">
+          <select id="tmAddRole" style="background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px">
+            <option value="member">メンバー</option><option value="admin">管理者</option>
+          </select>
+          <button class="btn btn-primary" id="tmAddBtn">＋ 追加</button>
+        </div>
+        <div style="margin:10px 0 6px"><input id="tmSearch" type="text" placeholder="🔍 名前またはメールで検索…" autocomplete="off" style="width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px"></div>
+        <div class="counts" id="tmCounts" style="font-size:11px;color:var(--text3);margin:4px 0 10px"></div>
+        <div style="font-size:11px;color:var(--text2);font-weight:700;margin:14px 0 6px;letter-spacing:.5px">契約者（owner）</div>
+        <div id="tmOwnerList" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div style="font-size:11px;color:var(--text2);font-weight:700;margin:14px 0 6px;letter-spacing:.5px">管理者（admin）</div>
+        <div id="tmAdminList" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div style="font-size:11px;color:var(--text2);font-weight:700;margin:14px 0 6px;letter-spacing:.5px">メンバー（member）</div>
+        <div id="tmMemberList" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  /* 閉じる動作 */
+  const close = () => { try{ modal.remove(); }catch(_){} };
+  modal.querySelector('#tmCloseBtn').onclick = close;
+  modal.addEventListener('click', e => { if(e.target === modal) close(); });
+  /* 入力イベント */
+  modal.querySelector('#tmAddBtn').onclick = _tmAddUser;
+  modal.querySelector('#tmAddEmail').addEventListener('keydown', e => { if(e.key==='Enter') _tmAddUser(); });
+  modal.querySelector('#tmAddName').addEventListener('keydown', e => { if(e.key==='Enter') _tmAddUser(); });
+  const sb = modal.querySelector('#tmSearch');
+  sb.addEventListener('input', ()=>{ _tenMemberQuery = sb.value; _paintTenantMemberModal(); });
+  await _paintTenantMemberModal();
+}
+async function _paintTenantMemberModal(){
+  const modal = document.getElementById('tenantMemberModal');
+  if(!modal) return;
+  const tid = _tenMemberCurrentTid;
+  if(!tid) return;
+  const esc = s => String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let tenant = null, members = [], loggedUsersMap = {};
+  try{ tenant = window.__laynaFB.loadTenant ? await window.__laynaFB.loadTenant(tid) : null; }catch(_){}
+  try{ members = await window.__laynaFB.loadTenantMembers(tid) || []; }catch(_){}
+  try{ loggedUsersMap = (window.__laynaFB.loadLoggedUsers ? await window.__laynaFB.loadLoggedUsers() : {}) || {}; }catch(_){}
+  const nameEl = modal.querySelector('#tmTenantName');
+  if(nameEl) nameEl.textContent = tenant ? `(${tenant.name||tid})` : `(${tid})`;
+  const lists = ['tmOwnerList','tmAdminList','tmMemberList'].map(id => modal.querySelector('#'+id));
+  if(!tenant){
+    for(const el of lists){ if(el) el.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:6px 2px;text-align:center">テナント情報を取得できませんでした</div>'; }
+    return;
+  }
+  const ownerLc = String(tenant.ownerEmail||'').toLowerCase();
+  /* 仮想 owner 補完（members に未登録でも owner を表示＆ライセンス消費） */
+  if(ownerLc && !members.some(m => String(m.email||'').toLowerCase() === ownerLc)){
+    members.push({ email: ownerLc, role: 'admin', virtual: true });
+  }
+  const limit = (typeof tenant.licenseLimit === 'number') ? tenant.licenseLimit : 0;
+  const used = members.length;
+  const isFull = (limit > 0 && used >= limit);
+  const addBtn = modal.querySelector('#tmAddBtn');
+  if(addBtn){ addBtn.disabled = isFull; addBtn.title = isFull ? `ライセンス枠満杯（${used}/${limit}）` : ''; }
+  const resolveName = m => String(m.name||'').trim() || loggedUsersMap[String(m.email||'').toLowerCase()] || '';
+  const q = String(_tenMemberQuery||'').trim().toLowerCase();
+  const filt = members.filter(m => {
+    if(!q) return true;
+    const em = String(m.email||'').toLowerCase();
+    const nm = resolveName(m).toLowerCase();
+    return em.includes(q) || nm.includes(q);
+  });
+  const owners = filt.filter(m => String(m.email||'').toLowerCase() === ownerLc);
+  const admins = filt.filter(m => m.role === 'admin' && String(m.email||'').toLowerCase() !== ownerLc);
+  const regulars = filt.filter(m => m.role !== 'admin');
+  const cEl = modal.querySelector('#tmCounts');
+  if(cEl){
+    const limitStr = limit > 0 ? `${used}/${limit}` : `${used}/無制限`;
+    cEl.textContent = `契約者 ${owners.length} ・ 管理者 ${admins.length} ・ メンバー ${regulars.length} ・ ライセンス ${limitStr} 席` + (q ? `　／　「${_tenMemberQuery}」で絞込` : '');
+  }
+  const rowStyle = 'display:flex;align-items:center;gap:10px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:var(--bg3)';
+  const badgeStyle = (r) => {
+    if(r==='owner') return 'font-size:9px;padding:2px 7px;border-radius:10px;font-weight:700;letter-spacing:.5px;background:rgba(214,169,95,.16);color:#d6a95f;border:1px solid rgba(214,169,95,.4)';
+    if(r==='admin') return 'font-size:9px;padding:2px 7px;border-radius:10px;font-weight:700;letter-spacing:.5px;background:rgba(140,180,240,.14);color:#8cb4f0;border:1px solid rgba(140,180,240,.34)';
+    return 'font-size:9px;padding:2px 7px;border-radius:10px;font-weight:700;letter-spacing:.5px;background:rgba(127,191,154,.14);color:#7fbf9a;border:1px solid rgba(127,191,154,.34)';
   };
+  const mkRow = (m) => {
+    const em = String(m.email||'');
+    const isOwner = em.toLowerCase() === ownerLc;
+    const roleLabel = isOwner ? 'owner' : (m.role === 'admin' ? 'admin' : 'member');
+    const nm = resolveName(m);
+    const dateStr = m.assignedAt ? String(m.assignedAt).slice(0,10) : '';
+    const virtualTag = m.virtual ? '<span style="font-size:9px;color:var(--text3);font-style:italic">（members 未同期）</span>' : '';
+    const canToggle = !isOwner && !m.virtual;
+    const canDelete = !isOwner && !m.virtual;
+    const toggleLbl = m.role === 'admin' ? '→メンバー' : '→管理者';
+    const row = document.createElement('div');
+    row.style.cssText = rowStyle;
+    row.dataset.email = em;
+    row.innerHTML = `
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;overflow:hidden">
+        ${nm ? `<span style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nm)}</span><span style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(em)}</span>` : `<span style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(em)}</span>`}
+      </div>
+      <span style="${badgeStyle(roleLabel)}">${roleLabel}</span>
+      <span style="font-size:9px;color:var(--text3);font-style:italic">${esc(dateStr)}</span>
+      ${virtualTag}
+      ${canToggle ? `<button class="btn btn-sm" data-act="toggle" style="padding:4px 9px;font-size:11px">${toggleLbl}</button>` : ''}
+      ${canDelete ? `<button class="btn btn-sm" data-act="del" style="padding:4px 9px;font-size:11px;background:transparent;border-color:var(--red);color:var(--red)">削除</button>` : ''}
+    `;
+    const bt = row.querySelector('button[data-act="toggle"]');
+    const bd = row.querySelector('button[data-act="del"]');
+    if(bt) bt.onclick = () => _tmToggleRole(em, m.role);
+    if(bd) bd.onclick = () => _tmRemoveUser(em);
+    return row;
+  };
+  const fill = (list, items, emptyMsg) => {
+    list.innerHTML = '';
+    if(!items.length){ list.innerHTML = `<div style="font-size:11px;color:var(--text3);padding:6px 2px;text-align:center">${esc(emptyMsg)}</div>`; return; }
+    for(const m of items) list.appendChild(mkRow(m));
+  };
+  fill(lists[0], owners,   q ? '該当なし' : '契約者未設定');
+  fill(lists[1], admins,   q ? '該当なし' : '管理者はいません');
+  fill(lists[2], regulars, q ? '該当なし' : 'メンバーはいません');
+}
+async function _tmAddUser(){
+  const modal = document.getElementById('tenantMemberModal');
+  if(!modal || !_tenMemberCurrentTid) return;
+  const em = String(modal.querySelector('#tmAddEmail').value||'').trim().toLowerCase();
+  const nm = String(modal.querySelector('#tmAddName').value||'').trim();
+  const role = String(modal.querySelector('#tmAddRole').value||'member');
+  if(!em || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ toast('メール形式が不正です'); return; }
+  const ok = await window.__laynaFB.addTenantMember(_tenMemberCurrentTid, em, role, authUser.email, nm);
+  if(!ok){ toast('追加に失敗しました（権限不足？ or 枠満杯）'); return; }
+  toast(`${em} を ${role} として追加しました`);
+  modal.querySelector('#tmAddEmail').value='';
+  modal.querySelector('#tmAddName').value='';
+  await _paintTenantMemberModal();
+  if(typeof _tenMemberOnChange === 'function') try{ _tenMemberOnChange(); }catch(_){}
+}
+async function _tmToggleRole(em, curRole){
+  if(!_tenMemberCurrentTid) return;
+  const next = (curRole === 'admin') ? 'member' : 'admin';
+  const ok = await window.__laynaFB.updateTenantMemberRole(_tenMemberCurrentTid, em, next, authUser.email);
+  if(!ok){ toast('変更に失敗しました（権限不足？）'); return; }
+  toast(`${em} を ${next} に変更しました`);
+  await _paintTenantMemberModal();
+  if(typeof _tenMemberOnChange === 'function') try{ _tenMemberOnChange(); }catch(_){}
+}
+async function _tmRemoveUser(em){
+  if(!_tenMemberCurrentTid) return;
+  if(!confirm(`${em} をこのテナントから削除します。削除後は LayCAT にログインできなくなります（他テナントに所属していなければ）。続行しますか？`)) return;
+  const ok = await window.__laynaFB.removeTenantMember(_tenMemberCurrentTid, em);
+  if(!ok){ toast('削除に失敗しました'); return; }
+  toast(`${em} を削除しました`);
+  await _paintTenantMemberModal();
+  if(typeof _tenMemberOnChange === 'function') try{ _tenMemberOnChange(); }catch(_){}
 }
 /* ===== メンテナンス / 全体お知らせ（運営コンソールから制御。OGREF相当） ===== */
 let _maintActive=false, _signalsWired=false;
@@ -20204,6 +20379,23 @@ initApp();
       }catch(e){return false}},
       /* マルチテナント化 Phase M2：テナントのメンバー一覧を取得。
          tenants/{tid}/members サブコレクションを列挙。戻り値：[{emailKey, email, role, assignedBy, assignedAt}, ...] / 失敗時 null。 */
+      /* v.076：laynaAccess/loggedUsers から全ユーザーの display name 索引を取得。
+         戻り値：{ emailLc → displayName }。失敗時は空オブジェクト。
+         テナント管理モーダルで member.name 未設定時のフォールバック表示に使う。 */
+      loadLoggedUsers:async()=>{try{
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const snap=await m.getDoc(m.doc(fs,'laynaAccess','loggedUsers'));
+        if(!snap.exists()) return {};
+        const data=snap.data()||{};
+        const users=data.users||{};
+        const map={};
+        for(const key of Object.keys(users)){
+          const u=users[key]||{};
+          if(u.email && u.displayName) map[String(u.email).toLowerCase()] = u.displayName;
+        }
+        return map;
+      }catch(e){return {}}},
       loadTenantMembers:async(tenantId)=>{try{
         if(!tenantId)return null;
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
@@ -20216,14 +20408,26 @@ initApp();
       /* マルチテナント化 Phase M2：テナントにメンバーを追加／更新（既存同メールは role 等を上書き）。
          この書き込み後、laycatUsers/{emailKey}.tenantId も自動的に当該テナントに同期する。
          ライセンス枠（licenseLimit）の超過チェックは呼び出し側で済ませておく。 */
-      addTenantMember:async(tenantId, email, role, assignedBy)=>{try{
+      addTenantMember:async(tenantId, email, role, assignedBy, nameHint)=>{try{
         if(!tenantId||!email)return false;
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);
         const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         const nowIso=new Date().toISOString();
+        /* v.075：name を含めて保存。優先度：引数 nameHint > laycatUsers.profile.displayName > 空。 */
+        let name = String(nameHint||'').trim();
+        if(!name){
+          try{
+            const snap = await m.getDoc(m.doc(fs,'laycatUsers',key));
+            if(snap.exists()){
+              const d = snap.data()||{};
+              name = (d.profile && d.profile.displayName) || '';
+            }
+          }catch(_){}
+        }
         await m.setDoc(m.doc(fs,'tenants',String(tenantId),'members',key),{
           email:String(email).toLowerCase(),
+          name:name||'',
           role:(role==='admin')?'admin':'member',
           assignedBy:String(assignedBy||''),
           assignedAt:nowIso,
@@ -20264,6 +20468,21 @@ initApp();
         }catch(_){}
         return true;
       }catch(e){console.error('removeTenantMember failed',e);return false}},
+      /* v.077：テナント既定の定時（coreHours）を更新。owner/admin が LayCAT のテナント管理
+         モーダルから設定。Firestore ルールが「このフィールドだけ変更」を強制。 */
+      updateTenantCoreHours:async(tenantId, hours, who)=>{try{
+        if(!tenantId || !hours || !hours.start || !hours.end) return false;
+        /* 簡易バリデーション：HH:MM 形式 */
+        if(!/^\d{2}:\d{2}$/.test(hours.start) || !/^\d{2}:\d{2}$/.test(hours.end)) return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        await m.setDoc(m.doc(fs,'tenants',String(tenantId)),{
+          coreHours: {start: String(hours.start), end: String(hours.end)},
+          updatedBy: String(who||''),
+          updatedAt: new Date().toISOString(),
+        },{merge:true});
+        return true;
+      }catch(e){console.error('updateTenantCoreHours failed',e);return false}},
       /* マルチテナント化 Phase M3b：テナントの allowDomainAutoJoin を切替。
          owner / admin が LayCAT 側のテナント管理モーダルからチェックボックス操作で呼ぶ。
          Firestore ルールが「このフィールドだけ変更」を強制する。 */
@@ -20312,9 +20531,12 @@ initApp();
           /* 自分を member として追加（Firestore ルールの _canSelfJoinByDomain で検証される） */
           const key=emailLc.replace(/[.@#$/\[\]]/g,'_');
           const nowIso=new Date().toISOString();
+          /* v.075：Firebase auth の displayName を name に（自己参加時） */
+          const selfName = (auth.currentUser && auth.currentUser.displayName) || '';
           try{
             await m.setDoc(m.doc(fs,'tenants',td.id,'members',key),{
               email:emailLc,
+              name:selfName,
               role:'member',
               assignedBy:'(domain-auto-join)',
               assignedAt:nowIso,

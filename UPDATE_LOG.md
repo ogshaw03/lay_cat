@@ -18,82 +18,6 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-- (dev v2026.10.02.082) **ショットページの工程バッジ：現在工程も outlined に統一**：
-  - 事象：現在工程だけ「塗り＋暗い文字」、他工程は「枠＋工程色の文字」と、工程ごとで表示パターンが混在して見づらかった。
-  - 修正：現在工程も他工程と同じ outlined 表示（borderColor=工程色、color=工程色、background=既定の `var(--bg2)`）に統一。
-  - 書き込み系副作用なし（表示のみ）。
-  - APP_VERSION：2026.10.02.081 → 2026.10.02.082
-
-- (dev v2026.10.02.081) **ショットページの工程バッジ色を工程設定に揃える**：
-  - 事象：ショットページ（動画FBログ）の各アイテム頭の工程バッジが、工程設定モーダル／ショットタブタイル／タイムラインと別の色で描画されていた。
-  - 原因：`renderReviewBody` の工程バッジ色が
-    - 旧モデル（複数 review 兄弟）：`stInfo(stageNode).color`（ステータス色）
-    - 新モデル（Simple B）：`hsl(hues[idx%8] 55% 60%)` のハードコードパレット
-    を使っており、`root.stageColors` も既定の `STAGE_COLOR_MAP` も参照していなかった。
-  - 修正：`stageColorFor(rootOf(cur), label)` に統一。工程設定で選んだ色・既定パレット・ハッシュパレットの順に解決する。
-  - 書き込み系副作用なし（表示色のみ）。
-  - APP_VERSION：2026.10.02.080 → 2026.10.02.081
-
-- (dev v2026.10.02.080) **ショットタブからショットページを開くとき、左ツリーを自動展開しないように修正**：
-  - 事象：ショットタブ（タイル／縦並び）でサムネをクリックしてショットページ（タブ）を追加すると、`go()` が祖先フォルダをすべて `state.expanded` に追加していたため、左サイドバーのツリーが勝手に開いていた。
-  - 修正：`go(id, opts)` に `opts.keepSidebar` を追加し、true のときは祖先の `state.expanded` への追加をスキップ。
-  - 呼び出し側：ショットタブのタイル／縦並び行のサムネクリック（`go(lv.node.id, {keepSidebar:true})`）に適用。他経路の `go()` は従来通り祖先展開。
-  - 書き込み系への副作用なし（state のみ、persist 不発火）。
-  - APP_VERSION：2026.10.02.079 → 2026.10.02.080
-
-- (dev v2026.10.02.079) **テナントメンバー管理を専用モーダル化（契約者／管理者／メンバー別表示＋検索）**：
-  - テナント管理モーダルのメンバーセクションを「👥 メンバー管理」ボタンに置き換え、押下で専用モーダル（オーバーレイ）を開く。
-  - 専用モーダル内で `契約者（owner）／管理者（admin）／メンバー（member）` の 3 セクションに分けて表示。
-  - 名前・メールの部分一致検索バーを追加（絞込中は件数ラベルに「◯◯で絞込」を表示）。
-  - 追加フォーム・role 変更・削除は専用モーダル内で完結。保存に成功したらモーダルを再描画し、親テナント管理モーダルも再描画（コールバック）。
-  - owner 行は role 変更・削除不可（既存仕様を踏襲）。仮想 owner（members 未同期）行も操作不可。
-  - 書き込み経路は従来ヘルパ（`addTenantMember` / `updateTenantMemberRole` / `removeTenantMember`）のみ使用。shot.json 等への副作用なし。
-  - APP_VERSION：2026.10.02.078 → 2026.10.02.079
-
-- (dev v2026.10.02.078) **テナント既定の定時（coreHours）を追加（pmboard 工数集計連動）**：
-  - coreHours の優先順位を 4 → 5 段階に拡張。マイページ > プロジェクトメンバー個別 > プロジェクト既定 > **テナント既定（新）** > fallback。
-  - Firestore `tenants/{tid}` に `coreHours: {start, end}` フィールド追加。
-  - Firestore ルール：`_canToggleAutoJoin` → `_canUpdateTenantSettings` にリネーム、`coreHours` を更新許可フィールドに追加（owner/admin も変更可）。
-  - 新ヘルパ `window.__laynaFB.updateTenantCoreHours`。
-  - LayCAT テナント管理モーダル：「定時（coreHours）」セクション新設（開始／終了 time input ＋保存）。
-  - pmboard：`loadTenantCoreHours()` を `loadProjectData` 末尾で呼び出し、`DATA.tenantCoreHours` にキャッシュ。`_getCoreHoursMinutes` の優先順位 4 段目で参照。
-  - 書き込みは LayCAT の「保存」押下時のみ、tenants/{tid} 単一ドキュメントのみ。
-  - APP_VERSION：2026.10.02.077 → 2026.10.02.078
-
-- (dev v2026.10.02.077) **LayCAT テナント追加フォーム 幅調整＋折返し許可**：
-  - `.tn-add` に `flex-wrap:wrap`、`.tn-add input` に `min-width:0` を追加。
-  - 名前入力欄：placeholder「名前（任意）」に短縮・幅 180→140px、tooltip に補足。
-  - モーダル幅やブラウザサイズに関係なく全要素が収まる。
-  - APP_VERSION：2026.10.02.076 → 2026.10.02.077
-
-- (dev v2026.10.02.076) **LayCAT テナント管理モーダル：loggedUsers 索引で name 未設定メンバーの表示名を補完**：
-  - 問題：v.075 で name フィールドを追加したが、既存メンバー（name 未設定）は LayCAT 側で email のみ表示されていた（access-console は loggedUsers 索引で補完済み）。
-  - 新規ヘルパ `window.__laynaFB.loadLoggedUsers()`：`laynaAccess/loggedUsers` から全ユーザーの `{emailLc → displayName}` マップを取得。
-  - `_tnRender` 内で loggedUsers マップを 1 回ロードし、各メンバー行で `member.name || loggedUsersMap[emailLc]` のフォールバックで表示。
-  - 既存メンバー（name 未設定）も、過去にログイン済みなら Google displayName が表示される。
-  - access-console とフォールバック挙動が揃った。
-  - APP_VERSION：2026.10.02.075 → 2026.10.02.076
-
-- (dev v2026.10.02.075) **テナントメンバーに name フィールド追加・UI に名前表示**：
-  - **Firestore スキーマ拡張**：`tenants/{tid}/members/{emailKey}` に `name` フィールド追加（文字列）。
-  - **laycat `addTenantMember`**：引数 `nameHint` を受け取り、無ければ `laycatUsers/{emailKey}.profile.displayName` から自動取得して保存。
-  - **laycat `tryJoinByDomain`**：自己参加時に Firebase auth の `displayName` を name に保存。
-  - **laycat テナント管理モーダル**：
-    - メンバー一覧で `名前 email` の形式で表示（名前なしは email のみ）。
-    - メンバー追加フォームに「名前（任意・空欄なら自動取得）」入力欄追加。
-  - **access-console テナント所属セクション**：
-    - name フィールド優先、無ければ `loggedUsers` から表示名を補完、それも無ければ email のみ。
-    - 既存メンバー（name 未設定）も loggedUsers 索引で名前表示される。
-  - Firestore ルール変更なし（既存の create/update 権限で name 追加は許可されている）。
-  - APP_VERSION：2026.10.02.074 → 2026.10.02.075
-
-- (dev v2026.10.02.074) **テナントのライセンス席数で「0 = 無制限」を許可**：
-  - access-console のテナント定義フォーム：席数入力欄の min を 1 → 0 に、placeholder に「0=無制限」を明記。
-  - tnAdd / tnEdit のバリデーション：`limit<1` → `limit<0`（0 を受容）。
-  - 一覧表示：席数 0 の場合「無制限」と表示（従来「—」）。
-  - LayCAT テナント管理モーダル：契約情報の「ライセンス」欄も 0 なら「無制限」表示。
-  - 枠超過チェック `limit>0 && used>=limit` は既に 0 を無制限扱いしていたので挙動変更なし。
-  - APP_VERSION：2026.10.02.073 → 2026.10.02.074
 
 ## 反映済み beta v0.3.0（2026-10-02）
 
@@ -2457,6 +2381,84 @@ GLB モデル差し替え／Maya 準拠カメラ／複数選択マニピュレ�
 ---
 
 ## 反映済み・パッチノート記載なし（Beta 反映済み・PATCH_NOTES.md 未記載）
+
+- **【2026-10-02 Beta v0.3.1 追加サイレント反映】** テナント運用まわりの細かな改善と、ショットページ UI の整形（席数「0=無制限」許可、テナントメンバー name 追加・loggedUsers 補完・フォーム幅調整・coreHours、メンバー管理モーダル化、ショットタブからの左ツリー自動展開抑制、工程バッジ色統一・outlined 統一）。パッチノート記載なし。
+  - (dev v2026.10.02.082) **ショットページの工程バッジ：現在工程も outlined に統一**：
+    - 事象：現在工程だけ「塗り＋暗い文字」、他工程は「枠＋工程色の文字」と、工程ごとで表示パターンが混在して見づらかった。
+    - 修正：現在工程も他工程と同じ outlined 表示（borderColor=工程色、color=工程色、background=既定の `var(--bg2)`）に統一。
+    - 書き込み系副作用なし（表示のみ）。
+    - APP_VERSION：2026.10.02.081 → 2026.10.02.082
+  
+  - (dev v2026.10.02.081) **ショットページの工程バッジ色を工程設定に揃える**：
+    - 事象：ショットページ（動画FBログ）の各アイテム頭の工程バッジが、工程設定モーダル／ショットタブタイル／タイムラインと別の色で描画されていた。
+    - 原因：`renderReviewBody` の工程バッジ色が
+      - 旧モデル（複数 review 兄弟）：`stInfo(stageNode).color`（ステータス色）
+      - 新モデル（Simple B）：`hsl(hues[idx%8] 55% 60%)` のハードコードパレット
+      を使っており、`root.stageColors` も既定の `STAGE_COLOR_MAP` も参照していなかった。
+    - 修正：`stageColorFor(rootOf(cur), label)` に統一。工程設定で選んだ色・既定パレット・ハッシュパレットの順に解決する。
+    - 書き込み系副作用なし（表示色のみ）。
+    - APP_VERSION：2026.10.02.080 → 2026.10.02.081
+  
+  - (dev v2026.10.02.080) **ショットタブからショットページを開くとき、左ツリーを自動展開しないように修正**：
+    - 事象：ショットタブ（タイル／縦並び）でサムネをクリックしてショットページ（タブ）を追加すると、`go()` が祖先フォルダをすべて `state.expanded` に追加していたため、左サイドバーのツリーが勝手に開いていた。
+    - 修正：`go(id, opts)` に `opts.keepSidebar` を追加し、true のときは祖先の `state.expanded` への追加をスキップ。
+    - 呼び出し側：ショットタブのタイル／縦並び行のサムネクリック（`go(lv.node.id, {keepSidebar:true})`）に適用。他経路の `go()` は従来通り祖先展開。
+    - 書き込み系への副作用なし（state のみ、persist 不発火）。
+    - APP_VERSION：2026.10.02.079 → 2026.10.02.080
+  
+  - (dev v2026.10.02.079) **テナントメンバー管理を専用モーダル化（契約者／管理者／メンバー別表示＋検索）**：
+    - テナント管理モーダルのメンバーセクションを「👥 メンバー管理」ボタンに置き換え、押下で専用モーダル（オーバーレイ）を開く。
+    - 専用モーダル内で `契約者（owner）／管理者（admin）／メンバー（member）` の 3 セクションに分けて表示。
+    - 名前・メールの部分一致検索バーを追加（絞込中は件数ラベルに「◯◯で絞込」を表示）。
+    - 追加フォーム・role 変更・削除は専用モーダル内で完結。保存に成功したらモーダルを再描画し、親テナント管理モーダルも再描画（コールバック）。
+    - owner 行は role 変更・削除不可（既存仕様を踏襲）。仮想 owner（members 未同期）行も操作不可。
+    - 書き込み経路は従来ヘルパ（`addTenantMember` / `updateTenantMemberRole` / `removeTenantMember`）のみ使用。shot.json 等への副作用なし。
+    - APP_VERSION：2026.10.02.078 → 2026.10.02.079
+  
+  - (dev v2026.10.02.078) **テナント既定の定時（coreHours）を追加（pmboard 工数集計連動）**：
+    - coreHours の優先順位を 4 → 5 段階に拡張。マイページ > プロジェクトメンバー個別 > プロジェクト既定 > **テナント既定（新）** > fallback。
+    - Firestore `tenants/{tid}` に `coreHours: {start, end}` フィールド追加。
+    - Firestore ルール：`_canToggleAutoJoin` → `_canUpdateTenantSettings` にリネーム、`coreHours` を更新許可フィールドに追加（owner/admin も変更可）。
+    - 新ヘルパ `window.__laynaFB.updateTenantCoreHours`。
+    - LayCAT テナント管理モーダル：「定時（coreHours）」セクション新設（開始／終了 time input ＋保存）。
+    - pmboard：`loadTenantCoreHours()` を `loadProjectData` 末尾で呼び出し、`DATA.tenantCoreHours` にキャッシュ。`_getCoreHoursMinutes` の優先順位 4 段目で参照。
+    - 書き込みは LayCAT の「保存」押下時のみ、tenants/{tid} 単一ドキュメントのみ。
+    - APP_VERSION：2026.10.02.077 → 2026.10.02.078
+  
+  - (dev v2026.10.02.077) **LayCAT テナント追加フォーム 幅調整＋折返し許可**：
+    - `.tn-add` に `flex-wrap:wrap`、`.tn-add input` に `min-width:0` を追加。
+    - 名前入力欄：placeholder「名前（任意）」に短縮・幅 180→140px、tooltip に補足。
+    - モーダル幅やブラウザサイズに関係なく全要素が収まる。
+    - APP_VERSION：2026.10.02.076 → 2026.10.02.077
+  
+  - (dev v2026.10.02.076) **LayCAT テナント管理モーダル：loggedUsers 索引で name 未設定メンバーの表示名を補完**：
+    - 問題：v.075 で name フィールドを追加したが、既存メンバー（name 未設定）は LayCAT 側で email のみ表示されていた（access-console は loggedUsers 索引で補完済み）。
+    - 新規ヘルパ `window.__laynaFB.loadLoggedUsers()`：`laynaAccess/loggedUsers` から全ユーザーの `{emailLc → displayName}` マップを取得。
+    - `_tnRender` 内で loggedUsers マップを 1 回ロードし、各メンバー行で `member.name || loggedUsersMap[emailLc]` のフォールバックで表示。
+    - 既存メンバー（name 未設定）も、過去にログイン済みなら Google displayName が表示される。
+    - access-console とフォールバック挙動が揃った。
+    - APP_VERSION：2026.10.02.075 → 2026.10.02.076
+  
+  - (dev v2026.10.02.075) **テナントメンバーに name フィールド追加・UI に名前表示**：
+    - **Firestore スキーマ拡張**：`tenants/{tid}/members/{emailKey}` に `name` フィールド追加（文字列）。
+    - **laycat `addTenantMember`**：引数 `nameHint` を受け取り、無ければ `laycatUsers/{emailKey}.profile.displayName` から自動取得して保存。
+    - **laycat `tryJoinByDomain`**：自己参加時に Firebase auth の `displayName` を name に保存。
+    - **laycat テナント管理モーダル**：
+      - メンバー一覧で `名前 email` の形式で表示（名前なしは email のみ）。
+      - メンバー追加フォームに「名前（任意・空欄なら自動取得）」入力欄追加。
+    - **access-console テナント所属セクション**：
+      - name フィールド優先、無ければ `loggedUsers` から表示名を補完、それも無ければ email のみ。
+      - 既存メンバー（name 未設定）も loggedUsers 索引で名前表示される。
+    - Firestore ルール変更なし（既存の create/update 権限で name 追加は許可されている）。
+    - APP_VERSION：2026.10.02.074 → 2026.10.02.075
+  
+  - (dev v2026.10.02.074) **テナントのライセンス席数で「0 = 無制限」を許可**：
+    - access-console のテナント定義フォーム：席数入力欄の min を 1 → 0 に、placeholder に「0=無制限」を明記。
+    - tnAdd / tnEdit のバリデーション：`limit<1` → `limit<0`（0 を受容）。
+    - 一覧表示：席数 0 の場合「無制限」と表示（従来「—」）。
+    - LayCAT テナント管理モーダル：契約情報の「ライセンス」欄も 0 なら「無制限」表示。
+    - 枠超過チェック `limit>0 && used>=limit` は既に 0 を無制限扱いしていたので挙動変更なし。
+    - APP_VERSION：2026.10.02.073 → 2026.10.02.074
 
 - **【2026-09-15 Beta v0.2.0 追加サイレント反映】** v:5 status 分離の重大アーキテクチャバグを Beta へ即時サイレント反映（バージョン据え置き・パッチノート記載なし・現場で被害進行中の巻き戻り根本原因を潰したため）：
   - (dev v2026.09.15.001) **【重大アーキテクチャバグ修正】v:5 status 分離を書き込み側にも徹底（案 D 完全実装）**：現場報告「フォルダ同期で status が上書きされて巻き戻る」の根本原因を潰した。
