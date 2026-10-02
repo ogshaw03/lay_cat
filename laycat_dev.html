@@ -4002,7 +4002,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.080';
+const APP_VERSION='2026.10.02.081';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8421,12 +8421,13 @@ function renderReviewBody(s,cur,opts){
       /* 表示ラベル：v.stage/c.stage を優先、無ければ所有 review ノード名 */
       const label=it.stageName||(it.stageNode&&it.stageNode.name)||'?';
       const isCurrent=(hasSiblings ? it.stageNode.id===cur.id : (it.stageName? it.stageName===curStageName : false));
-      /* 色：旧モデルは review ノード自身のステータス色、新モデルは工程順のシード色 */
+      /* v.081：工程バッジの色は工程設定（root.stageColors / 既定パレット）に揃える。
+         以前は旧モデル=ステータス色、新モデル=工程順ハードコード HSL と、工程設定で選んだ色と
+         まったく一致していなかった（例：工程設定で lay=緑を選んでも、バッジは赤で描画されていた）。
+         stageColorFor(root, name) は工程設定の #hex／既定の STAGE_COLOR_MAP／ハッシュパレットを
+         順に見るので、工程設定モーダル・ショット一覧タイル・タイムラインと同じ色で描画される。 */
       let color='var(--text3)';
-      if(hasSiblings){color=stInfo(it.stageNode).color}
-      else if(rootStagesArr.length){
-        const idx=rootStagesArr.indexOf(label);if(idx>=0){const hues=[210,150,50,300,180,20,270,90];const h=hues[idx%hues.length];color=`hsl(${h} 55% 60%)`}
-      }
+      try{const _c=stageColorFor(rootOf(cur), label);if(_c)color=_c;}catch(_){}
       const badge=el('span','log-stg-badge'+(isCurrent?' cur':''));
       badge.style.borderColor=color;
       /* 現在工程は「工程色で塗り＋暗い文字」で強調、他工程は「枠のみ＋工程色の文字」。
