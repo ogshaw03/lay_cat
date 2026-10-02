@@ -646,7 +646,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.03.037';
+const APP_VERSION='2026.10.03.038';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1354,29 +1354,37 @@ function _buildCompanyHolidaySet(){
 }
 /* v.037：fractional day idx [a1, a2] を土日祝で区切った稼働サブセグメント配列に分割。
    戻り値：[{s, e}, ...]（s / e は dayIdx スケールの fractional 値、稼働日のみ）。
-   連続稼働日は 1 本のサブセグメントに統合される。土日祝が間に挟まるとそこでバーを切る。 */
+   連続稼働日は 1 本のサブセグメントに統合される。土日祝が間に挟まるとそこでバーを切る。
+   v.038：timelineStart が JST midnight に揃っていない（スクラブ後）前提で書き直し。
+   dayNo（整数）で日付をイテレートするのではなく、JST midnight ms で境界を取り直し、
+   実時刻ベースで土日祝を判定する → viewAnchor が fractional day でも正しく分断。 */
 function _splitBarByOffDays(a1, a2, timelineStart, pubSet, coSet){
   const subs = [];
-  const d0 = Math.floor(a1);
-  const d1 = Math.ceil(a2);
-  const isOff = (dayNo) => {
-    const dt = new Date(timelineStart.getTime() + dayNo*86400000);
+  const startMs = timelineStart.getTime();
+  const barStartMs = startMs + a1*86400000;
+  const barEndMs   = startMs + a2*86400000;
+  if(barEndMs <= barStartMs) return subs;
+  const toIdx = ms => (ms - startMs) / 86400000;
+  /* バー範囲に重なる JST 暦日を順に列挙（cursor は各日の JST 0:00 ms） */
+  let cursor = jstMidnightMs(new Date(barStartMs));
+  let runS = null, runE = null;
+  while(cursor < barEndMs){
+    const nextCursor = cursor + 86400000;
+    const dayStart = Math.max(cursor, barStartMs);
+    const dayEnd   = Math.min(nextCursor, barEndMs);
+    const dt = new Date(cursor);
     const p = jstParts(dt);
     const iso = p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');
-    return (pubSet && pubSet.has(iso)) || (coSet && coSet.has(iso)) || p.wk===0 || p.wk===6;
-  };
-  let runS = null, runE = null;
-  for(let d = d0; d < d1; d++){
-    if(!isOff(d)){
-      const dayS = Math.max(a1, d);
-      const dayE = Math.min(a2, d+1);
-      if(runS === null){ runS = dayS; runE = dayE; }
-      else{ runE = dayE; }
+    const isOff = (pubSet && pubSet.has(iso)) || (coSet && coSet.has(iso)) || p.wk===0 || p.wk===6;
+    if(!isOff){
+      if(runS === null){ runS = dayStart; runE = dayEnd; }
+      else{ runE = dayEnd; }
     }else{
-      if(runS !== null){ subs.push({s:runS, e:runE}); runS = null; runE = null; }
+      if(runS !== null){ subs.push({s:toIdx(runS), e:toIdx(runE)}); runS = null; runE = null; }
     }
+    cursor = nextCursor;
   }
-  if(runS !== null) subs.push({s:runS, e:runE});
+  if(runS !== null) subs.push({s:toIdx(runS), e:toIdx(runE)});
   return subs;
 }
 /* v.029：プロジェクトの root ノード取得（複数箇所から参照する便利関数） */

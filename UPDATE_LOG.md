@@ -3145,6 +3145,13 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.03.038) **スケジュール 実績バー分断：スクラブ後に土日祝境界がずれる不具合を修正**：
+  - 事象：v.037 で導入した `_splitBarByOffDays` が、スクラブ後に土日祝境界からバーがずれて切れていた（分断自体が効かない or 境界が 1 日ズレて見える）。
+  - 原因：`DATA.viewAnchor` はスクラブ時に `startAnchor + deltaDays * 86400000`（`deltaDays` が fractional）で更新される → `DATA.timeline.start` が JST midnight に揃わない状態になる。v.037 の `_splitBarByOffDays` は `timelineStart + dayNo*86400000` で日境界を取ろうとしていたため、fractional のオフセットがそのまま乗って境界がズレていた。
+  - 修正：JST midnight ms (`jstMidnightMs`) で暦日境界を列挙する実装に書き直し。バー範囲 `[barStartMs, barEndMs)` に重なる JST 0:00 境界を順に走査し、各暦日が稼働日なら [max(cursor, barStart), min(nextCursor, barEnd)] を run に積む。timelineStart がどれだけ fractional でも、暦日境界は常に正しい位置で判定される。
+  - 書き込み系副作用なし（表示のみ）。
+  - APP_VERSION：2026.10.03.037 → 2026.10.03.038
+
 - (dev v2026.10.03.037) **スケジュールタブ：実績バーを土日祝で視覚的に分断**：
   - 事象：実績バー（`seg-actual`）が土日祝を貫通して連続表示されており、半透明の暗色オーバーレイを被せていても「稼働中のまま」に見えて誤認を招いていた。
   - 修正：
