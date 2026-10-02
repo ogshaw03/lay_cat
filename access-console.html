@@ -154,6 +154,26 @@
         </div>
       </div>
 
+      <!-- テナント定義（Phase M1：運営のみ）-->
+      <div class="card" data-op-only="1">
+        <div class="card-title">🏢 テナント定義（マルチテナント化 Phase M1）</div>
+        <div class="card-desc">
+          会社／スタジオ単位のテナントを定義します。<b>M1 ではスキーマ基盤のみ</b>（会社休日の切替はまだ単一テナント）。
+          <code>domains</code> に設定したメールドメインのユーザーは、LayCAT 初回ログイン時に <b>自動的にそのテナントへ所属</b>します。
+          外部契約者（gmail 等）は招待リンク or 手動割当で対応予定（M2 以降）。
+        </div>
+        <div class="add-row">
+          <input id="tnIdInput" type="text" placeholder="テナント ID（半角英数のみ・例: studioA）" autocomplete="off" style="flex:0 0 220px">
+          <input id="tnNameInput" type="text" placeholder="表示名（例: スタジオA）" autocomplete="off">
+          <button class="btn btn-primary" id="tnAddBtn">＋ 追加</button>
+        </div>
+        <div class="add-row" style="margin-top:6px">
+          <input id="tnDomainsInput" type="text" placeholder="ドメイン（カンマ区切り・例: studioa.co.jp, studioa.jp）" autocomplete="off">
+          <input id="tnDescInput" type="text" placeholder="説明（任意）" autocomplete="off" style="flex:0 0 240px">
+        </div>
+        <div id="tnList" style="margin-top:12px"></div>
+      </div>
+
       <!-- 国の祝日テーブル（運営のみ）-->
       <div class="card" data-op-only="1">
         <div class="card-title">📅 国の祝日テーブル</div>
@@ -266,7 +286,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, collection, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 /* LayCAT 専用 Firebase プロジェクト（laycat-54ee4）。Layna 本体と同じ config を使用 */
@@ -385,6 +405,16 @@ service cloud.firestore {
       allow read:           if signedIn();
       allow create, update: if signedIn() && key == myKey();
       allow delete:         if isStaff();
+    }
+
+    // ===== テナント定義（マルチテナント化 Phase M1）=====
+    // 保存先：tenants/{tenantId}
+    // ドキュメント内容：{ name, description, domains:[...], createdBy, createdAt, updatedAt, updatedBy }
+    // 読取は認証者全員（LayCAT ログイン時のドメイン自動判定で参照）、書込は運営のみ（新規会社受け入れ時）。
+    // M1 ではスキーマ基盤のみ。既存の companyHolidays/default は引き続き動作し互換維持。
+    match /tenants/{tenantId} {
+      allow read:           if signedIn();
+      allow write:          if isStaff();
     }
 
     // ===== 国の祝日テーブル（公開）=====
@@ -1047,6 +1077,105 @@ $('hhClearBtn').onclick=()=>{
   $('hhUploadBtn').classList.add('hidden');
   $('hhClearBtn').classList.add('hidden');
 };
+/* ===== テナント定義（マルチテナント化 Phase M1）===== */
+/* tenants/{tenantId} の list + add/edit/delete。
+   M1 ではスキーマ基盤のみ：ここで作ったドキュメントは LayCAT 初回ログイン時のドメイン自動判定で参照される。 */
+async function tnLoadList(){
+  const list=$('tnList'); if(!list) return;
+  list.textContent='読み込み中…';
+  try{
+    const snap=await getDocs(collection(db,'tenants'));
+    const rows=[];
+    snap.forEach(d=>rows.push({id:d.id,...d.data()}));
+    rows.sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+    if(!rows.length){ list.innerHTML='<div style="padding:8px;color:var(--text3);font-size:12px">テナント未登録。上のフォームで追加してください。</div>'; return; }
+    list.innerHTML=rows.map(r=>{
+      const doms=Array.isArray(r.domains)?r.domains.join(', '):'';
+      return `<div class="u-row" data-tn="${escH(r.id)}" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;color:var(--text)">${escH(r.name||r.id)} <span style="color:var(--text3);font-weight:400;font-size:11px">(${escH(r.id)})</span></div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">domains: ${doms?escH(doms):'<span style="color:var(--text3)">未設定</span>'}${r.description?` ・ ${escH(r.description)}`:''}</div>
+        </div>
+        <button class="btn btn-sm" data-act="edit" data-tn="${escH(r.id)}">編集</button>
+        <button class="btn btn-sm" data-act="del"  data-tn="${escH(r.id)}" style="color:var(--red)">削除</button>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('button[data-act="edit"]').forEach(b=>{b.onclick=()=>tnEdit(b.dataset.tn, rows.find(r=>r.id===b.dataset.tn))});
+    list.querySelectorAll('button[data-act="del"]').forEach(b=>{b.onclick=()=>tnDelete(b.dataset.tn)});
+  }catch(e){ list.textContent='取得失敗: '+e.message; }
+}
+async function tnAdd(){
+  const id=String($('tnIdInput').value||'').trim();
+  const name=String($('tnNameInput').value||'').trim();
+  const doms=String($('tnDomainsInput').value||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  const desc=String($('tnDescInput').value||'').trim();
+  if(!id){ notify('テナント ID を入力してください'); return; }
+  if(!/^[A-Za-z0-9_-]+$/.test(id)){ notify('テナント ID は半角英数と _ / - のみです'); return; }
+  if(!name){ notify('表示名を入力してください'); return; }
+  try{
+    /* 既存チェック */
+    const existing=await getDoc(doc(db,'tenants',id));
+    if(existing.exists()){ notify('そのテナント ID は既に存在します'); return; }
+    const nowIso=new Date().toISOString();
+    await setDoc(doc(db,'tenants',id),{
+      name, description:desc, domains:doms,
+      createdBy:me.email||'', createdAt:nowIso,
+      updatedBy:me.email||'', updatedAt:nowIso,
+    });
+    notify('追加しました: '+id);
+    $('tnIdInput').value='';$('tnNameInput').value='';$('tnDomainsInput').value='';$('tnDescInput').value='';
+    tnLoadList();
+  }catch(e){ notify('失敗: '+e.message); }
+}
+function tnEdit(id, cur){
+  const nm=prompt('表示名：', cur&&cur.name||'');
+  if(nm===null) return;
+  const dm=prompt('ドメイン（カンマ区切り・空可）：', (cur&&Array.isArray(cur.domains))?cur.domains.join(', '):'');
+  if(dm===null) return;
+  const ds=prompt('説明（任意）：', cur&&cur.description||'');
+  if(ds===null) return;
+  const doms=String(dm||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  (async()=>{
+    try{
+      await setDoc(doc(db,'tenants',id),{
+        name:String(nm||'').trim()||id,
+        description:String(ds||'').trim(),
+        domains:doms,
+        updatedBy:me.email||'',
+        updatedAt:new Date().toISOString(),
+      },{merge:true});
+      notify('更新しました: '+id);
+      tnLoadList();
+    }catch(e){ notify('失敗: '+e.message); }
+  })();
+}
+async function tnDelete(id){
+  if(!confirm(`テナント「${id}」を削除します。所属ユーザーの tenantId は null にリセットされません（LayCAT 側で順次更新されます）。続行しますか？`)) return;
+  try{
+    await deleteDoc(doc(db,'tenants',id));
+    notify('削除しました: '+id);
+    tnLoadList();
+  }catch(e){ notify('失敗: '+e.message); }
+}
+$('tnAddBtn').onclick=tnAdd;
+['tnIdInput','tnNameInput','tnDomainsInput','tnDescInput'].forEach(id=>{
+  $(id).addEventListener('keydown',e=>{if(e.key==='Enter')tnAdd();});
+});
+/* 初回ロード：運営権限が確定したら実行（opArea 表示後にのみ呼ばれる構造） */
+(function _tnAutoLoad(){
+  const obs=new MutationObserver(()=>{
+    const op=document.getElementById('opArea');
+    if(op && !op.classList.contains('hidden')){
+      tnLoadList();
+      obs.disconnect();
+    }
+  });
+  obs.observe(document.body,{attributes:true,subtree:true,attributeFilter:['class']});
+  /* 既に表示されていれば即実行 */
+  const op=document.getElementById('opArea');
+  if(op && !op.classList.contains('hidden')){ tnLoadList(); obs.disconnect(); }
+})();
+
 $('hhUploadBtn').onclick=async()=>{
   if(!hhParsedByYear){ $('hhResult').textContent='先にプレビューしてください'; return; }
   const allYears = Object.keys(hhParsedByYear).sort();

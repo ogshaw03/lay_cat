@@ -3960,7 +3960,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.062';
+const APP_VERSION='2026.10.02.063';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19454,6 +19454,9 @@ async function openMyPageModal(){
   const curStart=(profile.coreHours&&profile.coreHours.start)||'10:30';
   const curEnd=(profile.coreHours&&profile.coreHours.end)||'19:30';
   const curRoles=new Set(Array.isArray(profile.roles)?profile.roles:[]);
+  /* マルチテナント化 Phase M1：現在の tenantId を表示（読取専用）。
+     未設定ならダッシュ、ドメイン自動判定で設定済みなら ID を表示。 */
+  const curTenant=typeof profile.tenantId==='string'?profile.tenantId:'';
   openModal(body=>{
     body.classList.add('mypage-modal');
     const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -19473,6 +19476,7 @@ async function openMyPageModal(){
             <div class="mp-profile-fields">
               <label class="mp-field"><span class="mp-label">メール</span><input type="text" class="mp-input mp-readonly" value="${esc(email)}" readonly></label>
               <label class="mp-field"><span class="mp-label">表示名</span><input type="text" class="mp-input" id="mpName" value="${esc(curName)}"></label>
+              <label class="mp-field"><span class="mp-label">所属</span><input type="text" class="mp-input mp-readonly" value="${esc(curTenant||'（未設定）')}" readonly title="マルチテナント化 Phase M1：ドメイン自動判定で設定されます。変更は運営に依頼してください。"></label>
             </div>
           </div>
         </section>
@@ -19708,6 +19712,28 @@ function _wireSignals(){
     d=>_showBroadcast(d||{})
   );
 }
+/* マルチテナント化 Phase M1：tenantId の自動判定＆書き込み。
+   既に設定済みなら何もしない。ドメイン一致するテナントが見つかれば laycatUsers に書き込む。 */
+async function _maybeAutoAssignTenant(u){
+  if(!u||!u.email) return;
+  if(!window.__laynaFB||!window.__laynaFB.loadUserProfile||!window.__laynaFB.loadAllTenants||!window.__laynaFB.saveUserProfile) return;
+  const profile = await window.__laynaFB.loadUserProfile(u.email);
+  const curTenant = profile && typeof profile.tenantId === 'string' ? profile.tenantId : null;
+  if(curTenant){ authUser.tenantId = curTenant; return; } /* 既設定なら尊重 */
+  /* メールドメイン抽出 */
+  const em = String(u.email).toLowerCase();
+  const atIdx = em.indexOf('@');
+  if(atIdx < 0) return;
+  const domain = em.slice(atIdx+1);
+  if(!domain) return;
+  const tenants = await window.__laynaFB.loadAllTenants();
+  if(!Array.isArray(tenants) || !tenants.length) return;
+  const hit = tenants.find(t => Array.isArray(t.domains) && t.domains.map(d=>String(d||'').toLowerCase()).includes(domain));
+  if(!hit) return;
+  /* laycatUsers に tenantId を merge 書き込み。saveUserProfile は merge:true 済み。 */
+  const ok = await window.__laynaFB.saveUserProfile(u.email, {tenantId: hit.id});
+  if(ok){ authUser.tenantId = hit.id; }
+}
 async function onAuthChanged(u){
   if(!u){authUser=null;renderLogin();return}
   /* アクセス権のメール許可リストは Firebase(Firestore) 管理を優先。取得できれば access.json を上書き。
@@ -19727,6 +19753,12 @@ async function onAuthChanged(u){
   if(!role){authUser=null;renderDenied(u);return}
   authUser={name:u.displayName||u.email,email:u.email,photo:u.photoURL,role};
   try{if(window.__laynaFB&&window.__laynaFB.recordUser)window.__laynaFB.recordUser(authUser)}catch(_){} /* ログイン記録（ドメイン許可ユーザーの可視化用） */
+  /* マルチテナント化 Phase M1：tenantId の自動判定＆書き込み。
+     - laycatUsers/{emailKey} に tenantId が未設定なら、tenants/*.domains からメールドメインを引く
+     - 該当すれば書き込み（merge）、authUser.tenantId にも反映
+     - 失敗（未ログイン・tenants 未登録・ルール未設定）は静かに無視（既存動作のまま）
+     - M1 ではまだ読み書き先の切り替えは行わない。基盤設置のみ。 */
+  try{await _maybeAutoAssignTenant(u);}catch(_){}
   clearAuthScreen();showAuthedHeader();startAppFlow();try{_wireSignals()}catch(_){}
 }
 async function initApp(){
@@ -19807,6 +19839,17 @@ initApp();
         await m.setDoc(m.doc(fs,'laycatUsers',key),payload,{merge:true});
         return true;
       }catch(e){return false}},
+      /* マルチテナント化 Phase M1：テナント一覧を読む。tenants コレクション全体を列挙。
+         戻り値：[{id, name, description, domains, ...}, ...] / 失敗時 null。
+         ドメイン自動判定で使う（頻度は初回ログイン時 1 回のみなので全列挙で問題なし）。 */
+      loadAllTenants:async()=>{try{
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const snap=await m.getDocs(m.collection(fs,'tenants'));
+        const rows=[];
+        snap.forEach(d=>rows.push({id:d.id,...d.data()}));
+        return rows;
+      }catch(e){return null}},
       /* 国の祝日テーブルを 1 年分読む。publicHolidays/{country}/years/{year}。
          戻り値：{ year, country, dates:[{date,name}], source, updatedAt, updatedBy } or null */
       loadPublicHolidays:async(country,year)=>{try{

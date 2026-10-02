@@ -18,6 +18,24 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.063) **マルチテナント化 Phase M1：基盤設置（スキーマ＋自動判定）**：
+  - 新コレクション `tenants/{tenantId}`：会社／スタジオ単位のテナント定義。
+    - 構造：`{ name, description, domains:[...], createdBy, createdAt, updatedBy, updatedAt }`
+    - Firestore ルール：読取=認証者全員、書込=運営のみ（access-console.html に追記済み）
+  - アクセス管理コンソールに「🏢 テナント定義」カード新設（運営のみ表示）
+    - テナント ID / 表示名 / ドメイン（カンマ区切り）/ 説明 を登録・編集・削除
+    - 一覧表示（Firestore `getDocs(collection('tenants'))`）
+  - LayCAT 本体：
+    - `window.__laynaFB.loadAllTenants` を追加（全テナント列挙）
+    - `_maybeAutoAssignTenant(u)`：初回ログイン時にメールドメインを `tenants/*.domains` と照合し、
+      一致すれば `laycatUsers/{emailKey}.tenantId` に書き込み。既設定ユーザーは尊重。
+    - マイページに「所属」行を追加（読取専用・現在の `tenantId` を表示）
+  - **M1 ではスキーマ基盤と自動判定のみ**：
+    - 既存の `companyHolidays/default` 読み込みはそのまま → マルチテナント切替は Phase M2 以降
+    - 既存ユーザーの `tenantId` 未設定は許容（ドメイン一致しなければ null のまま）
+    - 失敗時は静かに無視（既存動作をブロックしない）
+  - APP_VERSION：2026.10.02.062 → 2026.10.02.063
+
 - (dev v2026.10.02.062) **カレンダーモーダルの色変更：国民の祝日=緑、会社の休日=黄**：
   - 旧色：国民の祝日=赤、会社の休日=オレンジ（アンバー）。
   - 新色：**国民の祝日=緑（rgba(127,191,154,...)）、会社の休日=黄（rgba(226,196,76,...)）**。
