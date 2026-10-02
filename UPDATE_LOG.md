@@ -18,6 +18,16 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.060) **祝日カレンダー Phase 3：Firebase ヘルパ追加**：
+  - 祝日機能のための Firestore 読み書きヘルパを `window.__laynaFB` に追加。UI 側（Phase 4）とは分離してテスト容易に。
+  - `loadPublicHolidays(country, year)`：publicHolidays/JP/years/{year} を 1 年分読む
+  - `loadPublicHolidaysMulti(country, years)`：複数年を並列ロード → `{year: dates[]}` を返す
+  - `loadCompanyHolidays(tenantId)`：companyHolidays/{tenantId}（デフォルト "default"）を読む
+  - `saveCompanyHoliday(date, name, who, tenantId)`：会社休日を 1 件追加／更新（date 重複は上書き）
+  - `deleteCompanyHoliday(date, tenantId)`：会社休日を 1 件削除
+  - 書き込みは read-modify-write で dates 配列を安全に更新。失敗時は console.error に出力。
+  - APP_VERSION：2026.10.02.059 → 2026.10.02.060
+
 - (dev v2026.10.02.059) **プロジェクト設定に「現在工程を一括反映」ボタン追加（pmboard 整合用マイグレーション）**：
   - pmboard v.021 で `shotCurrentStage` のフォールバック撤廃により、`shot.currentStage` 未設定のショットが pmboard で工程表示されなくなった。
   - 本機能：pmboard の挙動変更に合わせて、`shot.currentStage` 未設定ショットに「既存の表示工程」を明示的に書き出すマイグレーション。

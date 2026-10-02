@@ -3918,7 +3918,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.059';
+const APP_VERSION='2026.10.02.060';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19620,6 +19620,67 @@ initApp();
         await m.setDoc(m.doc(fs,'laycatUsers',key),payload,{merge:true});
         return true;
       }catch(e){return false}},
+      /* 国の祝日テーブルを 1 年分読む。publicHolidays/{country}/years/{year}。
+         戻り値：{ year, country, dates:[{date,name}], source, updatedAt, updatedBy } or null */
+      loadPublicHolidays:async(country,year)=>{try{
+        if(!country||!year)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const snap=await m.getDoc(m.doc(fs,'publicHolidays',String(country),'years',String(year)));
+        return snap.exists()?snap.data():null;
+      }catch(e){return null}},
+      /* 複数年の国の祝日を並列ロード。戻り値：{ "2026": [...], "2027": [...] }（null は欠番扱い） */
+      loadPublicHolidaysMulti:async(country,years)=>{try{
+        if(!country||!Array.isArray(years)||!years.length)return {};
+        const results=await Promise.all(years.map(async y=>{
+          try{return [y, await window.__laynaFB.loadPublicHolidays(country,y)];}
+          catch(_){return [y,null];}
+        }));
+        const map={};
+        for(const [y,data] of results){ if(data&&Array.isArray(data.dates)) map[y]=data.dates; }
+        return map;
+      }catch(e){return {}}},
+      /* 会社休日カレンダーを読む。companyHolidays/{tenantId}（デフォルト "default"）。
+         戻り値：{ dates:[{date,name,addedBy,addedAt}], updatedAt } or null */
+      loadCompanyHolidays:async(tenantId)=>{try{
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const tid=String(tenantId||'default');
+        const snap=await m.getDoc(m.doc(fs,'companyHolidays',tid));
+        return snap.exists()?snap.data():null;
+      }catch(e){return null}},
+      /* 会社休日を 1 件追加（date="YYYY-MM-DD", name）。既存の同日 date は上書き。
+         read-modify-write で dates 配列を更新。成否を返す。 */
+      saveCompanyHoliday:async(date,name,who,tenantId)=>{try{
+        if(!date)return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const tid=String(tenantId||'default');
+        const ref=m.doc(fs,'companyHolidays',tid);
+        const snap=await m.getDoc(ref);
+        const cur=snap.exists()?(snap.data()||{}):{};
+        const dates=Array.isArray(cur.dates)?cur.dates.slice():[];
+        const idx=dates.findIndex(d=>d&&d.date===date);
+        const entry={date:String(date),name:String(name||''),addedBy:String(who||''),addedAt:new Date().toISOString()};
+        if(idx>=0) dates[idx]=entry; else dates.push(entry);
+        dates.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+        await m.setDoc(ref,{dates,updatedAt:new Date().toISOString()},{merge:true});
+        return true;
+      }catch(e){console.error('saveCompanyHoliday failed',e);return false}},
+      /* 会社休日を 1 件削除（date="YYYY-MM-DD"）。成否を返す。 */
+      deleteCompanyHoliday:async(date,tenantId)=>{try{
+        if(!date)return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const tid=String(tenantId||'default');
+        const ref=m.doc(fs,'companyHolidays',tid);
+        const snap=await m.getDoc(ref);
+        if(!snap.exists())return true; /* 無ければ No-op 成功 */
+        const cur=snap.data()||{};
+        const dates=(Array.isArray(cur.dates)?cur.dates:[]).filter(d=>!d||d.date!==date);
+        await m.setDoc(ref,{dates,updatedAt:new Date().toISOString()},{merge:true});
+        return true;
+      }catch(e){console.error('deleteCompanyHoliday failed',e);return false}},
       /* 招待トークンを照合し、有効なら自分を invited に登録（承認なしでメンバー化）。成否を返す。 */
       redeemInvite:async(tok,u)=>{try{
         if(!tok||!u||!u.email)return false;
