@@ -212,6 +212,14 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt.scale-hourly .gantt-hdr .timeline .weeks .w{font-size:12px;letter-spacing:.3px}
 /* v.029：hourly モード coreHours 外時間セルは薄暗色（マスク境界を視覚化） */
 .gantt.scale-hourly .gantt-hdr .timeline .days .d.mask-out{color:var(--text3);opacity:.55;background:rgba(0,0,0,.2)}
+/* v.030：スクラブ（ドラッグパン）。week/month/3mo/6mo スケール時にヘッダー＋トラックを即時 translate。
+   ショット列（.gantt-hdr .lbl と .gantt-row .shot）は position:sticky で動かない。 */
+.gantt:not(.scale-hourly){cursor:grab}
+.gantt.scrubbing{cursor:grabbing;user-select:none}
+.gantt.scrubbing .gantt-hdr .timeline,
+.gantt.scrubbing .gantt-row .track,
+.gantt.scrubbing .gantt-today{transform:translateX(var(--scrub-offset,0));transition:none;will-change:transform}
+.gantt.scrubbing *{cursor:grabbing!important}
 .gantt-hdr .lbl{padding:11px 14px;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;border-right:1px solid var(--border)}
 .gantt-hdr .timeline{position:relative;overflow:hidden}
 .gantt-hdr .timeline .weeks{display:flex;font-family:var(--font-code);font-size:10px;color:var(--text3);letter-spacing:.5px;height:22px;align-items:center;border-bottom:1px solid var(--border)}
@@ -633,7 +641,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.029';
+const APP_VERSION='2026.10.02.030';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -3860,6 +3868,8 @@ function applyGanttScale(scale, opts){
     buildTimelineHdr();
     if(DATA.currentSubTab==='shots') buildGantt(); else buildCustomGantt(DATA.currentSubTab);
   }
+  /* v.030：スクラブ初期化（.gantt が初めて作成された直後に 1 回だけ wire） */
+  try{ initGanttScrub(); }catch(_){}
 }
 /* v.028：ナビゲーション — scope 分前後に移動 */
 function navScale(delta){
@@ -3868,6 +3878,55 @@ function navScale(delta){
   DATA.viewAnchor = curAnchor + delta * cfg.days * 86400000;
   applyGanttScale(DATA.scale||'week');
 }
+/* v.030：スクラブ（マウスドラッグによる横スクロール）。週/月/3ヶ月/半年スケールのみ。
+   日スケール（hourly）は 1 日固定なので対象外。
+   ドラッグ中は CSS transform で即時表示、mouseup 時に viewAnchor を確定して再描画。 */
+function initGanttScrub(){
+  const gantt = document.querySelector('.gantt');
+  if(!gantt || gantt._scrubWired) return;
+  gantt._scrubWired = true;
+  let dragging = false;
+  let startX = 0;
+  let startAnchor = 0;
+  let pxPerDay = 0;
+  let draggedPx = 0;
+  gantt.addEventListener('mousedown', e => {
+    const cfg = SCALE_CONFIG[DATA.scale||'week'];
+    if(!cfg || cfg.hourly) return; /* hourly（日スケール）は対象外 */
+    /* バー・マイルストーン・ボタン・ハンドル・ステータスチップ上はドラッグ開始しない */
+    if(e.target.closest('.seg-plan, .seg-actual, .milestone, .handle, button, .shot-status, input, select, .col-resizer, .add-plan-btn, .shot-memo, .chip-del')) return;
+    /* ショット列（左）はドラッグ対象外。トラック部分のみ有効。 */
+    const shotColW = parseInt(getComputedStyle(gantt).getPropertyValue('--shot-col-w')) || 220;
+    const rect = gantt.getBoundingClientRect();
+    const relX = e.clientX - rect.left;
+    if(relX < shotColW) return;
+    dragging = true;
+    startX = e.clientX;
+    startAnchor = DATA.viewAnchor != null ? DATA.viewAnchor : _todayAlignedStart(DATA.scale||'week');
+    pxPerDay = cfg.pxPerDay;
+    draggedPx = 0;
+    gantt.classList.add('scrubbing');
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if(!dragging) return;
+    draggedPx = e.clientX - startX;
+    gantt.style.setProperty('--scrub-offset', draggedPx + 'px');
+  });
+  const commitDrag = () => {
+    if(!dragging) return;
+    dragging = false;
+    gantt.classList.remove('scrubbing');
+    gantt.style.removeProperty('--scrub-offset');
+    /* ドラッグ右 = view 左移動（過去へ）。dx が +100 なら viewAnchor は 100/px/day 日分遡る。 */
+    const deltaDays = -draggedPx / pxPerDay;
+    DATA.viewAnchor = startAnchor + deltaDays * 86400000;
+    applyGanttScale(DATA.scale||'week');
+  };
+  document.addEventListener('mouseup', commitDrag);
+  document.addEventListener('mouseleave', commitDrag);
+}
+try{ window.initGanttScrub = initGanttScrub; }catch(_){}
 function navToday(){
   DATA.viewAnchor = _todayAlignedStart(DATA.scale||'week');
   applyGanttScale(DATA.scale||'week');
