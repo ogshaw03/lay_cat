@@ -154,6 +154,27 @@
         </div>
       </div>
 
+      <!-- 国の祝日テーブル（運営のみ）-->
+      <div class="card" data-op-only="1">
+        <div class="card-title">📅 国の祝日テーブル</div>
+        <div class="card-desc">
+          内閣府 <a href="https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html" target="_blank" rel="noopener">「国民の祝日について」</a> の
+          <code>syukujitsu.csv</code>（Shift_JIS）をアップロードして Firestore に保存します。
+          PMB の工数集計で参照され、祝日は非稼働日として扱われます。
+          <b>年に 1 回程度の更新</b>（翌年の祝日が公表されたタイミング）で OK。
+        </div>
+        <div class="add-row">
+          <input id="hhCsvFile" type="file" accept=".csv">
+          <button class="btn" id="hhPreviewBtn">プレビュー</button>
+        </div>
+        <div id="hhPreview" style="margin-top:8px;font-size:12px;color:var(--text2);max-height:280px;overflow:auto"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn btn-primary hidden" id="hhUploadBtn">📥 Firestore に書き込む</button>
+          <button class="btn hidden" id="hhClearBtn">クリア</button>
+        </div>
+        <div id="hhResult" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
+      </div>
+
       <!-- 認証必須トグル -->
       <div class="card" data-op-only="1">
         <div class="card-title">🔑 認証</div>
@@ -357,6 +378,27 @@ service cloud.firestore {
       allow read:           if signedIn();
       allow create, update: if signedIn() && key == myKey();
       allow delete:         if isStaff();
+    }
+
+    // ===== 国の祝日テーブル（公開）=====
+    // 保存先：publicHolidays/{country}/years/{year} 例：publicHolidays/JP/years/2026
+    // ドキュメント内容：{ year, dates: [{date:"YYYY-MM-DD", name}], source, updatedAt, updatedBy }
+    // 内閣府 CSV 由来のデータ。アクセス管理コンソールから運営が CSV アップロードで書き込む。
+    // 読取は認証者全員（PMB の工数集計で参照）。将来マルチテナント化しても国別で共通。
+    match /publicHolidays/{country}/years/{year} {
+      allow read:           if signedIn();
+      allow write:          if isStaff();
+    }
+
+    // ===== 会社休日カレンダー（テナント別）=====
+    // 保存先：companyHolidays/{tenantId}（現状シングルテナント＝tenantId="default"）
+    // ドキュメント内容：{ dates: [{date:"YYYY-MM-DD", name, addedBy, addedAt}], updatedAt }
+    // 会社固有の休業日（夏季休業・年末年始の長期休暇など）。
+    // 読取は認証者全員、書込は運営 or 管理者（LayCAT のカレンダーモーダルから操作）。
+    // 将来マルチテナント化時は tenantId を実テナント ID に差し替え。
+    match /companyHolidays/{tenantId} {
+      allow read:           if signedIn();
+      allow write:          if isConfigEditor();
     }
   }
 }`;
@@ -880,6 +922,123 @@ $('rebuildBtn').onclick=async()=>{
     if(!r.ok){$('rebuildResult').textContent='失敗 ('+r.status+'): '+(j.error||JSON.stringify(j));return}
     $('rebuildResult').textContent='完了：'+(j.scanned||0)+' プロジェクト走査 → '+(j.synced||0)+' 件同期 ('+(j.failed||0)+' 件失敗)';
   }catch(e){$('rebuildResult').textContent='失敗: '+e.message}
+};
+
+/* ===== 国の祝日テーブル：CSV アップロード ===== */
+/* 内閣府 syukujitsu.csv の形式：
+   - エンコーディング Shift_JIS、ヘッダー 1 行＋データ "YYYY/M/D,祝日名"
+   - 書き込み先：publicHolidays/{country}/years/{year}
+   - ドキュメント構造：{ year, country, dates: [{date:"YYYY-MM-DD", name}], source, updatedAt, updatedBy } */
+let hhParsedByYear = null; /* { "2026": [{date,name}, ...], ... } */
+async function hhDecodeShiftJis(file){
+  const buf = await file.arrayBuffer();
+  try{
+    return new TextDecoder('shift_jis').decode(buf);
+  }catch(_){
+    /* 'shift-jis' のエイリアスで試す */
+    try{ return new TextDecoder('shift-jis').decode(buf); }
+    catch(e){ throw new Error('Shift_JIS デコードに失敗（ブラウザが未対応）: '+e.message); }
+  }
+}
+function hhParseCsv(text){
+  const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  if(!lines.length) throw new Error('空のファイルです');
+  /* 1 行目はヘッダー */
+  const rows = lines.slice(1);
+  const byYear = {};
+  for(const line of rows){
+    const idx = line.indexOf(',');
+    if(idx < 0) continue;
+    const dateStr = line.slice(0, idx).trim();
+    const name    = line.slice(idx+1).trim();
+    const m = dateStr.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+    if(!m) continue;
+    const yyyy = m[1];
+    const mm = String(m[2]).padStart(2,'0');
+    const dd = String(m[3]).padStart(2,'0');
+    const iso = `${yyyy}-${mm}-${dd}`;
+    (byYear[yyyy] = byYear[yyyy] || []).push({date:iso, name});
+  }
+  /* 年ごとに日付昇順でソート */
+  for(const y of Object.keys(byYear)){
+    byYear[y].sort((a,b)=>a.date.localeCompare(b.date));
+  }
+  return byYear;
+}
+$('hhPreviewBtn').onclick=async()=>{
+  const f = $('hhCsvFile').files && $('hhCsvFile').files[0];
+  if(!f){ $('hhPreview').textContent='CSV ファイルを選択してください'; return; }
+  $('hhPreview').textContent='読み込み中…';
+  $('hhResult').textContent='';
+  try{
+    const text = await hhDecodeShiftJis(f);
+    const byYear = hhParseCsv(text);
+    hhParsedByYear = byYear;
+    const years = Object.keys(byYear).sort();
+    const total = years.reduce((s,y)=>s+byYear[y].length, 0);
+    const nowYear = new Date().getFullYear();
+    /* 直近〜将来の年を優先表示（過去は件数のみ） */
+    const futureYears = years.filter(y => Number(y) >= nowYear - 1);
+    const pastYears = years.filter(y => Number(y) < nowYear - 1);
+    let html = `<div>合計 <b>${years.length}</b> 年分・<b>${total}</b> 件</div>`;
+    if(futureYears.length){
+      html += '<div style="margin-top:8px"><b>直近〜将来：</b></div>';
+      for(const y of futureYears){
+        const items = byYear[y];
+        const sample = items.map(d=>`${d.date} ${escH(d.name)}`).join(' / ');
+        html += `<div style="margin:4px 0;padding:6px 8px;background:var(--bg2);border-radius:6px"><b>${y}</b>（${items.length} 件）<div style="color:var(--text3);font-size:11px;margin-top:2px">${escH(sample)}</div></div>`;
+      }
+    }
+    if(pastYears.length){
+      html += `<div style="margin-top:8px;color:var(--text3)"><b>過去（${pastYears.length} 年分・件数のみ）：</b> ${pastYears.map(y=>`${y}(${byYear[y].length})`).join(' / ')}</div>`;
+    }
+    $('hhPreview').innerHTML = html;
+    $('hhUploadBtn').classList.remove('hidden');
+    $('hhClearBtn').classList.remove('hidden');
+  }catch(e){
+    $('hhPreview').textContent='パース失敗: '+e.message;
+    hhParsedByYear = null;
+    $('hhUploadBtn').classList.add('hidden');
+    $('hhClearBtn').classList.add('hidden');
+  }
+};
+$('hhClearBtn').onclick=()=>{
+  $('hhCsvFile').value='';
+  $('hhPreview').innerHTML='';
+  $('hhResult').textContent='';
+  hhParsedByYear=null;
+  $('hhUploadBtn').classList.add('hidden');
+  $('hhClearBtn').classList.add('hidden');
+};
+$('hhUploadBtn').onclick=async()=>{
+  if(!hhParsedByYear){ $('hhResult').textContent='先にプレビューしてください'; return; }
+  const years = Object.keys(hhParsedByYear).sort();
+  if(!years.length){ $('hhResult').textContent='書き込む年がありません'; return; }
+  if(!confirm(`${years.length} 年分（${years[0]}-${years[years.length-1]}）を publicHolidays/JP/years/* に書き込みます。既存データは上書きされます。続行しますか？`)) return;
+  $('hhResult').textContent='書き込み中…';
+  const nowIso = new Date().toISOString();
+  const by = me && me.email ? me.email : '';
+  let ok = 0, failed = 0;
+  for(const y of years){
+    try{
+      await setDoc(doc(db,'publicHolidays','JP','years',String(y)),{
+        year: Number(y),
+        country: 'JP',
+        dates: hhParsedByYear[y],
+        source: 'cao',
+        updatedAt: nowIso,
+        updatedBy: by,
+      });
+      ok++;
+    }catch(e){
+      failed++;
+      console.error('祝日書き込み失敗 '+y+': ', e);
+    }
+  }
+  $('hhResult').textContent = `完了：${ok} 年成功 / ${failed} 件失敗`;
+  if(failed === 0){
+    notify(`国の祝日テーブルを更新しました（${ok} 年分）`);
+  }
 };
 </script>
 </body>
