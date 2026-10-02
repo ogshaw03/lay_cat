@@ -200,13 +200,13 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-hdr .lbl .col-resizer{position:absolute;top:0;bottom:0;right:-4px;width:8px;cursor:col-resize;z-index:6}
 .gantt-hdr .lbl .col-resizer:hover,.gantt-hdr .lbl .col-resizer.resizing{background:linear-gradient(90deg,transparent 3px,rgba(255,255,255,.35) 3px 5px,transparent 5px)}
 /* 月スケール：日セル数字を隠して幅を稼ぐ（週見出しは残す）。行密度は変えない。 */
-/* v.028：月／3ヶ月／半年スケールは日数字を隠して幅を稼ぐ */
-.gantt[data-scale="month"] .gantt-hdr .timeline .days .d,
+/* v.031：3ヶ月／半年スケールのみ日数字を隠して幅を稼ぐ。月スケール（40 px/日）は数字が入る。 */
 .gantt[data-scale="3mo"] .gantt-hdr .timeline .days .d,
 .gantt[data-scale="6mo"] .gantt-hdr .timeline .days .d{font-size:0}
-.gantt[data-scale="month"] .gantt-hdr .timeline .days,
 .gantt[data-scale="3mo"] .gantt-hdr .timeline .days,
 .gantt[data-scale="6mo"] .gantt-hdr .timeline .days{height:6px}
+/* 月スケール：日数字を少し小さめに（40px cell に収まるよう） */
+.gantt[data-scale="month"] .gantt-hdr .timeline .days .d{font-size:10px}
 /* 日スケール（hourly）：時間数字を少し大きめ、週セルは広めに */
 .gantt.scale-hourly .gantt-hdr .timeline .days .d{font-size:10px}
 .gantt.scale-hourly .gantt-hdr .timeline .weeks .w{font-size:12px;letter-spacing:.3px}
@@ -641,7 +641,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.031';
+const APP_VERSION='2026.10.02.032';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
