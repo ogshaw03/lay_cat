@@ -18,6 +18,31 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.066) **マルチテナント化 Phase M2b/M2c：ログイン判定変更＋マイページ役職表示**：
+  - **Phase M2b（ログイン判定）**：
+    - `_maybeAutoAssignTenant` の判定を「メールドメイン」→「テナントメンバーシップ横断検索」に変更。
+    - 既存の allowedEmails/allowedDomains/invited/招待トークンで許可されなかったユーザーも、
+      **いずれかのテナントの members に登録されていれば自動的に member として許可**。
+      契約者がライセンス割り当てした直後からそのユーザーは LayCAT を使えるようになる。
+    - 全体 role は常に `member`。テナント内の admin 権限は別軸（refreshTenantAdminButton）で判定。
+    - ドメインマッピング（domains フィールド）は未使用化（スキーマは残置、将来の用途余地を残す）。
+  - **Phase M2c（マイページ役職表示）**：
+    - 「所属」欄に「スタジオA（owner）」のように役職併記。
+    - 判定：ownerEmail 一致なら `owner`、members 内 role が admin なら `admin`、それ以外は `member`。
+  - APP_VERSION：2026.10.02.065 → 2026.10.02.066
+
+- (dev v2026.10.02.065) **マルチテナント化 Phase M2a-2/3：テナント管理モーダル実装**：
+  - Firebase ヘルパ追加 (window.__laynaFB)：
+    - loadTenantMembers / addTenantMember（laycatUsers.tenantId も同期）
+    - updateTenantMemberRole / removeTenantMember（当該テナントなら laycatUsers.tenantId を null）
+    - findUserTenants（全テナントの members を横断検索）
+  - UI：
+    - ヘッダー右上に 🏢 テナント管理ボタン新設（運営 or 契約者 or admin のみ表示）
+    - テナント切替・契約情報表示・メンバー CRUD・ライセンス枠オーバー検出
+    - 契約者（owner）は role 変更・削除不可（最後の砦）
+  - 書き込み境界：tenants/{tid}/members のみ、既存プロジェクトデータへの副作用なし。
+  - APP_VERSION：2026.10.02.064 → 2026.10.02.065
+
 - (dev v2026.10.02.064) **マイページ「所属」表示をテナント ID→表示名に変更**：
   - v.063 ではランダム 20 文字の tenantId がそのまま表示されていて分かりにくかった。
   - `tenants/{tenantId}` から `name` を引いて表示名で見せる（例：「スタジオA」）。

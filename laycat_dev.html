@@ -3994,7 +3994,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.065';
+const APP_VERSION='2026.10.02.066';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19489,16 +19489,36 @@ async function openMyPageModal(){
   const curStart=(profile.coreHours&&profile.coreHours.start)||'10:30';
   const curEnd=(profile.coreHours&&profile.coreHours.end)||'19:30';
   const curRoles=new Set(Array.isArray(profile.roles)?profile.roles:[]);
-  /* マルチテナント化 Phase M1：現在のテナント所属を表示（読取専用）。
-     ID だけだと分かりにくいので、tenants/{id} から name を引いて表示名で見せる。 */
+  /* マルチテナント化 Phase M1/M2c：現在のテナント所属＋役職を表示（読取専用）。
+     ID だけだと分かりにくいので、tenants/{id} から name を引いて表示名で見せる。
+     役職：owner（契約者）/ admin（テナント管理者）/ member（一般）を併記。 */
   const curTenantId=typeof profile.tenantId==='string'?profile.tenantId:'';
   let curTenantLabel='';
+  let curTenantRole='';
   if(curTenantId){
     try{
       const t=window.__laynaFB&&window.__laynaFB.loadTenant?await window.__laynaFB.loadTenant(curTenantId):null;
-      curTenantLabel = t && t.name ? t.name : curTenantId;
+      if(t){
+        curTenantLabel = t.name || curTenantId;
+        if(String(t.ownerEmail||'').toLowerCase() === String(email).toLowerCase()){
+          curTenantRole = 'owner';
+        }else{
+          /* members/{emailKey} の role を参照 */
+          try{
+            const mems = window.__laynaFB.loadTenantMembers ? await window.__laynaFB.loadTenantMembers(curTenantId) : null;
+            if(Array.isArray(mems)){
+              const emailLc = String(email).toLowerCase();
+              const mine = mems.find(m => String(m.email||'').toLowerCase() === emailLc);
+              if(mine) curTenantRole = mine.role==='admin' ? 'admin' : 'member';
+            }
+          }catch(_){}
+        }
+      }else{
+        curTenantLabel = curTenantId;
+      }
     }catch(_){ curTenantLabel = curTenantId; }
   }
+  const tenantDisplay = curTenantLabel ? (curTenantRole ? `${curTenantLabel}（${curTenantRole}）` : curTenantLabel) : '';
   openModal(body=>{
     body.classList.add('mypage-modal');
     const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -19518,7 +19538,7 @@ async function openMyPageModal(){
             <div class="mp-profile-fields">
               <label class="mp-field"><span class="mp-label">メール</span><input type="text" class="mp-input mp-readonly" value="${esc(email)}" readonly></label>
               <label class="mp-field"><span class="mp-label">表示名</span><input type="text" class="mp-input" id="mpName" value="${esc(curName)}"></label>
-              <label class="mp-field"><span class="mp-label">所属</span><input type="text" class="mp-input mp-readonly" value="${esc(curTenantLabel||'（未設定）')}" readonly title="マルチテナント化 Phase M1：ドメイン自動判定で設定されます。変更は運営に依頼してください。${curTenantId?' / tenantId: '+esc(curTenantId):''}"></label>
+              <label class="mp-field"><span class="mp-label">所属</span><input type="text" class="mp-input mp-readonly" value="${esc(tenantDisplay||'（未設定）')}" readonly title="マルチテナント化 Phase M2b：契約者による割り当てで設定されます。変更は契約者／テナント管理者に依頼してください。${curTenantId?' / tenantId: '+esc(curTenantId):''}"></label>
             </div>
           </div>
         </section>
@@ -19919,27 +19939,34 @@ function _wireSignals(){
     d=>_showBroadcast(d||{})
   );
 }
-/* マルチテナント化 Phase M1：tenantId の自動判定＆書き込み。
-   既に設定済みなら何もしない。ドメイン一致するテナントが見つかれば laycatUsers に書き込む。 */
+/* マルチテナント化 Phase M2b：tenantId の自動判定＆書き込み（メンバーシップから判定）。
+   - 旧（M1）：メールドメインを tenants/*.domains と照合
+   - 新（M2b）：全テナントの members/{emailKey} を横断検索（findUserTenants）
+     - 複数テナント所属があれば、既設定の tenantId を優先。無効ならリストの先頭を採用。
+     - メンバーシップが無ければ tenantId は null のまま（M2b ではログイン判定で弾かれる）
+   - ドメインマッピング（domains フィールド）は未使用化（削除はしない。将来の用途余地を残す）。 */
 async function _maybeAutoAssignTenant(u){
   if(!u||!u.email) return;
-  if(!window.__laynaFB||!window.__laynaFB.loadUserProfile||!window.__laynaFB.loadAllTenants||!window.__laynaFB.saveUserProfile) return;
+  if(!window.__laynaFB||!window.__laynaFB.loadUserProfile||!window.__laynaFB.findUserTenants||!window.__laynaFB.saveUserProfile) return;
   const profile = await window.__laynaFB.loadUserProfile(u.email);
   const curTenant = profile && typeof profile.tenantId === 'string' ? profile.tenantId : null;
-  if(curTenant){ authUser.tenantId = curTenant; return; } /* 既設定なら尊重 */
-  /* メールドメイン抽出 */
-  const em = String(u.email).toLowerCase();
-  const atIdx = em.indexOf('@');
-  if(atIdx < 0) return;
-  const domain = em.slice(atIdx+1);
-  if(!domain) return;
-  const tenants = await window.__laynaFB.loadAllTenants();
-  if(!Array.isArray(tenants) || !tenants.length) return;
-  const hit = tenants.find(t => Array.isArray(t.domains) && t.domains.map(d=>String(d||'').toLowerCase()).includes(domain));
-  if(!hit) return;
-  /* laycatUsers に tenantId を merge 書き込み。saveUserProfile は merge:true 済み。 */
-  const ok = await window.__laynaFB.saveUserProfile(u.email, {tenantId: hit.id});
-  if(ok){ authUser.tenantId = hit.id; }
+  const memberships = await window.__laynaFB.findUserTenants(u.email);
+  if(!Array.isArray(memberships) || !memberships.length){
+    /* どのテナントにも所属していない：tenantId を更新しない（既存値も尊重）。
+       Phase M2b のログイン判定でメンバーシップ有無が別途チェックされる。 */
+    if(curTenant) authUser.tenantId = curTenant;
+    return;
+  }
+  const memberIds = memberships.map(m => m.tenantId);
+  /* 既設定 tenantId が有効（所属リストに含まれる）ならそのまま使う */
+  if(curTenant && memberIds.includes(curTenant)){
+    authUser.tenantId = curTenant;
+    return;
+  }
+  /* 既設定が無効 or 未設定 → 所属リストの先頭を採用して書き込み */
+  const pickId = memberIds[0];
+  const ok = await window.__laynaFB.saveUserProfile(u.email, {tenantId: pickId});
+  if(ok){ authUser.tenantId = pickId; }
 }
 async function onAuthChanged(u){
   if(!u){authUser=null;renderLogin();return}
@@ -19955,6 +19982,17 @@ async function onAuthChanged(u){
     try{const ok=await window.__laynaFB.redeemInvite(tok,{email:u.email,name:u.displayName||u.email,photo:u.photoURL});
       if(ok){role='member';INVITE_TOKEN=null;try{sessionStorage.removeItem('layna_invite')}catch(_){}
         setTimeout(()=>{try{toast('招待リンクからメンバーとして参加しました')}catch(_){}},900);}
+    }catch(_){}
+  }
+  /* マルチテナント化 Phase M2b：既存ルート（allowedEmails/allowedDomains/invited/招待トークン）で許可されなかった場合、
+     いずれかのテナントのメンバーに登録されていれば自動的に member として許可する。
+     契約者がライセンスを割り当てた直後からそのユーザーは LayCAT を使えるようになる。 */
+  if(!role && window.__laynaFB && window.__laynaFB.findUserTenants){
+    try{
+      const mems = await window.__laynaFB.findUserTenants(u.email);
+      if(Array.isArray(mems) && mems.length){
+        role = 'member'; /* 全体 role は常に member。テナント内の admin 権限は別軸で管理（refreshTenantAdminButton） */
+      }
     }catch(_){}
   }
   if(!role){authUser=null;renderDenied(u);return}
