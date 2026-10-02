@@ -4002,7 +4002,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.078';
+const APP_VERSION='2026.10.02.079';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19930,38 +19930,13 @@ async function _tnRender(state){
       <div class="tn-domain-list" style="margin-top:4px">テナント既定の定時。PM Board の工数集計で「個人のマイページ未設定」のユーザーに適用されます。<br>※ 変更後は PM Board の工数タブをリロードしてください。</div>
     </div>
     <h4 class="tn-section-title">メンバー（${members.length}）</h4>
-    <div class="tn-members">${memberRows || '<div class="tn-empty">メンバー未登録</div>'}</div>
-    <h4 class="tn-section-title">メンバー追加</h4>
-    <div class="tn-add">
-      <input id="tnAddEmail" type="email" placeholder="メール（例：a@example.com）" autocomplete="off">
-      <input id="tnAddName" type="text" placeholder="名前（任意）" title="空欄なら自動取得（マイページ設定 or Google 名）" autocomplete="off" style="flex:0 0 140px">
-      <select id="tnAddRole">
-        <option value="member">member</option>
-        <option value="admin">admin</option>
-      </select>
-      <button class="btn btn-primary" id="tnAddBtn" ${isFull?'disabled title="ライセンス枠満杯"':''}>＋ 追加</button>
+    <div style="padding:4px 0">
+      <button class="btn btn-primary" id="tnOpenMemberModal">👥 メンバー管理（追加・権限変更・削除）</button>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">メンバーの追加・権限変更・削除は専用モーダルで行います（契約者／管理者／メンバー別に表示・検索可）。</div>
     </div>`;
-  /* イベント：role 切替・削除 */
-  bodyEl.querySelectorAll('.tn-row').forEach(row=>{
-    const em = row.dataset.email;
-    const btnToggle = row.querySelector('button[data-act="toggle"]');
-    const btnDel = row.querySelector('button[data-act="del"]');
-    if(btnToggle) btnToggle.onclick = async ()=>{
-      const cur = members.find(x=>String(x.email).toLowerCase()===em.toLowerCase());
-      const newRole = (cur && cur.role==='admin') ? 'member' : 'admin';
-      const ok = await window.__laynaFB.updateTenantMemberRole(tid, em, newRole, authUser.email);
-      if(!ok){ toast('変更に失敗しました（権限不足？）'); return; }
-      toast(`${em} を ${newRole} に変更しました`);
-      _tnRender(state);
-    };
-    if(btnDel) btnDel.onclick = async ()=>{
-      if(!confirm(`${em} をこのテナントから削除します。削除後は LayCAT にログインできなくなります（他テナントに所属していなければ）。続行しますか？`)) return;
-      const ok = await window.__laynaFB.removeTenantMember(tid, em);
-      if(!ok){ toast('削除に失敗しました'); return; }
-      toast(`${em} を削除しました`);
-      _tnRender(state);
-    };
-  });
+  /* v.079：メンバー管理モーダル化。インラインの個別イベントは削除。 */
+  const openModalBtn = bodyEl.querySelector('#tnOpenMemberModal');
+  if(openModalBtn) openModalBtn.onclick = () => openTenantMemberModal(tid, ()=>_tnRender(state));
   /* v.077：定時（coreHours）保存ボタン */
   const tnCoreSaveBtn = bodyEl.querySelector('#tnCoreSaveBtn');
   if(tnCoreSaveBtn && canToggleDomain){
@@ -19997,27 +19972,185 @@ async function _tnRender(state){
       toast(next ? '弊社ドメインの自動アクセスを ON にしました' : '弊社ドメインの自動アクセスを OFF にしました');
     };
   }
-  /* 追加ボタン */
-  const addBtn = bodyEl.querySelector('#tnAddBtn');
-  if(addBtn && !isFull) addBtn.onclick = async ()=>{
-    const emIn = bodyEl.querySelector('#tnAddEmail');
-    const nameIn = bodyEl.querySelector('#tnAddName');
-    const roleIn = bodyEl.querySelector('#tnAddRole');
-    const em = String(emIn.value||'').trim().toLowerCase();
-    const nm = String(nameIn && nameIn.value || '').trim();
-    const role = String(roleIn.value||'member');
-    if(!em || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ toast('メール形式が不正です'); return; }
-    /* 枠オーバー再チェック（他タブからの変更対策） */
-    if(limit>0 && used>=limit){ toast(`ライセンス枠が満杯です（${used}/${limit}）`); return; }
-    /* 既存チェック */
-    if(members.find(x=>String(x.email).toLowerCase()===em)){ toast('既に登録済みのメンバーです'); return; }
-    const ok = await window.__laynaFB.addTenantMember(tid, em, role, authUser.email, nm);
-    if(!ok){ toast('追加に失敗しました（権限不足？）'); return; }
-    toast(`${em} を ${role} として追加しました`);
-    emIn.value = '';
-    if(nameIn) nameIn.value = '';
-    _tnRender(state);
+  /* v.079：メンバーの追加・role 変更・削除はメンバー管理モーダル（openTenantMemberModal）に移管。 */
+}
+/* v.079：テナントメンバー管理モーダル（契約者／管理者／メンバー 3 セクション＋検索＋追加）。
+   メインのテナント管理モーダルの上にオーバーレイで表示する。 */
+let _tenMemberQuery = '';
+let _tenMemberCurrentTid = null;
+let _tenMemberOnChange = null; /* メイン モーダルの再描画コールバック */
+async function openTenantMemberModal(tid, onChange){
+  if(!tid){ toast('テナント ID が不正です'); return; }
+  _tenMemberCurrentTid = tid;
+  _tenMemberOnChange = onChange || null;
+  _tenMemberQuery = '';
+  /* 既存モーダルがあれば除去（二重オープン防止） */
+  const prev = document.getElementById('tenantMemberModal');
+  if(prev) prev.remove();
+  const modal = document.createElement('div');
+  modal.id = 'tenantMemberModal';
+  modal.className = 'modal-overlay';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10050;display:flex;align-items:center;justify-content:center;padding:24px';
+  modal.innerHTML = `
+    <div class="modal-panel" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;width:min(820px,96vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 48px rgba(0,0,0,.5)">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg3)">
+        <span style="font-size:14px;font-weight:700">👥 テナントメンバー管理</span>
+        <span id="tmTenantName" style="color:var(--text3);font-size:12px"></span>
+        <span style="flex:1"></span>
+        <button class="btn btn-ghost btn-sm" id="tmCloseBtn" title="閉じる" style="padding:4px 10px">✕</button>
+      </div>
+      <div style="padding:14px 16px;overflow-y:auto">
+        <div style="color:var(--text3);font-size:11px;margin-bottom:12px;line-height:1.6">メンバーの追加・権限変更・削除を行います。<b>契約者</b>は削除・権限変更不可。<b>管理者</b>はテナント内の管理操作が可能。</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <input id="tmAddEmail" type="email" placeholder="メール（例：a@example.com）" autocomplete="off" style="flex:1;min-width:160px;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px">
+          <input id="tmAddName" type="text" placeholder="名前（任意）" title="空欄なら自動取得（マイページ or Google 名）" autocomplete="off" style="flex:0 0 160px;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px">
+          <select id="tmAddRole" style="background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px">
+            <option value="member">メンバー</option><option value="admin">管理者</option>
+          </select>
+          <button class="btn btn-primary" id="tmAddBtn">＋ 追加</button>
+        </div>
+        <div style="margin:10px 0 6px"><input id="tmSearch" type="text" placeholder="🔍 名前またはメールで検索…" autocomplete="off" style="width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:7px 10px;border-radius:5px;font-size:12px"></div>
+        <div class="counts" id="tmCounts" style="font-size:11px;color:var(--text3);margin:4px 0 10px"></div>
+        <div style="font-size:11px;color:var(--text2);font-weight:700;margin:14px 0 6px;letter-spacing:.5px">契約者（owner）</div>
+        <div id="tmOwnerList" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div style="font-size:11px;color:var(--text2);font-weight:700;margin:14px 0 6px;letter-spacing:.5px">管理者（admin）</div>
+        <div id="tmAdminList" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div style="font-size:11px;color:var(--text2);font-weight:700;margin:14px 0 6px;letter-spacing:.5px">メンバー（member）</div>
+        <div id="tmMemberList" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  /* 閉じる動作 */
+  const close = () => { try{ modal.remove(); }catch(_){} };
+  modal.querySelector('#tmCloseBtn').onclick = close;
+  modal.addEventListener('click', e => { if(e.target === modal) close(); });
+  /* 入力イベント */
+  modal.querySelector('#tmAddBtn').onclick = _tmAddUser;
+  modal.querySelector('#tmAddEmail').addEventListener('keydown', e => { if(e.key==='Enter') _tmAddUser(); });
+  modal.querySelector('#tmAddName').addEventListener('keydown', e => { if(e.key==='Enter') _tmAddUser(); });
+  const sb = modal.querySelector('#tmSearch');
+  sb.addEventListener('input', ()=>{ _tenMemberQuery = sb.value; _paintTenantMemberModal(); });
+  await _paintTenantMemberModal();
+}
+async function _paintTenantMemberModal(){
+  const modal = document.getElementById('tenantMemberModal');
+  if(!modal) return;
+  const tid = _tenMemberCurrentTid;
+  if(!tid) return;
+  const esc = s => String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let tenant = null, members = [], loggedUsersMap = {};
+  try{ tenant = window.__laynaFB.loadTenant ? await window.__laynaFB.loadTenant(tid) : null; }catch(_){}
+  try{ members = await window.__laynaFB.loadTenantMembers(tid) || []; }catch(_){}
+  try{ loggedUsersMap = (window.__laynaFB.loadLoggedUsers ? await window.__laynaFB.loadLoggedUsers() : {}) || {}; }catch(_){}
+  const nameEl = modal.querySelector('#tmTenantName');
+  if(nameEl) nameEl.textContent = tenant ? `(${tenant.name||tid})` : `(${tid})`;
+  const lists = ['tmOwnerList','tmAdminList','tmMemberList'].map(id => modal.querySelector('#'+id));
+  if(!tenant){
+    for(const el of lists){ if(el) el.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:6px 2px;text-align:center">テナント情報を取得できませんでした</div>'; }
+    return;
+  }
+  const ownerLc = String(tenant.ownerEmail||'').toLowerCase();
+  /* 仮想 owner 補完（members に未登録でも owner を表示＆ライセンス消費） */
+  if(ownerLc && !members.some(m => String(m.email||'').toLowerCase() === ownerLc)){
+    members.push({ email: ownerLc, role: 'admin', virtual: true });
+  }
+  const limit = (typeof tenant.licenseLimit === 'number') ? tenant.licenseLimit : 0;
+  const used = members.length;
+  const isFull = (limit > 0 && used >= limit);
+  const addBtn = modal.querySelector('#tmAddBtn');
+  if(addBtn){ addBtn.disabled = isFull; addBtn.title = isFull ? `ライセンス枠満杯（${used}/${limit}）` : ''; }
+  const resolveName = m => String(m.name||'').trim() || loggedUsersMap[String(m.email||'').toLowerCase()] || '';
+  const q = String(_tenMemberQuery||'').trim().toLowerCase();
+  const filt = members.filter(m => {
+    if(!q) return true;
+    const em = String(m.email||'').toLowerCase();
+    const nm = resolveName(m).toLowerCase();
+    return em.includes(q) || nm.includes(q);
+  });
+  const owners = filt.filter(m => String(m.email||'').toLowerCase() === ownerLc);
+  const admins = filt.filter(m => m.role === 'admin' && String(m.email||'').toLowerCase() !== ownerLc);
+  const regulars = filt.filter(m => m.role !== 'admin');
+  const cEl = modal.querySelector('#tmCounts');
+  if(cEl){
+    const limitStr = limit > 0 ? `${used}/${limit}` : `${used}/無制限`;
+    cEl.textContent = `契約者 ${owners.length} ・ 管理者 ${admins.length} ・ メンバー ${regulars.length} ・ ライセンス ${limitStr} 席` + (q ? `　／　「${_tenMemberQuery}」で絞込` : '');
+  }
+  const rowStyle = 'display:flex;align-items:center;gap:10px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:var(--bg3)';
+  const badgeStyle = (r) => {
+    if(r==='owner') return 'font-size:9px;padding:2px 7px;border-radius:10px;font-weight:700;letter-spacing:.5px;background:rgba(214,169,95,.16);color:#d6a95f;border:1px solid rgba(214,169,95,.4)';
+    if(r==='admin') return 'font-size:9px;padding:2px 7px;border-radius:10px;font-weight:700;letter-spacing:.5px;background:rgba(140,180,240,.14);color:#8cb4f0;border:1px solid rgba(140,180,240,.34)';
+    return 'font-size:9px;padding:2px 7px;border-radius:10px;font-weight:700;letter-spacing:.5px;background:rgba(127,191,154,.14);color:#7fbf9a;border:1px solid rgba(127,191,154,.34)';
   };
+  const mkRow = (m) => {
+    const em = String(m.email||'');
+    const isOwner = em.toLowerCase() === ownerLc;
+    const roleLabel = isOwner ? 'owner' : (m.role === 'admin' ? 'admin' : 'member');
+    const nm = resolveName(m);
+    const dateStr = m.assignedAt ? String(m.assignedAt).slice(0,10) : '';
+    const virtualTag = m.virtual ? '<span style="font-size:9px;color:var(--text3);font-style:italic">（members 未同期）</span>' : '';
+    const canToggle = !isOwner && !m.virtual;
+    const canDelete = !isOwner && !m.virtual;
+    const toggleLbl = m.role === 'admin' ? '→メンバー' : '→管理者';
+    const row = document.createElement('div');
+    row.style.cssText = rowStyle;
+    row.dataset.email = em;
+    row.innerHTML = `
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;overflow:hidden">
+        ${nm ? `<span style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nm)}</span><span style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(em)}</span>` : `<span style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(em)}</span>`}
+      </div>
+      <span style="${badgeStyle(roleLabel)}">${roleLabel}</span>
+      <span style="font-size:9px;color:var(--text3);font-style:italic">${esc(dateStr)}</span>
+      ${virtualTag}
+      ${canToggle ? `<button class="btn btn-sm" data-act="toggle" style="padding:4px 9px;font-size:11px">${toggleLbl}</button>` : ''}
+      ${canDelete ? `<button class="btn btn-sm" data-act="del" style="padding:4px 9px;font-size:11px;background:transparent;border-color:var(--red);color:var(--red)">削除</button>` : ''}
+    `;
+    const bt = row.querySelector('button[data-act="toggle"]');
+    const bd = row.querySelector('button[data-act="del"]');
+    if(bt) bt.onclick = () => _tmToggleRole(em, m.role);
+    if(bd) bd.onclick = () => _tmRemoveUser(em);
+    return row;
+  };
+  const fill = (list, items, emptyMsg) => {
+    list.innerHTML = '';
+    if(!items.length){ list.innerHTML = `<div style="font-size:11px;color:var(--text3);padding:6px 2px;text-align:center">${esc(emptyMsg)}</div>`; return; }
+    for(const m of items) list.appendChild(mkRow(m));
+  };
+  fill(lists[0], owners,   q ? '該当なし' : '契約者未設定');
+  fill(lists[1], admins,   q ? '該当なし' : '管理者はいません');
+  fill(lists[2], regulars, q ? '該当なし' : 'メンバーはいません');
+}
+async function _tmAddUser(){
+  const modal = document.getElementById('tenantMemberModal');
+  if(!modal || !_tenMemberCurrentTid) return;
+  const em = String(modal.querySelector('#tmAddEmail').value||'').trim().toLowerCase();
+  const nm = String(modal.querySelector('#tmAddName').value||'').trim();
+  const role = String(modal.querySelector('#tmAddRole').value||'member');
+  if(!em || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){ toast('メール形式が不正です'); return; }
+  const ok = await window.__laynaFB.addTenantMember(_tenMemberCurrentTid, em, role, authUser.email, nm);
+  if(!ok){ toast('追加に失敗しました（権限不足？ or 枠満杯）'); return; }
+  toast(`${em} を ${role} として追加しました`);
+  modal.querySelector('#tmAddEmail').value='';
+  modal.querySelector('#tmAddName').value='';
+  await _paintTenantMemberModal();
+  if(typeof _tenMemberOnChange === 'function') try{ _tenMemberOnChange(); }catch(_){}
+}
+async function _tmToggleRole(em, curRole){
+  if(!_tenMemberCurrentTid) return;
+  const next = (curRole === 'admin') ? 'member' : 'admin';
+  const ok = await window.__laynaFB.updateTenantMemberRole(_tenMemberCurrentTid, em, next, authUser.email);
+  if(!ok){ toast('変更に失敗しました（権限不足？）'); return; }
+  toast(`${em} を ${next} に変更しました`);
+  await _paintTenantMemberModal();
+  if(typeof _tenMemberOnChange === 'function') try{ _tenMemberOnChange(); }catch(_){}
+}
+async function _tmRemoveUser(em){
+  if(!_tenMemberCurrentTid) return;
+  if(!confirm(`${em} をこのテナントから削除します。削除後は LayCAT にログインできなくなります（他テナントに所属していなければ）。続行しますか？`)) return;
+  const ok = await window.__laynaFB.removeTenantMember(_tenMemberCurrentTid, em);
+  if(!ok){ toast('削除に失敗しました'); return; }
+  toast(`${em} を削除しました`);
+  await _paintTenantMemberModal();
+  if(typeof _tenMemberOnChange === 'function') try{ _tenMemberOnChange(); }catch(_){}
 }
 /* ===== メンテナンス / 全体お知らせ（運営コンソールから制御。OGREF相当） ===== */
 let _maintActive=false, _signalsWired=false;
