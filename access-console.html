@@ -725,6 +725,28 @@ async function _awFetchTenants(){
           }
         });
       }catch(_){}
+      /* 契約者が members に未登録なら、仮想メンバーとして補完して UI 一貫性を保つ。
+         これにより v.067 以前に作成された（owner が自動追加されていない）テナントでも
+         ライセンス枠に 1 枠カウントされる。実データは次回 tnEdit や LayCAT 本体の
+         テナント管理モーダルから操作されたタイミングで同期される。 */
+      const ownerLc=lc(tenant.ownerEmail||'');
+      if(ownerLc){
+        const already=tenant.members.some(m=>lc(m.email||'')===ownerLc);
+        if(!already){
+          tenant.members.push({
+            emailKey:ownerLc.replace(/[.@#$/\[\]]/g,'_'),
+            email:ownerLc,
+            role:'admin',
+            virtual:true, /* members ドキュメント未作成の仮想メンバー */
+          });
+          (_awMembersByEmail[ownerLc]=_awMembersByEmail[ownerLc]||[]).push({
+            tenantId:tenant.id,
+            tenantName:tenant.name||tenant.id,
+            role:'admin',
+            isOwner:true,
+          });
+        }
+      }
       _awTenants.push(tenant);
     }
     _awTenants.sort((a,b)=>String(a.name||a.id).localeCompare(String(b.name||b.id)));
@@ -894,7 +916,8 @@ function paintAccessWin(){
             const roleLabel=isOwner?'owner':(m.role==='admin'?'admin':'member');
             const assignedAtStr=m.assignedAt?String(m.assignedAt).slice(0,10):'';
             const row=d.createElement('div'); row.className='tn-member-row';
-            row.innerHTML=`<span class="em">${escH(em)}</span><span class="role ${roleCls}">${roleLabel}</span><span style="font-size:10px;color:var(--text3)">${escH(assignedAtStr)}</span>`;
+            const virtualTag = m.virtual ? '<span style="font-size:9px;color:var(--text3);font-style:italic">（members 未同期）</span>' : '';
+            row.innerHTML=`<span class="em">${escH(em)}</span><span class="role ${roleCls}">${roleLabel}</span>${virtualTag}<span style="font-size:10px;color:var(--text3)">${escH(assignedAtStr)}</span>`;
             mems.appendChild(row);
           }
           if(!mems.children.length){

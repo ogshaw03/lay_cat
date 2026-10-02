@@ -3994,7 +3994,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.068';
+const APP_VERSION='2026.10.02.069';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19819,6 +19819,16 @@ async function _tnRender(state){
   try{ tenant = await window.__laynaFB.loadTenant(tid); }catch(_){}
   try{ members = await window.__laynaFB.loadTenantMembers(tid) || []; }catch(_){}
   if(!tenant){ bodyEl.innerHTML = '<div class="tn-empty">テナント情報を取得できませんでした</div>'; return; }
+  /* 契約者が members に未登録なら仮想メンバーで補完（v.067 以前作成テナントの救済）。
+     ライセンス枠カウントも owner 分 1 枠を正しく反映する。 */
+  const ownerLc = String(tenant.ownerEmail||'').toLowerCase();
+  if(ownerLc && !members.some(m => String(m.email||'').toLowerCase() === ownerLc)){
+    members.push({
+      email: ownerLc,
+      role: 'admin',
+      virtual: true,
+    });
+  }
   const limit = (typeof tenant.licenseLimit==='number')?tenant.licenseLimit:0;
   const used  = members.length;
   const isFull = (limit>0 && used>=limit);
@@ -19839,13 +19849,15 @@ async function _tnRender(state){
     const roleLabel = isOwner ? 'owner' : (mm.role==='admin'?'admin':'member');
     const roleCls   = isOwner ? 'owner'  : (mm.role==='admin'?'admin':'member');
     const roleToggleLabel = mm.role==='admin' ? 'member に変更' : 'admin に変更';
-    const canToggle = !isOwner; /* 契約者 role は不変 */
-    const canDelete = !isOwner; /* 契約者は削除不可（推奨仕様） */
+    const canToggle = !isOwner && !mm.virtual; /* 契約者 role は不変・仮想行は操作不可 */
+    const canDelete = !isOwner && !mm.virtual; /* 契約者は削除不可・仮想行も削除不可 */
     const assignedAtStr = mm.assignedAt ? String(mm.assignedAt).slice(0,10) : '';
+    const virtualTag = mm.virtual ? '<span class="meta" style="font-style:italic">（members 未同期）</span>' : '';
     return `<div class="tn-row" data-email="${esc(em)}">
       <div class="email">${esc(em)}</div>
       <span class="role-badge ${roleCls}">${roleLabel}</span>
       <span class="meta">${esc(assignedAtStr)}</span>
+      ${virtualTag}
       ${canToggle?`<button data-act="toggle" title="${esc(roleToggleLabel)}">${esc(roleToggleLabel)}</button>`:''}
       ${canDelete?`<button data-act="del" class="danger" title="削除">削除</button>`:''}
     </div>`;
