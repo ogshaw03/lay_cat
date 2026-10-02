@@ -4001,7 +4001,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.072';
+const APP_VERSION='2026.10.02.073';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10911,7 +10911,7 @@ function openRename(node){
     /* タスク（工程）：作業担当・チェック担当（メンバーから選択。ショット単位ではなく工程ごとに設定） */
     /* 作業者/チェック者の設定はショットページ上部バー（設定ボタンの左）に移設 */
     /* プロジェクト（ルート）ならステータス／進捗のショット親フォルダを編集できる */
-    let stArr=null,spSel=null,projThumbFile=null,projThumbUrlTmp=null,projCropWidget=null,scArr=null,ovSel=null;
+    let stArr=null,spSel=null,projThumbFile=null,projThumbUrlTmp=null,projCropWidget=null,scArr=null,ovSel=null,splitChk=null;
     let pwNew=null,pwConf=null,pwRemove=null;
     if(!node.parentId){
       /* プロジェクトサムネイル（元画像はそのまま・トリミングのみ調整可能） */
@@ -11105,6 +11105,22 @@ function openRename(node){
       };
       migWrap.appendChild(migBtn);
       inner.appendChild(migWrap);
+      /* v.062：工数集計の設定 — 同一作業者の並行作業按分トグル。
+         デフォルト OFF（従来挙動）。ON にすると、同じ assignee が複数ショットを
+         同時に「作業中」にしている時間帯は、並行ショット数で割って配分される。
+         保存先：root.manhours.splitParallelByAssignee */
+      sec(secN++,'⚖','工数集計の設定（pmboard 連動）','pmboard の工数タブの計算オプションです。');
+      const mhWrap=el('div');mhWrap.style.cssText='display:flex;flex-direction:column;gap:6px;margin-bottom:10px';
+      const splitLbl=el('label');splitLbl.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text)';
+      splitChk=el('input');splitChk.type='checkbox';splitChk.style.cssText='margin:0;cursor:pointer;width:auto';
+      splitChk.checked=!!(node.manhours && node.manhours.splitParallelByAssignee);
+      splitLbl.appendChild(splitChk);
+      splitLbl.appendChild(el('span',null,'同一作業者の並行作業を按分する'));
+      mhWrap.appendChild(splitLbl);
+      const splitDesc=el('div','form-label');splitDesc.style.cssText='color:var(--text3);font-size:11px;line-height:1.6;margin:0';
+      splitDesc.innerHTML='同じ担当者が複数ショットを同時に「作業中」にしている時間帯を、並行ショット数で均等に割って各ショットに配分します。1 人の人間が複数ショットを同時並行で終わらせたような過大計上を防ぎます。<br>※ 担当者未設定のステージは按分対象外（従来通り単独カウント）。<br>※ 変更後は pmboard の工数タブをリロードしてください。';
+      mhWrap.appendChild(splitDesc);
+      inner.appendChild(mhWrap);
       /* このユーザーの接続を解除・プロジェクトの削除 */
       sec(secN++,'⚠️','危険な操作','プロジェクトの接続を外す・削除するなど、取り消しにくい操作です。');
       const dcWrap=el('div');dcWrap.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px';
@@ -11143,6 +11159,14 @@ function openRename(node){
       if(scArr!=null){const cmap=Object.assign({},node.stageColors||{});for(const st2 of scArr){const nm=st2.name;if(!nm)continue;if(st2.color&&/^#[0-9a-fA-F]{6}$/.test(st2.color))cmap[nm]=st2.color;else delete cmap[nm]}if(Object.keys(cmap).length)node.stageColors=cmap;else delete node.stageColors}
       /* 進行状況バッジの手動オーバーライド（auto=削除して自動判定に戻す） */
       if(ovSel){const v=ovSel.get();if(v==='active'||v==='done')node.statusOverride=v;else delete node.statusOverride}
+      /* v.062：工数集計の設定（manhours.splitParallelByAssignee） */
+      if(splitChk){
+        if(!node.manhours || typeof node.manhours !== 'object') node.manhours = {};
+        if(splitChk.checked) node.manhours.splitParallelByAssignee = true;
+        else delete node.manhours.splitParallelByAssignee;
+        /* 他のフィールドが無い空オブジェクトなら manhours ごと削除 */
+        if(node.manhours && !Object.keys(node.manhours).length) delete node.manhours;
+      }
       /* プロジェクトのパスワード保護：新規入力があれば設定/変更、解除チェックで削除 */
       if(!node.parentId){
         if(pwRemove&&pwRemove.checked){delete node.passHash;delete node.passSalt;delete node.enc;if(state._projKeys)delete state._projKeys[node.id];storage._enc.delete(node.id);unlockedSet().delete(node.id)}

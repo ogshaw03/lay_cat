@@ -18,6 +18,39 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.073) **工数集計：同一作業者の並行作業按分トグル（pmboard 連動）**：
+  - プロジェクト設定モーダルに「⚖ 工数集計の設定」セクション追加
+  - チェックボックス「同一作業者の並行作業を按分する」
+    - 保存先：`root.manhours.splitParallelByAssignee`（true/false）
+    - デフォルト OFF（既存の数字が勝手に変わらないよう後方互換）
+    - ON にすると、pmboard 側で assignee 一致の重複時間が並行ショット数で割って配分される
+  - 担当者未設定（assignee 空）のステージは按分対象外（従来通り単独カウント）
+  - APP_VERSION：2026.10.02.072 → 2026.10.02.073
+
+- (dev v2026.10.02.072) **マルチテナント化 Phase M3b：全体 admin（adminEmails）の正式廃止**：
+  - 役職を 2 段階（運営 / メンバー）に戻す。テナント内の admin/契約者は LayCAT 本体のテナント管理モーダルから管理。
+  - Firestore ルール：`isConfigEditor()` を削除、`isStaff()` に統合。
+  - access-console：「管理者」追加オプション／「管理者」リスト／「→管理者」遷移ボタンを削除。旧 adminEmails に残っているユーザーは member に自動移行して書き戻し。
+  - laycat：`roleFor()` から adminEmails チェックを削除、ヘッダーバッジ・カレンダー canEdit の旧全体 admin 後方互換を削除。
+  - APP_VERSION：2026.10.02.071 → 2026.10.02.072
+
+- (dev v2026.10.02.071) **マルチテナント化 Phase M3c：グローバル allowedDomains を廃止（UI＋ロジック）**：
+  - access-console：「🌐 許可ドメイン」カード削除。「ドメインで許可中のメンバーリスト」セクション削除。addDomain/removeDomain/domList/awDomUserList 関連ロジック削除。
+  - laycat：`roleFor()` から allowedDomains チェックを削除。ドメイン認証は Phase M3b の `tryJoinByDomain`（テナント単位・ライセンス枠付き）のみに。
+  - APP_VERSION：2026.10.02.070 → 2026.10.02.071
+
+- (dev v2026.10.02.070) **マルチテナント化 Phase M3b：ドメインベース自動参加（テナント単位・ライセンス枠付き）**：
+  - Firestore ルール：`tenants/{tid}` は owner/admin が `allowDomainAutoJoin` のみ更新可能。`tenants/{tid}/members` にドメイン一致ユーザーの自己参加 (create) を許可。
+  - laycat：`updateTenantAutoJoin` / `tryJoinByDomain` ヘルパ追加。ログイン判定にドメインベース自己参加を組み込み（ライセンス枠満杯なら拒否）。
+  - テナント管理モーダル：「ドメインアクセス」セクション新設、チェックボックス「弊社ドメインからのアクセスを自動許可」。
+  - APP_VERSION：2026.10.02.069 → 2026.10.02.070
+
+- (dev v2026.10.02.069) **契約者を仮想メンバーとして補完（v.067 以前作成テナントの救済）**：
+  - access-console / laycat の UI 側で、ownerEmail が members に未登録なら仮想メンバー（virtual:true、role:'admin'）として表示＋ライセンス枠カウント。
+  - 仮想メンバー行には「（members 未同期）」の注記を表示、操作ボタンは非表示。
+  - 書き込み発生なし。実データは次回 tnEdit や LayCAT 本体の next write 時に自動同期される。
+  - APP_VERSION：2026.10.02.068 → 2026.10.02.069
+
 - (dev v2026.10.02.068) **マルチテナント化 Phase M3a 修正：契約者を members に自動追加・ownerEmail 保険**：
   - **バグ**：v.067 までは契約者（ownerEmail）が `tenants/{tid}/members` に明示登録されていなかったため、
     契約者本人が LayCAT ログイン時のメンバーシップ判定（findUserTenants）で弾かれる致命的ケースがあった。
@@ -3028,6 +3061,17 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.02.027) **工数集計：同一作業者の並行作業按分（LayCAT 本体 v.073 設定連動）**：
+  - 同じ作業者（stage.assignee 一致）が複数ショットを同時に「作業中」にしている時間帯を、
+    並行ショット数で均等に割って各ショットに配分する機能を追加。
+  - デフォルト OFF、プロジェクト設定で切替（`root.manhours.splitParallelByAssignee`）。
+  - 新規ヘルパ：
+    - `_intervalsAfterCoreHours`：マスク適用後の時間帯を [start, end] 配列で返す（_intersectWithCoreHours の内部実装化）
+    - `_distributeParallelByAssignee`：assignee ごとに sweep-line アルゴリズムで並行作業数を数え、按分配分
+  - 工数タブに「⚖ 並行作業按分：ON」チップを表示。
+  - 担当者未設定（assignee 空）のステージは按分対象外（従来通り単独カウント）。
+  - APP_VERSION：2026.10.02.026 → 2026.10.02.027
 
 - (dev v2026.10.02.026) **スケジュールタブ 土日祝オーバーレイを色分け（国民の祝日=緑／会社の休日=黄）**：
   - v.025 は祝日を一律赤系で描画していたが、「赤は印象が強すぎる」ユーザー指摘のため配色変更。

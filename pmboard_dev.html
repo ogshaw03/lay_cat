@@ -618,7 +618,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.026';
+const APP_VERSION='2026.10.02.027';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2461,8 +2461,8 @@ function buildOtherTabsPlaceholder(){
         <div class="stat-card"><div class="l">ショット数</div><div class="n">—</div><div class="d"></div></div>
       </div>
       <div class="panel">
-        <h4>ショット別稼働日数（長い順）</h4>
-        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間のうち、<b>各担当者の稼働時間帯</b>（LayCAT 本体のマイページで個別設定可／デフォルト 10:30-19:30）に収まる分を合計。<b>残業対応</b>：定時外の作業者アクション（リテイク→作業中・作業中→チェック待ち 等）を証跡として、その日の稼働時間帯を自動拡張。チェック担当者のアクション（チェック待ち→*）は証跡から除外。「1 日」= 稼働時間帯の長さ（デフォルト 9 時間）換算。</div>
+        <h4>ショット別稼働日数（長い順）<span id="effortSplitChip" style="margin-left:10px;font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(140,180,240,.14);color:#8cb4f0;border:1px solid rgba(140,180,240,.34);font-family:var(--font-head);display:none">⚖ 並行作業按分：ON</span></h4>
+        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間のうち、<b>各担当者の稼働時間帯</b>（LayCAT 本体のマイページで個別設定可／デフォルト 10:30-19:30）に収まる分を合計。<b>残業対応</b>：定時外の作業者アクション（リテイク→作業中・作業中→チェック待ち 等）を証跡として、その日の稼働時間帯を自動拡張。チェック担当者のアクション（チェック待ち→*）は証跡から除外。「1 日」= 稼働時間帯の長さ（デフォルト 9 時間）換算。<b>並行作業按分 ON の場合</b>は、同一作業者が複数ショットを同時に作業中としている時間帯は並行ショット数で割って配分。</div>
         <div class="effort-list" id="effortList"></div>
       </div>
       <div class="panel">
@@ -2527,11 +2527,20 @@ function _getCoreHoursMinutes(root, assigneeId){
    - その日に evidence event があれば、その時刻で mask を前後に拡張（残業拾う）
    - 作業者アクション以外（例：チェック待ち→リテイク はチェック担当者のアクション）は呼び出し側で除外して渡す */
 function _intersectWithCoreHours(segStartMs, segEndMs, defaultMask, evidenceEvents, options){
-  if(!(segEndMs > segStartMs)) return 0;
+  /* 後方互換：intervals 配列を sum して返す薄いラッパー */
+  const intervals = _intervalsAfterCoreHours(segStartMs, segEndMs, defaultMask, evidenceEvents, options);
+  let totalMs = 0;
+  for(const iv of intervals) totalMs += (iv[1] - iv[0]);
+  return totalMs;
+}
+/* v.027：マスク適用後の時間帯を [start, end] 配列で返す。_intersectWithCoreHours の内部実装。
+   同一作業者の並行作業を按分する処理（Phase M3 工数集計）で interval 単位の分配が必要なため分離。 */
+function _intervalsAfterCoreHours(segStartMs, segEndMs, defaultMask, evidenceEvents, options){
+  const result = [];
+  if(!(segEndMs > segStartMs)) return result;
   const dayMs = 86400000;
   const opts = options || {dayBoundaryHour:0, excludeWeekend:false, holidays:[]};
   const bHour = opts.dayBoundaryHour || 0;
-  let totalMs = 0;
   /* v.023：workday (dayBoundaryHour 境界) で日を区切り、土日祝は証跡がある時のみ稼働帯を認める。 */
   let wdStart = _workdayStartMs(segStartMs, bHour);
   while(wdStart < segEndMs){
@@ -2539,15 +2548,12 @@ function _intersectWithCoreHours(segStartMs, segEndMs, defaultMask, evidenceEven
     const isWork = _isWorkday(wdStart, opts);
     let maskStartMs, maskEndMs;
     if(isWork){
-      /* 稼働日：coreHours デフォルトから開始 */
       maskStartMs = wdStart + _clockToWorkdayOffset(defaultMask.start, bHour) * 60000;
       maskEndMs   = wdStart + _clockToWorkdayOffset(defaultMask.end,   bHour) * 60000;
     }else{
-      /* 土日祝：デフォルトなし。証跡があれば証跡の最早〜最遅のみ稼働扱い */
       maskStartMs = null;
       maskEndMs = null;
     }
-    /* その workday 内の作業者アクション証跡で mask を拡張 */
     if(evidenceEvents && evidenceEvents.length){
       for(const tMs of evidenceEvents){
         if(tMs >= wdStart && tMs < wdEnd){
@@ -2559,11 +2565,11 @@ function _intersectWithCoreHours(segStartMs, segEndMs, defaultMask, evidenceEven
     if(maskStartMs != null && maskEndMs != null && maskEndMs > maskStartMs){
       const a = Math.max(segStartMs, maskStartMs);
       const b = Math.min(segEndMs,   maskEndMs);
-      if(b > a) totalMs += (b - a);
+      if(b > a) result.push([a, b]);
     }
     wdStart += dayMs;
   }
-  return totalMs;
+  return result;
 }
 /* 作業者アクションの evidence event 配列を抽出。
    stage.history の中から、segment 範囲 [segStartMs, segEndMs] 内かつ
@@ -2604,7 +2610,53 @@ function _getManhoursOptions(root){
     dayBoundaryHour: (typeof m.dayBoundaryHour === 'number' && m.dayBoundaryHour>=0 && m.dayBoundaryHour<=12) ? m.dayBoundaryHour : 4,
     excludeWeekend: m.excludeWeekend !== false, /* undefined/true → true */
     holidays: Array.isArray(DATA.holidays) ? DATA.holidays : [],
+    /* v.027：同一作業者が複数ショットを同時並行で「作業中」にしている場合、重複している
+       時間帯は並行ショット数で割って按分する。デフォルト OFF（既存挙動維持）、プロジェクト設定で切替。 */
+    splitParallelByAssignee: m.splitParallelByAssignee === true,
   };
+}
+/* v.027：assignee ごとの interval 集合を並行作業数で按分して per-shot ms に分配する。
+   intervalsByAssignee: Map<assigneeId, [{shotId, start, end}]> を受け取り、
+   out: Map<shotId, ms> に加算する。
+   sweep-line アルゴリズム：各 assignee の interval を時系列に展開 → 時刻 t ごとに同時並行
+   数 N を数え、各 interval は (dt / N) を自分の shot に加算する。 */
+function _distributeParallelByAssignee(intervalsByAssignee, outPerShotMs){
+  for(const items of intervalsByAssignee.values()){
+    if(!items.length) continue;
+    /* 単一 interval しかない assignee は按分不要（高速パス） */
+    if(items.length === 1){
+      const it = items[0];
+      outPerShotMs.set(it.shotId, (outPerShotMs.get(it.shotId)||0) + (it.end - it.start));
+      continue;
+    }
+    /* sweep-line：event = {t, type:'start'|'end', item} */
+    const events = [];
+    for(const it of items){
+      events.push({t: it.start, type: 1, item: it}); /* +1 */
+      events.push({t: it.end,   type: -1, item: it}); /* -1 */
+    }
+    events.sort((a,b)=> a.t - b.t || b.type - a.type); /* start を end より先に処理（接し際の二重削除回避） */
+    let activeByShot = new Map(); /* shotId → interval count（同一 shot 内の重複 interval 対策） */
+    let activeTotal = 0;
+    let lastT = events[0].t;
+    for(const ev of events){
+      if(ev.t > lastT && activeTotal > 0){
+        const dt = ev.t - lastT;
+        const share = dt / activeTotal;
+        for(const [sid, cnt] of activeByShot){
+          if(cnt > 0) outPerShotMs.set(sid, (outPerShotMs.get(sid)||0) + share * cnt);
+        }
+      }
+      if(ev.type === 1){
+        activeByShot.set(ev.item.shotId, (activeByShot.get(ev.item.shotId)||0) + 1);
+        activeTotal++;
+      }else{
+        activeByShot.set(ev.item.shotId, (activeByShot.get(ev.item.shotId)||0) - 1);
+        activeTotal--;
+      }
+      lastT = ev.t;
+    }
+  }
 }
 /* workday 開始 (ms) を返す。timestamp が workday 境界より前なら前日に属する扱い。 */
 function _workdayStartMs(tsMs, dayBoundaryHour){
@@ -2665,13 +2717,23 @@ function renderEffortPane(){
   const projStatuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
   /* v.023：土日祝除外・日境界オプション。 */
   const mhOpts = _getManhoursOptions(root);
-  const rows = [];
+  const splitEnabled = !!mhOpts.splitParallelByAssignee;
+  /* v.027：並行作業按分に備えて、per-shot totals は後からまとめて集計する。
+     - assignee 設定ありのステージの mask 適用 interval は、assignee ごとにまとめて sweep-line で按分
+     - assignee 未設定（null/空）のステージはそのまま per-shot に加算（従来通り） */
+  const perShotMs = new Map();      /* shotId → ms */
+  const perShotSegs = new Map();    /* shotId → segs count */
+  const intervalsByAssignee = new Map(); /* assigneeId → [{shotId, start, end}] */
+  const addShotMs = (sid, ms) => { if(ms>0) perShotMs.set(sid, (perShotMs.get(sid)||0) + ms); };
+  const addShotSeg = (sid) => { perShotSegs.set(sid, (perShotSegs.get(sid)||0) + 1); };
   for(const shot of shots){
-    let totalMs = 0, segs = 0;
+    const sid = shot.sectionNode.id;
     for(const st of (shot.stages||[])){
       /* ステージ担当者 (assignee) の coreHours を引く。無ければプロジェクト既定、それも無ければ fallback。 */
       const mask = _getCoreHoursMinutes(root, st.assignee);
       const history = st.history || [];
+      const assignee = st.assignee ? String(st.assignee).toLowerCase() : null;
+      const useDistribution = splitEnabled && assignee;
       for(const seg of (st.workSegments||[])){
         const startMs = seg.start ? seg.start.getTime() : null;
         if(startMs == null) continue;
@@ -2680,22 +2742,42 @@ function renderEffortPane(){
         /* v.018：Phase 2 強化 — segment 内の作業者アクション遷移を全て証跡として mask を拡張。
            チェック待ち→* はチェック担当者のアクションなので証跡から除外。 */
         const evidence = _collectWorkerEvidenceEvents(history, startMs, endMs, isOpen, projStatuses);
-        const d = _intersectWithCoreHours(startMs, endMs, mask, evidence, mhOpts);
-        if(d > 0){ totalMs += d; segs++; }
+        const intervals = _intervalsAfterCoreHours(startMs, endMs, mask, evidence, mhOpts);
+        if(!intervals.length) continue;
+        if(useDistribution){
+          /* 按分対象：後で sweep-line で分配するために溜め込むだけ */
+          if(!intervalsByAssignee.has(assignee)) intervalsByAssignee.set(assignee, []);
+          const bucket = intervalsByAssignee.get(assignee);
+          for(const iv of intervals) bucket.push({shotId: sid, start: iv[0], end: iv[1]});
+          addShotSeg(sid);
+        }else{
+          /* 按分対象外（assignee 未設定 or 設定 OFF）：従来通り per-shot に単純加算 */
+          let segMs = 0;
+          for(const iv of intervals) segMs += (iv[1] - iv[0]);
+          addShotMs(sid, segMs);
+          if(segMs > 0) addShotSeg(sid);
+        }
       }
     }
-    /* v.016：分母を 9h（coreHours の長さ）に再度変更。合計時間はマスクで既に削減済み（深夜・早朝は含まれない）なので、
-       1 稼働日=9h で割ることで「何稼働日分の作業か」として直感的な数字になる。
-       例：5 日間連続で「作業中」なら、マスク適用 45h ÷ 9h = 5 稼働日分。 */
+  }
+  /* v.027：按分の sweep-line 実行。並行作業数で均等分配して perShotMs に加算。 */
+  if(splitEnabled && intervalsByAssignee.size){
+    _distributeParallelByAssignee(intervalsByAssignee, perShotMs);
+  }
+  /* row ビルド */
+  const rows = [];
+  for(const shot of shots){
+    const sid = shot.sectionNode.id;
+    const totalMs = perShotMs.get(sid) || 0;
+    const segs = perShotSegs.get(sid) || 0;
     const days = totalMs / dayDivisorMs;
     const cur = shotCurrentStage(shot);
     rows.push({
-      shotId: shot.sectionNode.id,
-      name: shot.sectionNode.name || shot.sectionNode.id.slice(-8),
+      shotId: sid,
+      name: shot.sectionNode.name || sid.slice(-8),
       days, segs,
       stageName: cur ? (cur.stageName || cur.label || '?') : '—',
       stageColor: cur ? cur.color : '#5a5a6a',
-      /* v.025：ショット単位ステータス優先。無ければ現在工程 currentStatus にフォールバック。 */
       status: (shot.shotStatus != null) ? shot.shotStatus : (cur ? cur.currentStatus : null),
     });
   }
@@ -2714,6 +2796,9 @@ function renderEffortPane(){
   if(cards[1]) cards[1].innerHTML = `<div class="l">平均 per shot</div><div class="n">${fmtDays(avg)}<span class="u">日</span></div><div class="d">稼働ショット平均</div>`;
   if(cards[2]) cards[2].innerHTML = `<div class="l">最長ショット</div><div class="n">${fmtDays(max.days)}<span class="u">日</span></div><div class="d">${escapeHtml(max.name||'—')}</div>`;
   if(cards[3]) cards[3].innerHTML = `<div class="l">ショット数</div><div class="n">${rows.length}</div><div class="d">プロジェクト全体</div>`;
+  /* v.027：按分 ON チップの表示切替 */
+  const splitChip = eff.querySelector('#effortSplitChip');
+  if(splitChip) splitChip.style.display = splitEnabled ? '' : 'none';
   /* リスト */
   const list = eff.querySelector('#effortList');
   if(!list) return;
