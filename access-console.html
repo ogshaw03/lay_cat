@@ -417,20 +417,20 @@ service cloud.firestore {
         ? get(/databases/$(database)/documents/tenants/$(tid)/members/$(myK)).data.get('role','')
         : '';
     }
-    // owner/admin が allowDomainAutoJoin のみを更新するケース（他フィールドは不変）
-    function _canToggleAutoJoin(tid) {
+    // owner/admin が設定フィールド（allowDomainAutoJoin / coreHours）のみを更新するケース
+    function _canUpdateTenantSettings(tid) {
       let myEmail = request.auth.token.email;
       let isOwner = myEmail == _tenantOwner(tid);
       let isAdmin = _myTenantRole(tid) == 'admin';
       let changed = request.resource.data.diff(resource.data).affectedKeys();
       return signedIn()
         && (isOwner || isAdmin)
-        && changed.hasOnly(['allowDomainAutoJoin','updatedAt','updatedBy']);
+        && changed.hasOnly(['allowDomainAutoJoin','coreHours','updatedAt','updatedBy']);
     }
     match /tenants/{tenantId} {
       allow read:              if signedIn();
       allow create, delete:    if isStaff();
-      allow update:            if isStaff() || _canToggleAutoJoin(tenantId);
+      allow update:            if isStaff() || _canUpdateTenantSettings(tenantId);
     }
 
     // ===== テナントメンバーシップ（Phase M2：チーム管理）=====

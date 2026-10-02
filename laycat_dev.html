@@ -4002,7 +4002,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.077';
+const APP_VERSION='2026.10.02.078';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19917,6 +19917,18 @@ async function _tnRender(state){
       </label>
       <div class="tn-domain-list">対象ドメイン：${tenantDomains.length ? tenantDomains.map(d=>`<code>${esc(d)}</code>`).join(' ') : '<span style="color:var(--text3)">未設定（アクセス管理コンソールで設定）</span>'}</div>
     </div>
+    <h4 class="tn-section-title">定時（coreHours）</h4>
+    <div class="tn-domain-box">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text2)">開始</span>
+        <input type="time" id="tnCoreStart" value="${esc((tenant.coreHours&&tenant.coreHours.start)||'10:30')}" ${canToggleDomain?'':'disabled'} style="background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:12px">
+        <span style="color:var(--text3)">〜</span>
+        <span style="font-size:12px;color:var(--text2)">終了</span>
+        <input type="time" id="tnCoreEnd" value="${esc((tenant.coreHours&&tenant.coreHours.end)||'19:30')}" ${canToggleDomain?'':'disabled'} style="background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:12px">
+        <button class="btn btn-primary" id="tnCoreSaveBtn" ${canToggleDomain?'':'disabled'} style="padding:5px 12px;font-size:12px">保存</button>
+      </div>
+      <div class="tn-domain-list" style="margin-top:4px">テナント既定の定時。PM Board の工数集計で「個人のマイページ未設定」のユーザーに適用されます。<br>※ 変更後は PM Board の工数タブをリロードしてください。</div>
+    </div>
     <h4 class="tn-section-title">メンバー（${members.length}）</h4>
     <div class="tn-members">${memberRows || '<div class="tn-empty">メンバー未登録</div>'}</div>
     <h4 class="tn-section-title">メンバー追加</h4>
@@ -19950,6 +19962,25 @@ async function _tnRender(state){
       _tnRender(state);
     };
   });
+  /* v.077：定時（coreHours）保存ボタン */
+  const tnCoreSaveBtn = bodyEl.querySelector('#tnCoreSaveBtn');
+  if(tnCoreSaveBtn && canToggleDomain){
+    tnCoreSaveBtn.onclick = async ()=>{
+      const sEl = bodyEl.querySelector('#tnCoreStart');
+      const eEl = bodyEl.querySelector('#tnCoreEnd');
+      const s = String(sEl.value||'').trim();
+      const e = String(eEl.value||'').trim();
+      if(!/^\d{2}:\d{2}$/.test(s) || !/^\d{2}:\d{2}$/.test(e)){ toast('時刻の形式が不正です'); return; }
+      /* 開始 < 終了のバリデーション */
+      const toMin = v => { const m=v.match(/^(\d{2}):(\d{2})$/); return parseInt(m[1],10)*60+parseInt(m[2],10); };
+      if(toMin(s) >= toMin(e)){ toast('開始は終了より前にしてください'); return; }
+      tnCoreSaveBtn.disabled = true;
+      const ok = await window.__laynaFB.updateTenantCoreHours(tid, {start:s, end:e}, authUser.email);
+      tnCoreSaveBtn.disabled = false;
+      if(!ok){ toast('保存に失敗しました（権限不足？）'); return; }
+      toast(`テナント既定の定時を ${s}〜${e} に設定しました`);
+    };
+  }
   /* ドメイン自動許可トグル */
   const tnAutoJoinEl = bodyEl.querySelector('#tnAutoJoin');
   if(tnAutoJoinEl && canToggleDomain){
@@ -20303,6 +20334,21 @@ initApp();
         }catch(_){}
         return true;
       }catch(e){console.error('removeTenantMember failed',e);return false}},
+      /* v.077：テナント既定の定時（coreHours）を更新。owner/admin が LayCAT のテナント管理
+         モーダルから設定。Firestore ルールが「このフィールドだけ変更」を強制。 */
+      updateTenantCoreHours:async(tenantId, hours, who)=>{try{
+        if(!tenantId || !hours || !hours.start || !hours.end) return false;
+        /* 簡易バリデーション：HH:MM 形式 */
+        if(!/^\d{2}:\d{2}$/.test(hours.start) || !/^\d{2}:\d{2}$/.test(hours.end)) return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        await m.setDoc(m.doc(fs,'tenants',String(tenantId)),{
+          coreHours: {start: String(hours.start), end: String(hours.end)},
+          updatedBy: String(who||''),
+          updatedAt: new Date().toISOString(),
+        },{merge:true});
+        return true;
+      }catch(e){console.error('updateTenantCoreHours failed',e);return false}},
       /* マルチテナント化 Phase M3b：テナントの allowDomainAutoJoin を切替。
          owner / admin が LayCAT 側のテナント管理モーダルからチェックボックス操作で呼ぶ。
          Firestore ルールが「このフィールドだけ変更」を強制する。 */

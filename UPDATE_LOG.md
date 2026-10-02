@@ -18,6 +18,22 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.078) **テナント既定の定時（coreHours）を追加（pmboard 工数集計連動）**：
+  - coreHours の優先順位を 4 → 5 段階に拡張。マイページ > プロジェクトメンバー個別 > プロジェクト既定 > **テナント既定（新）** > fallback。
+  - Firestore `tenants/{tid}` に `coreHours: {start, end}` フィールド追加。
+  - Firestore ルール：`_canToggleAutoJoin` → `_canUpdateTenantSettings` にリネーム、`coreHours` を更新許可フィールドに追加（owner/admin も変更可）。
+  - 新ヘルパ `window.__laynaFB.updateTenantCoreHours`。
+  - LayCAT テナント管理モーダル：「定時（coreHours）」セクション新設（開始／終了 time input ＋保存）。
+  - pmboard：`loadTenantCoreHours()` を `loadProjectData` 末尾で呼び出し、`DATA.tenantCoreHours` にキャッシュ。`_getCoreHoursMinutes` の優先順位 4 段目で参照。
+  - 書き込みは LayCAT の「保存」押下時のみ、tenants/{tid} 単一ドキュメントのみ。
+  - APP_VERSION：2026.10.02.077 → 2026.10.02.078
+
+- (dev v2026.10.02.077) **LayCAT テナント追加フォーム 幅調整＋折返し許可**：
+  - `.tn-add` に `flex-wrap:wrap`、`.tn-add input` に `min-width:0` を追加。
+  - 名前入力欄：placeholder「名前（任意）」に短縮・幅 180→140px、tooltip に補足。
+  - モーダル幅やブラウザサイズに関係なく全要素が収まる。
+  - APP_VERSION：2026.10.02.076 → 2026.10.02.077
+
 - (dev v2026.10.02.076) **LayCAT テナント管理モーダル：loggedUsers 索引で name 未設定メンバーの表示名を補完**：
   - 問題：v.075 で name フィールドを追加したが、既存メンバー（name 未設定）は LayCAT 側で email のみ表示されていた（access-console は loggedUsers 索引で補完済み）。
   - 新規ヘルパ `window.__laynaFB.loadLoggedUsers()`：`laynaAccess/loggedUsers` から全ユーザーの `{emailLc → displayName}` マップを取得。
@@ -3094,6 +3110,13 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.02.036) **テナント既定の coreHours を参照（LayCAT 本体 v.078 連動）**：
+  - `window.__laynaFB.loadTenant(id)` ヘルパ追加（テナントドキュメント 1 件取得）。
+  - `loadTenantCoreHours()` を `loadProjectData` 末尾で呼び出し、`DATA.tenantCoreHours` にキャッシュ。
+    - 現在ログイン中ユーザーの `laycatUsers/{emailKey}.tenantId` から tenant を特定、その `coreHours` を取得。
+  - `_getCoreHoursMinutes` の優先順位を 4 → 5 段階に拡張（テナント既定を fallback の前に挿入）。
+  - APP_VERSION：2026.10.02.035 → 2026.10.02.036
 
 ## 反映済み pmboard v0.2.0（2026-10-02）
 

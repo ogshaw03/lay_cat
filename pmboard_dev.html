@@ -646,7 +646,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.035';
+const APP_VERSION='2026.10.02.036';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1152,6 +1152,8 @@ async function loadProjectData(){
   await loadAllUserProfiles();
   /* 【v.024】祝日（国の祝日 + 会社休日）を Firestore から読み込む。失敗しても静かにフォールバック。 */
   await loadHolidaysForTimeline();
+  /* 【v.036】テナント既定の定時（coreHours）を Firestore から読み込む（coreHours 優先順位の第 4 段）。 */
+  await loadTenantCoreHours();
   return {ok:true};
 }
 /* プロジェクトメンバー全員の Firestore プロフィールを並列取得して DATA.userProfiles にキャッシュする。
@@ -1170,6 +1172,25 @@ async function loadAllUserProfiles(){
     }catch(_){}
   });
   await Promise.all(promises);
+}
+/* v.036：現在ログイン中ユーザーの所属テナントの coreHours を Firestore から取得して
+   DATA.tenantCoreHours にキャッシュ。_getCoreHoursMinutes の優先順位 4 段目で使う。
+   失敗（未ログイン・tenantId 未設定・ルール未設定 等）は null でフォールバック。 */
+async function loadTenantCoreHours(){
+  DATA.tenantCoreHours = null;
+  if(!window.__laynaFB || !window.__laynaFB.loadTenant) return;
+  try{
+    const u = window.__laynaFBUser;
+    if(!u || !u.email) return;
+    const emailKey = _emailToKey(u.email);
+    const prof = DATA.userProfiles && DATA.userProfiles[emailKey];
+    const tid = prof && prof.tenantId;
+    if(!tid) return;
+    const tenant = await window.__laynaFB.loadTenant(tid);
+    if(tenant && tenant.coreHours && tenant.coreHours.start && tenant.coreHours.end){
+      DATA.tenantCoreHours = { start: tenant.coreHours.start, end: tenant.coreHours.end };
+    }
+  }catch(_){}
 }
 /* 【v.024】祝日（国の祝日 + 会社休日）を Firestore から読み込んで DATA.holidays にキャッシュ。
    DATA.timeline の start/end から必要年を算出して並列ロード。
@@ -2601,11 +2622,12 @@ function _hmToMinutes(hm){
   return h*60+mm;
 }
 /* 指定ステージの担当者 (assigneeId) に適用する coreHours を minute-of-day で返す。
-   優先順位（v.019）：
+   優先順位（v.036 更新）：
    1. マイページ Firestore プロフィール (DATA.userProfiles[emailKey].coreHours)
    2. プロジェクトメンバー個別 (root.members[i].coreHours)
    3. プロジェクト既定 (root.manhours.coreHours)
-   4. ハードコード fallback (10:30-19:30) */
+   4. テナント既定 (DATA.tenantCoreHours ← tenants/{tid}.coreHours を loadTenantCoreHours でキャッシュ)
+   5. ハードコード fallback (10:30-19:30) */
 function _getCoreHoursMinutes(root, assigneeId){
   if(assigneeId){
     /* 1. マイページで保存した Firestore プロフィール（最優先） */
@@ -2629,7 +2651,12 @@ function _getCoreHoursMinutes(root, assigneeId){
     const s=_hmToMinutes(root.manhours.coreHours.start), e=_hmToMinutes(root.manhours.coreHours.end);
     if(s!=null && e!=null && e>s) return {start:s, end:e};
   }
-  /* 4. fallback */
+  /* 4. テナント既定（v.036：現在ログイン中ユーザーの所属テナント） */
+  if(DATA.tenantCoreHours){
+    const s=_hmToMinutes(DATA.tenantCoreHours.start), e=_hmToMinutes(DATA.tenantCoreHours.end);
+    if(s!=null && e!=null && e>s) return {start:s, end:e};
+  }
+  /* 5. fallback */
   return _COREHOURS_FALLBACK;
 }
 /* work segment [segStartMs, segEndMs] と、日ごとの mask [mask.start, mask.end]（minute-of-day）との
@@ -4197,6 +4224,14 @@ else { showInitialEmptyState(); }
         const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         const snap=await m.getDoc(m.doc(fs,'laycatUsers',key));
         return snap.exists()?snap.data():null;
+      }catch(e){return null}},
+      /* v.036：テナントドキュメント 1 件取得（coreHours・name 等参照用） */
+      loadTenant:async(id)=>{try{
+        if(!id)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const snap=await m.getDoc(m.doc(fs,'tenants',String(id)));
+        return snap.exists()?{id:snap.id,...snap.data()}:null;
       }catch(e){return null}},
       /* 【v.024】祝日カレンダー（Phase 5）：国の祝日 1 年分を読む。publicHolidays/JP/years/{year} */
       loadPublicHolidays:async(country,year)=>{try{
