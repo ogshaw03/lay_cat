@@ -965,20 +965,20 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .cal-cell.cal-sun .cal-day{color:var(--red)}
 .cal-cell.cal-sat .cal-day{color:#6fa8e8}
 .cal-cell.cal-today{box-shadow:inset 0 0 0 2px var(--accent)}
-.cal-cell.cal-public{background:rgba(220,80,80,.12);border-color:rgba(220,80,80,.4)}
-.cal-cell.cal-company{background:rgba(214,169,95,.14);border-color:rgba(214,169,95,.42)}
-.cal-cell.cal-public.cal-company{background:linear-gradient(135deg,rgba(220,80,80,.14) 50%,rgba(214,169,95,.14) 50%)}
+.cal-cell.cal-public{background:rgba(127,191,154,.14);border-color:rgba(127,191,154,.42)}
+.cal-cell.cal-company{background:rgba(226,196,76,.14);border-color:rgba(226,196,76,.42)}
+.cal-cell.cal-public.cal-company{background:linear-gradient(135deg,rgba(127,191,154,.14) 50%,rgba(226,196,76,.14) 50%)}
 .cal-cell.cal-editable:hover{background:var(--bg4);border-color:var(--accent)}
-.cal-cell.cal-public.cal-editable:hover{background:rgba(220,80,80,.18)}
-.cal-cell.cal-company.cal-editable:hover{background:rgba(214,169,95,.22)}
+.cal-cell.cal-public.cal-editable:hover{background:rgba(127,191,154,.22)}
+.cal-cell.cal-company.cal-editable:hover{background:rgba(226,196,76,.22)}
 .cal-label{font-size:10px;color:var(--text2);line-height:1.25;word-break:break-all;overflow:hidden}
-.cal-cell.cal-public .cal-label{color:var(--red)}
-.cal-cell.cal-company .cal-label{color:#c99657}
+.cal-cell.cal-public .cal-label{color:#7fbf9a}
+.cal-cell.cal-company .cal-label{color:#c8ad46}
 .cal-legend{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:8px 2px;border-top:1px dashed var(--border);font-size:11px;color:var(--text3)}
 .cal-lg-item{display:inline-flex;align-items:center;gap:5px}
 .cal-lg-sw{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid var(--border)}
-.cal-lg-sw.public{background:rgba(220,80,80,.3);border-color:rgba(220,80,80,.5)}
-.cal-lg-sw.company{background:rgba(214,169,95,.3);border-color:rgba(214,169,95,.5)}
+.cal-lg-sw.public{background:rgba(127,191,154,.3);border-color:rgba(127,191,154,.55)}
+.cal-lg-sw.company{background:rgba(226,196,76,.3);border-color:rgba(226,196,76,.55)}
 .cal-lg-sw.weekend{background:var(--bg3)}
 .cal-lg-note{margin-left:auto;font-style:italic;color:var(--text3)}
 @media (max-width:720px){
@@ -3960,7 +3960,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.061';
+const APP_VERSION='2026.10.02.062';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
