@@ -646,7 +646,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.034';
+const APP_VERSION='2026.10.02.035';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1682,12 +1682,8 @@ function buildGantt(){
       }
 
       const track=[];
-      /* Weekend 背景（バー下） */
-      for(let i=0;i<days;i++){
-        const dt=new Date(start.getTime()+i*86400000);
-        const pj=jstParts(dt);
-        if(pj.wk===0||pj.wk===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
-      }
+      /* v.034：legacy の weekend 背景は廃止（_trackOffDayOverlayHtml の暗色オーバーレイで統一）。
+         旧実装は start+i*86400000 ベースで scrub 時に日境界からずれていた。 */
       /* v.025／v.026：土日祝オーバーレイ用の祝日セット。公的（緑）と会社（黄）を分離。 */
       const _pubSet = _buildPublicHolidaySet();
       const _coSet  = _buildCompanyHolidaySet();
@@ -1973,12 +1969,7 @@ function buildCustomGantt(scheduleId){
     const track=[];
     const _pubSet2 = _buildPublicHolidaySet();
     const _coSet2  = _buildCompanyHolidaySet();
-    /* Weekend 背景（バー下） */
-    for(let i=0;i<days;i++){
-      const dt=new Date(start.getTime()+i*86400000);
-      const p=jstParts(dt);
-      if(p.wk===0||p.wk===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
-    }
+    /* v.034：legacy weekend 背景は廃止（_trackOffDayOverlayHtml の暗色オーバーレイで統一） */
     /* Plan bar または placeholder */
     if(it.plannedStart && it.plannedEnd){
       const p1 = dayIdx(it.plannedStart), p2 = dayIdx(it.plannedEnd);
