@@ -167,6 +167,13 @@
           <input id="hhCsvFile" type="file" accept=".csv">
           <button class="btn" id="hhPreviewBtn">プレビュー</button>
         </div>
+        <div class="add-row" style="margin-top:8px;align-items:center">
+          <label style="font-size:12px;color:var(--text2);white-space:nowrap">書き込み範囲：</label>
+          <input id="hhFromYear" type="number" min="1955" max="2100" style="width:90px" placeholder="開始年">
+          <span style="font-size:12px;color:var(--text3)">〜</span>
+          <input id="hhToYear" type="number" min="1955" max="2100" style="width:90px" placeholder="終了年">
+          <span style="font-size:11px;color:var(--text3)">年（空欄なら CSV の全範囲）</span>
+        </div>
         <div id="hhPreview" style="margin-top:8px;font-size:12px;color:var(--text2);max-height:280px;overflow:auto"></div>
         <div class="row" style="margin-top:12px">
           <button class="btn btn-primary hidden" id="hhUploadBtn">📥 Firestore に書き込む</button>
@@ -930,6 +937,28 @@ $('rebuildBtn').onclick=async()=>{
    - 書き込み先：publicHolidays/{country}/years/{year}
    - ドキュメント構造：{ year, country, dates: [{date:"YYYY-MM-DD", name}], source, updatedAt, updatedBy } */
 let hhParsedByYear = null; /* { "2026": [{date,name}, ...], ... } */
+/* 範囲フィールドのデフォルト：fromYear = 今年 - 2（直近の工数計算に十分）。toYear は空（CSV の最大まで） */
+(function initHhRange(){
+  const y = new Date().getFullYear();
+  const fy = $('hhFromYear'); if(fy && !fy.value) fy.value = String(y - 2);
+})();
+function hhGetRange(){
+  const f = parseInt($('hhFromYear').value, 10);
+  const t = parseInt($('hhToYear').value, 10);
+  return {
+    fromYear: Number.isFinite(f) ? f : null,
+    toYear:   Number.isFinite(t) ? t : null,
+  };
+}
+function hhFilterYears(years){
+  const {fromYear, toYear} = hhGetRange();
+  return years.filter(y=>{
+    const n = Number(y);
+    if(fromYear != null && n < fromYear) return false;
+    if(toYear   != null && n > toYear)   return false;
+    return true;
+  });
+}
 async function hhDecodeShiftJis(file){
   const buf = await file.arrayBuffer();
   try{
@@ -965,6 +994,31 @@ function hhParseCsv(text){
   }
   return byYear;
 }
+function hhRenderPreview(){
+  if(!hhParsedByYear) return;
+  const byYear = hhParsedByYear;
+  const allYears = Object.keys(byYear).sort();
+    const total = allYears.reduce((s,y)=>s+byYear[y].length, 0);
+    const writeYears = hhFilterYears(allYears);
+    const skipYears = allYears.filter(y=>!writeYears.includes(y));
+    const writeTotal = writeYears.reduce((s,y)=>s+byYear[y].length, 0);
+    let html = `<div>CSV 全体：<b>${allYears.length}</b> 年分・<b>${total}</b> 件（${allYears[0]}〜${allYears[allYears.length-1]}）</div>`;
+    html += `<div style="margin-top:4px;padding:6px 8px;background:rgba(140,180,240,.08);border:1px solid rgba(140,180,240,.3);border-radius:6px"><b>書き込み対象：${writeYears.length} 年分・${writeTotal} 件</b>${writeYears.length ? `（${writeYears[0]}〜${writeYears[writeYears.length-1]}）` : ''}</div>`;
+    if(writeYears.length){
+      html += '<div style="margin-top:8px"><b>書き込み内訳：</b></div>';
+      for(const y of writeYears){
+        const items = byYear[y];
+        const sample = items.map(d=>`${d.date} ${escH(d.name)}`).join(' / ');
+        html += `<div style="margin:4px 0;padding:6px 8px;background:var(--bg2);border-radius:6px"><b>${y}</b>（${items.length} 件）<div style="color:var(--text3);font-size:11px;margin-top:2px">${escH(sample)}</div></div>`;
+      }
+    }
+    if(skipYears.length){
+      html += `<div style="margin-top:8px;color:var(--text3)"><b>スキップ（${skipYears.length} 年分）：</b> ${skipYears.map(y=>`${y}(${byYear[y].length})`).join(' / ')}</div>`;
+    }
+    $('hhPreview').innerHTML = html;
+    $('hhUploadBtn').classList.remove('hidden');
+    $('hhClearBtn').classList.remove('hidden');
+}
 $('hhPreviewBtn').onclick=async()=>{
   const f = $('hhCsvFile').files && $('hhCsvFile').files[0];
   if(!f){ $('hhPreview').textContent='CSV ファイルを選択してください'; return; }
@@ -972,29 +1026,8 @@ $('hhPreviewBtn').onclick=async()=>{
   $('hhResult').textContent='';
   try{
     const text = await hhDecodeShiftJis(f);
-    const byYear = hhParseCsv(text);
-    hhParsedByYear = byYear;
-    const years = Object.keys(byYear).sort();
-    const total = years.reduce((s,y)=>s+byYear[y].length, 0);
-    const nowYear = new Date().getFullYear();
-    /* 直近〜将来の年を優先表示（過去は件数のみ） */
-    const futureYears = years.filter(y => Number(y) >= nowYear - 1);
-    const pastYears = years.filter(y => Number(y) < nowYear - 1);
-    let html = `<div>合計 <b>${years.length}</b> 年分・<b>${total}</b> 件</div>`;
-    if(futureYears.length){
-      html += '<div style="margin-top:8px"><b>直近〜将来：</b></div>';
-      for(const y of futureYears){
-        const items = byYear[y];
-        const sample = items.map(d=>`${d.date} ${escH(d.name)}`).join(' / ');
-        html += `<div style="margin:4px 0;padding:6px 8px;background:var(--bg2);border-radius:6px"><b>${y}</b>（${items.length} 件）<div style="color:var(--text3);font-size:11px;margin-top:2px">${escH(sample)}</div></div>`;
-      }
-    }
-    if(pastYears.length){
-      html += `<div style="margin-top:8px;color:var(--text3)"><b>過去（${pastYears.length} 年分・件数のみ）：</b> ${pastYears.map(y=>`${y}(${byYear[y].length})`).join(' / ')}</div>`;
-    }
-    $('hhPreview').innerHTML = html;
-    $('hhUploadBtn').classList.remove('hidden');
-    $('hhClearBtn').classList.remove('hidden');
+    hhParsedByYear = hhParseCsv(text);
+    hhRenderPreview();
   }catch(e){
     $('hhPreview').textContent='パース失敗: '+e.message;
     hhParsedByYear = null;
@@ -1002,6 +1035,10 @@ $('hhPreviewBtn').onclick=async()=>{
     $('hhClearBtn').classList.add('hidden');
   }
 };
+/* 範囲フィールドを変更したら、プレビュー済みなら即時再描画 */
+['hhFromYear','hhToYear'].forEach(id=>{
+  $(id).addEventListener('input', ()=>{ if(hhParsedByYear) hhRenderPreview(); });
+});
 $('hhClearBtn').onclick=()=>{
   $('hhCsvFile').value='';
   $('hhPreview').innerHTML='';
@@ -1012,9 +1049,11 @@ $('hhClearBtn').onclick=()=>{
 };
 $('hhUploadBtn').onclick=async()=>{
   if(!hhParsedByYear){ $('hhResult').textContent='先にプレビューしてください'; return; }
-  const years = Object.keys(hhParsedByYear).sort();
-  if(!years.length){ $('hhResult').textContent='書き込む年がありません'; return; }
-  if(!confirm(`${years.length} 年分（${years[0]}-${years[years.length-1]}）を publicHolidays/JP/years/* に書き込みます。既存データは上書きされます。続行しますか？`)) return;
+  const allYears = Object.keys(hhParsedByYear).sort();
+  const years = hhFilterYears(allYears);
+  if(!years.length){ $('hhResult').textContent='書き込み範囲が空です（開始年〜終了年を確認してください）'; return; }
+  const total = years.reduce((s,y)=>s+hhParsedByYear[y].length, 0);
+  if(!confirm(`${years.length} 年分・${total} 件（${years[0]}〜${years[years.length-1]}）を publicHolidays/JP/years/* に書き込みます。既存データは上書きされます。続行しますか？`)) return;
   $('hhResult').textContent='書き込み中…';
   const nowIso = new Date().toISOString();
   const by = me && me.email ? me.email : '';
