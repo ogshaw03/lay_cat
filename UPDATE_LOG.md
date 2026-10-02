@@ -2918,6 +2918,19 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.023) **工数集計 土日祝除外・日境界 04:00 を導入**：
+  - 旧実装：カレンダー日（00:00 境界）で日を区切り、全日に coreHours デフォルト（10:30-19:30）を一律適用。土日もフルでカウントされていた。
+  - 新実装：
+    - **日境界 `dayBoundaryHour`（デフォルト 4）**：workday 境界を 04:00 に移動。深夜 02:00 に作業終了したら前日の workday として集計。アニメ現場の慣習に近い。
+    - **土日除外 `excludeWeekend`（デフォルト true）**：土日はデフォルト稼働帯なし。ただし **status 遷移などの証跡があれば「最早イベント〜最遅イベント」のみ稼働帯として認める**（休日出勤を取りこぼさない）。
+    - **祝日除外 `holidays`（任意配列）**：`["YYYY-MM-DD", ...]` 形式。土日と同じ扱い。デフォルト空（祝日無効）。
+  - 設定箇所：`laycat.project.json` の `root.manhours.{dayBoundaryHour, excludeWeekend, holidays}` を参照。未設定時は上記デフォルトが効く。
+  - 新規ヘルパ：`_getManhoursOptions(root)` / `_workdayStartMs(ts, bHour)` / `_workdayDateKey(wd)` / `_isWorkday(wd, opts)` / `_clockToWorkdayOffset(clockMin, bHour)`。
+  - 既存関数：`_intersectWithCoreHours` に `options` 引数を追加、`_shotDailyMaskedMs` も `mhOpts` 引数で受け取り。両方 workday 境界ベースのループに変更。
+  - 影響：工数タブの棒グラフ・日別稼働ヒートマップ両方に反映。既存プロジェクトは土日の日数が減る可能性あり（期待動作）。
+  - 書き込み発生なし。
+  - APP_VERSION：2026.10.02.022 → 2026.10.02.023
+
 - (dev v2026.10.02.022) **スケジュールタブ 実績バーのマスク反映（v.020）を撤回**：
   - v.020 で「背景バーを薄く＋マスク適用部分を濃いオーバーレイ」の 2 層構成にしたが、「見づらい」ユーザーフィードバックのため撤回。
   - 従来の単色バー（opacity 0.9 完了／0.7 進行中）表示に戻した。

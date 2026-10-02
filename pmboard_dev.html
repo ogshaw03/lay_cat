@@ -611,7 +611,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.022';
+const APP_VERSION='2026.10.02.023';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2441,33 +2441,42 @@ function _getCoreHoursMinutes(root, assigneeId){
    - evidenceEvents = 作業者アクションの status 遷移時刻の配列（ms）
    - その日に evidence event があれば、その時刻で mask を前後に拡張（残業拾う）
    - 作業者アクション以外（例：チェック待ち→リテイク はチェック担当者のアクション）は呼び出し側で除外して渡す */
-function _intersectWithCoreHours(segStartMs, segEndMs, defaultMask, evidenceEvents){
+function _intersectWithCoreHours(segStartMs, segEndMs, defaultMask, evidenceEvents, options){
   if(!(segEndMs > segStartMs)) return 0;
   const dayMs = 86400000;
+  const opts = options || {dayBoundaryHour:0, excludeWeekend:false, holidays:[]};
+  const bHour = opts.dayBoundaryHour || 0;
   let totalMs = 0;
-  const d = new Date(segStartMs);
-  d.setHours(0,0,0,0);
-  let dayStart = d.getTime();
-  while(dayStart < segEndMs){
-    const dayEnd = dayStart + dayMs;
-    let maskStartMin = defaultMask.start;
-    let maskEndMin = defaultMask.end;
-    /* その日の作業者アクション証跡で mask を拡張 */
+  /* v.023：workday (dayBoundaryHour 境界) で日を区切り、土日祝は証跡がある時のみ稼働帯を認める。 */
+  let wdStart = _workdayStartMs(segStartMs, bHour);
+  while(wdStart < segEndMs){
+    const wdEnd = wdStart + dayMs;
+    const isWork = _isWorkday(wdStart, opts);
+    let maskStartMs, maskEndMs;
+    if(isWork){
+      /* 稼働日：coreHours デフォルトから開始 */
+      maskStartMs = wdStart + _clockToWorkdayOffset(defaultMask.start, bHour) * 60000;
+      maskEndMs   = wdStart + _clockToWorkdayOffset(defaultMask.end,   bHour) * 60000;
+    }else{
+      /* 土日祝：デフォルトなし。証跡があれば証跡の最早〜最遅のみ稼働扱い */
+      maskStartMs = null;
+      maskEndMs = null;
+    }
+    /* その workday 内の作業者アクション証跡で mask を拡張 */
     if(evidenceEvents && evidenceEvents.length){
       for(const tMs of evidenceEvents){
-        if(tMs >= dayStart && tMs < dayEnd){
-          const mod = (tMs - dayStart) / 60000;
-          if(mod < maskStartMin) maskStartMin = mod;
-          if(mod > maskEndMin)   maskEndMin   = mod;
+        if(tMs >= wdStart && tMs < wdEnd){
+          if(maskStartMs == null || tMs < maskStartMs) maskStartMs = tMs;
+          if(maskEndMs   == null || tMs > maskEndMs)   maskEndMs   = tMs;
         }
       }
     }
-    const winStart = dayStart + maskStartMin*60000;
-    const winEnd   = dayStart + maskEndMin*60000;
-    const a = Math.max(segStartMs, winStart);
-    const b = Math.min(segEndMs,   winEnd);
-    if(b > a) totalMs += (b - a);
-    dayStart += dayMs;
+    if(maskStartMs != null && maskEndMs != null && maskEndMs > maskStartMs){
+      const a = Math.max(segStartMs, maskStartMs);
+      const b = Math.min(segEndMs,   maskEndMs);
+      if(b > a) totalMs += (b - a);
+    }
+    wdStart += dayMs;
   }
   return totalMs;
 }
@@ -2496,6 +2505,52 @@ function _projectDayDurationMs(root){
   const ch = _getCoreHoursMinutes(root, null); /* メンバーをスキップしてプロジェクト／fallback 側を取る */
   return (ch.end - ch.start) * 60000;
 }
+/* v.023：マンアワー関連の集計オプション。root.manhours から読む。
+   - dayBoundaryHour: 1 日の境界時刻（デフォルト 4 = 午前 4 時）。深夜作業を前日分として集計するため。
+   - excludeWeekend: 土日は coreHours デフォルトを適用せず、イベント証跡があるときのみ稼働帯を認める（デフォルト true）
+   - holidays: ["YYYY-MM-DD", ...] 形式の祝日リスト（任意・デフォルト空）。土日と同じ扱い。 */
+function _getManhoursOptions(root){
+  const m = (root && root.manhours) || {};
+  return {
+    dayBoundaryHour: (typeof m.dayBoundaryHour === 'number' && m.dayBoundaryHour>=0 && m.dayBoundaryHour<=12) ? m.dayBoundaryHour : 4,
+    excludeWeekend: m.excludeWeekend !== false, /* undefined/true → true */
+    holidays: Array.isArray(m.holidays) ? m.holidays : [],
+  };
+}
+/* workday 開始 (ms) を返す。timestamp が workday 境界より前なら前日に属する扱い。 */
+function _workdayStartMs(tsMs, dayBoundaryHour){
+  const d = new Date(tsMs);
+  d.setHours(dayBoundaryHour, 0, 0, 0);
+  const bMs = d.getTime();
+  if(tsMs < bMs){
+    /* まだ今日の境界時刻より前 → "昨日の workday" に属する */
+    d.setDate(d.getDate() - 1);
+    return d.getTime();
+  }
+  return bMs;
+}
+/* workday を "YYYY-MM-DD"（workday 開始日の日付）で返す。祝日判定に使う。 */
+function _workdayDateKey(wdStartMs){
+  const d = new Date(wdStartMs);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+/* workday が稼働日（平日かつ非祝日）か返す。 */
+function _isWorkday(wdStartMs, options){
+  const d = new Date(wdStartMs);
+  const dow = d.getDay();
+  if(options.excludeWeekend && (dow === 0 || dow === 6)) return false;
+  if(options.holidays && options.holidays.length){
+    if(options.holidays.includes(_workdayDateKey(wdStartMs))) return false;
+  }
+  return true;
+}
+/* 時刻 (minute-of-day) を workday 開始からのオフセット分に変換。
+   例：dayBoundaryHour=4, clockMin=630(10:30) → 390 分
+       dayBoundaryHour=4, clockMin=120(02:00) → 120+24*60-4*60 = 1320 分（翌日早朝扱い） */
+function _clockToWorkdayOffset(clockMin, dayBoundaryHour){
+  const bMin = dayBoundaryHour * 60;
+  return clockMin >= bMin ? clockMin - bMin : clockMin + 24*60 - bMin;
+}
 function _formatCoreHoursLabel(ch){
   const toHM = min => {
     const h=Math.floor(min/60), m=min%60;
@@ -2519,6 +2574,8 @@ function renderEffortPane(){
   const dayDivisorMs = _projectDayDurationMs(root);
   const projMask = _getCoreHoursMinutes(root, null); /* 表示ラベル用 */
   const projStatuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
+  /* v.023：土日祝除外・日境界オプション。 */
+  const mhOpts = _getManhoursOptions(root);
   const rows = [];
   for(const shot of shots){
     let totalMs = 0, segs = 0;
@@ -2534,7 +2591,7 @@ function renderEffortPane(){
         /* v.018：Phase 2 強化 — segment 内の作業者アクション遷移を全て証跡として mask を拡張。
            チェック待ち→* はチェック担当者のアクションなので証跡から除外。 */
         const evidence = _collectWorkerEvidenceEvents(history, startMs, endMs, isOpen, projStatuses);
-        const d = _intersectWithCoreHours(startMs, endMs, mask, evidence);
+        const d = _intersectWithCoreHours(startMs, endMs, mask, evidence, mhOpts);
         if(d > 0){ totalMs += d; segs++; }
       }
     }
@@ -2584,14 +2641,15 @@ function renderEffortPane(){
   /* v.013：日別稼働ヒートマップ（マスク適用後）。
      ショットごとに DATA.timeline の start〜end の各日の稼働時間を計算し、
      coreHours 長さに対する比率を色の濃淡で表示。 */
-  renderEffortHeatmap(rows, root, dayDivisorMs);
+  renderEffortHeatmap(rows, root, dayDivisorMs, mhOpts);
 }
 
 /* 日別稼働ヒートマップのレンダ：
    - rows: renderEffortPane と同じ順（長い順）
    - root: coreHours 判定用
-   - dayDivisorMs: その日の最大稼働時間 ms（色濃度の分母に使う） */
-function renderEffortHeatmap(rows, root, dayDivisorMs){
+   - dayDivisorMs: その日の最大稼働時間 ms（色濃度の分母に使う）
+   - mhOpts: 土日祝除外・日境界オプション */
+function renderEffortHeatmap(rows, root, dayDivisorMs, mhOpts){
   const container = document.getElementById('effortHeatmap');
   if(!container) return;
   if(!DATA.timeline || !DATA.timeline.days){
@@ -2628,7 +2686,7 @@ function renderEffortHeatmap(rows, root, dayDivisorMs){
   const htmlRows = rows.map(r=>{
     const shot = DATA.shots.find(s=>s.sectionNode.id === r.shotId);
     if(!shot) return '';
-    const daily = _shotDailyMaskedMs(shot, root, tStart, totalDays);
+    const daily = _shotDailyMaskedMs(shot, root, tStart, totalDays, mhOpts);
     /* セル描画：連続した非ゼロ日はまとめず各日を div で描画（コードシンプル化） */
     const cells = [];
     /* 土日ハッチング */
@@ -2673,10 +2731,16 @@ function renderEffortHeatmap(rows, root, dayDivisorMs){
 /* 1 ショットの各日の稼働時間（マスク適用後 ms）を配列で返す。
    v.018：Phase 2 強化 — segment 内の作業者アクション遷移を全て証跡として mask を拡張。
    インデックス 0 = タイムライン start 日、インデックス totalDays-1 = end 日。 */
-function _shotDailyMaskedMs(shot, root, tStartMs, totalDays){
+function _shotDailyMaskedMs(shot, root, tStartMs, totalDays, mhOpts){
   const daily = new Array(totalDays).fill(0);
   const nowMs = Date.now();
   const projStatuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
+  const opts = mhOpts || _getManhoursOptions(root);
+  const bHour = opts.dayBoundaryHour || 0;
+  /* v.023：workday 境界で日を区切り、土日祝は証跡がある時のみ稼働帯を認める。
+     ヒートマップのセル idx はカレンダー日ベース（tStartMs 起点）に揃える。
+     workday 開始 wdStart は tStartMs の 00:00 起点より "-bHour h" 相当だが、
+     cell idx は wdStart の "日付" を見て tStart との差分で決める（workday → calendar day の近似）。 */
   for(const st of (shot.stages||[])){
     const defaultMask = _getCoreHoursMinutes(root, st.assignee);
     const history = st.history || [];
@@ -2686,33 +2750,39 @@ function _shotDailyMaskedMs(shot, root, tStartMs, totalDays){
       const isOpen = (seg.end == null);
       const eMs = isOpen ? nowMs : seg.end.getTime();
       const evidence = _collectWorkerEvidenceEvents(history, sMs, eMs, isOpen, projStatuses);
-      /* セグメントが跨ぐ各日について拡張 mask との交差を計算 */
-      const d = new Date(sMs);
-      d.setHours(0,0,0,0);
-      let dMs = d.getTime();
-      while(dMs < eMs){
-        const dayEnd = dMs + 86400000;
-        let maskStartMin = defaultMask.start;
-        let maskEndMin = defaultMask.end;
-        /* その日の作業者アクション証跡で mask を拡張 */
+      let wdStart = _workdayStartMs(sMs, bHour);
+      while(wdStart < eMs){
+        const wdEnd = wdStart + 86400000;
+        const isWork = _isWorkday(wdStart, opts);
+        let maskStartMs, maskEndMs;
+        if(isWork){
+          maskStartMs = wdStart + _clockToWorkdayOffset(defaultMask.start, bHour) * 60000;
+          maskEndMs   = wdStart + _clockToWorkdayOffset(defaultMask.end,   bHour) * 60000;
+        }else{
+          maskStartMs = null;
+          maskEndMs = null;
+        }
         for(const tMs of evidence){
-          if(tMs >= dMs && tMs < dayEnd){
-            const mod = (tMs - dMs) / 60000;
-            if(mod < maskStartMin) maskStartMin = mod;
-            if(mod > maskEndMin)   maskEndMin   = mod;
+          if(tMs >= wdStart && tMs < wdEnd){
+            if(maskStartMs == null || tMs < maskStartMs) maskStartMs = tMs;
+            if(maskEndMs   == null || tMs > maskEndMs)   maskEndMs   = tMs;
           }
         }
-        const winStart = dMs + maskStartMin*60000;
-        const winEnd   = dMs + maskEndMin*60000;
-        const a = Math.max(sMs, winStart);
-        const b = Math.min(eMs, winEnd);
-        if(b > a){
-          const idx = Math.round((dMs - tStartMs) / 86400000);
-          if(idx >= 0 && idx < totalDays){
-            daily[idx] += (b - a);
+        if(maskStartMs != null && maskEndMs != null && maskEndMs > maskStartMs){
+          const a = Math.max(sMs, maskStartMs);
+          const b = Math.min(eMs, maskEndMs);
+          if(b > a){
+            /* セル idx：workday 開始日のカレンダー日で決める。
+               tStartMs が 00:00 起点なので、wdStart (bHour:00) との差を日数で丸める。 */
+            const dayDate = new Date(wdStart);
+            dayDate.setHours(0,0,0,0);
+            const idx = Math.round((dayDate.getTime() - tStartMs) / 86400000);
+            if(idx >= 0 && idx < totalDays){
+              daily[idx] += (b - a);
+            }
           }
         }
-        dMs += 86400000;
+        wdStart += 86400000;
       }
     }
   }
