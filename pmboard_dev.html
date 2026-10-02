@@ -268,6 +268,10 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row .track{position:relative;height:100%;padding:0;min-height:34px}
 .gantt-row .track .day{position:absolute;top:0;bottom:0;border-right:1px solid rgba(255,255,255,.02)}
 .gantt-row .track .day.wknd{background:rgba(255,255,255,.015)}
+/* v.025：土日祝のオーバーレイ。バーに重ねて半透明表示（土日祝＝非稼働日の視覚化）。 */
+.gantt-row .track .day.off-dim{background:rgba(0,0,0,.42);pointer-events:none;z-index:3}
+.gantt-row .track .day.hol-dim{background:rgba(220,80,80,.3);pointer-events:none;z-index:3}
+.gantt-hdr .timeline .days .d.holiday{background:rgba(220,80,80,.1);color:var(--red)}
 /* コンパクト行に合わせて plan/actual を 1 行内に上下スタック（各 12px 帯） */
 .gantt-row .track .seg-plan{position:absolute;top:4px;height:12px;border:1px dashed;border-radius:var(--radius2);overflow:visible;cursor:grab;user-select:none}
 /* 選択中の予定バー：白い実線アウトラインで強調（Del / Ctrl+C / Ctrl+V の対象） */
@@ -291,7 +295,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-row .track .seg-actual{position:absolute;top:18px;height:12px;border-radius:var(--radius2)}
 .gantt-row .track .seg-actual.wip{border-right:1px dashed rgba(255,255,255,.35)}
 .gantt-row .track .seg-actual .seg-actual-lbl{position:absolute;right:5px;top:0;bottom:0;display:flex;align-items:center;font-size:9px;color:#16161a;font-family:var(--font-code);font-weight:700;letter-spacing:.2px;white-space:nowrap}
-.gantt-row .track .milestone{position:absolute;top:11px;width:10px;height:10px;background:var(--amber);transform:rotate(45deg);z-index:3}
+.gantt-row .track .milestone{position:absolute;top:11px;width:10px;height:10px;background:var(--amber);transform:rotate(45deg);z-index:4}
 
 .gantt-today{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed var(--red);z-index:6;pointer-events:none}
 .gantt-today .lbl{position:absolute;top:2px;left:4px;font-size:9px;color:var(--red);font-family:var(--font-code);font-weight:700;letter-spacing:.5px;background:var(--bg);padding:1px 5px;border-radius:3px;border:1px solid rgba(224,106,106,.4);white-space:nowrap;z-index:7}
@@ -611,7 +615,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.024';
+const APP_VERSION='2026.10.02.025';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1266,6 +1270,30 @@ function fmtDate(dayIndex){
 function escapeHtml(s){
   return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+/* v.025：祝日 ISO セット（DATA.holidays から）。土日祝オーバーレイ描画に使う。 */
+function _buildHolidaySet(){
+  return new Set(Array.isArray(DATA.holidays) ? DATA.holidays : []);
+}
+/* v.025：ガントの各トラックに「土日祝オーバーレイ」セルの HTML 配列を返す。
+   バーの後ろに push することでバーの上に半透明の暗色（土日）or 赤系（祝日）が重なり、
+   「非稼働日はバーの進行が無い」ことを視覚化する。
+   pointer-events:none なのでバーのドラッグ・リサイズを邪魔しない。 */
+function _trackOffDayOverlayHtml(start, days, px, holidaySet){
+  const html = [];
+  for(let i=0;i<days;i++){
+    const dt = new Date(start.getTime()+i*86400000);
+    const p = jstParts(dt);
+    const iso = p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');
+    const isHol = holidaySet.has(iso);
+    const isWknd = (p.wk===0 || p.wk===6);
+    if(isHol){
+      html.push(`<div class="day hol-dim" style="left:${i*px}%;width:${px}%"></div>`);
+    }else if(isWknd){
+      html.push(`<div class="day off-dim" style="left:${i*px}%;width:${px}%"></div>`);
+    }
+  }
+  return html;
+}
 
 /* =========== Timeline Header =========== */
 function buildTimelineHdr(){
@@ -1287,6 +1315,7 @@ function buildTimelineHdr(){
     w.style.flex = `${daysInWeek} 0 0`;
     weeks.appendChild(w);
   }
+  const holidaySet = _buildHolidaySet();
   for(let i=0;i<days;i++){
     const d = document.createElement('div'); d.className='d';
     const dt = new Date(start.getTime()+i*86400000);
@@ -1295,6 +1324,8 @@ function buildTimelineHdr(){
     d.textContent = p.d;
     /* v.007：日付セルクリックでマイルストーン追加 */
     const iso = p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');
+    /* v.025：祝日は赤系ハイライト（土日クラスを上書き） */
+    if(holidaySet.has(iso)) d.classList.add('holiday');
     d.dataset.iso = iso;
     d.style.cursor = 'pointer';
     d.title = iso + ' — クリックでマイルストーン追加';
@@ -1512,12 +1543,15 @@ function buildGantt(){
       }
 
       const track=[];
-      /* Weekend */
+      /* Weekend 背景（バー下） */
       for(let i=0;i<days;i++){
         const dt=new Date(start.getTime()+i*86400000);
         const pj=jstParts(dt);
         if(pj.wk===0||pj.wk===6) track.push(`<div class="day wknd" style="left:${i*px}%;width:${px}%"></div>`);
       }
+      /* v.025：土日祝オーバーレイ（バーに重ねる半透明。_buildHolidaySet はガント全体で 1 回だけ構築したいが、
+         ここでは呼び出し元で既に buildTimelineHdr 等でもキャッシュを使っていないため許容する。 */
+      const _holSet = _buildHolidaySet();
       /* Plan bars（予定バー）。予定未設定の工程は何も描画しない（プレースホルダは廃止）。 */
       for(const st of stages){
         if(!(st.plannedStart && st.plannedEnd)) continue;
@@ -1554,6 +1588,8 @@ function buildGantt(){
           track.push(`<div class="seg-actual ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}" title="実績：${escapeHtml(fmtJstDate(seg.start))} 〜 ${openEnd?'今日':escapeHtml(fmtJstDate(seg.end))}"><span class="seg-actual-lbl">${labelText}</span></div>`);
         });
       }
+      /* v.025：土日祝オーバーレイ（バーの上・マイルストーンの下）。bar.z-index(default) < overlay.z-index(3) < milestone.z-index */
+      for(const h of _trackOffDayOverlayHtml(start, days, px, _holSet)) track.push(h);
       /* Milestones */
       for(const m of (shot.milestones||[])){
         if(!m.ts) continue;
@@ -1796,7 +1832,8 @@ function buildCustomGantt(scheduleId){
       : `<span class="st-chip noplan">未計画</span>`;
 
     const track=[];
-    /* Weekend background */
+    const _holSet2 = _buildHolidaySet();
+    /* Weekend 背景（バー下） */
     for(let i=0;i<days;i++){
       const dt=new Date(start.getTime()+i*86400000);
       const p=jstParts(dt);
@@ -1812,6 +1849,8 @@ function buildCustomGantt(scheduleId){
       const w = (p2-p1)*px;
       track.push(`<div class="seg-plan seg-placeholder" data-cust-sch="${sch.id}" data-cust-item="${it.id}" style="left:${p1*px}%;width:${w}%;border-color:${it.color};background:transparent;opacity:.55" title="ドラッグして「${escapeHtml(it.name)}」の予定を設定"><span class="seg-lbl" style="color:${it.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">+ ${escapeHtml(it.name)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
     }
+    /* v.025：土日祝オーバーレイ（バーに重ねる半透明） */
+    for(const h of _trackOffDayOverlayHtml(start, days, px, _holSet2)) track.push(h);
 
     row.innerHTML = `
       <div class="shot">
