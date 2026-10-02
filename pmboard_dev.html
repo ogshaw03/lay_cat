@@ -646,7 +646,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.036';
+const APP_VERSION='2026.10.03.037';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1352,6 +1352,33 @@ function _buildPublicHolidaySet(){
 function _buildCompanyHolidaySet(){
   return new Set(Array.isArray(DATA.companyHolidays) ? DATA.companyHolidays : []);
 }
+/* v.037：fractional day idx [a1, a2] を土日祝で区切った稼働サブセグメント配列に分割。
+   戻り値：[{s, e}, ...]（s / e は dayIdx スケールの fractional 値、稼働日のみ）。
+   連続稼働日は 1 本のサブセグメントに統合される。土日祝が間に挟まるとそこでバーを切る。 */
+function _splitBarByOffDays(a1, a2, timelineStart, pubSet, coSet){
+  const subs = [];
+  const d0 = Math.floor(a1);
+  const d1 = Math.ceil(a2);
+  const isOff = (dayNo) => {
+    const dt = new Date(timelineStart.getTime() + dayNo*86400000);
+    const p = jstParts(dt);
+    const iso = p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');
+    return (pubSet && pubSet.has(iso)) || (coSet && coSet.has(iso)) || p.wk===0 || p.wk===6;
+  };
+  let runS = null, runE = null;
+  for(let d = d0; d < d1; d++){
+    if(!isOff(d)){
+      const dayS = Math.max(a1, d);
+      const dayE = Math.min(a2, d+1);
+      if(runS === null){ runS = dayS; runE = dayE; }
+      else{ runE = dayE; }
+    }else{
+      if(runS !== null){ subs.push({s:runS, e:runE}); runS = null; runE = null; }
+    }
+  }
+  if(runS !== null) subs.push({s:runS, e:runE});
+  return subs;
+}
 /* v.029：プロジェクトの root ノード取得（複数箇所から参照する便利関数） */
 function _getProjectRoot(){
   const nodes = (DATA.project && Array.isArray(DATA.project.nodes)) ? DATA.project.nodes : [];
@@ -1723,25 +1750,47 @@ function buildGantt(){
          それ以外のセグメントは日数ラベル（Nd）。
          v.022：v.020 の「マスク外を薄く表示」オーバーレイ方式はバーが読みづらく不評のため、
          従来の単色バー（opacity 0.9 完了／0.7 進行中）表示に戻した。マスク効果は工数タブと
-         ヒートマップで引き続き確認可能。 */
+         ヒートマップで引き続き確認可能。
+         v.037：土日祝で視覚的にバーを切る（_splitBarByOffDays で稼働サブセグメント化）。
+         バーが続いていると稼働しているように見えて誤認するため、土日祝の gap で明示的に分断。
+         Nd ラベルは稼働日ベースの合計（カレンダー日ではなく workday 合計）。 */
       for(const st of stages){
         const segs = st.workSegments || [];
         if(!segs.length) continue;
         let totalWorkDays = 0;
+        /* 1 パス目：稼働日合計（ラベル用）を計算 */
+        segs.forEach((seg) => {
+          const a1 = dayIdx(seg.start);
+          const openEnd = seg.end === null;
+          const a2 = openEnd ? todayIdx : dayIdx(seg.end);
+          if(a2<0||a1>days) return;
+          const subsForTotal = _splitBarByOffDays(a1, a2, start, _pubSet, _coSet);
+          for(const sub of subsForTotal) totalWorkDays += Math.max(0, sub.e - sub.s);
+        });
+        /* 稼働日ゼロのケース（全部週末等）でも最低 1 日表示（旧挙動踏襲） */
+        if(totalWorkDays < 1) totalWorkDays = 1;
+        /* 2 パス目：描画 */
         segs.forEach((seg, idx) => {
           const a1 = dayIdx(seg.start);
           const openEnd = seg.end === null;
           const a2 = openEnd ? todayIdx : dayIdx(seg.end);
           if(a2<0||a1>days) return;
-          const w = Math.max(px*0.5, (a2-a1)*px);
           const isLast = idx === segs.length-1;
           const isWip = openEnd && !st.isDone && isLast;
           const style = `background:${st.color};opacity:${isWip?'.7':'.9'}`;
-          totalWorkDays += Math.max(1, a2-a1);
-          let labelText = '';
-          if(isWip) labelText = '進行中';
-          else if(isLast) labelText = `${totalWorkDays}d`;
-          track.push(`<div class="seg-actual ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}" title="実績：${escapeHtml(fmtJstDate(seg.start))} 〜 ${openEnd?'今日':escapeHtml(fmtJstDate(seg.end))}"><span class="seg-actual-lbl">${labelText}</span></div>`);
+          const subs = _splitBarByOffDays(a1, a2, start, _pubSet, _coSet);
+          if(!subs.length) return; /* 全日 off → 描画スキップ */
+          const lastSubIdx = subs.length - 1;
+          subs.forEach((sub, subIdx) => {
+            const sw = Math.max(px*0.3, (sub.e - sub.s) * px);
+            const isLastPiece = isLast && subIdx === lastSubIdx;
+            let labelText = '';
+            if(isLastPiece){
+              if(isWip) labelText = '進行中';
+              else labelText = `${Math.round(totalWorkDays*10)/10}d`;
+            }
+            track.push(`<div class="seg-actual ${isWip && isLastPiece?'wip':''}" style="left:${sub.s*px}%;width:${sw}%;${style}" title="実績：${escapeHtml(fmtJstDate(seg.start))} 〜 ${openEnd?'今日':escapeHtml(fmtJstDate(seg.end))}（稼働日のみ表示）"><span class="seg-actual-lbl">${labelText}</span></div>`);
+          });
         });
       }
       /* v.025／v.026：土日祝オーバーレイ（バーの上・マイルストーンの下）。bar.z-index(default) < overlay.z-index(3) < milestone.z-index */
