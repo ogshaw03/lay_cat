@@ -1018,7 +1018,8 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .tn-domain-chk.disabled input{cursor:not-allowed}
 .tn-domain-list{font-size:11px;color:var(--text2);padding-left:22px}
 .tn-domain-list code{background:var(--bg2);padding:1px 6px;border-radius:4px;font-size:11px;color:var(--text);border:1px solid var(--border);font-family:var(--font-code)}
-.tn-add{display:flex;gap:6px;align-items:center;padding:8px;background:var(--bg3);border:1px dashed var(--border);border-radius:6px}
+.tn-add{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px;background:var(--bg3);border:1px dashed var(--border);border-radius:6px}
+.tn-add input{min-width:0}
 .tn-add input{flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:6px 9px;border-radius:5px;font-size:12px}
 .tn-add select{background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:6px 9px;border-radius:5px;font-size:12px}
 .tn-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--border);background:var(--bg)}
@@ -4001,7 +4002,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.076';
+const APP_VERSION='2026.10.02.077';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19921,7 +19922,7 @@ async function _tnRender(state){
     <h4 class="tn-section-title">メンバー追加</h4>
     <div class="tn-add">
       <input id="tnAddEmail" type="email" placeholder="メール（例：a@example.com）" autocomplete="off">
-      <input id="tnAddName" type="text" placeholder="名前（任意・空欄なら自動取得）" autocomplete="off" style="flex:0 0 180px">
+      <input id="tnAddName" type="text" placeholder="名前（任意）" title="空欄なら自動取得（マイページ設定 or Google 名）" autocomplete="off" style="flex:0 0 140px">
       <select id="tnAddRole">
         <option value="member">member</option>
         <option value="admin">admin</option>
