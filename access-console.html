@@ -174,7 +174,7 @@
             <option value="free">free</option>
             <option value="enterprise">enterprise</option>
           </select>
-          <input id="tnLimitInput" type="number" min="1" value="10" placeholder="席数" autocomplete="off" style="flex:0 0 90px">
+          <input id="tnLimitInput" type="number" min="0" value="10" placeholder="席数（0=無制限）" title="0 を入力すると無制限（枠超過チェックなし）" autocomplete="off" style="flex:0 0 150px">
           <input id="tnDomainsInput" type="text" placeholder="ドメイン（カンマ区切り・任意／自動判定の fallback 用）" autocomplete="off">
           <input id="tnDescInput" type="text" placeholder="説明（任意）" autocomplete="off" style="flex:0 0 200px">
         </div>
@@ -870,7 +870,7 @@ function paintAccessWin(){
         const isFull=(limit>0 && used>=limit);
         const card=d.createElement('div'); card.className='tn-card';
         const head=d.createElement('div'); head.className='tn-card-head';
-        head.innerHTML=`<span class="tn-card-name">${escH(t.name||t.id)}</span><span class="tn-card-id">${escH(t.id)}</span><span class="tn-card-meta">plan: <b>${escH(t.plan||'—')}</b> ・ <span class="${isFull?'license-full':''}">${used}/${limit||'—'}</span> 席 ・ owner: ${escH(t.ownerEmail||'未設定')}</span>`;
+        head.innerHTML=`<span class="tn-card-name">${escH(t.name||t.id)}</span><span class="tn-card-id">${escH(t.id)}</span><span class="tn-card-meta">plan: <b>${escH(t.plan||'—')}</b> ・ <span class="${isFull?'license-full':''}">${used}/${limit>0?limit:'無制限'}</span> 席 ・ owner: ${escH(t.ownerEmail||'未設定')}</span>`;
         card.appendChild(head);
         const mems=d.createElement('div'); mems.className='tn-card-members';
         if(!(t.members||[]).length){
@@ -1246,7 +1246,7 @@ async function tnLoadList(){
         <div style="flex:1;min-width:0">
           <div style="font-weight:600;color:var(--text)">${escH(r.name||r.id)} <span style="color:var(--text3);font-weight:400;font-size:11px">(${escH(r.id)})</span></div>
           <div style="font-size:11px;color:var(--text2);margin-top:2px">
-            plan: <b>${escH(plan)}</b> ・ 席数: <b>${limit||'—'}</b> ・ owner: <b>${escH(owner||'未設定')}</b>
+            plan: <b>${escH(plan)}</b> ・ 席数: <b>${limit>0?limit:'無制限'}</b> ・ owner: <b>${escH(owner||'未設定')}</b>
           </div>
           <div style="font-size:11px;color:var(--text2);margin-top:2px">domains: ${doms?escH(doms):'<span style="color:var(--text3)">未設定</span>'}${r.description?` ・ ${escH(r.description)}`:''}</div>
         </div>
@@ -1292,7 +1292,7 @@ async function tnAdd(){
   const desc=String($('tnDescInput').value||'').trim();
   if(!name){ notify('表示名を入力してください'); return; }
   if(owner && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(owner)){ notify('契約者メールの形式が不正です'); return; }
-  if(limit<1){ notify('席数は 1 以上を指定してください'); return; }
+  if(limit<0){ notify('席数は 0（無制限）以上を指定してください'); return; }
   try{
     const nowIso=new Date().toISOString();
     const ref=await addDoc(collection(db,'tenants'),{
@@ -1317,7 +1317,7 @@ function tnEdit(id, cur){
   if(ow===null) return;
   const pl=prompt('プラン（team / free / enterprise）：', cur&&cur.plan||'team');
   if(pl===null) return;
-  const lm=prompt('ライセンス席数：', String(cur&&cur.licenseLimit||10));
+  const lm=prompt('ライセンス席数（0 で無制限）：', String(cur&&cur.licenseLimit||10));
   if(lm===null) return;
   const dm=prompt('ドメイン（カンマ区切り・空可）：', (cur&&Array.isArray(cur.domains))?cur.domains.join(', '):'');
   if(dm===null) return;
@@ -1326,7 +1326,7 @@ function tnEdit(id, cur){
   const owner=String(ow||'').trim().toLowerCase();
   if(owner && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(owner)){ notify('契約者メールの形式が不正です'); return; }
   const limit=parseInt(lm,10);
-  if(!(limit>=1)){ notify('席数は 1 以上を指定してください'); return; }
+  if(!(limit>=0)){ notify('席数は 0（無制限）以上を指定してください'); return; }
   const doms=String(dm||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
   (async()=>{
     try{
