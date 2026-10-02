@@ -3960,7 +3960,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.063';
+const APP_VERSION='2026.10.02.064';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19454,9 +19454,16 @@ async function openMyPageModal(){
   const curStart=(profile.coreHours&&profile.coreHours.start)||'10:30';
   const curEnd=(profile.coreHours&&profile.coreHours.end)||'19:30';
   const curRoles=new Set(Array.isArray(profile.roles)?profile.roles:[]);
-  /* マルチテナント化 Phase M1：現在の tenantId を表示（読取専用）。
-     未設定ならダッシュ、ドメイン自動判定で設定済みなら ID を表示。 */
-  const curTenant=typeof profile.tenantId==='string'?profile.tenantId:'';
+  /* マルチテナント化 Phase M1：現在のテナント所属を表示（読取専用）。
+     ID だけだと分かりにくいので、tenants/{id} から name を引いて表示名で見せる。 */
+  const curTenantId=typeof profile.tenantId==='string'?profile.tenantId:'';
+  let curTenantLabel='';
+  if(curTenantId){
+    try{
+      const t=window.__laynaFB&&window.__laynaFB.loadTenant?await window.__laynaFB.loadTenant(curTenantId):null;
+      curTenantLabel = t && t.name ? t.name : curTenantId;
+    }catch(_){ curTenantLabel = curTenantId; }
+  }
   openModal(body=>{
     body.classList.add('mypage-modal');
     const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -19476,7 +19483,7 @@ async function openMyPageModal(){
             <div class="mp-profile-fields">
               <label class="mp-field"><span class="mp-label">メール</span><input type="text" class="mp-input mp-readonly" value="${esc(email)}" readonly></label>
               <label class="mp-field"><span class="mp-label">表示名</span><input type="text" class="mp-input" id="mpName" value="${esc(curName)}"></label>
-              <label class="mp-field"><span class="mp-label">所属</span><input type="text" class="mp-input mp-readonly" value="${esc(curTenant||'（未設定）')}" readonly title="マルチテナント化 Phase M1：ドメイン自動判定で設定されます。変更は運営に依頼してください。"></label>
+              <label class="mp-field"><span class="mp-label">所属</span><input type="text" class="mp-input mp-readonly" value="${esc(curTenantLabel||'（未設定）')}" readonly title="マルチテナント化 Phase M1：ドメイン自動判定で設定されます。変更は運営に依頼してください。${curTenantId?' / tenantId: '+esc(curTenantId):''}"></label>
             </div>
           </div>
         </section>
@@ -19839,6 +19846,15 @@ initApp();
         await m.setDoc(m.doc(fs,'laycatUsers',key),payload,{merge:true});
         return true;
       }catch(e){return false}},
+      /* マルチテナント化 Phase M1：単一テナントドキュメントを読む。tenants/{id}。
+         戻り値：{id, name, description, domains, ...} / 存在しなければ null。 */
+      loadTenant:async(id)=>{try{
+        if(!id)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const snap=await m.getDoc(m.doc(fs,'tenants',String(id)));
+        return snap.exists()?{id:snap.id,...snap.data()}:null;
+      }catch(e){return null}},
       /* マルチテナント化 Phase M1：テナント一覧を読む。tenants コレクション全体を列挙。
          戻り値：[{id, name, description, domains, ...}, ...] / 失敗時 null。
          ドメイン自動判定で使う（頻度は初回ログイン時 1 回のみなので全列挙で問題なし）。 */

@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.064) **マイページ「所属」表示をテナント ID→表示名に変更**：
+  - v.063 ではランダム 20 文字の tenantId がそのまま表示されていて分かりにくかった。
+  - `tenants/{tenantId}` から `name` を引いて表示名で見せる（例：「スタジオA」）。
+  - 新規ヘルパ：`window.__laynaFB.loadTenant(id)`（単一ドキュメント読み取り）。
+  - title 属性にはトラブルシュート用に tenantId を併記。
+  - APP_VERSION：2026.10.02.063 → 2026.10.02.064
+
 - (dev v2026.10.02.063) **マルチテナント化 Phase M1：基盤設置（スキーマ＋自動判定）**：
   - 新コレクション `tenants/{tenantId}`：会社／スタジオ単位のテナント定義。
     - 構造：`{ name, description, domains:[...], createdBy, createdAt, updatedBy, updatedAt }`
