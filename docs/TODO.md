@@ -593,4 +593,56 @@ PMBoard の「工数タブ」で使う稼働期間集計の精度を上げるた
 
 ---
 
+## 完了ステータス（OK）の判定ロジック刷新（優先度：中／PMB 連動）
+
+### 背景（2026-10-03）
+
+現状の `isDoneStatus`（LayCAT）／`isStatusDone`（pmboard）はラベルを正規表現で判定：
+
+```js
+if(statusId === 'approved' || statusId === 'omit') return true;
+return /完了|承認|上がり|フィックス|オミット|ok\b|omit|done|fix|approve|complete/i.test(label);
+```
+
+将来「山田OK」「田中OK」「クライアントOK」のように**チェック担当者ごとに OK ステータス**を用意する運用が入ると、
+現ロジックでは最初の「山田OK」の時点で以下が誤発火する：
+
+- pmboard 工数集計：work セグメントが閉じる → 以降の作業時間が加算されない
+- pmboard スケジュール：実績バーが終端する → ガントが実態より早く終了
+- LayCAT 進捗集計：完了扱いになり「残り工数」から外れる
+
+### 設計案
+
+ステータス側に明示フラグを追加（`checkWait:true` / `clientWait:true` と同じパターン）：
+
+- **`done:true`** … このステータスは完了扱い（工数集計・ガント実績の終端）
+- 中間承認（山田OK・田中OK）は `done:false` の work ステータスとして残す
+
+### 変更箇所
+
+1. **LayCAT ステータス設定モーダル**：
+   - `checkWait` チェックボックスの横に「☑ 完了扱い（工数・進捗の終端）」追加
+   - 保存：`projStatuses[].done = true/false`
+2. **判定ロジック（LayCAT + pmboard）**：
+   - `statusId === 'approved' || 'omit'` → 既定で done 相当（既存挙動温存）
+   - 他は `s.done === true` のみ true
+   - 後方互換：`done` フラグ未設定の既存プロジェクトは **正規表現フォールバック** を残す（挙動変化なし）
+3. **UI 補助**：
+   - ステータスプルダウンに「完了」バッジを添えて作業者が誤認しないように
+   - ステータス設定モーダルで「OK を含むラベルを作ったとき」に **完了扱いにしますか？** の確認ダイアログ（regex 誤爆防止）
+
+### 判断待ちの論点
+
+- regex フォールバックを残すか切るか（残す＝既存安全／切る＝設計クリーン、推奨は残す）
+- 中間承認（山田OK）を表示的に特別扱いするか（バッジ色・順序）、工数判定のみ変えるか
+- 「クライアントOK」を既定で `done:true` にする UI 支援を入れるか
+
+### 影響範囲
+
+- `laycat_dev.html`：`isDoneStatus`・ステータス設定モーダル
+- `pmboard_dev.html`：`isStatusDone`・（間接的に `isWorkStatus` / `isStatusCheckWait`）
+- 書き込みは `projStatuses` の 1 フィールド増やすだけ（ショット・work・version 側は無変更）
+
+---
+
 ## （今後の TODO 追加はここに）
