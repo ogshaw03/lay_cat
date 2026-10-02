@@ -3994,7 +3994,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.066';
+const APP_VERSION='2026.10.02.067';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19452,8 +19452,13 @@ function showAuthedHeader(){
   clickable.title='クリックでマイページを開く';
   if(authUser.photo){const img=el('img','avatar');img.src=authUser.photo;img.referrerPolicy='no-referrer';clickable.appendChild(img)}
   /* v.017：役職を 3 段階（運営 / 管理者 / メンバー）でヘッダーに明示。
-     operator=運営（メンテ閲覧可）、admin=管理者（一般と同扱い）、member=なし。 */
-  clickable.appendChild(el('span',null,authUser.name+(authUser.role==='operator'?'（運営）':(authUser.role==='admin'?'（管理者）':''))));
+     Phase M3a：テナント内役職（owner/admin）もバッジ対象に加える（全体 admin との統合準備）。
+     表示優先：運営 > 契約者 > 管理者（全体 admin or テナント admin） > なし。 */
+  let roleBadge = '';
+  if(authUser.role === 'operator') roleBadge = '（運営）';
+  else if(authUser.tenantRole === 'owner') roleBadge = '（契約者）';
+  else if(authUser.role === 'admin' || authUser.tenantRole === 'admin') roleBadge = '（管理者）';
+  clickable.appendChild(el('span',null,authUser.name+roleBadge));
   clickable.onclick=()=>{try{openMyPageModal()}catch(e){toast('マイページを開けませんでした: '+e.message)}};
   bx.appendChild(clickable);
   const lo=el('span','lo','ログアウト');lo.onclick=async(e)=>{e.stopPropagation();if(window.__laynaFB)await window.__laynaFB.logout()};bx.appendChild(lo);
@@ -19614,7 +19619,16 @@ async function _calEnsureCompany(){
 }
 async function openCalendarModal(){
   if(!authUser){toast('ログインが必要です');return}
-  const canEdit=(authUser.role==='operator'||authUser.role==='admin');
+  /* Phase M3a：編集権限をテナント役職ベースに統合。
+     - 運営（operator）：全テナントの会社休日を編集可能（SaaS 運営の最高権限）
+     - テナント owner / admin：自テナントの会社休日のみ編集可能
+     - 既存の全体 admin 役職は後方互換のため維持（Phase M3b で廃止予定） */
+  const canEdit = (
+    authUser.role === 'operator' ||
+    authUser.tenantRole === 'owner' ||
+    authUser.tenantRole === 'admin' ||
+    authUser.role === 'admin' /* 後方互換：Phase M3b で削除予定 */
+  );
   const now=new Date();
   _calCache.state={year:now.getFullYear(),month:now.getMonth(),canEdit};
   openModal(body=>{
@@ -20004,9 +20018,28 @@ async function onAuthChanged(u){
      - 失敗（未ログイン・tenants 未登録・ルール未設定）は静かに無視（既存動作のまま）
      - M1 ではまだ読み書き先の切り替えは行わない。基盤設置のみ。 */
   try{await _maybeAutoAssignTenant(u);}catch(_){}
+  /* マルチテナント化 Phase M3a：ログイン直後に authUser.tenantRole（owner/admin/member）を算出。
+     ヘッダーのバッジ表示・カレンダーの編集権限判定で参照する。 */
+  try{authUser.tenantRole = await _computeTenantRole(authUser.tenantId, authUser.email);}catch(_){}
   clearAuthScreen();showAuthedHeader();startAppFlow();try{_wireSignals()}catch(_){}
   /* マルチテナント化 Phase M2a-3：テナント管理ボタンの可視判定（認証完了後） */
   try{await refreshTenantAdminButton();}catch(_){}
+}
+/* マルチテナント化 Phase M3a：指定ユーザーの指定テナントにおける役職を算出。
+   owner / admin / member / null（所属なし）を返す。 */
+async function _computeTenantRole(tenantId, email){
+  if(!tenantId || !email || !window.__laynaFB) return null;
+  try{
+    const t = window.__laynaFB.loadTenant ? await window.__laynaFB.loadTenant(tenantId) : null;
+    if(!t) return null;
+    const emailLc = String(email).toLowerCase();
+    if(String(t.ownerEmail||'').toLowerCase() === emailLc) return 'owner';
+    const mems = window.__laynaFB.loadTenantMembers ? await window.__laynaFB.loadTenantMembers(tenantId) : null;
+    if(!Array.isArray(mems)) return null;
+    const mine = mems.find(m => String(m.email||'').toLowerCase() === emailLc);
+    if(!mine) return null;
+    return (mine.role === 'admin') ? 'admin' : 'member';
+  }catch(_){ return null; }
 }
 async function initApp(){
   try{accessCfg=await (await fetch('./access.json',{cache:'no-store'})).json()}catch(_){accessCfg=null}

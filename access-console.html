@@ -459,14 +459,20 @@ service cloud.firestore {
     }
 
     // ===== 会社休日カレンダー（テナント別）=====
-    // 保存先：companyHolidays/{tenantId}（現状シングルテナント＝tenantId="default"）
+    // 保存先：companyHolidays/{tenantId}
     // ドキュメント内容：{ dates: [{date:"YYYY-MM-DD", name, addedBy, addedAt}], updatedAt }
     // 会社固有の休業日（夏季休業・年末年始の長期休暇など）。
-    // 読取は認証者全員、書込は運営 or 管理者（LayCAT のカレンダーモーダルから操作）。
-    // 将来マルチテナント化時は tenantId を実テナント ID に差し替え。
+    // 読取は認証者全員。
+    // 書込（Phase M3a 更新）：
+    //   - 運営（operator）：全テナントの会社休日を編集可
+    //   - 当該テナントの ownerEmail or admin ロール：自テナントの会社休日のみ編集可
+    //   - 旧「全体 admin」経路（isConfigEditor）は後方互換のため維持（Phase M3b で廃止予定）
     match /companyHolidays/{tenantId} {
       allow read:           if signedIn();
-      allow write:          if isConfigEditor();
+      allow write:          if isStaff()
+                               || isConfigEditor()
+                               || (signedIn() && request.auth.token.email == _tenantOwner(tenantId))
+                               || (signedIn() && _myTenantRole(tenantId) == 'admin');
     }
   }
 }`;

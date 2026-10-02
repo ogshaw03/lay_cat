@@ -18,6 +18,20 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.067) **マルチテナント化 Phase M3a：権限統合準備（全体 admin とテナント役職の統合準備）**：
+  - 新規：ログイン完了時に `authUser.tenantRole`（owner/admin/member）を算出・キャッシュ。
+    - `_computeTenantRole(tenantId, email)` で判定：ownerEmail 一致なら owner、members 内 role==='admin' なら admin、それ以外は member。
+  - **ヘッダーバッジ**：役職表示の優先順位を改訂。
+    - 旧：運営／管理者（全体 admin）／なし
+    - 新：**運営 ＞ 契約者 ＞ 管理者（全体 admin or テナント admin） ＞ なし**
+  - **会社休日カレンダー編集権限**：テナント役職ベースに統合。
+    - 旧：`authUser.role === 'operator' || 'admin'`（全体役職のみ）
+    - 新：**operator（全テナント）** or **テナント owner/admin（自テナントのみ）**
+    - 旧全体 admin 経路は後方互換のため維持（Phase M3b で廃止予定）
+  - Firestore ルール `companyHolidays/{tenantId}` 更新：運営 or 旧 admin or 当該テナント owner or 当該テナント admin。
+  - 全体 adminEmails（アクセス管理コンソール側）はそのまま維持（既存ユーザー互換）。
+  - APP_VERSION：2026.10.02.066 → 2026.10.02.067
+
 - (dev v2026.10.02.066) **マルチテナント化 Phase M2b/M2c：ログイン判定変更＋マイページ役職表示**：
   - **Phase M2b（ログイン判定）**：
     - `_maybeAutoAssignTenant` の判定を「メールドメイン」→「テナントメンバーシップ横断検索」に変更。
