@@ -200,10 +200,16 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .gantt-hdr .lbl .col-resizer{position:absolute;top:0;bottom:0;right:-4px;width:8px;cursor:col-resize;z-index:6}
 .gantt-hdr .lbl .col-resizer:hover,.gantt-hdr .lbl .col-resizer.resizing{background:linear-gradient(90deg,transparent 3px,rgba(255,255,255,.35) 3px 5px,transparent 5px)}
 /* 月スケール：日セル数字を隠して幅を稼ぐ（週見出しは残す）。行密度は変えない。 */
-.gantt[data-scale="month"] .gantt-hdr .timeline .days .d{font-size:0}
-.gantt[data-scale="month"] .gantt-hdr .timeline .days{height:6px}
-/* 日スケール：日セルの数字を少し大きめに */
-.gantt[data-scale="day"] .gantt-hdr .timeline .days .d{font-size:11px}
+/* v.028：月／3ヶ月／半年スケールは日数字を隠して幅を稼ぐ */
+.gantt[data-scale="month"] .gantt-hdr .timeline .days .d,
+.gantt[data-scale="3mo"] .gantt-hdr .timeline .days .d,
+.gantt[data-scale="6mo"] .gantt-hdr .timeline .days .d{font-size:0}
+.gantt[data-scale="month"] .gantt-hdr .timeline .days,
+.gantt[data-scale="3mo"] .gantt-hdr .timeline .days,
+.gantt[data-scale="6mo"] .gantt-hdr .timeline .days{height:6px}
+/* 日スケール（hourly）：時間数字を少し大きめ、週セルは広めに */
+.gantt.scale-hourly .gantt-hdr .timeline .days .d{font-size:10px}
+.gantt.scale-hourly .gantt-hdr .timeline .weeks .w{font-size:12px;letter-spacing:.3px}
 .gantt-hdr .lbl{padding:11px 14px;font-family:var(--font-head);font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;border-right:1px solid var(--border)}
 .gantt-hdr .timeline{position:relative;overflow:hidden}
 .gantt-hdr .timeline .weeks{display:flex;font-family:var(--font-code);font-size:10px;color:var(--text3);letter-spacing:.5px;height:22px;align-items:center;border-bottom:1px solid var(--border)}
@@ -415,10 +421,17 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
       <button data-scale="day">日</button>
       <button data-scale="week" class="on">週</button>
       <button data-scale="month">月</button>
+      <button data-scale="3mo">3ヶ月</button>
+      <button data-scale="6mo">半年</button>
+    </div>
+    <div class="view-nav" style="display:inline-flex;align-items:center;gap:4px;margin-left:8px">
+      <button class="btn btn-ghost btn-sm" id="navPrevBtn" title="前へ">←</button>
+      <button class="btn btn-ghost btn-sm" id="navTodayBtn" title="今日に戻る">今日</button>
+      <button class="btn btn-ghost btn-sm" id="navNextBtn" title="次へ">→</button>
+      <span id="viewRangeLabel" style="font-size:11px;color:var(--text2);font-family:var(--font-code);margin-left:6px;min-width:140px"></span>
     </div>
     <div class="last-updated" id="lastUpdated" title="1時間ごとに自動更新（日本時間）">—</div>
     <button class="btn btn-ghost btn-sm" id="refreshBtn" title="今すぐ再読み込み">↻</button>
-    <button class="btn btn-ghost btn-sm">今日</button>
     <button class="btn btn-ghost btn-sm">📥 CSV</button>
   </div>
 </header>
@@ -618,7 +631,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.027';
+const APP_VERSION='2026.10.02.028';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1114,6 +1127,9 @@ async function loadProjectData(){
   const start = new Date(jstMidnightMs(minD) - 7*86400000);
   const end = new Date(jstMidnightMs(maxD) + 7*86400000);
   const days = Math.max(30, Math.round((end-start)/86400000)+1);
+  /* v.028：dataTimeline = データ全体の実範囲（工数タブ・ヒートマップが参照）。
+     DATA.timeline はスケジュールタブのビュー範囲（applyGanttScale で上書きされる）。 */
+  DATA.dataTimeline = {start, end, days};
   DATA.timeline = {start, end, days};
   DATA.loaded = true;
   /* 【v.019】マイページで保存されたユーザープロフィールを並列読み込み（Firestore）。
@@ -1152,9 +1168,12 @@ async function loadHolidaysForTimeline(){
   DATA.publicHolidays = [];
   DATA.companyHolidays = [];
   if(!window.__laynaFB) return;
-  if(!DATA.timeline || !DATA.timeline.start || !DATA.timeline.end) return;
-  const startY = DATA.timeline.start.getFullYear();
-  const endY   = DATA.timeline.end.getFullYear();
+  /* v.028：祝日年範囲はデータ全体 (dataTimeline) を参照。
+     ビュー範囲（DATA.timeline）だと scope が狭いと祝日が読み込まれない。 */
+  const tl = DATA.dataTimeline || DATA.timeline;
+  if(!tl || !tl.start || !tl.end) return;
+  const startY = tl.start.getFullYear();
+  const endY   = tl.end.getFullYear();
   const years = [];
   for(let y = startY; y <= endY; y++) years.push(y);
   const [pubMap, coDoc] = await Promise.all([
@@ -1272,6 +1291,12 @@ function parseIsoDateJst(s){
   return new Date(s + 'T00:00:00+09:00');
 }
 function dayIdx(d){
+  /* v.028：hourly スケール（日スケール＝1 日 24h 表示）では fractional day index を返して
+     bar の時間内位置を 1 時間単位で表現する。
+     非 hourly スケール（週/月/3ヶ月/半年）は従来通り整数の day index。 */
+  if(DATA.timeline && DATA.timeline.hourly){
+    return (d.getTime() - DATA.timeline.start.getTime()) / 86400000;
+  }
   return Math.round((jstMidnightMs(d) - DATA.timeline.start.getTime())/86400000);
 }
 function fmtDate(dayIndex){
@@ -1316,7 +1341,26 @@ function buildTimelineHdr(){
   const hdr = document.getElementById('timelineHdr');
   hdr.innerHTML='';
   if(!DATA.loaded) return;
-  const {start, days} = DATA.timeline;
+  const {start, days, hourly} = DATA.timeline;
+  /* v.028：hourly スケール（日=1 日 24h）は専用ヘッダー。年/月/日のラベル行 + 時間行。 */
+  if(hourly){
+    const topRow = document.createElement('div'); topRow.className='weeks';
+    const topCell = document.createElement('div'); topCell.className='w';
+    const p0 = jstParts(start);
+    topCell.textContent = `${p0.y}/${p0.m}/${p0.d} (${['日','月','火','水','木','金','土'][p0.wk]})`;
+    topCell.style.flex='24 0 0';
+    topRow.appendChild(topCell);
+    const hrRow = document.createElement('div'); hrRow.className='days';
+    for(let h=0;h<24;h++){
+      const d = document.createElement('div'); d.className='d';
+      d.textContent = String(h).padStart(2,'0');
+      d.style.fontSize='10px';
+      d.title = `${String(h).padStart(2,'0')}:00`;
+      hrRow.appendChild(d);
+    }
+    hdr.appendChild(topRow); hdr.appendChild(hrRow);
+    return;
+  }
   const weeks = document.createElement('div'); weeks.className='weeks';
   const dow = document.createElement('div'); dow.className='days';
   const weekCount = Math.ceil(days/7);
@@ -1325,8 +1369,6 @@ function buildTimelineHdr(){
     const d0 = new Date(start.getTime()+i*7*86400000);
     const p = jstParts(d0);
     w.textContent = `${p.m}/${p.d}〜`;
-    /* 週セルは含む日数分だけ幅を取る（末尾週は 7 日未満のことがある）。
-       flex:1 だと weekCount 均等割になり、下段の日セル（flex:1×days）と揃わなくなる。 */
     const daysInWeek = Math.min(7, days - i*7);
     w.style.flex = `${daysInWeek} 0 0`;
     weeks.appendChild(w);
@@ -2826,13 +2868,16 @@ function renderEffortPane(){
 function renderEffortHeatmap(rows, root, dayDivisorMs, mhOpts){
   const container = document.getElementById('effortHeatmap');
   if(!container) return;
-  if(!DATA.timeline || !DATA.timeline.days){
+  /* v.028：ヒートマップはデータ全体の範囲 (dataTimeline) を参照（スケジュールタブのビュー切替に左右されない）。 */
+  const tl = DATA.dataTimeline || DATA.timeline;
+  if(!tl || !tl.days){
     container.innerHTML = '<div class="sb-empty">タイムライン未初期化</div>';
     return;
   }
-  const tStart = DATA.timeline.start.getTime();
-  const totalDays = DATA.timeline.days;
-  const todayIdx = dayIdx(new Date());
+  const tStart = tl.start.getTime();
+  const totalDays = tl.days;
+  /* dataTimeline 基準の today idx */
+  const todayIdx = Math.round((jstMidnightMs(new Date()) - tStart) / 86400000);
   const pxPerDay = 100 / totalDays; /* % */
 
   /* ヘッダ軸：毎週月曜日に tick。月初は "M/D"（月付き）、それ以外は日付のみ "D"。
@@ -3188,7 +3233,9 @@ function updateSidebar(){
   const cells = document.querySelectorAll('.sb-cell');
   if(cells[0]) cells[0].innerHTML = `<div class="n">${progress}<span class="u">%</span></div><div class="l">進捗</div>`;
   if(cells[1]) cells[1].innerHTML = `<div class="n">${done}<span class="u">/${shotCount}</span></div><div class="l">完了</div>`;
-  const daysLeft = DATA.timeline.end ? Math.max(0, Math.round((DATA.timeline.end - new Date())/86400000)) : 0;
+  /* v.028：残り日数はデータ全体の end を参照（ビュー切替に左右されない） */
+  const dtl = DATA.dataTimeline || DATA.timeline;
+  const daysLeft = (dtl && dtl.end) ? Math.max(0, Math.round((dtl.end - new Date())/86400000)) : 0;
   if(cells[2]) cells[2].innerHTML = `<div class="n">${daysLeft}<span class="u">日</span></div><div class="l">残</div>`;
 
   /* ========== 分布ドーナツ（LayCAT の進捗タブと同じ semantics）========== */
@@ -3689,46 +3736,124 @@ document.getElementById('tabs').addEventListener('click',e=>{
   b.classList.add('on');
   document.querySelector(`[data-pane="${b.dataset.tab}"]`).classList.add('on');
 });
-/* 日 / 週 / 月 のズーム：1 日あたりの px 幅を切り替えて .gantt の width を pixel で設定。
-   ペインより小さければペイン幅を採用（隙間を作らない）。大きければ横スクロール発生。
-   バーの %-based left/width はそのまま維持されるので、コード変更なしで縮尺に追従。 */
+/* v.028：スケール = スコープ（表示範囲）+ 密度。カレンダーアプリの日/週/月と同じ発想。
+   - day:  今日 1 日を 1 時間単位で表示（24 コラム・50 px/hr = 1200 px/day）
+   - week: 7 日を 1 日単位
+   - month: 30 日を 1 日単位（旧「日」スケール相当の密度）
+   - 3mo: 90 日（圧縮）
+   - 6mo: 180 日（最圧縮）
+   ナビゲーション（← Today →）で scope 分前後に移動。 */
+const SCALE_CONFIG = {
+  day:   { label:'日',    days:1,   hourly:true,  pxPerDay:1200 },  /* 24h × 50px */
+  week:  { label:'週',    days:7,   hourly:false, pxPerDay:140 },
+  month: { label:'月',    days:30,  hourly:false, pxPerDay:40 },
+  '3mo': { label:'3ヶ月', days:90,  hourly:false, pxPerDay:16 },
+  '6mo': { label:'半年',  days:180, hourly:false, pxPerDay:8 },
+};
+/* 旧 SCALE_PX は後方互換のため維持（他箇所からの参照用）。 */
 const SCALE_PX = {day:40, week:20, month:8};
+/* v.028：Today を含むスケール start の算出。
+   - 日：今日 00:00（JST）
+   - 週：今日を含む週の月曜 00:00
+   - 月：今日を含む月の 1 日 00:00
+   - 3ヶ月：今日の 3 ヶ月前の月初 00:00（Today を含むように調整）
+   - 半年：今日の 6 ヶ月前の月初 00:00 */
+function _todayAlignedStart(scale){
+  const now = new Date();
+  const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if(scale==='day')  return todayMid;
+  if(scale==='week'){
+    /* 月曜開始に align（日曜なら 6 日前、月曜なら 0 日前） */
+    const dow = now.getDay(); /* 0=日,1=月,...6=土 */
+    const offset = (dow + 6) % 7; /* 月曜までの日数 */
+    return todayMid - offset*86400000;
+  }
+  if(scale==='month'){
+    return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  }
+  if(scale==='3mo'){
+    /* 今月を含む 3 ヶ月窓：今月 - 1 ヶ月を start に（過去 1 ヶ月+今月+未来 1 ヶ月）
+       → 単純に「今日 × 90 日前の月初」ではなく、「今日を含む 3 ヶ月期間の開始」。
+       実装：今月 1 日 - 60 日（約 2 ヶ月）前 → 月初に align */
+    const anchor = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    return anchor.getTime();
+  }
+  if(scale==='6mo'){
+    const anchor = new Date(now.getFullYear(), now.getMonth()-2, 1);
+    return anchor.getTime();
+  }
+  return todayMid;
+}
+/* v.028：スケール＋ビューアンカーで timeline を更新。
+   DATA.viewAnchor（ms）が view の start となる。未設定時は today-aligned を採用。 */
 function applyGanttScale(scale, opts){
   opts = opts||{};
   const rerender = opts.rerender!==false;
-  if(!SCALE_PX[scale]) scale='week';
+  if(!SCALE_CONFIG[scale]) scale='week';
+  const cfg = SCALE_CONFIG[scale];
+  const scaleChanged = (DATA.scale !== scale);
   DATA.scale = scale;
   const gantt = document.querySelector('.gantt');
   if(!gantt){ console.warn('[pmboard] applyGanttScale: .gantt not found'); return; }
   gantt.setAttribute('data-scale', scale);
+  gantt.classList.toggle('scale-hourly', !!cfg.hourly);
   const shotColW = parseInt(getComputedStyle(gantt).getPropertyValue('--shot-col-w')) || 220;
   const pane = gantt.closest('.pane');
-  const paneInner = pane ? (pane.clientWidth - 40 - shotColW) : 0; /* トラック側の使える幅 */
-  /* 元のタイムライン日数（データから自動計算されたもの）を保持しておき、scale 変更で
-     日付範囲を「延ばす」だけにする（データを削らないので実データは常に表示される）。 */
-  if(DATA.timeline){
-    if(!DATA.timeline._baseDays) DATA.timeline._baseDays = DATA.timeline.days;
-    if(!DATA.timeline._baseEnd) DATA.timeline._baseEnd = new Date(DATA.timeline.end.getTime());
-    const baseDays = DATA.timeline._baseDays;
-    const perDay = SCALE_PX[scale];
-    /* ペイン下限を満たすのに必要な日数 = paneInner / perDay。
-       baseDays より大きければ「タイムラインを未来に延ばして」ペインを埋める。
-       小さければ baseDays のまま → gantt が pane より広くなり横スクロール発生。 */
-    const paneDaysAtScale = Math.ceil(paneInner / perDay);
-    const effectiveDays = Math.max(baseDays, paneDaysAtScale);
-    DATA.timeline.days = effectiveDays;
-    DATA.timeline.end = new Date(DATA.timeline.start.getTime() + effectiveDays * 86400000);
-    const finalW = shotColW + effectiveDays * perDay;
-    gantt.style.width = finalW + 'px';
-    try{ console.log('[pmboard] applyGanttScale', {scale, baseDays, paneDaysAtScale, effectiveDays, perDay, finalW}); }catch(_){}
+  const paneInner = pane ? (pane.clientWidth - 40 - shotColW) : 0;
+  /* スケール切替時 or 初回：today を含む位置に align */
+  if(scaleChanged || DATA.viewAnchor==null){
+    DATA.viewAnchor = _todayAlignedStart(scale);
   }
+  /* ビュー範囲を timeline に反映（既存の rendering は DATA.timeline を参照しているので、
+     これで scope 制限が自動的に効く）。 */
+  const startMs = DATA.viewAnchor;
+  const endMs = startMs + cfg.days*86400000;
+  DATA.timeline = {
+    start: new Date(startMs),
+    end: new Date(endMs),
+    days: cfg.days,
+    hourly: !!cfg.hourly,
+    pxPerDay: cfg.pxPerDay,
+  };
+  /* gantt 幅 = max(pane 幅, scope × px/day)。小さい方なら拡大せずペインに収める。 */
+  const scopeW = cfg.days * cfg.pxPerDay;
+  const finalW = shotColW + Math.max(paneInner, scopeW);
+  gantt.style.width = finalW + 'px';
   try{ localStorage.setItem('pmboard_scale', scale); }catch(_){}
   document.querySelectorAll('#scaleToggle button').forEach(x=>x.classList.toggle('on', x.dataset.scale===scale));
+  /* ビュー範囲の表示を更新 */
+  _updateViewRangeLabel();
   if(rerender){
     buildTimelineHdr();
     if(DATA.currentSubTab==='shots') buildGantt(); else buildCustomGantt(DATA.currentSubTab);
   }
 }
+/* v.028：ナビゲーション — scope 分前後に移動 */
+function navScale(delta){
+  const cfg = SCALE_CONFIG[DATA.scale||'week'];
+  const curAnchor = DATA.viewAnchor != null ? DATA.viewAnchor : _todayAlignedStart(DATA.scale||'week');
+  DATA.viewAnchor = curAnchor + delta * cfg.days * 86400000;
+  applyGanttScale(DATA.scale||'week');
+}
+function navToday(){
+  DATA.viewAnchor = _todayAlignedStart(DATA.scale||'week');
+  applyGanttScale(DATA.scale||'week');
+}
+function _updateViewRangeLabel(){
+  const el=document.getElementById('viewRangeLabel');
+  if(!el || !DATA.timeline) return;
+  const cfg=SCALE_CONFIG[DATA.scale||'week'];
+  const s=DATA.timeline.start, e=new Date(DATA.timeline.end.getTime()-86400000);
+  const ps=jstParts(s), pe=jstParts(e);
+  if(cfg && cfg.hourly){
+    el.textContent = `${ps.y}/${ps.m}/${ps.d}`;
+  }else if(cfg && cfg.days === 1){
+    el.textContent = `${ps.y}/${ps.m}/${ps.d}`;
+  }else{
+    el.textContent = `${ps.y}/${ps.m}/${ps.d} 〜 ${pe.m}/${pe.d}`;
+  }
+}
+try{ window.navScale = navScale; window.navToday = navToday; }catch(_){}
 /* デバッグ用にグローバル公開（コンソールから applyGanttScale('day') 等が呼べる） */
 try{ window.applyGanttScale = applyGanttScale; }catch(_){}
 /* ウィンドウリサイズ時にも幅を再計算 */
@@ -3738,10 +3863,14 @@ document.getElementById('scaleToggle').addEventListener('click',e=>{
   if(!b)return;
   applyGanttScale(b.dataset.scale);
 });
+/* v.028：ナビゲーション（← 今日 →） */
+document.getElementById('navPrevBtn').onclick = ()=>navScale(-1);
+document.getElementById('navNextBtn').onclick = ()=>navScale(+1);
+document.getElementById('navTodayBtn').onclick = navToday;
 /* 起動時にスケールを復元 */
 try{
   const s = localStorage.getItem('pmboard_scale');
-  if(s && SCALE_PX[s]) {
+  if(s && SCALE_CONFIG[s]) {
     document.querySelectorAll('#scaleToggle button').forEach(x=>x.classList.toggle('on', x.dataset.scale===s));
     DATA.scale = s;
   }else{
