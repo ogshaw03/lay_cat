@@ -4002,7 +4002,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.079';
+const APP_VERSION='2026.10.02.080';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5257,9 +5257,11 @@ async function subSendToReel(sb){
 /* ============================================================
    ナビ / レンダリング
    ============================================================ */
-function go(id){state.currentId=id;state.search='';state.pmPick=null;state.reviewOpen=null;$('#searchInput').value='';const nn=getNode(id);state.projTab=(nn&&nn.type==='review')?'browse':'timeline';/* レビューを開くときはタブ強調とハッシュを本文表示(browse)に合わせる */if(nn&&nn.type==='review'){state.openTasks=(state.openTasks||[]).filter(x=>x!==id);state.openTasks.push(id)}/* v.043：ターゲットまでの先祖のみ expanded に追加（ターゲット自身は展開しない）。
+function go(id,opts){state.currentId=id;state.search='';state.pmPick=null;state.reviewOpen=null;$('#searchInput').value='';const nn=getNode(id);state.projTab=(nn&&nn.type==='review')?'browse':'timeline';/* レビューを開くときはタブ強調とハッシュを本文表示(browse)に合わせる */if(nn&&nn.type==='review'){state.openTasks=(state.openTasks||[]).filter(x=>x!==id);state.openTasks.push(id)}/* v.043：ターゲットまでの先祖のみ expanded に追加（ターゲット自身は展開しない）。
   フォルダをクリックしたときに自動で開かないようにするため。以前は pathOf(id) 全体だったので、
-  フォルダを選択する度に自身も展開されていた。 */for(const n of pathOf(id))if(n.id!==id)state.expanded.add(n.id);render();syncHash();autoRefresh()}
+  フォルダを選択する度に自身も展開されていた。
+  v.080：opts.keepSidebar=true のときは先祖展開もスキップ（ショットタブからショットページを
+  開くときなどに、既存の左サイドバーの開閉状態を保ったまま遷移する）。 */if(!(opts&&opts.keepSidebar)){for(const n of pathOf(id))if(n.id!==id)state.expanded.add(n.id);}render();syncHash();autoRefresh()}
 /* ============================================================
    URLルーティング（ハッシュ）— 画面ごとに固有URL・作業者間でリンク共有
    #/                     ホーム
@@ -6606,7 +6608,7 @@ function renderProjShots(main,cur){
         const inSel=(state.shotSel&&state.shotSel.size>0);
         if(inSel||ev.ctrlKey||ev.metaKey)return; /* 選択モード時はタイル本体の onclick に委譲（stopPropagation しない） */
         ev.stopPropagation();
-        go(lv.node.id);
+        go(lv.node.id,{keepSidebar:true}); /* v.080：ショットタブからの遷移では左ツリーを展開しない */
       };
     }
     tile.appendChild(th);
@@ -6669,7 +6671,7 @@ function renderProjShots(main,cur){
     const th=el('img','shot-row-th');if(lv&&lv.v.thumb)th.dataset.ref=lv.v.thumb;
     /* 縦並び表示のサムネクリック：以前はアノテ窓（openReview modal）を開いていたが、
        ユーザー要望によりショットページ（タブ）追加＝go に変更。行本体クリックの右スライドはそのまま。 */
-    if(lv){th.title='クリックでショットページ（タブ）に追加';th.onclick=ev=>{ev.stopPropagation();go(lv.node.id)}}
+    if(lv){th.title='クリックでショットページ（タブ）に追加';th.onclick=ev=>{ev.stopPropagation();go(lv.node.id,{keepSidebar:true})}} /* v.080：ショットタブからの遷移では左ツリーを展開しない */
     it.appendChild(th);
     it.appendChild(el('span','shot-row-nm',sh.name)); /* ショット名 */
     if(rep){const stg=el('span','tl-stage',rep.name);stg.style.background=lv?stageBadgeColor(rep):hexA(stageBadgeColor(rep),.45);it.appendChild(stg);} /* 工程（全工程未着手なら先頭工程を控えめ色で表示） */
