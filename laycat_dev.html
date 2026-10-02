@@ -4002,7 +4002,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.081';
+const APP_VERSION='2026.10.02.082';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8429,13 +8429,11 @@ function renderReviewBody(s,cur,opts){
       let color='var(--text3)';
       try{const _c=stageColorFor(rootOf(cur), label);if(_c)color=_c;}catch(_){}
       const badge=el('span','log-stg-badge'+(isCurrent?' cur':''));
+      /* v.082：現在工程も他工程も「枠＋工程色の文字」で統一（outlined 表示）。
+         以前は現在工程だけ塗り＋暗い文字で強調していたが、工程ごとで表示パターンが混在して
+         見づらいため LAY_ANM 風の outlined に揃える。 */
       badge.style.borderColor=color;
-      /* 現在工程は「工程色で塗り＋暗い文字」で強調、他工程は「枠のみ＋工程色の文字」。
-         以前 CSS で `.cur{background:currentColor;color:var(--bg)!important}` としていたが、
-         currentColor が上書き後の color を参照するため背景と文字が同じ暗色になって文字が
-         見えなくなっていた。inline で両方明示的にセットして解消。 */
-      if(isCurrent){badge.style.background=color;badge.style.color='var(--bg)'}
-      else{badge.style.color=color}
+      badge.style.color=color;
       badge.textContent=label;
       badge.title='工程：'+label+(isCurrent?'（現在）':'');
       /* v.012：工程バッジのクリック（switchStageInTab）は廃止。
