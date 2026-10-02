@@ -154,21 +154,29 @@
         </div>
       </div>
 
-      <!-- テナント定義（Phase M1：運営のみ）-->
+      <!-- テナント定義（Phase M1/M2：運営のみ）-->
       <div class="card" data-op-only="1">
-        <div class="card-title">🏢 テナント定義（マルチテナント化 Phase M1）</div>
+        <div class="card-title">🏢 テナント定義（マルチテナント／チームプラン）</div>
         <div class="card-desc">
-          会社／スタジオ単位のテナントを定義します。<b>M1 ではスキーマ基盤のみ</b>（会社休日の切替はまだ単一テナント）。
-          <code>domains</code> に設定したメールドメインのユーザーは、LayCAT 初回ログイン時に <b>自動的にそのテナントへ所属</b>します。
-          外部契約者（gmail 等）は招待リンク or 手動割当で対応予定（M2 以降）。
+          会社／スタジオ単位のテナント（チーム）を定義します。<b>契約者（ownerEmail）</b>はそのテナントの最高権限を持ち、
+          LayCAT 本体からメンバー追加／admin 任免／ライセンス管理が可能です。
+          <b>ライセンス枠（licenseLimit）</b>はチームプランの契約席数。枠を超えてのメンバー追加は拒否されます。
+          Phase M2 以降、メンバーシップに登録されたユーザーは <b>ドメインに関係なく</b> LayCAT にログイン可能になります。
         </div>
         <div class="add-row">
           <input id="tnNameInput" type="text" placeholder="表示名（例: スタジオA）" autocomplete="off">
+          <input id="tnOwnerInput" type="email" placeholder="契約者メール（owner）" autocomplete="off" style="flex:0 0 240px">
           <button class="btn btn-primary" id="tnAddBtn">＋ 追加</button>
         </div>
         <div class="add-row" style="margin-top:6px">
-          <input id="tnDomainsInput" type="text" placeholder="ドメイン（カンマ区切り・例: studioa.co.jp, studioa.jp）" autocomplete="off">
-          <input id="tnDescInput" type="text" placeholder="説明（任意）" autocomplete="off" style="flex:0 0 240px">
+          <select id="tnPlanInput" style="flex:0 0 110px">
+            <option value="team" selected>team</option>
+            <option value="free">free</option>
+            <option value="enterprise">enterprise</option>
+          </select>
+          <input id="tnLimitInput" type="number" min="1" value="10" placeholder="席数" autocomplete="off" style="flex:0 0 90px">
+          <input id="tnDomainsInput" type="text" placeholder="ドメイン（カンマ区切り・任意／自動判定の fallback 用）" autocomplete="off">
+          <input id="tnDescInput" type="text" placeholder="説明（任意）" autocomplete="off" style="flex:0 0 200px">
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:4px">テナント ID は追加時に自動生成されます（Firestore ドキュメント ID）。</div>
         <div id="tnList" style="margin-top:12px"></div>
@@ -407,14 +415,37 @@ service cloud.firestore {
       allow delete:         if isStaff();
     }
 
-    // ===== テナント定義（マルチテナント化 Phase M1）=====
+    // ===== テナント定義（マルチテナント化 Phase M1/M2）=====
     // 保存先：tenants/{tenantId}
-    // ドキュメント内容：{ name, description, domains:[...], createdBy, createdAt, updatedAt, updatedBy }
-    // 読取は認証者全員（LayCAT ログイン時のドメイン自動判定で参照）、書込は運営のみ（新規会社受け入れ時）。
-    // M1 ではスキーマ基盤のみ。既存の companyHolidays/default は引き続き動作し互換維持。
+    // ドキュメント内容：{ name, description, domains, ownerEmail, plan, licenseLimit, createdBy, ... }
+    // 読取は認証者全員（LayCAT ログイン時のドメイン自動判定で参照）。
+    // 書込は運営のみ（新規会社受け入れ・プラン変更・ownerEmail 変更は運営のみ）。
     match /tenants/{tenantId} {
       allow read:           if signedIn();
       allow write:          if isStaff();
+    }
+
+    // ===== テナントメンバーシップ（Phase M2：チーム管理）=====
+    // 保存先：tenants/{tenantId}/members/{emailKey}
+    // ドキュメント内容：{ email, role:'member'|'admin', assignedBy, assignedAt }
+    // 読取：認証者全員（マイページ・ログイン判定で参照）
+    // 書込：運営 or 当該テナントの ownerEmail or 当該テナントの admin ロール
+    function _tenantOwner(tid) {
+      return exists(/databases/$(database)/documents/tenants/$(tid))
+        ? get(/databases/$(database)/documents/tenants/$(tid)).data.get('ownerEmail','')
+        : '';
+    }
+    function _myTenantRole(tid) {
+      let myK = myKey();
+      return exists(/databases/$(database)/documents/tenants/$(tid)/members/$(myK))
+        ? get(/databases/$(database)/documents/tenants/$(tid)/members/$(myK)).data.get('role','')
+        : '';
+    }
+    match /tenants/{tenantId}/members/{emailKey} {
+      allow read:           if signedIn();
+      allow write:          if isStaff()
+                               || (signedIn() && request.auth.token.email == _tenantOwner(tenantId))
+                               || (signedIn() && _myTenantRole(tenantId) == 'admin');
     }
 
     // ===== 国の祝日テーブル（公開）=====
@@ -1091,9 +1122,15 @@ async function tnLoadList(){
     if(!rows.length){ list.innerHTML='<div style="padding:8px;color:var(--text3);font-size:12px">テナント未登録。上のフォームで追加してください。</div>'; return; }
     list.innerHTML=rows.map(r=>{
       const doms=Array.isArray(r.domains)?r.domains.join(', '):'';
+      const plan=r.plan||'—';
+      const limit=(typeof r.limit==='number'||typeof r.licenseLimit==='number')?(r.licenseLimit||r.limit):0;
+      const owner=r.ownerEmail||'';
       return `<div class="u-row" data-tn="${escH(r.id)}" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--border)">
         <div style="flex:1;min-width:0">
           <div style="font-weight:600;color:var(--text)">${escH(r.name||r.id)} <span style="color:var(--text3);font-weight:400;font-size:11px">(${escH(r.id)})</span></div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">
+            plan: <b>${escH(plan)}</b> ・ 席数: <b>${limit||'—'}</b> ・ owner: <b>${escH(owner||'未設定')}</b>
+          </div>
           <div style="font-size:11px;color:var(--text2);margin-top:2px">domains: ${doms?escH(doms):'<span style="color:var(--text3)">未設定</span>'}${r.description?` ・ ${escH(r.description)}`:''}</div>
         </div>
         <button class="btn btn-sm" data-act="edit" data-tn="${escH(r.id)}">編集</button>
@@ -1106,36 +1143,53 @@ async function tnLoadList(){
 }
 async function tnAdd(){
   const name=String($('tnNameInput').value||'').trim();
+  const owner=String($('tnOwnerInput').value||'').trim().toLowerCase();
+  const plan=String($('tnPlanInput').value||'team');
+  const limit=parseInt($('tnLimitInput').value,10)||10;
   const doms=String($('tnDomainsInput').value||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
   const desc=String($('tnDescInput').value||'').trim();
   if(!name){ notify('表示名を入力してください'); return; }
+  if(owner && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(owner)){ notify('契約者メールの形式が不正です'); return; }
+  if(limit<1){ notify('席数は 1 以上を指定してください'); return; }
   try{
-    /* テナント ID は Firestore の addDoc による自動生成（20 文字のランダム ID）。
-       同名重複は許容（ID が別なので区別可能）。マルチテナント化の実運用で ID が
-       手入力に依存しない方が運用ミスを減らせる。 */
     const nowIso=new Date().toISOString();
     const ref=await addDoc(collection(db,'tenants'),{
       name, description:desc, domains:doms,
+      ownerEmail:owner, plan, licenseLimit:limit,
       createdBy:me.email||'', createdAt:nowIso,
       updatedBy:me.email||'', updatedAt:nowIso,
     });
     notify(`追加しました（ID: ${ref.id}）`);
-    $('tnNameInput').value='';$('tnDomainsInput').value='';$('tnDescInput').value='';
+    $('tnNameInput').value='';$('tnOwnerInput').value='';$('tnDomainsInput').value='';$('tnDescInput').value='';
+    $('tnLimitInput').value='10';$('tnPlanInput').value='team';
     tnLoadList();
   }catch(e){ notify('失敗: '+e.message); }
 }
 function tnEdit(id, cur){
   const nm=prompt('表示名：', cur&&cur.name||'');
   if(nm===null) return;
+  const ow=prompt('契約者メール（owner）：', cur&&cur.ownerEmail||'');
+  if(ow===null) return;
+  const pl=prompt('プラン（team / free / enterprise）：', cur&&cur.plan||'team');
+  if(pl===null) return;
+  const lm=prompt('ライセンス席数：', String(cur&&cur.licenseLimit||10));
+  if(lm===null) return;
   const dm=prompt('ドメイン（カンマ区切り・空可）：', (cur&&Array.isArray(cur.domains))?cur.domains.join(', '):'');
   if(dm===null) return;
   const ds=prompt('説明（任意）：', cur&&cur.description||'');
   if(ds===null) return;
+  const owner=String(ow||'').trim().toLowerCase();
+  if(owner && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(owner)){ notify('契約者メールの形式が不正です'); return; }
+  const limit=parseInt(lm,10);
+  if(!(limit>=1)){ notify('席数は 1 以上を指定してください'); return; }
   const doms=String(dm||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
   (async()=>{
     try{
       await setDoc(doc(db,'tenants',id),{
         name:String(nm||'').trim()||id,
+        ownerEmail:owner,
+        plan:String(pl||'team').trim(),
+        licenseLimit:limit,
         description:String(ds||'').trim(),
         domains:doms,
         updatedBy:me.email||'',
@@ -1155,7 +1209,7 @@ async function tnDelete(id){
   }catch(e){ notify('失敗: '+e.message); }
 }
 $('tnAddBtn').onclick=tnAdd;
-['tnNameInput','tnDomainsInput','tnDescInput'].forEach(id=>{
+['tnNameInput','tnOwnerInput','tnDomainsInput','tnDescInput','tnLimitInput'].forEach(id=>{
   $(id).addEventListener('keydown',e=>{if(e.key==='Enter')tnAdd();});
 });
 /* 初回ロード：運営権限が確定したら実行（opArea 表示後にのみ呼ばれる構造） */
