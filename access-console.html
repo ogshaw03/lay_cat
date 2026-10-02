@@ -415,21 +415,13 @@ service cloud.firestore {
       allow delete:         if isStaff();
     }
 
-    // ===== テナント定義（マルチテナント化 Phase M1/M2）=====
+    // ===== テナント定義（マルチテナント化 Phase M1/M2/M3b）=====
     // 保存先：tenants/{tenantId}
-    // ドキュメント内容：{ name, description, domains, ownerEmail, plan, licenseLimit, createdBy, ... }
+    // ドキュメント内容：{ name, description, domains, ownerEmail, plan, licenseLimit,
+    //                     allowDomainAutoJoin, createdBy, ... }
     // 読取は認証者全員（LayCAT ログイン時のドメイン自動判定で参照）。
-    // 書込は運営のみ（新規会社受け入れ・プラン変更・ownerEmail 変更は運営のみ）。
-    match /tenants/{tenantId} {
-      allow read:           if signedIn();
-      allow write:          if isStaff();
-    }
-
-    // ===== テナントメンバーシップ（Phase M2：チーム管理）=====
-    // 保存先：tenants/{tenantId}/members/{emailKey}
-    // ドキュメント内容：{ email, role:'member'|'admin', assignedBy, assignedAt }
-    // 読取：認証者全員（マイページ・ログイン判定で参照）
-    // 書込：運営 or 当該テナントの ownerEmail or 当該テナントの admin ロール
+    // 作成・削除・ownerEmail/plan/licenseLimit 等の変更：運営のみ。
+    // allowDomainAutoJoin の切替：owner or admin も可能（当該フィールドのみ）。
     function _tenantOwner(tid) {
       return exists(/databases/$(database)/documents/tenants/$(tid))
         ? get(/databases/$(database)/documents/tenants/$(tid)).data.get('ownerEmail','')
@@ -441,11 +433,55 @@ service cloud.firestore {
         ? get(/databases/$(database)/documents/tenants/$(tid)/members/$(myK)).data.get('role','')
         : '';
     }
+    // owner/admin が allowDomainAutoJoin のみを更新するケース（他フィールドは不変）
+    function _canToggleAutoJoin(tid) {
+      let myEmail = request.auth.token.email;
+      let isOwner = myEmail == _tenantOwner(tid);
+      let isAdmin = _myTenantRole(tid) == 'admin';
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return signedIn()
+        && (isOwner || isAdmin)
+        && changed.hasOnly(['allowDomainAutoJoin','updatedAt','updatedBy']);
+    }
+    match /tenants/{tenantId} {
+      allow read:              if signedIn();
+      allow create, delete:    if isStaff();
+      allow update:            if isStaff() || _canToggleAutoJoin(tenantId);
+    }
+
+    // ===== テナントメンバーシップ（Phase M2：チーム管理）=====
+    // 保存先：tenants/{tenantId}/members/{emailKey}
+    // ドキュメント内容：{ email, role:'member'|'admin', assignedBy, assignedAt, joinedByDomain? }
+    // 読取：認証者全員（マイページ・ログイン判定で参照）
+    // 作成：運営 or 当該テナントの ownerEmail or 当該テナントの admin ロール
+    //       または、ドメイン自動参加が有効なテナントへの自己参加（member として）
+    // 更新・削除：運営 or 当該テナントの ownerEmail or 当該テナントの admin ロール
+    function _canSelfJoinByDomain(tid, emailKey) {
+      let tData = exists(/databases/$(database)/documents/tenants/$(tid))
+        ? get(/databases/$(database)/documents/tenants/$(tid)).data
+        : {};
+      let myEmail = request.auth.token.email.lower();
+      let parts = myEmail.split('@');
+      let myDomain = parts.size() == 2 ? parts[1] : '';
+      let allowed = tData.get('allowDomainAutoJoin', false);
+      let domains = tData.get('domains', []);
+      return signedIn()
+        && allowed == true
+        && myDomain != ''
+        && (myDomain in domains)
+        && emailKey == myKey()
+        && request.resource.data.email == myEmail
+        && request.resource.data.role == 'member';
+    }
     match /tenants/{tenantId}/members/{emailKey} {
-      allow read:           if signedIn();
-      allow write:          if isStaff()
-                               || (signedIn() && request.auth.token.email == _tenantOwner(tenantId))
-                               || (signedIn() && _myTenantRole(tenantId) == 'admin');
+      allow read:              if signedIn();
+      allow create:            if isStaff()
+                                  || (signedIn() && request.auth.token.email == _tenantOwner(tenantId))
+                                  || (signedIn() && _myTenantRole(tenantId) == 'admin')
+                                  || _canSelfJoinByDomain(tenantId, emailKey);
+      allow update, delete:    if isStaff()
+                                  || (signedIn() && request.auth.token.email == _tenantOwner(tenantId))
+                                  || (signedIn() && _myTenantRole(tenantId) == 'admin');
     }
 
     // ===== 国の祝日テーブル（公開）=====

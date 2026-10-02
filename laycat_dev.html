@@ -1011,6 +1011,13 @@ button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-c
 .tn-row button{background:transparent;border:1px solid var(--border);color:var(--text2);padding:3px 7px;border-radius:5px;font-size:11px;cursor:pointer}
 .tn-row button:hover{background:var(--bg4);color:var(--text)}
 .tn-row button.danger:hover{background:rgba(220,80,80,.18);color:var(--red);border-color:rgba(220,80,80,.4)}
+.tn-domain-box{padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;display:flex;flex-direction:column;gap:6px}
+.tn-domain-chk{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text)}
+.tn-domain-chk.disabled{cursor:not-allowed;opacity:.6}
+.tn-domain-chk input{margin:0;cursor:pointer}
+.tn-domain-chk.disabled input{cursor:not-allowed}
+.tn-domain-list{font-size:11px;color:var(--text2);padding-left:22px}
+.tn-domain-list code{background:var(--bg2);padding:1px 6px;border-radius:4px;font-size:11px;color:var(--text);border:1px solid var(--border);font-family:var(--font-code)}
 .tn-add{display:flex;gap:6px;align-items:center;padding:8px;background:var(--bg3);border:1px dashed var(--border);border-radius:6px}
 .tn-add input{flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:6px 9px;border-radius:5px;font-size:12px}
 .tn-add select{background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:6px 9px;border-radius:5px;font-size:12px}
@@ -3994,7 +4001,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.069';
+const APP_VERSION='2026.10.02.070';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -19862,12 +19869,23 @@ async function _tnRender(state){
       ${canDelete?`<button data-act="del" class="danger" title="削除">削除</button>`:''}
     </div>`;
   }).join('');
+  const tenantDomains = Array.isArray(tenant.domains) ? tenant.domains : [];
+  const autoJoin = tenant.allowDomainAutoJoin === true;
+  const canToggleDomain = (myRole==='operator' || myRole==='owner' || myRole==='admin');
   bodyEl.innerHTML = `
     <div class="tn-contract">
       <div class="cell"><span class="lbl">プラン</span><span class="val">${esc(tenant.plan||'—')}</span></div>
       <div class="cell"><span class="lbl">契約者</span><span class="val">${esc(owner||'未設定')}</span></div>
       <div class="cell"><span class="lbl">ライセンス</span><span class="val ${isFull?'license-full':'license-ok'}">${used} / ${limit||'—'}</span></div>
       <div class="cell"><span class="lbl">あなたの役職</span><span class="val">${esc(myRole)}</span></div>
+    </div>
+    <h4 class="tn-section-title">ドメインアクセス</h4>
+    <div class="tn-domain-box">
+      <label class="tn-domain-chk ${canToggleDomain?'':'disabled'}">
+        <input type="checkbox" id="tnAutoJoin" ${autoJoin?'checked':''} ${canToggleDomain?'':'disabled'}>
+        <span>弊社ドメインからのアクセスを自動許可（ライセンス枠内のユーザーのみ）</span>
+      </label>
+      <div class="tn-domain-list">対象ドメイン：${tenantDomains.length ? tenantDomains.map(d=>`<code>${esc(d)}</code>`).join(' ') : '<span style="color:var(--text3)">未設定（アクセス管理コンソールで設定）</span>'}</div>
     </div>
     <h4 class="tn-section-title">メンバー（${members.length}）</h4>
     <div class="tn-members">${memberRows || '<div class="tn-empty">メンバー未登録</div>'}</div>
@@ -19901,6 +19919,22 @@ async function _tnRender(state){
       _tnRender(state);
     };
   });
+  /* ドメイン自動許可トグル */
+  const tnAutoJoinEl = bodyEl.querySelector('#tnAutoJoin');
+  if(tnAutoJoinEl && canToggleDomain){
+    tnAutoJoinEl.onchange = async ()=>{
+      const next = !!tnAutoJoinEl.checked;
+      tnAutoJoinEl.disabled = true;
+      const ok = await window.__laynaFB.updateTenantAutoJoin(tid, next, authUser.email);
+      tnAutoJoinEl.disabled = false;
+      if(!ok){
+        tnAutoJoinEl.checked = !next; /* 失敗時はロールバック表示 */
+        toast('設定変更に失敗しました（権限不足？）');
+        return;
+      }
+      toast(next ? '弊社ドメインの自動アクセスを ON にしました' : '弊社ドメインの自動アクセスを OFF にしました');
+    };
+  }
   /* 追加ボタン */
   const addBtn = bodyEl.querySelector('#tnAddBtn');
   if(addBtn && !isFull) addBtn.onclick = async ()=>{
@@ -20018,6 +20052,19 @@ async function onAuthChanged(u){
       const mems = await window.__laynaFB.findUserTenants(u.email);
       if(Array.isArray(mems) && mems.length){
         role = 'member'; /* 全体 role は常に member。テナント内の admin 権限は別軸で管理（refreshTenantAdminButton） */
+      }
+    }catch(_){}
+  }
+  /* マルチテナント化 Phase M3b：まだ許可されていなければ、ドメインベース自己参加を試みる。
+     - 自分のメールドメインが一致 かつ allowDomainAutoJoin=true のテナントがあれば自動参加
+     - ライセンス枠に空きがあれば member として参加・LayCAT 使用可能に
+     - 枠満杯なら参加できず、デフォルトで拒否（従来の allowedDomains グローバル経路との差）  */
+  if(!role && window.__laynaFB && window.__laynaFB.tryJoinByDomain){
+    try{
+      const joined = await window.__laynaFB.tryJoinByDomain(u.email);
+      if(joined){
+        role = 'member';
+        setTimeout(()=>{try{toast(`${joined.tenantName} にメンバーとして自動参加しました`)}catch(_){}}, 900);
       }
     }catch(_){}
   }
@@ -20193,6 +20240,74 @@ initApp();
         }catch(_){}
         return true;
       }catch(e){console.error('removeTenantMember failed',e);return false}},
+      /* マルチテナント化 Phase M3b：テナントの allowDomainAutoJoin を切替。
+         owner / admin が LayCAT 側のテナント管理モーダルからチェックボックス操作で呼ぶ。
+         Firestore ルールが「このフィールドだけ変更」を強制する。 */
+      updateTenantAutoJoin:async(tenantId, allowed, who)=>{try{
+        if(!tenantId)return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        await m.setDoc(m.doc(fs,'tenants',String(tenantId)),{
+          allowDomainAutoJoin: !!allowed,
+          updatedBy: String(who||''),
+          updatedAt: new Date().toISOString(),
+        },{merge:true});
+        return true;
+      }catch(e){console.error('updateTenantAutoJoin failed',e);return false}},
+      /* マルチテナント化 Phase M3b：ドメインベースの自己参加。
+         - 自分のメールドメインが一致 かつ allowDomainAutoJoin=true のテナントを探す
+         - ライセンス枠に空きがあればそのテナントの members に自分を role='member' で追加
+         - 枠満杯なら参加失敗（nullを返す）
+         戻り値：{tenantId, tenantName} / null */
+      tryJoinByDomain:async(email)=>{try{
+        if(!email)return null;
+        const emailLc=String(email).toLowerCase();
+        const atIdx=emailLc.indexOf('@');
+        if(atIdx<0)return null;
+        const myDomain=emailLc.slice(atIdx+1);
+        if(!myDomain)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const tsnap=await m.getDocs(m.collection(fs,'tenants'));
+        for(const td of tsnap.docs){
+          const data=td.data()||{};
+          if(data.allowDomainAutoJoin!==true) continue;
+          const doms=Array.isArray(data.domains)?data.domains.map(d=>String(d||'').toLowerCase()):[];
+          if(!doms.includes(myDomain)) continue;
+          /* ライセンス枠チェック：現在のメンバー数を数える */
+          let used=0;
+          try{
+            const msnap=await m.getDocs(m.collection(fs,'tenants',td.id,'members'));
+            used=msnap.size;
+          }catch(_){ continue; }
+          const limit=(typeof data.licenseLimit==='number')?data.licenseLimit:0;
+          if(limit>0 && used>=limit){
+            console.warn(`tryJoinByDomain: tenant ${td.id} license full (${used}/${limit})`);
+            continue; /* 他のテナントも試す */
+          }
+          /* 自分を member として追加（Firestore ルールの _canSelfJoinByDomain で検証される） */
+          const key=emailLc.replace(/[.@#$/\[\]]/g,'_');
+          const nowIso=new Date().toISOString();
+          try{
+            await m.setDoc(m.doc(fs,'tenants',td.id,'members',key),{
+              email:emailLc,
+              role:'member',
+              assignedBy:'(domain-auto-join)',
+              assignedAt:nowIso,
+              joinedByDomain:true,
+            });
+            /* laycatUsers に tenantId を同期 */
+            try{
+              await m.setDoc(m.doc(fs,'laycatUsers',key),{tenantId:td.id,updatedAt:nowIso},{merge:true});
+            }catch(_){}
+            return {tenantId:td.id, tenantName:data.name||td.id};
+          }catch(e){
+            console.warn('tryJoinByDomain: write failed for',td.id,e.message);
+            continue;
+          }
+        }
+        return null;
+      }catch(e){console.error('tryJoinByDomain failed',e);return null}},
       /* マルチテナント化 Phase M2：指定メールが所属している全テナントを探す。
          実装：全テナントを列挙 → それぞれの members/{emailKey} の存在を確認。
          Phase M3a 修正：**保険として ownerEmail マッチも対象に含める**。
