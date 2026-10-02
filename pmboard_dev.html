@@ -641,7 +641,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.02.030';
+const APP_VERSION='2026.10.02.031';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1303,11 +1303,14 @@ function parseIsoDateJst(s){
 function dayIdx(d){
   /* v.028：hourly スケール（日スケール＝1 日 24h 表示）では fractional day index を返して
      bar の時間内位置を 1 時間単位で表現する。
-     非 hourly スケール（週/月/3ヶ月/半年）は従来通り整数の day index。 */
+     v.031：非 hourly スケールも fractional を返す（Math.round を廃止）。
+     Math.round は viewAnchor が midnight でない時（スクラブ直後）に、
+     バーが整数日境界にスナップして「カクッ」と動く原因だったため。
+     fractional なら viewAnchor がどの位置でもバーが連続的に正しい位置に出る。 */
   if(DATA.timeline && DATA.timeline.hourly){
     return (d.getTime() - DATA.timeline.start.getTime()) / 86400000;
   }
-  return Math.round((jstMidnightMs(d) - DATA.timeline.start.getTime())/86400000);
+  return (jstMidnightMs(d) - DATA.timeline.start.getTime()) / 86400000;
 }
 function fmtDate(dayIndex){
   const d = new Date(DATA.timeline.start.getTime() + dayIndex*86400000);
