@@ -1147,6 +1147,31 @@ async function tnLoadList(){
     list.querySelectorAll('button[data-act="del"]').forEach(b=>{b.onclick=()=>tnDelete(b.dataset.tn)});
   }catch(e){ list.textContent='取得失敗: '+e.message; }
 }
+/* マルチテナント化 Phase M3a 修正：契約者（ownerEmail）を自動的に members にも追加する。
+   これをしないと契約者本人が「どのテナントのメンバーでもない」扱いになり、
+   LayCAT ログイン時のメンバーシップ判定（findUserTenants）で弾かれる致命的バグになる。
+   既存の tenant に対しても tnEdit 経由で owner を再設定した時に同期する。 */
+async function tnEnsureOwnerAsMember(tenantId, ownerEmail){
+  if(!tenantId || !ownerEmail) return;
+  const key=String(ownerEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+  const nowIso=new Date().toISOString();
+  try{
+    const existing=await getDoc(doc(db,'tenants',tenantId,'members',key));
+    if(existing.exists()){
+      /* 既にメンバーなら role を admin に昇格（owner は tenant 内で admin 相当） */
+      if((existing.data().role||'')!=='admin'){
+        await setDoc(doc(db,'tenants',tenantId,'members',key),{role:'admin',updatedAt:nowIso},{merge:true});
+      }
+    }else{
+      await setDoc(doc(db,'tenants',tenantId,'members',key),{
+        email:String(ownerEmail).toLowerCase(),
+        role:'admin',
+        assignedBy:me.email||'',
+        assignedAt:nowIso,
+      });
+    }
+  }catch(e){ console.warn('tnEnsureOwnerAsMember failed',e); }
+}
 async function tnAdd(){
   const name=String($('tnNameInput').value||'').trim();
   const owner=String($('tnOwnerInput').value||'').trim().toLowerCase();
@@ -1165,6 +1190,8 @@ async function tnAdd(){
       createdBy:me.email||'', createdAt:nowIso,
       updatedBy:me.email||'', updatedAt:nowIso,
     });
+    /* 契約者を自動的に members にも追加（本人の LayCAT ログイン保証） */
+    if(owner) await tnEnsureOwnerAsMember(ref.id, owner);
     notify(`追加しました（ID: ${ref.id}）`);
     $('tnNameInput').value='';$('tnOwnerInput').value='';$('tnDomainsInput').value='';$('tnDescInput').value='';
     $('tnLimitInput').value='10';$('tnPlanInput').value='team';
@@ -1201,6 +1228,8 @@ function tnEdit(id, cur){
         updatedBy:me.email||'',
         updatedAt:new Date().toISOString(),
       },{merge:true});
+      /* 契約者（ownerEmail）が設定されていたら members にも同期（既存なら admin に昇格） */
+      if(owner) await tnEnsureOwnerAsMember(id, owner);
       notify('更新しました: '+id);
       tnLoadList();
     }catch(e){ notify('失敗: '+e.message); }

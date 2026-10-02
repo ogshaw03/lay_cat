@@ -3994,7 +3994,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.067';
+const APP_VERSION='2026.10.02.068';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -20183,22 +20183,29 @@ initApp();
       }catch(e){console.error('removeTenantMember failed',e);return false}},
       /* マルチテナント化 Phase M2：指定メールが所属している全テナントを探す。
          実装：全テナントを列挙 → それぞれの members/{emailKey} の存在を確認。
+         Phase M3a 修正：**保険として ownerEmail マッチも対象に含める**。
+           通常は access-console 側で owner を自動的に members に追加するが、万一 members が
+           未登録のまま ownerEmail だけ設定された状態でも契約者が LayCAT にログインできる。
          テナント数が多くなるまでは実用的（通常 1 桁）。
-         戻り値：[{tenantId, role}, ...] / 失敗時 []。 */
+         戻り値：[{tenantId, role}, ...] / 失敗時 []。role は members 優先、無ければ ownerEmail なら 'admin'。 */
       findUserTenants:async(email)=>{try{
         if(!email)return [];
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);
         const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const emailLc=String(email).toLowerCase();
         const tsnap=await m.getDocs(m.collection(fs,'tenants'));
         const results=[];
         for(const td of tsnap.docs){
+          const data=td.data()||{};
+          let role=null;
           try{
             const msnap=await m.getDoc(m.doc(fs,'tenants',td.id,'members',key));
-            if(msnap.exists()){
-              results.push({tenantId:td.id, role:(msnap.data().role||'member')});
-            }
+            if(msnap.exists()){ role=msnap.data().role||'member'; }
           }catch(_){}
+          /* 保険：ownerEmail 一致で admin 扱い（members 未登録でもログイン可能に） */
+          if(!role && String(data.ownerEmail||'').toLowerCase()===emailLc){ role='admin'; }
+          if(role) results.push({tenantId:td.id, role});
         }
         return results;
       }catch(e){return []}},

@@ -18,6 +18,18 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.02.068) **マルチテナント化 Phase M3a 修正：契約者を members に自動追加・ownerEmail 保険**：
+  - **バグ**：v.067 までは契約者（ownerEmail）が `tenants/{tid}/members` に明示登録されていなかったため、
+    契約者本人が LayCAT ログイン時のメンバーシップ判定（findUserTenants）で弾かれる致命的ケースがあった。
+  - **修正 1（access-console）**：
+    - テナント新規作成時、ownerEmail が設定されていたら自動的に `members/{emailKey}` に `role:'admin'` で追加。
+    - テナント編集時、ownerEmail を再設定したら同様に members に同期（既存なら admin に昇格）。
+    - 新規ヘルパ `tnEnsureOwnerAsMember(tenantId, ownerEmail)`。
+  - **修正 2（laycat findUserTenants）**：
+    - 保険として `ownerEmail === email` のテナントも結果に含める（role='admin' 相当）。
+    - 万一 members が未登録のまま ownerEmail だけ設定された状態でも契約者がログインできる。
+  - APP_VERSION：2026.10.02.067 → 2026.10.02.068
+
 - (dev v2026.10.02.067) **マルチテナント化 Phase M3a：権限統合準備（全体 admin とテナント役職の統合準備）**：
   - 新規：ログイン完了時に `authUser.tenantRole`（owner/admin/member）を算出・キャッシュ。
     - `_computeTenantRole(tenantId, email)` で判定：ownerEmail 一致なら owner、members 内 role==='admin' なら admin、それ以外は member。
