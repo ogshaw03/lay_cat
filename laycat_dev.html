@@ -4002,7 +4002,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.02.082';
+const APP_VERSION='2026.10.05.083';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -18931,6 +18931,12 @@ function openReel(){
     if(!rt){try{toast('リールがプロジェクトに束縛されていません')}catch(_){};return}
     reelAddAllShots(rt);
   });
+  /* v.083：OK（isDoneStatus 真）のショットだけショット順に通し確認（先方提出前チェック用） */
+  shotItem('✅ OK カットだけ並べる（先方提出前チェック）',()=>{
+    const rt=reelUI.projectId?getNode(reelUI.projectId):null;
+    if(!rt){try{toast('リールがプロジェクトに束縛されていません')}catch(_){};return}
+    reelAddOkShots(rt);
+  });
   shotDD.appendChild(ce(d,'div','sep'));
   shotItem('リストを閉じる',()=>{rside.style.display='none'});
   shotMi.onclick=e=>{e.stopPropagation();const willOpen=!shotDD.classList.contains('show');closeMenu();if(willOpen){shotMi.classList.add('open');shotDD.classList.add('show')}};
@@ -19209,6 +19215,24 @@ async function reelAddAllShots(root){
     await reelAddClip(lv.node,lv.v);added++;
   }
   toast('REEL に '+added+' 件追加（全体確認）'+(skipped?'／動画なし '+skipped+' 件はスキップ':''));
+}
+/* v.083：OK（isDoneStatus 真）のショットだけの最新動画をショット順に REEL に並べる。
+   先方への提出前チェック（通し確認）用。shotsOf(root) 順を保ち、OK かつ動画のある
+   ショットのみクリップ化する。動画のないショットや OK 以外は静かにスキップ。 */
+async function reelAddOkShots(root){
+  if(!root)return;
+  const shots=shotsOf(root);
+  if(!shots.length){toast('ショットがありません');return}
+  const okShots=shots.filter(sh => isDoneStatus(root, nodeStatus(sh)));
+  if(!okShots.length){toast('OK ステータスのショットがありません');return}
+  openReel();if(!reelAlive())return;
+  let added=0,skipped=0;
+  for(const sh of okShots){
+    const lv=latestVideoVersionUnder(sh.id);
+    if(!lv||lv.v.type!=='video'){skipped++;continue}
+    await reelAddClip(lv.node,lv.v);added++;
+  }
+  toast('REEL に '+added+' 件追加（OK カット通し確認）'+(skipped?'／動画なし '+skipped+' 件はスキップ':''));
 }
 /* 保存済みリールを開く（動画タイルの 🎞 リール名 ボタンから） */
 async function openReelFromSaved(reelId){

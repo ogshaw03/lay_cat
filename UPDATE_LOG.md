@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.05.083) **REEL：OK カットだけショット順に並べる機能を追加**：
+  - REEL ウィンドウの Shot ドロップダウンに「✅ OK カットだけ並べる（先方提出前チェック）」項目を追加。
+  - `reelAddOkShots(root)` を新設：`shotsOf(root)` から `isDoneStatus(root, nodeStatus(sh))` が真のショットだけフィルタ → 各ショットの `latestVideoVersionUnder` を順次 `reelAddClip` で追加。
+  - 用途：先方提出前の OK カット通し確認。全体確認（`reelAddAllShots`）とは別導線。
+  - 書き込み系副作用なし（REEL は memory の `reelUI.clips` 操作のみ）。
+  - APP_VERSION：2026.10.02.082 → 2026.10.05.083
+  - 併せて進行中（本コミットには未含）：OK カットを publish/YYYY-MM-DD/ に一括コピー／ダウンロードするパブリッシュ機能をサブミットタブに追加予定（翌営業日再開）。
 
 ## 反映済み beta v0.3.0（2026-10-02）
 
