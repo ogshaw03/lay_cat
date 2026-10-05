@@ -18,6 +18,19 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.084) **サブミットタブ：OK カットのパブリッシュ機能を追加**：
+  - サブミットタブのツールバーに「📤 パブリッシュ」ボタン（＋サブミット作成の左）を追加。
+  - クリックでモーダル表示：OK（isDoneStatus 真）かつ動画のあるショットの最新バージョンを一覧化し、チェックボックスで提出対象を選択（デフォルト全選択）。全選択／全解除ボタン、ショット順表示（`shotsOf(root)` 順）、ステータスバッジ付き。
+  - 実行時：
+    - **フォルダ運用**（NAS 共有想定）：プロジェクトフォルダ配下の `publish/YYYY-MM-DD/` に `storage.putMedia` で一括コピー。元ファイル名（`v.name`＋拡張子）そのまま。
+    - **R2 運用**：Blob を取得してブラウザから 1 ファイルずつクライアントダウンロード（a[download]）。R2 への書き込みはしない。
+  - 進捗表示：モーダル下部に [i/total] 形式で各ファイルの処理状況・完了件数を表示。
+  - ファイル名解決：`v.name` を優先、拡張子は `v.file` の末尾 or MIME から補完、二重拡張子防止。
+  - **書き込み境界（CLAUDE.md 準拠）**：
+    - フォルダ運用時のみ `storage.putMedia('publish/YYYY-MM-DD', fn, blob, {projectId})` で `publish/YYYY-MM-DD/` に新規書き込み。
+    - **既存の shots/, status/, submits/, laycat.project.json, reels.json 等への副作用なし**。`persist()` 不発火。
+  - APP_VERSION：2026.10.05.083 → 2026.10.06.084
+
 - (dev v2026.10.05.083) **REEL：OK カットだけショット順に並べる機能を追加**：
   - REEL ウィンドウの Shot ドロップダウンに「✅ OK カットだけ並べる（先方提出前チェック）」項目を追加。
   - `reelAddOkShots(root)` を新設：`shotsOf(root)` から `isDoneStatus(root, nodeStatus(sh))` が真のショットだけフィルタ → 各ショットの `latestVideoVersionUnder` を順次 `reelAddClip` で追加。

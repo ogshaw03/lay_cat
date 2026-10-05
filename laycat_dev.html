@@ -4002,7 +4002,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.05.083';
+const APP_VERSION='2026.10.06.084';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6238,6 +6238,13 @@ function tlSubmitItem(e,cur){
 function renderProjSubmits(main,root){
   const lab=el('div','section-label');lab.appendChild(el('span',null,'サブミット'));
   const acts=el('div','acts');
+  /* v.084：パブリッシュボタン（＋サブミット作成の左）。
+     OK ショットの最新動画を publish/YYYY-MM-DD/ に一括コピー（フォルダ運用）または
+     1 件ずつダウンロード（R2 運用）する。先方提出用。 */
+  const pubBtn=el('button','btn btn-ghost btn-sm','📤 パブリッシュ');
+  pubBtn.title='OK ショットの最新動画を一括で publish/YYYY-MM-DD/ にコピー（フォルダ運用）／順次ダウンロード（R2 運用）';
+  pubBtn.onclick=()=>openPublishModal(root);
+  acts.appendChild(pubBtn);
   const add=el('button','btn btn-ghost btn-sm','＋ サブミット作成');add.onclick=()=>openSubmitCreate();acts.appendChild(add);
   lab.appendChild(acts);main.appendChild(lab);
   const list=(DB.submits||[]).filter(s=>s.projectId===root.id).slice().reverse();
@@ -6279,6 +6286,169 @@ function renderProjSubmits(main,root){
     w.appendChild(it);
   }
   main.appendChild(w);
+}
+/* v.084：パブリッシュ機能。OK（isDoneStatus 真）のショットの最新動画をチェックボックス選択で
+   publish/YYYY-MM-DD/ に一括コピー（フォルダ運用）／順次ダウンロード（R2 運用）。
+   ファイル名は元の v.name（＋拡張子を補完）。元ファイル名そのまま。先方提出用。
+   書き込み境界：
+     - フォルダ運用：プロジェクトフォルダ配下の publish/YYYY-MM-DD/ に新規ファイルを書き込む（新規サブディレクトリ）
+     - R2 運用：R2 には書き込まない（ブラウザからクライアントダウンロードのみ）
+     - 既存の shots/, status/, submits/ 等への副作用なし。persist() は呼ばない。 */
+function openPublishModal(root){
+  if(!root){toast('プロジェクトが選択されていません');return}
+  /* 1. OK ショットを収集（shotsOf 順＝ショットタブと同じ並び） */
+  const shots=shotsOf(root);
+  const okShots=shots.filter(sh => isDoneStatus(root, nodeStatus(sh)));
+  /* 2. 各ショットの最新動画バージョンを解決。動画無しのショットは候補から除外する。 */
+  const rows=[];
+  for(const sh of okShots){
+    const lv=latestVideoVersionUnder(sh.id);
+    if(!lv || lv.v.type!=='video' || !lv.v.file) continue;
+    rows.push({shotId:sh.id, shotName:sh.name, stageNode:lv.node, v:lv.v});
+  }
+  const backend=storage._backend(root.id); /* 'folder' | 'r2' */
+  const today=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  const dateStr=`${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+  const subDir='publish/'+dateStr;
+  openModal(body=>{
+    const inner=mHead(body,'📤 OK カットをパブリッシュ',root.name||'');
+    /* 運用モード・出力先の表示 */
+    const info=el('div');info.style.cssText='display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);font-size:12px;color:var(--text2);margin-bottom:12px';
+    const modeChip=el('span');modeChip.style.cssText='padding:3px 10px;border-radius:10px;font-weight:700;font-size:11px;letter-spacing:.5px';
+    if(backend==='r2'){
+      modeChip.textContent='R2 運用';modeChip.style.background='rgba(140,180,240,.14)';modeChip.style.color='#8cb4f0';modeChip.style.border='1px solid rgba(140,180,240,.34)';
+      info.appendChild(modeChip);
+      const desc=el('span');desc.innerHTML='選択したカットを<b>ブラウザから 1 ファイルずつダウンロード</b>します（元ファイル名そのまま）。';info.appendChild(desc);
+    }else{
+      modeChip.textContent='フォルダ運用';modeChip.style.background='rgba(127,191,154,.14)';modeChip.style.color='#7fbf9a';modeChip.style.border='1px solid rgba(127,191,154,.34)';
+      info.appendChild(modeChip);
+      const desc=el('span');desc.innerHTML='プロジェクトフォルダ配下の <code>'+subDir+'/</code> に一括コピーします（元ファイル名そのまま）。';info.appendChild(desc);
+    }
+    inner.appendChild(info);
+    if(!rows.length){
+      inner.appendChild(el('div','empty','OK ステータス かつ 動画のあるショットがありません。'));
+      const closeBtn=el('button','btn btn-primary','閉じる');closeBtn.onclick=closeModal;
+      mFoot(body,[closeBtn]);
+      return;
+    }
+    /* 全選択・全解除・件数 */
+    const topBar=el('div');topBar.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap';
+    const selAll=el('button','btn btn-ghost btn-sm','☑ 全選択');
+    const selNone=el('button','btn btn-ghost btn-sm','☐ 全解除');
+    const counter=el('span');counter.style.cssText='font-size:11px;color:var(--text3);margin-left:auto';
+    topBar.appendChild(selAll);topBar.appendChild(selNone);topBar.appendChild(counter);
+    inner.appendChild(topBar);
+    /* OK ショット一覧テーブル */
+    const listWrap=el('div');listWrap.style.cssText='max-height:46vh;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius2);background:var(--bg2)';
+    const list=el('div');list.style.cssText='display:flex;flex-direction:column';
+    const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const checks=[]; /* [{row, cb}] */
+    const updateCounter=()=>{
+      const n=checks.filter(x=>x.cb.checked).length;
+      counter.textContent=`選択 ${n} / ${rows.length} 件`;
+    };
+    rows.forEach((r, idx)=>{
+      const row=el('div');row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)';
+      if(idx===rows.length-1) row.style.borderBottom='0';
+      const cb=document.createElement('input');cb.type='checkbox';cb.checked=true;
+      cb.style.cssText='width:16px;height:16px;flex-shrink:0;cursor:pointer';
+      cb.onchange=updateCounter;
+      row.appendChild(cb);
+      const info2=el('div');info2.style.cssText='flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;overflow:hidden';
+      const nameRow=el('div');nameRow.style.cssText='font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      nameRow.textContent=r.shotName;
+      info2.appendChild(nameRow);
+      const metaRow=el('div');metaRow.style.cssText='font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      metaRow.textContent=(r.stageNode.name||'')+'  ·  '+(r.v.name||'(無名)');
+      info2.appendChild(metaRow);
+      row.appendChild(info2);
+      /* ステータス色付きバッジ */
+      const stBadge=el('span');
+      const sInfo=stInfo(r.stageNode);
+      stBadge.textContent=sInfo.label||'OK';
+      stBadge.style.cssText=`font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;background:${hexA(sInfo.color,.18)};color:${sInfo.color};border:1px solid ${sInfo.color}55;flex-shrink:0`;
+      row.appendChild(stBadge);
+      list.appendChild(row);
+      checks.push({row, cb, data:r});
+    });
+    listWrap.appendChild(list);
+    inner.appendChild(listWrap);
+    updateCounter();
+    selAll.onclick=()=>{for(const x of checks){x.cb.checked=true}updateCounter()};
+    selNone.onclick=()=>{for(const x of checks){x.cb.checked=false}updateCounter()};
+    /* 進捗表示エリア（実行中に展開） */
+    const progWrap=el('div');progWrap.style.cssText='display:none;margin-top:12px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);font-size:12px;color:var(--text2)';
+    inner.appendChild(progWrap);
+    /* フッターボタン */
+    const cancel=el('button','btn btn-ghost','閉じる');cancel.onclick=closeModal;
+    const run=el('button','btn btn-primary','パブリッシュ実行');
+    run.onclick=async ()=>{
+      const picks=checks.filter(x=>x.cb.checked).map(x=>x.data);
+      if(!picks.length){toast('チェックされているショットがありません');return}
+      run.disabled=true;cancel.disabled=true;selAll.disabled=true;selNone.disabled=true;
+      for(const c of checks){c.cb.disabled=true}
+      progWrap.style.display='';
+      progWrap.innerHTML='';
+      const line=el('div');line.textContent='準備中…';progWrap.appendChild(line);
+      const result=await _publishExecute(root, picks, subDir, backend, (msg)=>{line.textContent=msg});
+      line.textContent=`完了：成功 ${result.ok} 件 / 失敗 ${result.fail} 件`;
+      if(backend==='folder' && result.ok>0){
+        const hint=el('div');hint.style.cssText='margin-top:6px;color:var(--text3);font-size:11px';
+        hint.innerHTML='出力先：<code>'+esc(subDir)+'/</code>（プロジェクトフォルダ配下）';
+        progWrap.appendChild(hint);
+      }
+      cancel.disabled=false;
+      cancel.textContent='閉じる';
+    };
+    mFoot(body,[cancel,run]);
+  }, true);
+}
+/* パブリッシュ実行本体。選択されたショットを順次処理する。
+   - backend='folder'：storage.putMedia('publish/YYYY-MM-DD', fn, blob, {projectId}) で書き込み
+   - backend='r2'：Blob を取ってブラウザからダウンロード（a[download]）、R2 への書き込みはしない
+   onProgress(msg) で進捗を UI に反映。戻り値：{ok, fail}。 */
+async function _publishExecute(root, picks, subDir, backend, onProgress){
+  let ok=0, fail=0;
+  const total=picks.length;
+  let i=0;
+  for(const r of picks){
+    i++;
+    const label=`[${i}/${total}] ${r.shotName}（${r.v.name||'(無名)'}）`;
+    if(typeof onProgress==='function') onProgress('コピー中：'+label);
+    try{
+      const url=await storage.getURLRetry(r.v.file,3);
+      if(!url){ fail++; if(typeof onProgress==='function') onProgress('ファイル取得失敗：'+label); continue; }
+      const blob=await (await fetch(url)).blob();
+      /* 元ファイル名そのまま。v.name にユーザーが登録した名前を優先、拡張子は ref か MIME から補完。 */
+      let base=String(r.v.name||'').replace(/[\\/:*?"<>|\n\r\t]+/g,'_').replace(/\s+/g,' ').trim()||('shot_'+r.shotId.slice(0,8));
+      let ext='';
+      const m=String(r.v.file).match(/(\.[A-Za-z0-9]+)$/);
+      if(m) ext=m[1];
+      else{
+        const MT={'video/mp4':'.mp4','video/quicktime':'.mov','video/webm':'.webm','image/jpeg':'.jpg','image/png':'.png'};
+        ext=MT[((blob&&blob.type)||'').toLowerCase()] || '.mp4';
+      }
+      if(ext && base.toLowerCase().endsWith(ext.toLowerCase())) ext='';
+      const filename=base+ext;
+      if(backend==='r2'){
+        /* クライアントダウンロード（1 ファイルずつ） */
+        const dlurl=URL.createObjectURL(blob);
+        const a=document.createElement('a');a.href=dlurl;a.download=filename;a.rel='noopener';
+        document.body.appendChild(a);a.click();a.remove();
+        setTimeout(()=>{try{URL.revokeObjectURL(dlurl)}catch(_){}}, 60000);
+        ok++;
+      }else{
+        /* フォルダ運用：publish/YYYY-MM-DD/ に書き込み */
+        const ref=await storage.putMedia(subDir, filename, blob, {projectId: root.id});
+        if(ref) ok++; else fail++;
+      }
+    }catch(e){
+      fail++;
+      if(typeof onProgress==='function') onProgress('エラー：'+label+' / '+(e&&e.message||''));
+    }
+  }
+  return {ok, fail};
 }
 /* チェック待ちタブ：チェック担当者ごと＋未割り当てで、チェック待ち（未完了）の工程（ショット）をタブ切替表示 */
 const CHK_NONE='__none__';
