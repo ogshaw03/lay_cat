@@ -3174,6 +3174,17 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.040) **スケジュール実績バー：日スケール（hourly）で coreHours 外もバーを切る**：
+  - 事象：日スケール（1 日 = 24 時間表示）で実績バーが夜間（coreHours 外）も連続表示されており、暗色オーバーレイを被せていても「稼働中のまま」に見える問題。土日祝と同じく時間帯マスクで視覚的に分断したい、という要望。
+  - 修正：
+    - `_splitBarByOffDays(a1, a2, timelineStart, pubSet, coSet, hourly, root)` に 2 引数追加。`hourly=true` のとき各稼働日の有効時間帯を `_getCoreHoursMinutes(root, null)` の `[start, end]` にクリップ。
+    - 平日でも定時外（例：00:00〜10:30・19:30〜24:00）は run を閉じて別サブセグに。翌朝の workStart ≠ 前日の workEnd なので自然に新しいバーとして描画される。
+    - `buildGantt` の実績バー描画ループで `_hourly = !!DATA.timeline.hourly`、`_root = _getProjectRoot()` を解決して渡す。
+    - **ラベル用の 1 パス目は hourly=false で計算**（Nd は稼働日ベースの合計のまま、hourly でも「何時間働いた」ではなく「何日働いた」で統一）。2 パス目のみ hourly=true で描画分断。
+  - 影響範囲：スケジュールタブ実績バー（`buildGantt`）のみ。予定バー・工数集計・ヒートマップは触らない。カスタムスケジュールは実績バーが無いため影響なし。
+  - 書き込み系副作用なし（表示のみ）。
+  - APP_VERSION：2026.10.06.039 → 2026.10.06.040
+
 - (dev v2026.10.06.039) **PMB アクセス権：マルチテナント対応（LayCAT Phase M3b/M3c 連動）**：
   - 事象：LayCAT 本体は Phase M3b で全体 admin（`adminEmails`）、Phase M3c でグローバル `allowedDomains` を廃止し、テナント単位の `members/{emailKey}` ＋ `allowDomainAutoJoin + domains` に移行済。pmboard の `_pmRoleFor` は旧式の `adminEmails` / `allowedDomains` を直接参照したままで、LayCAT のテナントメンバーがいきなり pmboard を開くと「アクセス権なし」で弾かれていた。
   - 修正：

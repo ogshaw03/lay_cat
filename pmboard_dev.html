@@ -646,7 +646,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.039';
+const APP_VERSION='2026.10.06.040';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1358,27 +1358,51 @@ function _buildCompanyHolidaySet(){
    v.038：timelineStart が JST midnight に揃っていない（スクラブ後）前提で書き直し。
    dayNo（整数）で日付をイテレートするのではなく、JST midnight ms で境界を取り直し、
    実時刻ベースで土日祝を判定する → viewAnchor が fractional day でも正しく分断。 */
-function _splitBarByOffDays(a1, a2, timelineStart, pubSet, coSet){
+function _splitBarByOffDays(a1, a2, timelineStart, pubSet, coSet, hourly, root){
+  /* v.040：hourly モード（日スケール）では各稼働日の時間帯も coreHours マスクで絞る。
+     土日祝で切ることに加え、平日でも定時外（coreHours の前後）でバーを切る。
+     非 hourly モード（週・月・3ヶ月・半年）はこれまで通り全日の塊で判定。 */
   const subs = [];
   const startMs = timelineStart.getTime();
   const barStartMs = startMs + a1*86400000;
   const barEndMs   = startMs + a2*86400000;
   if(barEndMs <= barStartMs) return subs;
   const toIdx = ms => (ms - startMs) / 86400000;
+  /* hourly モード：各稼働日の有効時間帯を coreHours にクリップするための offset（ms） */
+  let maskStartMs = 0, maskEndMs = 86400000;
+  if(hourly && root){
+    const mask = _getCoreHoursMinutes(root, null);
+    if(mask && typeof mask.start==='number' && typeof mask.end==='number' && mask.end>mask.start){
+      maskStartMs = mask.start * 60000;
+      maskEndMs   = mask.end   * 60000;
+    }
+  }
   /* バー範囲に重なる JST 暦日を順に列挙（cursor は各日の JST 0:00 ms） */
   let cursor = jstMidnightMs(new Date(barStartMs));
   let runS = null, runE = null;
   while(cursor < barEndMs){
     const nextCursor = cursor + 86400000;
-    const dayStart = Math.max(cursor, barStartMs);
-    const dayEnd   = Math.min(nextCursor, barEndMs);
     const dt = new Date(cursor);
     const p = jstParts(dt);
     const iso = p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');
     const isOff = (pubSet && pubSet.has(iso)) || (coSet && coSet.has(iso)) || p.wk===0 || p.wk===6;
     if(!isOff){
-      if(runS === null){ runS = dayStart; runE = dayEnd; }
-      else{ runE = dayEnd; }
+      /* 稼働日：有効時間帯 workStart〜workEnd をバー範囲でクリップ。
+         非 hourly は 0〜86400000 ms（終日）、hourly は coreHours。 */
+      const workStart = cursor + maskStartMs;
+      const workEnd   = cursor + maskEndMs;
+      const dayStart = Math.max(workStart, barStartMs);
+      const dayEnd   = Math.min(workEnd,   barEndMs);
+      if(dayEnd > dayStart){
+        /* 既存 run と連続（前日の workEnd と当日の workStart が一致 or バー境界）なら伸ばす。
+           hourly モードでは翌朝の workStart ≠ 前日の workEnd なので自然に新しいサブセグになる。 */
+        if(runS === null){ runS = dayStart; runE = dayEnd; }
+        else if(Math.abs(runE - dayStart) < 1){ runE = dayEnd; }
+        else{ subs.push({s:toIdx(runS), e:toIdx(runE)}); runS = dayStart; runE = dayEnd; }
+      }else{
+        /* 稼働日だがマスク範囲とバーが重ならない（例：hourly でバーが夜中のみ） */
+        if(runS !== null){ subs.push({s:toIdx(runS), e:toIdx(runE)}); runS = null; runE = null; }
+      }
     }else{
       if(runS !== null){ subs.push({s:toIdx(runS), e:toIdx(runE)}); runS = null; runE = null; }
     }
@@ -1766,18 +1790,24 @@ function buildGantt(){
         const segs = st.workSegments || [];
         if(!segs.length) continue;
         let totalWorkDays = 0;
-        /* 1 パス目：稼働日合計（ラベル用）を計算 */
+        /* v.040：hourly モード（日スケール）では各稼働日の時間帯も coreHours マスクで絞る。
+           _splitBarByOffDays に hourly/root を渡す。合計ラベル（Nd）は hourly でも稼働日
+           合計のまま（非 hourly と揃える）→ 1 パス目は hourly=false で計算し、2 パス目のみ
+           hourly=true で描画分断。これで「表示上は時間帯でカット、ラベルは何日働いたか」になる。 */
+        const _hourly = !!(DATA.timeline && DATA.timeline.hourly);
+        const _root = _getProjectRoot();
+        /* 1 パス目：稼働日合計（ラベル用）を計算（hourly でも日単位カウント） */
         segs.forEach((seg) => {
           const a1 = dayIdx(seg.start);
           const openEnd = seg.end === null;
           const a2 = openEnd ? todayIdx : dayIdx(seg.end);
           if(a2<0||a1>days) return;
-          const subsForTotal = _splitBarByOffDays(a1, a2, start, _pubSet, _coSet);
+          const subsForTotal = _splitBarByOffDays(a1, a2, start, _pubSet, _coSet, false, null);
           for(const sub of subsForTotal) totalWorkDays += Math.max(0, sub.e - sub.s);
         });
         /* 稼働日ゼロのケース（全部週末等）でも最低 1 日表示（旧挙動踏襲） */
         if(totalWorkDays < 1) totalWorkDays = 1;
-        /* 2 パス目：描画 */
+        /* 2 パス目：描画（hourly なら coreHours でも分断） */
         segs.forEach((seg, idx) => {
           const a1 = dayIdx(seg.start);
           const openEnd = seg.end === null;
@@ -1786,7 +1816,7 @@ function buildGantt(){
           const isLast = idx === segs.length-1;
           const isWip = openEnd && !st.isDone && isLast;
           const style = `background:${st.color};opacity:${isWip?'.7':'.9'}`;
-          const subs = _splitBarByOffDays(a1, a2, start, _pubSet, _coSet);
+          const subs = _splitBarByOffDays(a1, a2, start, _pubSet, _coSet, _hourly, _root);
           if(!subs.length) return; /* 全日 off → 描画スキップ */
           const lastSubIdx = subs.length - 1;
           subs.forEach((sub, subIdx) => {
