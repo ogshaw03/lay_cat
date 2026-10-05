@@ -3174,6 +3174,17 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.041) **工数タブ：日別稼働ヒートマップを撤去**：
+  - 事象：日別稼働ヒートマップ（マスク適用）の精度が信憑性に欠けるため撤去したいという判断。
+  - 撤去対象：
+    - HTML：`<div class="panel"><h4>日別稼働ヒートマップ</h4>...` パネルごと削除。
+    - CSS：`.effort-heatmap` 系セレクタをすべて削除。
+    - JS：`renderEffortHeatmap(rows, root, dayDivisorMs, mhOpts)` と `_shotDailyMaskedMs(shot, root, tStartMs, totalDays, mhOpts)` を関数ごと削除。
+    - 呼び出し：`renderEffortPane` 末尾の `renderEffortHeatmap(...)` 呼び出しも削除。
+  - **温存**：ショット別稼働日数リスト（`effort-list`）、工数集計のロジックとヘルパ（`_workdayStartMs` / `_isWorkday` / `_clockToWorkdayOffset` / `_collectWorkerEvidenceEvents` / `_getManhoursOptions`）はそのまま。他経路（主にリスト集計）で使用しているため。
+  - 書き込み系副作用なし（表示のみ）。
+  - APP_VERSION：2026.10.06.040 → 2026.10.06.041
+
 - (dev v2026.10.06.040) **スケジュール実績バー：日スケール（hourly）で coreHours 外もバーを切る**：
   - 事象：日スケール（1 日 = 24 時間表示）で実績バーが夜間（coreHours 外）も連続表示されており、暗色オーバーレイを被せていても「稼働中のまま」に見える問題。土日祝と同じく時間帯マスクで視覚的に分断したい、という要望。
   - 修正：

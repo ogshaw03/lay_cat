@@ -357,23 +357,8 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .effort-list .row .bar .fill{position:absolute;top:0;bottom:0;left:0;background:var(--accent);border-radius:var(--radius2)}
 .effort-list .row .n{font-family:var(--font-code);font-size:12px;color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
 .effort-list .row .n .u{color:var(--text3);font-size:10px;margin-left:2px}
-/* v.013：日別稼働ヒートマップ（マスク適用）— 工数タブ下部 */
-.effort-heatmap{margin-top:4px}
-.effort-heatmap .eh-head{display:grid;grid-template-columns:160px 1fr;align-items:center;padding:4px 0 6px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text3)}
-.effort-heatmap .eh-head .eh-axis{position:relative;height:18px;font-family:var(--font-code)}
-.effort-heatmap .eh-head .eh-tick{position:absolute;top:0;transform:translateX(-50%);font-size:9.5px;color:var(--text3);white-space:nowrap}
-.effort-heatmap .eh-head .eh-today{position:absolute;top:0;bottom:-6px;width:1px;background:var(--red);border-left:1px dashed var(--red)}
-.effort-heatmap .eh-row{display:grid;grid-template-columns:160px 1fr;align-items:center;height:22px;border-bottom:1px solid var(--border)}
-.effort-heatmap .eh-row:last-child{border-bottom:none}
-.effort-heatmap .eh-row .eh-name{color:var(--text);font-family:var(--font-code);font-size:11px;font-weight:600;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.effort-heatmap .eh-row .eh-name .eh-stage{font-size:9.5px;margin-left:4px;font-weight:500}
-.effort-heatmap .eh-row .eh-track{position:relative;height:18px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;overflow:hidden}
-.effort-heatmap .eh-row .eh-cell{position:absolute;top:0;bottom:0;background:var(--accent)}
-.effort-heatmap .eh-row .eh-wknd{position:absolute;top:0;bottom:0;background:rgba(0,0,0,0.18)}
-.effort-heatmap .eh-row .eh-today{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--red);border-left:1px dashed var(--red);z-index:2}
-.effort-heatmap .eh-legend{display:flex;gap:14px;align-items:center;margin-top:10px;font-size:10.5px;color:var(--text3)}
-.effort-heatmap .eh-legend .eh-sw{display:inline-block;width:14px;height:10px;vertical-align:middle;border-radius:2px;margin-right:4px}
-.effort-heatmap .eh-legend .eh-grad{display:inline-block;width:120px;height:10px;background:linear-gradient(90deg,var(--bg3),var(--accent));border:1px solid var(--border);vertical-align:middle;margin:0 6px}
+/* v.041：日別稼働ヒートマップ（マスク適用）は信憑性が低いため撤去。
+   関連 CSS（.effort-heatmap 系）は削除済み。 */
 
 /* =========== グラフパネル =========== */
 .chart-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
@@ -646,7 +631,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.040';
+const APP_VERSION='2026.10.06.041';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -2684,11 +2669,6 @@ function buildOtherTabsPlaceholder(){
         <h4>ショット別稼働日数（長い順）<span id="effortSplitChip" style="margin-left:10px;font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(140,180,240,.14);color:#8cb4f0;border:1px solid rgba(140,180,240,.34);font-family:var(--font-head);display:none">⚖ 並行作業按分：ON</span></h4>
         <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間のうち、<b>各担当者の稼働時間帯</b>（LayCAT 本体のマイページで個別設定可／デフォルト 10:30-19:30）に収まる分を合計。<b>残業対応</b>：定時外の作業者アクション（リテイク→作業中・作業中→チェック待ち 等）を証跡として、その日の稼働時間帯を自動拡張。チェック担当者のアクション（チェック待ち→*）は証跡から除外。「1 日」= 稼働時間帯の長さ（デフォルト 9 時間）換算。<b>並行作業按分 ON の場合</b>は、同一作業者が複数ショットを同時に作業中としている時間帯は並行ショット数で割って配分。</div>
         <div class="effort-list" id="effortList"></div>
-      </div>
-      <div class="panel">
-        <h4>日別稼働ヒートマップ（マスク適用）</h4>
-        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">各ショットの各日の稼働時間（マスク適用後・残業拡張あり）を色の濃淡で表示。<b>濃い＝その日は稼働時間帯いっぱい作業</b>、<b>薄い＝一部だけ作業</b>、空白＝作業なし。グレー帯＝土日。縦線＝今日。</div>
-        <div class="effort-heatmap" id="effortHeatmap"></div>
       </div>`;
   }
 }
@@ -3038,159 +3018,14 @@ function renderEffortPane(){
       <div class="n">${fmtDays(r.days)}<span class="u">日</span></div>
     </div>`;
   }).join('');
-  /* v.013：日別稼働ヒートマップ（マスク適用後）。
-     ショットごとに DATA.timeline の start〜end の各日の稼働時間を計算し、
-     coreHours 長さに対する比率を色の濃淡で表示。 */
-  renderEffortHeatmap(rows, root, dayDivisorMs, mhOpts);
+  /* v.041：日別稼働ヒートマップは信憑性が低いため撤去（renderEffortHeatmap /
+     _shotDailyMaskedMs は削除済み）。ショット別稼働日数リストのみを表示する。 */
 }
 
-/* 日別稼働ヒートマップのレンダ：
-   - rows: renderEffortPane と同じ順（長い順）
-   - root: coreHours 判定用
-   - dayDivisorMs: その日の最大稼働時間 ms（色濃度の分母に使う）
-   - mhOpts: 土日祝除外・日境界オプション */
-function renderEffortHeatmap(rows, root, dayDivisorMs, mhOpts){
-  const container = document.getElementById('effortHeatmap');
-  if(!container) return;
-  /* v.028：ヒートマップはデータ全体の範囲 (dataTimeline) を参照（スケジュールタブのビュー切替に左右されない）。 */
-  const tl = DATA.dataTimeline || DATA.timeline;
-  if(!tl || !tl.days){
-    container.innerHTML = '<div class="sb-empty">タイムライン未初期化</div>';
-    return;
-  }
-  const tStart = tl.start.getTime();
-  const totalDays = tl.days;
-  /* dataTimeline 基準の today idx */
-  const todayIdx = Math.round((jstMidnightMs(new Date()) - tStart) / 86400000);
-  const pxPerDay = 100 / totalDays; /* % */
-
-  /* ヘッダ軸：毎週月曜日に tick。月初は "M/D"（月付き）、それ以外は日付のみ "D"。
-     長期プロジェクト対応：300 日以上なら隔週に間引く。 */
-  const ticks = [];
-  const stride = totalDays >= 300 ? 14 : 7; /* 日数 */
-  for(let i=0;i<totalDays;i++){
-    const d = new Date(tStart + i*86400000);
-    const wk = d.getDay();
-    if(wk !== 1) continue; /* 月曜日だけ */
-    /* stride 間引き：i を stride で割った剰余で間引く（連続する月曜を近似的に間引く） */
-    const weekIndex = Math.floor(i/7);
-    if(stride===14 && weekIndex%2!==0) continue;
-    const date = d.getDate();
-    const month = d.getMonth()+1;
-    /* 月初週（date <= 7）は "M/D" 表記、それ以外は "D" のみ */
-    const label = (date<=7) ? `${month}/${date}` : `${date}`;
-    ticks.push({idx:i, label});
-  }
-  const todayTick = (todayIdx>=0 && todayIdx<=totalDays)
-    ? `<div class="eh-today" style="left:${todayIdx*pxPerDay}%"></div>` : '';
-  const tickHtml = ticks.map(t=>`<div class="eh-tick" style="left:${t.idx*pxPerDay}%">${escapeHtml(t.label)}</div>`).join('');
-
-  /* 各行：ショットの各日マスク適用時間を計算 → cells を描画 */
-  const htmlRows = rows.map(r=>{
-    const shot = DATA.shots.find(s=>s.sectionNode.id === r.shotId);
-    if(!shot) return '';
-    const daily = _shotDailyMaskedMs(shot, root, tStart, totalDays, mhOpts);
-    /* セル描画：連続した非ゼロ日はまとめず各日を div で描画（コードシンプル化） */
-    const cells = [];
-    /* 土日ハッチング */
-    for(let i=0;i<totalDays;i++){
-      const d = new Date(tStart + i*86400000);
-      const wk = d.getDay();
-      if(wk===0 || wk===6){
-        cells.push(`<div class="eh-wknd" style="left:${i*pxPerDay}%;width:${pxPerDay}%"></div>`);
-      }
-    }
-    /* 稼働セル */
-    for(let i=0;i<totalDays;i++){
-      const ms = daily[i];
-      if(ms <= 0) continue;
-      const ratio = Math.min(1, ms / dayDivisorMs);
-      const alpha = 0.15 + ratio * 0.85; /* 最低でも薄っすら見える */
-      const d = new Date(tStart + i*86400000);
-      const hours = (ms/3600000).toFixed(1);
-      cells.push(`<div class="eh-cell" style="left:${i*pxPerDay}%;width:${pxPerDay}%;opacity:${alpha}" title="${fmtJstDate(d)} ${hours}h"></div>`);
-    }
-    const todayLine = (todayIdx>=0 && todayIdx<=totalDays)
-      ? `<div class="eh-today" style="left:${todayIdx*pxPerDay}%"></div>` : '';
-    return `<div class="eh-row">
-      <div class="eh-name">${escapeHtml(r.name)} <span class="eh-stage" style="color:${resolveColor(r.stageColor)}">${escapeHtml(r.stageName)}</span></div>
-      <div class="eh-track">${cells.join('')}${todayLine}</div>
-    </div>`;
-  }).filter(x=>x).join('');
-
-  container.innerHTML = `
-    <div class="eh-head">
-      <div></div>
-      <div class="eh-axis">${tickHtml}${todayTick}</div>
-    </div>
-    ${htmlRows || '<div class="sb-empty">データなし</div>'}
-    <div class="eh-legend">
-      <span>稼働強度：</span>
-      <span>低</span><span class="eh-grad"></span><span>高（稼働時間帯いっぱい）</span>
-      <span style="margin-left:14px"><span class="eh-sw" style="background:rgba(0,0,0,0.18)"></span>土日</span>
-    </div>`;
-}
-
-/* 1 ショットの各日の稼働時間（マスク適用後 ms）を配列で返す。
-   v.018：Phase 2 強化 — segment 内の作業者アクション遷移を全て証跡として mask を拡張。
-   インデックス 0 = タイムライン start 日、インデックス totalDays-1 = end 日。 */
-function _shotDailyMaskedMs(shot, root, tStartMs, totalDays, mhOpts){
-  const daily = new Array(totalDays).fill(0);
-  const nowMs = Date.now();
-  const projStatuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
-  const opts = mhOpts || _getManhoursOptions(root);
-  const bHour = opts.dayBoundaryHour || 0;
-  /* v.023：workday 境界で日を区切り、土日祝は証跡がある時のみ稼働帯を認める。
-     ヒートマップのセル idx はカレンダー日ベース（tStartMs 起点）に揃える。
-     workday 開始 wdStart は tStartMs の 00:00 起点より "-bHour h" 相当だが、
-     cell idx は wdStart の "日付" を見て tStart との差分で決める（workday → calendar day の近似）。 */
-  for(const st of (shot.stages||[])){
-    const defaultMask = _getCoreHoursMinutes(root, st.assignee);
-    const history = st.history || [];
-    for(const seg of (st.workSegments||[])){
-      const sMs = seg.start ? seg.start.getTime() : null;
-      if(sMs == null) continue;
-      const isOpen = (seg.end == null);
-      const eMs = isOpen ? nowMs : seg.end.getTime();
-      const evidence = _collectWorkerEvidenceEvents(history, sMs, eMs, isOpen, projStatuses);
-      let wdStart = _workdayStartMs(sMs, bHour);
-      while(wdStart < eMs){
-        const wdEnd = wdStart + 86400000;
-        const isWork = _isWorkday(wdStart, opts);
-        let maskStartMs, maskEndMs;
-        if(isWork){
-          maskStartMs = wdStart + _clockToWorkdayOffset(defaultMask.start, bHour) * 60000;
-          maskEndMs   = wdStart + _clockToWorkdayOffset(defaultMask.end,   bHour) * 60000;
-        }else{
-          maskStartMs = null;
-          maskEndMs = null;
-        }
-        for(const tMs of evidence){
-          if(tMs >= wdStart && tMs < wdEnd){
-            if(maskStartMs == null || tMs < maskStartMs) maskStartMs = tMs;
-            if(maskEndMs   == null || tMs > maskEndMs)   maskEndMs   = tMs;
-          }
-        }
-        if(maskStartMs != null && maskEndMs != null && maskEndMs > maskStartMs){
-          const a = Math.max(sMs, maskStartMs);
-          const b = Math.min(eMs, maskEndMs);
-          if(b > a){
-            /* セル idx：workday 開始日のカレンダー日で決める。
-               tStartMs が 00:00 起点なので、wdStart (bHour:00) との差を日数で丸める。 */
-            const dayDate = new Date(wdStart);
-            dayDate.setHours(0,0,0,0);
-            const idx = Math.round((dayDate.getTime() - tStartMs) / 86400000);
-            if(idx >= 0 && idx < totalDays){
-              daily[idx] += (b - a);
-            }
-          }
-        }
-        wdStart += 86400000;
-      }
-    }
-  }
-  return daily;
-}
+/* v.041：日別稼働ヒートマップ関連の `renderEffortHeatmap` と `_shotDailyMaskedMs` は
+   信憑性が低いため撤去。ショット別稼働日数リスト（既存の effort-list）は温存。
+   関連ヘルパ（_workdayStartMs / _isWorkday / _clockToWorkdayOffset / _collectWorkerEvidenceEvents /
+   _getManhoursOptions）は他箇所（主に工数集計）でも使うので削除していない。 */
 
 /* =========== プロジェクト切替とフォルダ接続 =========== */
 function populateProjectPicker(){
