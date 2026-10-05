@@ -3174,6 +3174,17 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.039) **PMB アクセス権：マルチテナント対応（LayCAT Phase M3b/M3c 連動）**：
+  - 事象：LayCAT 本体は Phase M3b で全体 admin（`adminEmails`）、Phase M3c でグローバル `allowedDomains` を廃止し、テナント単位の `members/{emailKey}` ＋ `allowDomainAutoJoin + domains` に移行済。pmboard の `_pmRoleFor` は旧式の `adminEmails` / `allowedDomains` を直接参照したままで、LayCAT のテナントメンバーがいきなり pmboard を開くと「アクセス権なし」で弾かれていた。
+  - 修正：
+    - `__laynaFB` に `findUserTenants(email)` / `loadAllTenants()` を追加（LayCAT 本体と同じ実装、副作用なし）。
+    - `_pmLoadAccess()` 内でログイン中ユーザーの所属テナント（`_pmUserTenants`）と全テナント（`_pmAllTenants`：ドメイン自動参加判定用）をプリロードしてキャッシュ。operator / 静的 `allowedEmails` でヒットするときは早期 return でテナント照会をスキップ。
+    - `_pmRoleFor(email)` の判定順を次に変更：`operator` → 静的 `allowedEmails`（互換・招待）→ 所属テナントあり → 任意テナントの `allowDomainAutoJoin=true` ＋ domains にメールドメイン一致。
+    - 旧参照（`adminEmails` / グローバル `allowedDomains`）を撤廃。
+  - 書き込み系副作用なし：`tryJoinByDomain` は呼ばず、読み取り判定のみ（pmboard はテナント member 自動登録はしない方針）。LayCAT 本体にログインすれば自動参加されるのでそれ以降は通過する。
+  - 拒否画面のメッセージも「allowedEmails への追加依頼」→「テナント管理者に member として追加してもらう」に更新。
+  - APP_VERSION：2026.10.03.038 → 2026.10.06.039
+
 - (dev v2026.10.03.038) **スケジュール 実績バー分断：スクラブ後に土日祝境界がずれる不具合を修正**：
   - 事象：v.037 で導入した `_splitBarByOffDays` が、スクラブ後に土日祝境界からバーがずれて切れていた（分断自体が効かない or 境界が 1 日ズレて見える）。
   - 原因：`DATA.viewAnchor` はスクラブ時に `startAnchor + deltaDays * 86400000`（`deltaDays` が fractional）で更新される → `DATA.timeline.start` が JST midnight に揃わない状態になる。v.037 の `_splitBarByOffDays` は `timelineStart + dayNo*86400000` で日境界を取ろうとしていたため、fractional のオフセットがそのまま乗って境界がズレていた。

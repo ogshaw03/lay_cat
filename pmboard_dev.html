@@ -646,7 +646,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.03.038';
+const APP_VERSION='2026.10.06.039';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -3268,13 +3268,18 @@ function _pmCheckMemberAccess(){
   body.innerHTML=`<div class="empty-panel" style="max-width:520px;margin:40px auto"><div class="ep-ico">🔒</div><div class="ep-title">アクセス権がありません</div><div class="ep-sub" style="line-height:1.6">「${escapeHtml(projName)}」のメンバーとして登録されていません。<br>現在のメール：<b>${escapeHtml(meNow)}</b><br><br>アクセスするには、LayCAT にログインしてプロジェクトのメンバーに登録されたメールと一致させ、このタブを再読み込みしてください。</div></div>`;
   return false;
 }
-/* v.0.2.0 (pmboard)：LayCAT のアクセス管理コンソール（access.json）を継承。
+/* v.0.2.0 (pmboard) → v.039 で LayCAT 本体のマルチテナント化（Phase M3b/M3c）に合わせて書き換え：
    `authRequired` かつ ogshaw03.github.io 上のときは、以下の何れにも該当しないアカウントを拒否：
-   - adminEmails / operatorEmails / allowedEmails に含まれる
-   - allowedDomains 配下のドメイン
-   さらに Firebase 側（招待リンク経由の invited）で許可されたメールも補完的に許可する。
-   LayCAT が既にログイン時に localStorage.laycat_userEmail を書いているので、その値で判定。 */
+   - operator（Firestore `laynaAccess/config.operatorEmails` に含まれる）
+   - 任意テナントの member/admin/owner（`findUserTenants` で非空 … owner は members 未登録でも補完）
+   - 任意テナントの allowDomainAutoJoin が真かつ domains にメールドメインが含まれる
+   - access.json の allowedEmails（静的、互換用）に含まれる
+   - 招待リンク（Firebase laynaAccess/invited）経由で許可されたメール
+   旧 `adminEmails` / 旧グローバル `allowedDomains` の判定は廃止（Phase M3b/M3c で廃止済み）。
+   副作用なし：ユーザー自動登録（tryJoinByDomain）は呼ばない。読取判定のみ。 */
 let _pmAccessCfg=null,_pmAuthOn=false,_pmAccessLoaded=false;
+let _pmUserTenants=[]; /* v.039：ログイン中ユーザーが所属する tenants [{tenantId, role}] */
+let _pmAllTenants=null; /* v.039：ドメイン自動参加判定用に全テナントをキャッシュ */
 async function _pmLoadAccess(){
   if(_pmAccessLoaded)return;
   _pmAccessLoaded=true;
@@ -3303,16 +3308,45 @@ async function _pmLoadAccess(){
     }
   }catch(_){}
   _pmAuthOn=!!(_pmAccessCfg&&_pmAccessCfg.authRequired)&&location.hostname==='ogshaw03.github.io';
+  /* v.039：ログイン中ユーザーの所属テナント・全テナントをマルチテナント判定用にプリロード。
+     operator 判定で通ればテナント照会は不要なので遅延評価。認証オフなら完全スキップ。 */
+  _pmUserTenants=[];_pmAllTenants=null;
+  if(!_pmAuthOn)return;
+  const em=_pmCurrentUserEmail();
+  if(!em)return;
+  /* operator は tenants 列挙前に即判定（頻出ケースを早く通す） */
+  const opList=(Array.isArray(_pmAccessCfg&&_pmAccessCfg.operatorEmails)?_pmAccessCfg.operatorEmails:[]).map(x=>String(x||'').toLowerCase());
+  if(opList.includes(em))return; /* operator は所属テナント照会不要 */
+  const allowList=(Array.isArray(_pmAccessCfg&&_pmAccessCfg.allowedEmails)?_pmAccessCfg.allowedEmails:[]).map(x=>String(x||'').toLowerCase());
+  if(allowList.includes(em))return; /* 招待・静的 allowedEmails も不要 */
+  /* マルチテナント本判定：所属テナント＋全テナント（ドメイン判定用）を並列読み */
+  try{
+    const [mems, all] = await Promise.all([
+      (window.__laynaFB&&window.__laynaFB.findUserTenants)?window.__laynaFB.findUserTenants(em):[],
+      (window.__laynaFB&&window.__laynaFB.loadAllTenants)?window.__laynaFB.loadAllTenants():null,
+    ]);
+    _pmUserTenants=Array.isArray(mems)?mems:[];
+    _pmAllTenants=Array.isArray(all)?all:null;
+  }catch(_){}
 }
 function _pmRoleFor(email){
   if(!_pmAccessCfg||!email)return null;
   const e=String(email).toLowerCase();
   const has=arr=>Array.isArray(arr)&&arr.map(x=>String(x||'').toLowerCase()).includes(e);
   if(has(_pmAccessCfg.operatorEmails))return 'operator';
-  if(has(_pmAccessCfg.adminEmails))return 'admin';
-  if(has(_pmAccessCfg.allowedEmails))return 'member';
+  if(has(_pmAccessCfg.allowedEmails))return 'member'; /* 招待・静的許可（互換） */
+  /* v.039：マルチテナント member／admin／owner */
+  if(Array.isArray(_pmUserTenants)&&_pmUserTenants.length)return 'member';
+  /* v.039：ドメイン自動参加（副作用なしで判定のみ）
+     どこかのテナントが allowDomainAutoJoin=true かつ domains にメールドメインを含めば通す。 */
   const dom=e.split('@')[1]||'';
-  if((_pmAccessCfg.allowedDomains||[]).some(d=>String(d).toLowerCase().replace(/^@/,'')===dom))return 'member';
+  if(dom && Array.isArray(_pmAllTenants)){
+    for(const t of _pmAllTenants){
+      if(!t||t.allowDomainAutoJoin!==true)continue;
+      const doms=Array.isArray(t.domains)?t.domains:[];
+      if(doms.some(d=>String(d||'').toLowerCase().replace(/^@/,'')===dom))return 'member';
+    }
+  }
   return null;
 }
 function _pmCheckOrgAccess(){
@@ -3326,7 +3360,7 @@ function _pmCheckOrgAccess(){
   const btnLabel=loggedIn?'別アカウントでログイン':'Google でログイン';
   const title=loggedIn?'このアプリを利用する権限がありません':'ログインが必要です';
   const desc=loggedIn
-    ? `アクセス管理コンソールで許可されていないアカウントです。<br>現在のメール：<b>${escapeHtml(meNow)}</b><br><br>管理者に allowedEmails への追加を依頼するか、別アカウントでログインし直してください。`
+    ? `どのテナントのメンバーにも登録されていません。<br>現在のメール：<b>${escapeHtml(meNow)}</b><br><br>テナント管理者に member として追加してもらうか、別アカウントでログインし直してください。<br><small style="color:var(--text3)">（運営 operator・テナント所属・テナントドメイン自動参加・招待リンクのいずれかで通過できます）</small>`
     : 'このアプリの利用にはログインが必要です。下のボタンから Google アカウントでログインしてください。';
   body.innerHTML=`<div class="empty-panel" style="max-width:520px;margin:40px auto"><div class="ep-ico">⛔</div><div class="ep-title">${escapeHtml(title)}</div><div class="ep-sub" style="line-height:1.6">${desc}</div><div style="margin-top:16px;display:flex;gap:8px;justify-content:center"><button id="pmLoginBtn" style="padding:8px 18px;border-radius:8px;background:#4da6ff;color:#111;border:0;font-weight:700;cursor:pointer">${escapeHtml(btnLabel)}</button>${loggedIn?'<button id="pmLogoutBtn" style="padding:8px 14px;border-radius:8px;background:transparent;border:1px solid #3a3a42;color:#c8c8d0;cursor:pointer">ログアウト</button>':''}</div></div>`;
   const lb=document.getElementById('pmLoginBtn');
@@ -4289,6 +4323,37 @@ else { showInitialEmptyState(); }
         const fs=m.getFirestore(app);
         const snap=await m.getDoc(m.doc(fs,'tenants',String(id)));
         return snap.exists()?{id:snap.id,...snap.data()}:null;
+      }catch(e){return null}},
+      /* v.039：マルチテナント対応のアクセス判定で使う。LayCAT 本体の
+         `findUserTenants` / `loadAllTenants` と同じ実装（副作用なし・読み取りのみ）。 */
+      findUserTenants:async(email)=>{try{
+        if(!email)return [];
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const emailLc=String(email).toLowerCase();
+        const tsnap=await m.getDocs(m.collection(fs,'tenants'));
+        const results=[];
+        for(const td of tsnap.docs){
+          const data=td.data()||{};
+          let role=null;
+          try{
+            const msnap=await m.getDoc(m.doc(fs,'tenants',td.id,'members',key));
+            if(msnap.exists()){ role=msnap.data().role||'member'; }
+          }catch(_){}
+          /* 保険：ownerEmail 一致で admin 扱い（members 未登録でも通す） */
+          if(!role && String(data.ownerEmail||'').toLowerCase()===emailLc){ role='admin'; }
+          if(role) results.push({tenantId:td.id, role});
+        }
+        return results;
+      }catch(e){return []}},
+      loadAllTenants:async()=>{try{
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const snap=await m.getDocs(m.collection(fs,'tenants'));
+        const rows=[];
+        snap.forEach(d=>rows.push({id:d.id,...d.data()}));
+        return rows;
       }catch(e){return null}},
       /* 【v.024】祝日カレンダー（Phase 5）：国の祝日 1 年分を読む。publicHolidays/JP/years/{year} */
       loadPublicHolidays:async(country,year)=>{try{
