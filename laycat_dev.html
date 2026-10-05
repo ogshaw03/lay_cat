@@ -4002,7 +4002,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.084';
+const APP_VERSION='2026.10.06.085';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6287,32 +6287,42 @@ function renderProjSubmits(main,root){
   }
   main.appendChild(w);
 }
-/* v.084：パブリッシュ機能。OK（isDoneStatus 真）のショットの最新動画をチェックボックス選択で
+/* v.084／v.085：パブリッシュ機能。指定したステータスのショットの最新動画をチェックボックス選択で
    publish/YYYY-MM-DD/ に一括コピー（フォルダ運用）／順次ダウンロード（R2 運用）。
    ファイル名は元の v.name（＋拡張子を補完）。元ファイル名そのまま。先方提出用。
+   v.085：ステータスを固定（OK のみ）せずプルダウンで選択。既定は「最初の完了系ステータス」
+   （通常は社内OK）を選択。例外（例：クライアントOK待ちだけ出す等）にも対応する。
    書き込み境界：
      - フォルダ運用：プロジェクトフォルダ配下の publish/YYYY-MM-DD/ に新規ファイルを書き込む（新規サブディレクトリ）
      - R2 運用：R2 には書き込まない（ブラウザからクライアントダウンロードのみ）
      - 既存の shots/, status/, submits/ 等への副作用なし。persist() は呼ばない。 */
 function openPublishModal(root){
   if(!root){toast('プロジェクトが選択されていません');return}
-  /* 1. OK ショットを収集（shotsOf 順＝ショットタブと同じ並び） */
-  const shots=shotsOf(root);
-  const okShots=shots.filter(sh => isDoneStatus(root, nodeStatus(sh)));
-  /* 2. 各ショットの最新動画バージョンを解決。動画無しのショットは候補から除外する。 */
-  const rows=[];
-  for(const sh of okShots){
-    const lv=latestVideoVersionUnder(sh.id);
-    if(!lv || lv.v.type!=='video' || !lv.v.file) continue;
-    rows.push({shotId:sh.id, shotName:sh.name, stageNode:lv.node, v:lv.v});
-  }
   const backend=storage._backend(root.id); /* 'folder' | 'r2' */
   const today=new Date();
   const pad=n=>String(n).padStart(2,'0');
   const dateStr=`${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
   const subDir='publish/'+dateStr;
+  /* プロジェクトの全ステータス（表示順）。 */
+  const allStatuses=projStatuses(root)||[];
+  /* 初期選択：最初の「完了系」ステータス（isDoneStatus 真）。見つからなければ先頭を使う。 */
+  let pickedStatusId=null;
+  for(const s of allStatuses){ if(s && s.id && isDoneStatus(root, s.id)){ pickedStatusId=s.id; break; } }
+  if(!pickedStatusId && allStatuses.length){ pickedStatusId=allStatuses[0].id; }
+  /* 対象ショット一覧を構築（ステータスでフィルタ、ショット順＝shotsOf、動画のあるショットのみ） */
+  const shots=shotsOf(root);
+  const buildRows=(statusId)=>{
+    const rs=[];
+    const matched=shots.filter(sh => nodeStatus(sh) === statusId);
+    for(const sh of matched){
+      const lv=latestVideoVersionUnder(sh.id);
+      if(!lv || lv.v.type!=='video' || !lv.v.file) continue;
+      rs.push({shotId:sh.id, shotName:sh.name, stageNode:lv.node, v:lv.v});
+    }
+    return rs;
+  };
   openModal(body=>{
-    const inner=mHead(body,'📤 OK カットをパブリッシュ',root.name||'');
+    const inner=mHead(body,'📤 カットをパブリッシュ',root.name||'');
     /* 運用モード・出力先の表示 */
     const info=el('div');info.style.cssText='display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);font-size:12px;color:var(--text2);margin-bottom:12px';
     const modeChip=el('span');modeChip.style.cssText='padding:3px 10px;border-radius:10px;font-weight:700;font-size:11px;letter-spacing:.5px';
@@ -6326,12 +6336,24 @@ function openPublishModal(root){
       const desc=el('span');desc.innerHTML='プロジェクトフォルダ配下の <code>'+subDir+'/</code> に一括コピーします（元ファイル名そのまま）。';info.appendChild(desc);
     }
     inner.appendChild(info);
-    if(!rows.length){
-      inner.appendChild(el('div','empty','OK ステータス かつ 動画のあるショットがありません。'));
-      const closeBtn=el('button','btn btn-primary','閉じる');closeBtn.onclick=closeModal;
-      mFoot(body,[closeBtn]);
-      return;
+    /* ステータス選択プルダウン */
+    const stRow=el('div');stRow.style.cssText='display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px';
+    const stLbl=el('span');stLbl.textContent='抽出ステータス：';stLbl.style.cssText='font-size:12px;color:var(--text2);font-weight:600';
+    stRow.appendChild(stLbl);
+    const stSel=document.createElement('select');
+    stSel.className='form-input';
+    stSel.style.cssText='padding:6px 10px;font-size:12px;min-width:180px';
+    for(const s of allStatuses){
+      if(!s||!s.id) continue;
+      const o=document.createElement('option');o.value=s.id;o.textContent=s.label||s.id;
+      if(s.id===pickedStatusId) o.selected=true;
+      stSel.appendChild(o);
     }
+    stRow.appendChild(stSel);
+    const stHint=el('span');stHint.style.cssText='font-size:11px;color:var(--text3)';
+    stHint.textContent='（既定は最初の完了系ステータス）';
+    stRow.appendChild(stHint);
+    inner.appendChild(stRow);
     /* 全選択・全解除・件数 */
     const topBar=el('div');topBar.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap';
     const selAll=el('button','btn btn-ghost btn-sm','☑ 全選択');
@@ -6339,54 +6361,74 @@ function openPublishModal(root){
     const counter=el('span');counter.style.cssText='font-size:11px;color:var(--text3);margin-left:auto';
     topBar.appendChild(selAll);topBar.appendChild(selNone);topBar.appendChild(counter);
     inner.appendChild(topBar);
-    /* OK ショット一覧テーブル */
-    const listWrap=el('div');listWrap.style.cssText='max-height:46vh;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius2);background:var(--bg2)';
-    const list=el('div');list.style.cssText='display:flex;flex-direction:column';
-    const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const checks=[]; /* [{row, cb}] */
-    const updateCounter=()=>{
-      const n=checks.filter(x=>x.cb.checked).length;
-      counter.textContent=`選択 ${n} / ${rows.length} 件`;
-    };
-    rows.forEach((r, idx)=>{
-      const row=el('div');row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)';
-      if(idx===rows.length-1) row.style.borderBottom='0';
-      const cb=document.createElement('input');cb.type='checkbox';cb.checked=true;
-      cb.style.cssText='width:16px;height:16px;flex-shrink:0;cursor:pointer';
-      cb.onchange=updateCounter;
-      row.appendChild(cb);
-      const info2=el('div');info2.style.cssText='flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;overflow:hidden';
-      const nameRow=el('div');nameRow.style.cssText='font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-      nameRow.textContent=r.shotName;
-      info2.appendChild(nameRow);
-      const metaRow=el('div');metaRow.style.cssText='font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-      metaRow.textContent=(r.stageNode.name||'')+'  ·  '+(r.v.name||'(無名)');
-      info2.appendChild(metaRow);
-      row.appendChild(info2);
-      /* ステータス色付きバッジ */
-      const stBadge=el('span');
-      const sInfo=stInfo(r.stageNode);
-      stBadge.textContent=sInfo.label||'OK';
-      stBadge.style.cssText=`font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;background:${hexA(sInfo.color,.18)};color:${sInfo.color};border:1px solid ${sInfo.color}55;flex-shrink:0`;
-      row.appendChild(stBadge);
-      list.appendChild(row);
-      checks.push({row, cb, data:r});
-    });
-    listWrap.appendChild(list);
+    /* ショット一覧テーブル（ステータス変更で再描画） */
+    const listWrap=el('div');listWrap.style.cssText='max-height:46vh;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius2);background:var(--bg2);min-height:40px';
     inner.appendChild(listWrap);
-    updateCounter();
-    selAll.onclick=()=>{for(const x of checks){x.cb.checked=true}updateCounter()};
-    selNone.onclick=()=>{for(const x of checks){x.cb.checked=false}updateCounter()};
     /* 進捗表示エリア（実行中に展開） */
     const progWrap=el('div');progWrap.style.cssText='display:none;margin-top:12px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);font-size:12px;color:var(--text2)';
     inner.appendChild(progWrap);
     /* フッターボタン */
     const cancel=el('button','btn btn-ghost','閉じる');cancel.onclick=closeModal;
     const run=el('button','btn btn-primary','パブリッシュ実行');
+    mFoot(body,[cancel,run]);
+    const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    let checks=[]; /* [{row, cb, data}] — 一覧再描画のたびに作り直し */
+    let currentRows=[];
+    const updateCounter=()=>{
+      const n=checks.filter(x=>x.cb.checked).length;
+      counter.textContent=`選択 ${n} / ${currentRows.length} 件`;
+    };
+    const renderList=()=>{
+      currentRows=buildRows(pickedStatusId);
+      checks=[];
+      listWrap.innerHTML='';
+      if(!currentRows.length){
+        const empty=el('div','empty','選択ステータスに該当する動画つきショットがありません。');
+        empty.style.cssText='padding:14px 12px;color:var(--text3);text-align:center;font-size:12px';
+        listWrap.appendChild(empty);
+        run.disabled=true;
+        selAll.disabled=true;selNone.disabled=true;
+        updateCounter();
+        return;
+      }
+      run.disabled=false;
+      selAll.disabled=false;selNone.disabled=false;
+      const list=el('div');list.style.cssText='display:flex;flex-direction:column';
+      currentRows.forEach((r, idx)=>{
+        const row=el('div');row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)';
+        if(idx===currentRows.length-1) row.style.borderBottom='0';
+        const cb=document.createElement('input');cb.type='checkbox';cb.checked=true;
+        cb.style.cssText='width:16px;height:16px;flex-shrink:0;cursor:pointer';
+        cb.onchange=updateCounter;
+        row.appendChild(cb);
+        const info2=el('div');info2.style.cssText='flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;overflow:hidden';
+        const nameRow=el('div');nameRow.style.cssText='font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        nameRow.textContent=r.shotName;
+        info2.appendChild(nameRow);
+        const metaRow=el('div');metaRow.style.cssText='font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        metaRow.textContent=(r.stageNode.name||'')+'  ·  '+(r.v.name||'(無名)');
+        info2.appendChild(metaRow);
+        row.appendChild(info2);
+        /* ステータス色付きバッジ */
+        const stBadge=el('span');
+        const sInfo=stInfo(r.stageNode);
+        stBadge.textContent=sInfo.label||'—';
+        stBadge.style.cssText=`font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;background:${hexA(sInfo.color,.18)};color:${sInfo.color};border:1px solid ${sInfo.color}55;flex-shrink:0`;
+        row.appendChild(stBadge);
+        list.appendChild(row);
+        checks.push({row, cb, data:r});
+      });
+      listWrap.appendChild(list);
+      updateCounter();
+    };
+    renderList();
+    stSel.onchange=()=>{pickedStatusId=stSel.value; renderList();};
+    selAll.onclick=()=>{for(const x of checks){x.cb.checked=true}updateCounter()};
+    selNone.onclick=()=>{for(const x of checks){x.cb.checked=false}updateCounter()};
     run.onclick=async ()=>{
       const picks=checks.filter(x=>x.cb.checked).map(x=>x.data);
       if(!picks.length){toast('チェックされているショットがありません');return}
-      run.disabled=true;cancel.disabled=true;selAll.disabled=true;selNone.disabled=true;
+      run.disabled=true;cancel.disabled=true;selAll.disabled=true;selNone.disabled=true;stSel.disabled=true;
       for(const c of checks){c.cb.disabled=true}
       progWrap.style.display='';
       progWrap.innerHTML='';
@@ -6401,7 +6443,6 @@ function openPublishModal(root){
       cancel.disabled=false;
       cancel.textContent='閉じる';
     };
-    mFoot(body,[cancel,run]);
   }, true);
 }
 /* パブリッシュ実行本体。選択されたショットを順次処理する。
