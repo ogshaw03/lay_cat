@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.066';
+const APP_VERSION='2026.10.06.067';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4263,7 +4263,11 @@ async function _refInit(){
       if(n === editingNode) return;
       n.remove();
     });
-    for(const it of items){
+    /* v.067：レイヤー順（it.z）でソートして描画。z 未設定は配列順位をフォールバック。 */
+    const _sorted = items.map((it,i)=>({it, z:(it.z==null?i:it.z), i}))
+                         .sort((a,b)=> (a.z - b.z) || (a.i - b.i))
+                         .map(x=>x.it);
+    for(const it of _sorted){
       const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
       if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom) continue;
       if(_REF_STATE.editingId === it.id && editingNode){
@@ -4865,6 +4869,26 @@ async function _refInit(){
     for(const s of sels){ s.w = ref.w; s.h = ref.h; scheduleItemSave(s); }
     renderVisible();
   };
+  /* v.067：レイヤー順変更（it.z 更新。LayCAT v.114 と同仕様）。 */
+  const _effZ = (it, i) => (it.z == null ? i : it.z);
+  const bringSelectedToFront = ()=>{
+    const sels = Array.from(_REF_STATE.selection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean);
+    if(!sels.length) return;
+    const idxOf = new Map(workingItems.map((it,i)=>[it,i]));
+    sels.sort((a,b)=> _effZ(a, idxOf.get(a)) - _effZ(b, idxOf.get(b)));
+    let z = Math.max(0, ...workingItems.map((it,i)=>_effZ(it,i))) + 1;
+    for(const s of sels){ s.z = z++; scheduleItemSave(s); }
+    renderVisible();
+  };
+  const sendSelectedToBack = ()=>{
+    const sels = Array.from(_REF_STATE.selection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean);
+    if(!sels.length) return;
+    const idxOf = new Map(workingItems.map((it,i)=>[it,i]));
+    sels.sort((a,b)=> _effZ(a, idxOf.get(a)) - _effZ(b, idxOf.get(b)));
+    let z = Math.min(0, ...workingItems.map((it,i)=>_effZ(it,i))) - sels.length;
+    for(const s of sels){ s.z = z++; scheduleItemSave(s); }
+    renderVisible();
+  };
   vp.addEventListener('contextmenu',(e)=>{
     if(!_REF_STATE.editMode) return;
     e.preventDefault(); closeCtx();
@@ -4909,6 +4933,10 @@ async function _refInit(){
     mkSub('縦中央', 'cy');
     alignParent.appendChild(alignSub);
     ctxEl.appendChild(alignParent);
+    sep();
+    /* v.067：レイヤー順変更 */
+    mk('最前面へ', bringSelectedToFront, !hasSel);
+    mk('最背面へ', sendSelectedToBack,   !hasSel);
     sep();
     mk('コピー', copySelected, !hasSel, 'Ctrl+C');
     mk('貼付', ()=>pasteClipboard(w.x, w.y), !_REF_STATE.clipboard.length, 'Ctrl+V');

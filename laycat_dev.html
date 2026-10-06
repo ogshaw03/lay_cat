@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.113';
+const APP_VERSION='2026.10.06.114';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6562,7 +6562,12 @@ function renderProjReference(main, root){
       if(n === editingNode) return; /* 編集中ノードは残す */
       n.remove();
     });
-    for(const it of items){
+    /* v.114：レイヤー順（it.z）でソートして描画。z 未設定のアイテムは配列順位を使う。
+       同じ z のときは配列順位でタイブレーク（新規は末尾＝上に来る）。 */
+    const _sorted = items.map((it,i)=>({it, z:(it.z==null?i:it.z), i}))
+                         .sort((a,b)=> (a.z - b.z) || (a.i - b.i))
+                         .map(x=>x.it);
+    for(const it of _sorted){
       const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
       if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom){
         /* 編集中ノードが virtualization 外に出てしまったら残しつつスキップ（削除はしない） */
@@ -7244,6 +7249,30 @@ function renderProjReference(main, root){
     }
     renderVisible();
   };
+  /* v.114：レイヤー順変更（選択アイテムの it.z を更新）。 */
+  const _effZ = (it, i) => (it.z == null ? i : it.z);
+  const _allEffZ = () => workingItems.map((it,i)=>_effZ(it,i));
+  const bringSelectedToFront = ()=>{
+    const sels = Array.from(state.refSelection)
+      .map(id => workingItems.find(x=>x.id===id)).filter(Boolean);
+    if(!sels.length) return;
+    /* 選択アイテムの元の表示順（＝現在の effective z で昇順）を保ったまま最前面に積む */
+    const idxOf = new Map(workingItems.map((it,i)=>[it, i]));
+    sels.sort((a,b)=> _effZ(a, idxOf.get(a)) - _effZ(b, idxOf.get(b)));
+    let z = Math.max(0, ...workingItems.map((it,i)=>_effZ(it,i))) + 1;
+    for(const s of sels){ s.z = z++; scheduleItemSave(s); }
+    renderVisible();
+  };
+  const sendSelectedToBack = ()=>{
+    const sels = Array.from(state.refSelection)
+      .map(id => workingItems.find(x=>x.id===id)).filter(Boolean);
+    if(!sels.length) return;
+    const idxOf = new Map(workingItems.map((it,i)=>[it, i]));
+    sels.sort((a,b)=> _effZ(a, idxOf.get(a)) - _effZ(b, idxOf.get(b)));
+    let z = Math.min(0, ...workingItems.map((it,i)=>_effZ(it,i))) - sels.length;
+    for(const s of sels){ s.z = z++; scheduleItemSave(s); }
+    renderVisible();
+  };
   const matchThumbSize = ()=>{
     /* 選択中の画像／動画の w/h を、選択内「最初の画像」の w/h に揃える */
     const sels = Array.from(state.refSelection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean).filter(x=>x.type==='image');
@@ -7296,6 +7325,10 @@ function renderProjReference(main, root){
     mkSub('縦中央',  'cy');
     alignParent.appendChild(alignSub);
     ctxEl.appendChild(alignParent);
+    ctxEl.appendChild(el('div','cx-sep'));
+    /* v.114：レイヤー順変更 */
+    mk('最前面へ', bringSelectedToFront, !hasSel);
+    mk('最背面へ', sendSelectedToBack,   !hasSel);
     ctxEl.appendChild(el('div','cx-sep'));
     mk('コピー',    copySelected,                  !hasSel, 'Ctrl+C');
     mk('貼付',      ()=>pasteClipboard(w.x, w.y),  !_refClipboard.length, 'Ctrl+V');
