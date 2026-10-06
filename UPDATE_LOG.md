@@ -18,6 +18,17 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.103) **資料タブ：クリック選択時に DOM 再構築せず dblclick を発火可能に（LayCAT）**：
+  - 事象：v.102 でダブルクリック編集を実装したが実際にはまだ編集に入れなかった。
+  - 原因：クリック選択のたびに `renderVisible` が全アイテムを `remove()` → `append()` で作り直していたため、ブラウザが「同じ要素への 2 連打」として dblclick を検出できなかった。
+  - 修正：クリック選択時の DOM 更新を `renderVisible` の全再構築ではなく、`.selected` クラスの**差分更新**（追加・削除）だけに変更。アイテムの DOM 要素は保持されるため、連続クリックの dblclick が正しく発火する。
+    - 既存の .selected を外す：現在の `_REF_STATE.selection` に無い `.ref-item.selected` から削除
+    - 新規に .selected を付ける：`querySelector('.ref-item[data-ref-id="..."]')` で該当ノードに追加
+    - `updateHandles()` だけ呼んでリサイズハンドルを更新
+  - Delete キー関連：インライン編集中（contenteditable=true）は Delete がテキストの 1 文字削除になる仕様（browser 標準）。編集を blur（Esc/Enter/外クリック）すると、Delete は再び選択アイテム全体の削除に戻る。「急に効いた」という挙動はこれが原因で、仕様通り。
+  - 書き込み系副作用なし。
+  - APP_VERSION：2026.10.06.102 → 2026.10.06.103
+
 - (dev v2026.10.06.102) **資料タブ：タイトル/テキスト ダブルクリック編集を実動化（LayCAT）**：
   - 事象：v.097 で実装したダブルクリックの inline 編集が実際には使えなかった。
   - 原因：編集開始時に `renderVisible()` を呼んでいた＋`renderVisible` が全アイテムを remove→append で作り直していたため、contenteditable 化した DOM ノードが即座に破棄され、フォーカスが失われていた。
@@ -3378,6 +3389,10 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.06.054) **資料タブ：クリック選択時に DOM 再構築せず dblclick を発火可能に（PMB、LayCAT v.103 連動）**：
+  - クリック選択の DOM 更新を `.selected` クラスの差分適用だけに変更。dblclick が正しく発火。
+  - APP_VERSION：2026.10.06.053 → 2026.10.06.054
 
 - (dev v2026.10.06.053) **資料タブ：タイトル/テキスト ダブルクリック編集を実動化（PMB、LayCAT v.102 連動）**：
   - dblclick ハンドラ内で既存 DOM ノードを `contentEditable='true'` 化、フォーカス＋全選択。

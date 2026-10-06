@@ -4169,7 +4169,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.102';
+const APP_VERSION='2026.10.06.103';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6865,12 +6865,13 @@ function renderProjReference(main, root){
     /* 編集 ON：アイテムをヒットしたか？ */
     const hit = hitTestItem(e.clientX, e.clientY);
     if(hit){
+      /* v.103：選択変化を DOM 再構築ではなくクラス差分で反映する。
+         renderVisible は全アイテムを remove→append するため、クリックのたびに DOM が
+         置き換わり、ブラウザが dblclick を発火できなくなっていた。 */
       if(e.shiftKey){
-        /* Shift+クリック：選択トグル */
         if(state.refSelection.has(hit.id)) state.refSelection.delete(hit.id);
         else state.refSelection.add(hit.id);
       }else{
-        /* 通常クリック：すでに選択されていなければ単独選択に切替 */
         if(!state.refSelection.has(hit.id)){
           state.refSelection.clear();
           state.refSelection.add(hit.id);
@@ -6884,7 +6885,16 @@ function renderProjReference(main, root){
         const it = workingItems.find(x=>x.id===id);
         if(it) moveOrigin[id] = {x: it.x, y: it.y};
       }
-      renderVisible();
+      /* DOM の再構築はせず、.selected クラスだけ差分更新する */
+      const _esc = (s)=> (window.CSS&&CSS.escape?CSS.escape(s):s);
+      for(const el of canvas.querySelectorAll('.ref-item.selected')){
+        if(!state.refSelection.has(el.dataset.refId)) el.classList.remove('selected');
+      }
+      for(const id of state.refSelection){
+        const el = canvas.querySelector('.ref-item[data-ref-id="'+_esc(id)+'"]');
+        if(el) el.classList.add('selected');
+      }
+      updateHandles();
       e.preventDefault();
       return;
     }
