@@ -169,6 +169,36 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .pane{position:absolute;inset:0;overflow:auto;padding:0 20px 16px;display:none}
 .pane.on{display:block}
 .pane.on::before{content:'';display:block;height:16px}
+/* v.042：資料タブ（PureRef 風 無限キャンバス UI、モックデータ）。
+   LayCAT 本体の .ref-* と同構造。pane の padding は 0 にしてキャンバスを全面に展開。 */
+.pane[data-pane="reference"]{padding:0;overflow:hidden}
+.pane[data-pane="reference"].on::before{display:none}
+.ref-root{display:flex;position:absolute;inset:0;background:var(--bg)}
+.ref-side{width:240px;flex-shrink:0;border-right:1px solid var(--border);background:var(--bg2);display:flex;flex-direction:column;overflow:hidden}
+.ref-side .ref-side-hd{padding:10px 14px 6px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.4px;text-transform:uppercase;border-bottom:1px solid var(--border);font-family:var(--font-head)}
+.ref-side .ref-toc{flex:1;overflow-y:auto;padding:6px 4px}
+.ref-side .ref-toc-item{padding:7px 12px;border-radius:6px;cursor:pointer;color:var(--text2);font-size:12px;display:flex;align-items:center;gap:7px;line-height:1.4}
+.ref-side .ref-toc-item:hover{background:var(--bg3);color:var(--text)}
+.ref-side .ref-toc-item.active{background:var(--bg3);color:var(--text);font-weight:600}
+.ref-side .ref-toc-item .ref-toc-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.ref-main{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+.ref-canvas{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;cursor:grab;user-select:none}
+.ref-main.panning .ref-canvas{cursor:grabbing}
+.ref-item{position:absolute;left:0;top:0;box-sizing:border-box}
+.ref-item.ref-title{font-family:var(--font-head);font-weight:700;color:var(--text);letter-spacing:0.5px;line-height:1.1;pointer-events:none;white-space:nowrap}
+.ref-item.ref-image{background:var(--bg3);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--text3);font-size:11px;text-align:center;padding:8px}
+.ref-item.ref-image .ref-image-ph{display:flex;flex-direction:column;align-items:center;gap:4px}
+.ref-item.ref-image .ref-image-ph .ic{font-size:28px;opacity:0.5}
+.ref-item.ref-group{border:1.5px dashed;border-radius:12px;background:transparent;pointer-events:none}
+.ref-item.ref-group .ref-group-lbl{position:absolute;top:-14px;left:12px;background:var(--bg);padding:1px 8px;font-size:11px;font-family:var(--font-head);font-weight:700;letter-spacing:0.5px;border-radius:4px}
+.ref-hud{position:absolute;left:12px;bottom:10px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);font-family:var(--font-code);background:rgba(10,10,14,0.72);border:1px solid var(--border);border-radius:7px;padding:4px 10px;z-index:3;pointer-events:none}
+.ref-ctrls{position:absolute;right:12px;bottom:10px;display:flex;gap:4px;z-index:3}
+.ref-ctrls button{background:rgba(10,10,14,0.72);border:1px solid var(--border);color:var(--text2);font-family:var(--font-code);font-size:12px;padding:4px 10px;border-radius:7px;cursor:pointer}
+.ref-ctrls button:hover{color:var(--text);border-color:var(--border2)}
+.ref-grid-bg{position:absolute;inset:0;pointer-events:none;background-image:
+  linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+  linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size:100px 100px;background-position:0 0}
 
 /* サブタブ列（メインタブの一段下・スケジュールタブでのみ表示） */
 .sub-tabs{display:flex;gap:2px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
@@ -510,6 +540,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
   <nav class="head-tabs" id="tabs">
     <button class="ptab on" data-tab="schedule">スケジュール<span class="cnt">32</span></button>
     <button class="ptab" data-tab="effort">工数<span class="cnt">A/B</span></button>
+    <button class="ptab" data-tab="reference">資料</button>
     <button class="ptab" data-tab="retake">リテイク<span class="cnt">73</span></button>
     <button class="ptab" data-tab="activity">アクティビティ<span class="cnt">30d</span></button>
     <button class="ptab" data-tab="log">操作ログ<span class="cnt">1.2k</span></button>
@@ -560,6 +591,27 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
           <div class="row"><div class="l">SC-060 / C</div><div class="bar"><div class="fill" style="width:48%"></div></div><div class="n">20.2<span class="u">h</span></div></div>
           <div class="row"><div class="l">SC-070 / D</div><div class="bar"><div class="fill" style="width:25%"></div></div><div class="n">10.5<span class="u">h</span></div></div>
           <div class="row"><div class="l">SC-080 / D</div><div class="bar"><div class="fill" style="width:40%"></div></div><div class="n">17.0<span class="u">h</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 資料（PureRef 風 無限キャンバス UI、モック） ========== -->
+    <div class="pane" data-pane="reference">
+      <div class="ref-root">
+        <div class="ref-side">
+          <div class="ref-side-hd">目次</div>
+          <div class="ref-toc" id="refToc"></div>
+        </div>
+        <div class="ref-main" id="refMain">
+          <div class="ref-grid-bg" id="refGridBg"></div>
+          <div class="ref-canvas" id="refCanvas"></div>
+          <div class="ref-hud" id="refHud">pan: 0, 0   zoom: 100%</div>
+          <div class="ref-ctrls">
+            <button id="refZoomOut" title="縮小">−</button>
+            <button id="refZoomFit" title="等倍">100%</button>
+            <button id="refZoomIn" title="拡大">＋</button>
+            <button id="refZoomAll" title="全体表示">⊡</button>
+          </div>
         </div>
       </div>
     </div>
@@ -631,7 +683,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.041';
+const APP_VERSION='2026.10.06.042';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -3788,7 +3840,195 @@ document.getElementById('tabs').addEventListener('click',e=>{
   document.querySelectorAll('.pane').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');
   document.querySelector(`[data-pane="${b.dataset.tab}"]`).classList.add('on');
+  /* v.042：資料タブは遅延初期化（最初に開いたときに 1 回だけビルド）。
+     content が display:none の状態で getBoundingClientRect すると幅 0 になるため。 */
+  if(b.dataset.tab === 'reference' && !window._refInited){ _refInit(); window._refInited=true; }
 });
+/* v.042：資料タブ（PureRef 風 無限キャンバス UI、モックデータ）。
+   LayCAT 本体の renderProjReference と同構造・同仕様（モックアイテム・虚像位置・pan/zoom/
+   目次クリックでパン・viewport virtualization）。
+   実データ連携・編集 UI は後続タスク。 */
+const REF_MOCK_ITEMS = [
+  { id:'g_char',  type:'group', x:0,     y:0,     w:1700, h:1050, color:'#7fbf9a', label:'キャラクター設定' },
+  { id:'t_char',  type:'title', x:24,    y:32,    text:'キャラクター設定', fontSize:48, color:'#7fbf9a' },
+  { id:'c_lead',  type:'image', x:40,    y:120,   w:320, h:420, label:'主役・立ち絵' },
+  { id:'c_lead2', type:'image', x:380,   y:120,   w:320, h:420, label:'主役・表情集' },
+  { id:'c_sub',   type:'image', x:40,    y:560,   w:320, h:420, label:'サブキャラA' },
+  { id:'c_sub2',  type:'image', x:380,   y:560,   w:320, h:420, label:'サブキャラB' },
+  { id:'c_prop',  type:'image', x:740,   y:120,   w:480, h:420, label:'衣装・小物' },
+  { id:'c_ref',   type:'image', x:740,   y:560,   w:480, h:420, label:'参考写真' },
+  { id:'c_memo',  type:'image', x:1240,  y:120,   w:420, h:860, label:'監督メモ・方針' },
+  { id:'g_bg',    type:'group', x:1800,  y:0,     w:1500, h:1050, color:'#f0b872', label:'美術設定' },
+  { id:'t_bg',    type:'title', x:1824,  y:32,    text:'美術設定', fontSize:48, color:'#f0b872' },
+  { id:'bg_room', type:'image', x:1840,  y:120,   w:460, h:300, label:'部屋 内観' },
+  { id:'bg_hall', type:'image', x:2320,  y:120,   w:460, h:300, label:'廊下' },
+  { id:'bg_sch',  type:'image', x:2800,  y:120,   w:460, h:300, label:'校舎外観' },
+  { id:'bg_sky',  type:'image', x:1840,  y:440,   w:720, h:280, label:'空・雲（日中／夕）' },
+  { id:'bg_night',type:'image', x:2580,  y:440,   w:680, h:280, label:'夜景' },
+  { id:'bg_plot', type:'image', x:1840,  y:740,   w:1420, h:240, label:'ロケーション配置図' },
+  { id:'g_prop',  type:'group', x:0,     y:1150,  w:1700, h:800, color:'#6fa8dc', label:'プロップ・小道具' },
+  { id:'t_prop',  type:'title', x:24,    y:1182,  text:'プロップ・小道具', fontSize:48, color:'#6fa8dc' },
+  { id:'p_a',     type:'image', x:40,    y:1270,  w:300, h:300, label:'バッグ' },
+  { id:'p_b',     type:'image', x:360,   y:1270,  w:300, h:300, label:'ノート' },
+  { id:'p_c',     type:'image', x:680,   y:1270,  w:300, h:300, label:'ペン類' },
+  { id:'p_d',     type:'image', x:1000,  y:1270,  w:300, h:300, label:'食器' },
+  { id:'p_e',     type:'image', x:1320,  y:1270,  w:360, h:300, label:'その他 雑貨' },
+  { id:'p_dim',   type:'image', x:40,    y:1590,  w:1640, h:320, label:'サイズ比較表' },
+  { id:'g_light', type:'group', x:1800,  y:1150,  w:1500, h:800, color:'#d682c6', label:'カラースクリプト・ライティング' },
+  { id:'t_light', type:'title', x:1824,  y:1182,  text:'カラースクリプト・ライティング', fontSize:44, color:'#d682c6' },
+  { id:'l_a',     type:'image', x:1840,  y:1270,  w:460, h:300, label:'シーン1 カラー' },
+  { id:'l_b',     type:'image', x:2320,  y:1270,  w:460, h:300, label:'シーン2 カラー' },
+  { id:'l_c',     type:'image', x:2800,  y:1270,  w:460, h:300, label:'シーン3 カラー' },
+  { id:'l_lgt',   type:'image', x:1840,  y:1590,  w:1420, h:320, label:'ライト方向 ガイド' },
+  { id:'g_cam',   type:'group', x:0,     y:2050,  w:3300, h:720,  color:'#c0ca7a', label:'カメラワーク・絵コンテ補足' },
+  { id:'t_cam',   type:'title', x:24,    y:2080,  text:'カメラワーク・絵コンテ補足', fontSize:44, color:'#c0ca7a' },
+  { id:'cam_a',   type:'image', x:40,    y:2170,  w:520, h:560, label:'PAN ガイド' },
+  { id:'cam_b',   type:'image', x:580,   y:2170,  w:520, h:560, label:'ZOOM ガイド' },
+  { id:'cam_c',   type:'image', x:1120,  y:2170,  w:520, h:560, label:'DOLLY ガイド' },
+  { id:'cam_d',   type:'image', x:1660,  y:2170,  w:520, h:560, label:'HAND HELD ガイド' },
+  { id:'cam_e',   type:'image', x:2200,  y:2170,  w:1060,h:560, label:'画角一覧（24/35/50mm 等）' },
+];
+function _refBuildItem(it){
+  const n = document.createElement('div');
+  n.className = 'ref-item ref-'+it.type;
+  n.style.left   = it.x + 'px';
+  n.style.top    = it.y + 'px';
+  if(it.w) n.style.width  = it.w + 'px';
+  if(it.h) n.style.height = it.h + 'px';
+  if(it.type === 'title'){
+    n.textContent = it.text || '';
+    if(it.fontSize) n.style.fontSize = it.fontSize + 'px';
+    if(it.color)    n.style.color    = it.color;
+  }else if(it.type === 'image'){
+    const ph = document.createElement('div'); ph.className='ref-image-ph';
+    const ic = document.createElement('div'); ic.className='ic'; ic.textContent='🖼';
+    const lb = document.createElement('div'); lb.className='lb'; lb.textContent=it.label||'';
+    ph.appendChild(ic); ph.appendChild(lb);
+    n.appendChild(ph);
+  }else if(it.type === 'group'){
+    if(it.color){
+      n.style.borderColor = it.color;
+      const hex = String(it.color).replace('#','');
+      const r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+      n.style.background = `rgba(${r},${g},${b},0.04)`;
+    }
+    if(it.label){
+      const lbl = document.createElement('div'); lbl.className='ref-group-lbl'; lbl.textContent=it.label;
+      lbl.style.color = it.color||'var(--accent)';
+      lbl.style.border = '1px solid '+(it.color||'var(--border)');
+      n.appendChild(lbl);
+    }
+  }
+  return n;
+}
+function _refInit(){
+  const vp = document.getElementById('refMain');
+  const canvas = document.getElementById('refCanvas');
+  const toc = document.getElementById('refToc');
+  const hud = document.getElementById('refHud');
+  const grid = document.getElementById('refGridBg');
+  if(!vp || !canvas) return;
+  const view = { tx: 60, ty: 60, scale: 0.5 };
+  const items = REF_MOCK_ITEMS;
+  const titleItems = items.filter(x=>x.type==='title');
+  const BUFFER = 400;
+  const applyTransform = ()=>{
+    canvas.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+    if(hud) hud.textContent = `pan: ${Math.round(view.tx)}, ${Math.round(view.ty)}   zoom: ${(view.scale*100).toFixed(0)}%`;
+    const g = 100 * view.scale;
+    if(grid){ grid.style.backgroundSize = `${g}px ${g}px`; grid.style.backgroundPosition = `${view.tx}px ${view.ty}px`; }
+    renderVisible();
+  };
+  const renderVisible = ()=>{
+    const rect = vp.getBoundingClientRect();
+    const vw = rect.width, vh = rect.height;
+    const vLeft   = -view.tx / view.scale - BUFFER;
+    const vTop    = -view.ty / view.scale - BUFFER;
+    const vRight  = vLeft + vw / view.scale + BUFFER * 2;
+    const vBottom = vTop  + vh / view.scale + BUFFER * 2;
+    [...canvas.querySelectorAll('.ref-item')].forEach(n=>n.remove());
+    for(const it of items){
+      const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
+      if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom) continue;
+      canvas.appendChild(_refBuildItem(it));
+    }
+  };
+  /* 目次ビルド */
+  toc.innerHTML='';
+  for(const t of titleItems){
+    const row = document.createElement('div'); row.className='ref-toc-item';
+    const dot = document.createElement('span'); dot.className='ref-toc-dot'; dot.style.background=t.color||'var(--accent)';
+    row.appendChild(dot);
+    row.appendChild(document.createTextNode(t.text||''));
+    row.onclick = ()=>{
+      view.tx = -t.x * view.scale + 80;
+      view.ty = -t.y * view.scale + 60;
+      applyTransform();
+      toc.querySelectorAll('.ref-toc-item').forEach(x=>x.classList.remove('active'));
+      row.classList.add('active');
+    };
+    toc.appendChild(row);
+  }
+  /* Pan */
+  let dragging=false, dragX=0, dragY=0, startTx=0, startTy=0;
+  vp.addEventListener('mousedown',(e)=>{
+    if(e.button!==0) return;
+    dragging=true;dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+    vp.classList.add('panning');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove',(e)=>{
+    if(!dragging) return;
+    view.tx = startTx + (e.clientX - dragX);
+    view.ty = startTy + (e.clientY - dragY);
+    applyTransform();
+  });
+  window.addEventListener('mouseup',()=>{if(dragging){dragging=false;vp.classList.remove('panning');}});
+  /* Zoom */
+  vp.addEventListener('wheel',(e)=>{
+    e.preventDefault();
+    const rect = vp.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const worldX = (mx - view.tx) / view.scale;
+    const worldY = (my - view.ty) / view.scale;
+    const factor = e.deltaY < 0 ? 1.12 : (1/1.12);
+    const nextScale = Math.min(4, Math.max(0.05, view.scale * factor));
+    view.scale = nextScale;
+    view.tx = mx - worldX * nextScale;
+    view.ty = my - worldY * nextScale;
+    applyTransform();
+  }, { passive:false });
+  /* Ctrls */
+  const zoomAt = (factor) => {
+    const rect = vp.getBoundingClientRect();
+    const mx = rect.width/2, my = rect.height/2;
+    const worldX = (mx - view.tx) / view.scale;
+    const worldY = (my - view.ty) / view.scale;
+    view.scale = Math.min(4, Math.max(0.05, view.scale * factor));
+    view.tx = mx - worldX * view.scale;
+    view.ty = my - worldY * view.scale;
+    applyTransform();
+  };
+  document.getElementById('refZoomIn').onclick  = ()=>zoomAt(1.25);
+  document.getElementById('refZoomOut').onclick = ()=>zoomAt(1/1.25);
+  document.getElementById('refZoomFit').onclick = ()=>{view.scale=1;applyTransform();};
+  document.getElementById('refZoomAll').onclick = ()=>{
+    if(!items.length) return;
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    for(const it of items){const x1=it.x,y1=it.y,x2=it.x+(it.w||400),y2=it.y+(it.h||100);if(x1<minX)minX=x1;if(y1<minY)minY=y1;if(x2>maxX)maxX=x2;if(y2>maxY)maxY=y2;}
+    const rect=vp.getBoundingClientRect();
+    const pad=60;
+    const sx=(rect.width - pad*2)/(maxX-minX);
+    const sy=(rect.height - pad*2)/(maxY-minY);
+    const s=Math.min(sx,sy,1);
+    view.scale=s;
+    view.tx = pad - minX*s;
+    view.ty = pad - minY*s;
+    applyTransform();
+  };
+  requestAnimationFrame(()=>applyTransform());
+  window.addEventListener('resize', ()=>applyTransform());
+}
 /* v.028：スケール = スコープ（表示範囲）+ 密度。カレンダーアプリの日/週/月と同じ発想。
    - day:  今日 1 日を 1 時間単位で表示（24 コラム・50 px/hr = 1200 px/day）
    - week: 7 日を 1 日単位
