@@ -4179,7 +4179,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.107';
+const APP_VERSION='2026.10.06.108';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7137,14 +7137,34 @@ function renderProjReference(main, root){
         e.stopPropagation(); e.preventDefault();
         const startX = e.clientX, startY = e.clientY;
         const origin = {x:it.x, y:it.y, w:it.w, h:it.h};
+        /* v.108：画像は比率ロック（アスペクト維持）、Shift で解除可。 */
+        const lockAspect = (it.type === 'image') && origin.w>0 && origin.h>0;
+        const aspect = origin.w / origin.h;
         const onMv = (ev)=>{
           const dx = (ev.clientX - startX) / view.scale;
           const dy = (ev.clientY - startY) / view.scale;
           let nx=origin.x, ny=origin.y, nw=origin.w, nh=origin.h;
-          if(c==='se'){ nw = Math.max(20, origin.w + dx); nh = Math.max(20, origin.h + dy); }
-          else if(c==='sw'){ nw = Math.max(20, origin.w - dx); nh = Math.max(20, origin.h + dy); nx = origin.x + (origin.w - nw); }
-          else if(c==='ne'){ nw = Math.max(20, origin.w + dx); nh = Math.max(20, origin.h - dy); ny = origin.y + (origin.h - nh); }
-          else if(c==='nw'){ nw = Math.max(20, origin.w - dx); nh = Math.max(20, origin.h - dy); nx = origin.x + (origin.w - nw); ny = origin.y + (origin.h - nh); }
+          let dw, dh;
+          if(c==='se'){ dw=dx;  dh=dy;  }
+          else if(c==='sw'){ dw=-dx; dh=dy;  }
+          else if(c==='ne'){ dw=dx;  dh=-dy; }
+          else if(c==='nw'){ dw=-dx; dh=-dy; }
+          if(lockAspect && !ev.shiftKey){
+            /* 幅・高さの変化率のうち大きい方で統一し、比率を維持 */
+            const sW = (origin.w + dw) / origin.w;
+            const sH = (origin.h + dh) / origin.h;
+            const s = (Math.abs(sW-1) > Math.abs(sH-1)) ? sW : sH;
+            nw = Math.max(20, origin.w * s);
+            nh = Math.max(20, origin.h * s);
+            if(nw === 20) nh = Math.max(20, 20 / aspect);
+            if(nh === 20) nw = Math.max(20, 20 * aspect);
+          }else{
+            nw = Math.max(20, origin.w + dw);
+            nh = Math.max(20, origin.h + dh);
+          }
+          if(c==='sw'){ nx = origin.x + origin.w - nw; }
+          else if(c==='ne'){ ny = origin.y + origin.h - nh; }
+          else if(c==='nw'){ nx = origin.x + origin.w - nw; ny = origin.y + origin.h - nh; }
           it.x = Math.round(nx); it.y = Math.round(ny);
           it.w = Math.round(nw); it.h = Math.round(nh);
           renderVisible();
@@ -7310,7 +7330,27 @@ function renderProjReference(main, root){
       }
       return;
     }
-    /* 画像が無ければ内部クリップボードを貼付 */
+    /* v.108：クリップボードに URL（http:// or https:// で始まるテキスト）があれば
+       リンクアイテム（type:'text' + href）として挿入。編集 OFF 時にクリックで新タブで開く。 */
+    const text = cd.getData && cd.getData('text/plain');
+    if(text){
+      const trimmed = text.trim();
+      if(/^https?:\/\/[^\s]+$/i.test(trimmed)){
+        e.preventDefault();
+        const c = _viewportCenterWorld();
+        insertItemAt({
+          type:'text',
+          text: trimmed,
+          href: trimmed,
+          color: '#6fa8dc',
+          underline: true,
+          fontSize: 14,
+          w: Math.min(460, Math.max(240, trimmed.length * 8)),
+        }, c.x - 180, c.y - 10);
+        return;
+      }
+    }
+    /* 画像・URL が無ければ内部クリップボードを貼付 */
     if(_refClipboard.length){
       e.preventDefault();
       pasteClipboard();
@@ -7401,6 +7441,19 @@ function _refBuildItem(it){
     if(it.color)     n.style.color = it.color;
     if(it.bold)      n.style.fontWeight = '700';
     if(it.underline) n.style.textDecoration = 'underline';
+    /* v.108：href 付きなら編集 OFF 時にクリックで別タブで開く（リンクアイテム）。
+       編集 ON のときはクリック＝選択で、ドラッグ移動・ダブルクリック編集を優先する。 */
+    if(it.href){
+      n.title = it.href;
+      if(!state.refEditMode){
+        n.style.cursor = 'pointer';
+        n.style.pointerEvents = 'auto';
+        n.onclick = (ev)=>{
+          ev.stopPropagation();
+          try{ window.open(it.href, '_blank', 'noopener,noreferrer'); }catch(_){}
+        };
+      }
+    }
   }else if(it.type === 'image'){
     /* v.092：実データがあれば img タグで表示。無ければ従来の placeholder。
        video タイプも同枠で扱う（mediaType:'video' + mediaRef）。 */

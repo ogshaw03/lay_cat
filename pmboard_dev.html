@@ -739,7 +739,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.058';
+const APP_VERSION='2026.10.06.059';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -3993,6 +3993,18 @@ function _refBuildItem(it){
     if(it.color)     n.style.color = it.color;
     if(it.bold)      n.style.fontWeight = '700';
     if(it.underline) n.style.textDecoration = 'underline';
+    /* v.059：href 付きなら編集 OFF 時にクリックで別タブで開くリンクアイテム */
+    if(it.href){
+      n.title = it.href;
+      if(!_REF_STATE.editMode){
+        n.style.cursor = 'pointer';
+        n.style.pointerEvents = 'auto';
+        n.onclick = (ev)=>{
+          ev.stopPropagation();
+          try{ window.open(it.href, '_blank', 'noopener,noreferrer'); }catch(_){}
+        };
+      }
+    }
   }else if(it.type === 'image'){
     if(it.mediaRef){
       const inner = (it.mediaType === 'video') ? document.createElement('video') : document.createElement('img');
@@ -4121,14 +4133,33 @@ async function _refInit(){
         e.stopPropagation(); e.preventDefault();
         const startX = e.clientX, startY = e.clientY;
         const origin = {x:it.x, y:it.y, w:it.w, h:it.h};
+        /* v.059：画像は比率ロック（アスペクト維持）、Shift で解除可。 */
+        const lockAspect = (it.type === 'image') && origin.w>0 && origin.h>0;
+        const aspect = origin.w / origin.h;
         const onMv = (ev)=>{
           const dx = (ev.clientX - startX) / view.scale;
           const dy = (ev.clientY - startY) / view.scale;
           let nx=origin.x, ny=origin.y, nw=origin.w, nh=origin.h;
-          if(c==='se'){ nw = Math.max(20, origin.w + dx); nh = Math.max(20, origin.h + dy); }
-          else if(c==='sw'){ nw = Math.max(20, origin.w - dx); nh = Math.max(20, origin.h + dy); nx = origin.x + (origin.w - nw); }
-          else if(c==='ne'){ nw = Math.max(20, origin.w + dx); nh = Math.max(20, origin.h - dy); ny = origin.y + (origin.h - nh); }
-          else if(c==='nw'){ nw = Math.max(20, origin.w - dx); nh = Math.max(20, origin.h - dy); nx = origin.x + (origin.w - nw); ny = origin.y + (origin.h - nh); }
+          let dw, dh;
+          if(c==='se'){ dw=dx;  dh=dy;  }
+          else if(c==='sw'){ dw=-dx; dh=dy;  }
+          else if(c==='ne'){ dw=dx;  dh=-dy; }
+          else if(c==='nw'){ dw=-dx; dh=-dy; }
+          if(lockAspect && !ev.shiftKey){
+            const sW = (origin.w + dw) / origin.w;
+            const sH = (origin.h + dh) / origin.h;
+            const s = (Math.abs(sW-1) > Math.abs(sH-1)) ? sW : sH;
+            nw = Math.max(20, origin.w * s);
+            nh = Math.max(20, origin.h * s);
+            if(nw === 20) nh = Math.max(20, 20 / aspect);
+            if(nh === 20) nw = Math.max(20, 20 * aspect);
+          }else{
+            nw = Math.max(20, origin.w + dw);
+            nh = Math.max(20, origin.h + dh);
+          }
+          if(c==='sw'){ nx = origin.x + origin.w - nw; }
+          else if(c==='ne'){ ny = origin.y + origin.h - nh; }
+          else if(c==='nw'){ nx = origin.x + origin.w - nw; ny = origin.y + origin.h - nh; }
           it.x = Math.round(nx); it.y = Math.round(ny);
           it.w = Math.round(nw); it.h = Math.round(nh);
           renderVisible();
@@ -4740,6 +4771,25 @@ async function _refInit(){
         }catch(_){}
       }
       return;
+    }
+    /* v.059：クリップボードに URL があればリンクアイテムとして挿入 */
+    const text = cd.getData && cd.getData('text/plain');
+    if(text){
+      const trimmed = text.trim();
+      if(/^https?:\/\/[^\s]+$/i.test(trimmed)){
+        e.preventDefault();
+        const c = _viewportCenterWorld();
+        insertItemAt({
+          type:'text',
+          text: trimmed,
+          href: trimmed,
+          color: '#6fa8dc',
+          underline: true,
+          fontSize: 14,
+          w: Math.min(460, Math.max(240, trimmed.length * 8)),
+        }, c.x - 180, c.y - 10);
+        return;
+      }
     }
     if(_REF_STATE.clipboard.length){ e.preventDefault(); pasteClipboard(); }
   };
