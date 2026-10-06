@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.115';
+const APP_VERSION='2026.10.06.116';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6827,15 +6827,42 @@ function renderProjReference(main, root){
     const r = vp.getBoundingClientRect();
     return { x: (sx - r.left - view.tx) / view.scale, y: (sy - r.top - view.ty) / view.scale };
   };
+  /* v.116：非編集モードの文字選択モードを解除。 */
+  const _clearTextSelectable = (n)=>{
+    if(!n) return;
+    n.classList.remove('text-selectable');
+    n.style.userSelect = '';
+    n.style.pointerEvents = '';
+    n.style.cursor = '';
+    if(n._stopDown){
+      n.removeEventListener('mousedown', n._stopDown);
+      n._stopDown = null;
+    }
+    try{ const s=window.getSelection(); if(s) s.removeAllRanges(); }catch(_){}
+  };
   const hitTestItem = (sx, sy) => {
-    /* world 座標でアイテムとの当たり判定。z-index 順（配列末尾優先）で検索。
-       group はヒット対象外（枠図形なのでクリックは通したい）。 */
+    /* world 座標でアイテムとの当たり判定。
+       v.116：group と shape はクリック貫通優先。
+         - group は常に非ヒット（枠図形）
+         - shape は「非 shape のアイテムがその位置に無ければ」ヒット対象（＝通常は中のアイテムが選ばれる、
+           何も無い所でだけ shape が選ばれる）
+       レイヤー順（it.z）を尊重し、最前面から当たり判定する（v.114 と整合）。 */
     const w = screenToWorld(sx, sy);
-    for(let i = items.length - 1; i >= 0; i--){
-      const it = items[i];
-      if(it.type === 'group') continue;
+    const inBounds = (it)=>{
       const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
-      if(w.x >= x1 && w.x <= x2 && w.y >= y1 && w.y <= y2) return it;
+      return (w.x >= x1 && w.x <= x2 && w.y >= y1 && w.y <= y2);
+    };
+    const _effZ = (it, i) => (it.z == null ? i : it.z);
+    const sorted = items.map((it,i)=>({it, z:_effZ(it,i), i}))
+                        .sort((a,b)=> (b.z - a.z) || (b.i - a.i))
+                        .map(x=>x.it);
+    for(const it of sorted){
+      if(it.type === 'group' || it.type === 'shape') continue;
+      if(inBounds(it)) return it;
+    }
+    for(const it of sorted){
+      if(it.type !== 'shape') continue;
+      if(inBounds(it)) return it;
     }
     return null;
   };
@@ -7077,7 +7104,39 @@ function renderProjReference(main, root){
   /* v.097／v.102：タイトル／テキストをダブルクリックでインライン編集。
      既存 DOM ノードをその場で contenteditable 化（破棄・再生成しない）→ フォーカス維持。 */
   canvas.addEventListener('dblclick', (e)=>{
-    if(!state.refEditMode) return;
+    /* v.116：編集モード OFF でもダブルクリックで「文字選択モード」に入れるようにする。
+       編集はできないが、ディレクトリパスなどのテキストを選択してコピーできる。
+       hitTestItem で座標から対象を特定（text/title は pointer-events:none なので DOM target では拾えない）。 */
+    if(!state.refEditMode){
+      const hit = hitTestItem(e.clientX, e.clientY);
+      if(!hit || (hit.type !== 'title' && hit.type !== 'text')) return;
+      const n = canvas.querySelector('.ref-item[data-ref-id="'+(window.CSS&&CSS.escape?CSS.escape(hit.id):hit.id)+'"]');
+      if(!n) return;
+      if(n.classList.contains('text-selectable')) return;
+      /* 他に選択モードのノードがあれば解除 */
+      canvas.querySelectorAll('.ref-item.text-selectable').forEach(_clearTextSelectable);
+      const stopDown = (ev)=>{ ev.stopPropagation(); }; /* 内部クリックで vp.mousedown→pan を抑止 */
+      n._stopDown = stopDown;
+      n.addEventListener('mousedown', stopDown);
+      n.classList.add('text-selectable');
+      n.style.userSelect = 'text';
+      n.style.pointerEvents = 'auto';
+      n.style.cursor = 'text';
+      try{
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        const sel = window.getSelection();
+        sel.removeAllRanges(); sel.addRange(range);
+      }catch(_){}
+      const exit = (ev)=>{
+        if(!n.contains(ev.target)){
+          _clearTextSelectable(n);
+          window.removeEventListener('mousedown', exit, true);
+        }
+      };
+      setTimeout(()=>window.addEventListener('mousedown', exit, true), 0);
+      return;
+    }
     const node = e.target.closest('.ref-item');
     if(!node) return;
     const id = node.dataset.refId;

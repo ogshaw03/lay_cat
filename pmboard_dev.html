@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.068';
+const APP_VERSION='2026.10.06.069';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4449,14 +4449,41 @@ async function _refInit(){
   const _viewportCenterWorld = ()=>{ const r = vp.getBoundingClientRect(); return { x:(r.width/2 - view.tx)/view.scale, y:(r.height/2 - view.ty)/view.scale }; };
   const screenToWorld = (sx, sy)=>{ const r = vp.getBoundingClientRect(); return { x:(sx - r.left - view.tx)/view.scale, y:(sy - r.top - view.ty)/view.scale }; };
   const hitTestItem = (sx, sy)=>{
+    /* v.069：group / shape はクリック貫通優先（LayCAT v.116 と同仕様）。
+       - group：常に非ヒット
+       - shape：非 shape のアイテムが同位置に無ければヒット
+       レイヤー順（z）を尊重して最前面から当たり判定。 */
     const w = screenToWorld(sx, sy);
-    for(let i = items.length - 1; i >= 0; i--){
-      const it = items[i];
-      if(it.type === 'group') continue;
+    const inBounds = (it)=>{
       const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
-      if(w.x >= x1 && w.x <= x2 && w.y >= y1 && w.y <= y2) return it;
+      return (w.x >= x1 && w.x <= x2 && w.y >= y1 && w.y <= y2);
+    };
+    const _effZ = (it, i) => (it.z == null ? i : it.z);
+    const sorted = items.map((it,i)=>({it, z:_effZ(it,i), i}))
+                        .sort((a,b)=> (b.z - a.z) || (b.i - a.i))
+                        .map(x=>x.it);
+    for(const it of sorted){
+      if(it.type === 'group' || it.type === 'shape') continue;
+      if(inBounds(it)) return it;
+    }
+    for(const it of sorted){
+      if(it.type !== 'shape') continue;
+      if(inBounds(it)) return it;
     }
     return null;
+  };
+  /* v.069：非編集モードの文字選択モードを解除（LayCAT v.116 と同仕様）。 */
+  const _clearTextSelectable = (n)=>{
+    if(!n) return;
+    n.classList.remove('text-selectable');
+    n.style.userSelect = '';
+    n.style.pointerEvents = '';
+    n.style.cursor = '';
+    if(n._stopDown){
+      n.removeEventListener('mousedown', n._stopDown);
+      n._stopDown = null;
+    }
+    try{ const s=window.getSelection(); if(s) s.removeAllRanges(); }catch(_){}
   };
   /* v.048：追加系ボタンは「追加モード」の開始のみ。キャンバスクリックで実配置。
      shape は click+drag でサイズ指定（単クリックならデフォルト 240x160）。 */
@@ -4792,7 +4819,36 @@ async function _refInit(){
   /* v.049／v.053：タイトル／テキストをダブルクリックでインライン編集。
      既存 DOM ノードをその場で contenteditable 化（フォーカス維持）。 */
   canvas.addEventListener('dblclick', (e)=>{
-    if(!_REF_STATE.editMode) return;
+    /* v.069：編集 OFF でもダブルクリックで「文字選択モード」に入れるようにする（LayCAT v.116 と同仕様）。 */
+    if(!_REF_STATE.editMode){
+      const hit = hitTestItem(e.clientX, e.clientY);
+      if(!hit || (hit.type !== 'title' && hit.type !== 'text')) return;
+      const n = canvas.querySelector('.ref-item[data-ref-id="'+(window.CSS&&CSS.escape?CSS.escape(hit.id):hit.id)+'"]');
+      if(!n) return;
+      if(n.classList.contains('text-selectable')) return;
+      canvas.querySelectorAll('.ref-item.text-selectable').forEach(_clearTextSelectable);
+      const stopDown = (ev)=>{ ev.stopPropagation(); };
+      n._stopDown = stopDown;
+      n.addEventListener('mousedown', stopDown);
+      n.classList.add('text-selectable');
+      n.style.userSelect = 'text';
+      n.style.pointerEvents = 'auto';
+      n.style.cursor = 'text';
+      try{
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        const sel = window.getSelection();
+        sel.removeAllRanges(); sel.addRange(range);
+      }catch(_){}
+      const exit = (ev)=>{
+        if(!n.contains(ev.target)){
+          _clearTextSelectable(n);
+          window.removeEventListener('mousedown', exit, true);
+        }
+      };
+      setTimeout(()=>window.addEventListener('mousedown', exit, true), 0);
+      return;
+    }
     const node = e.target.closest('.ref-item');
     if(!node) return;
     const id = node.dataset.refId;
