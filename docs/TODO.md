@@ -645,4 +645,69 @@ return /完了|承認|上がり|フィックス|オミット|ok\b|omit|done|fix|
 
 ---
 
+## 資料タブ：実データ対応（プロジェクトフォルダ内に専用 JSON 格納）（優先度：中／編集機能プラン化とセットで着手）
+
+### 背景（2026-10-06）
+
+LayCAT 本体 v.086〜v.089 と pmboard v.042〜v.045 で資料タブ（PureRef 風 無限キャンバス）を UI のみ実装。
+現状は両ファイルに同じモック `const REF_MOCK_ITEMS` をハードコピーしている状態で、データ共有は未対応。
+編集機能（アイテム移動／追加／削除／リサイズ等）のプラン化と合わせて実データ対応を進める方針。
+
+### 決定事項：候補 A（プロジェクトフォルダ内に専用 JSON）で進める
+
+```
+<project folder>/
+├── laycat.project.json
+├── shots/
+├── status/
+├── reels/
+│   └── reels.json
+├── submits/
+├── reference/              ← 新規
+│   ├── reference.json      ← アイテム座標・タイトル・group 等
+│   └── images/             ← 貼り付けた画像ファイル
+│       ├── <uuid>.jpg
+│       └── ...
+```
+
+- 既存の `reels/reels.json` と同じパターン（`storage.loadReels` / `storage.saveReels`）を踏襲
+- フォルダ運用（NAS 共有）・R2 運用 両方で動く
+- `laycat.project.json` には混ぜない（巨大化防止・書き込み境界明確化）
+- LayCAT・pmboard 両方が同じ `project.id` の `reference/reference.json` を読むので自動的に同一データを参照
+
+### 実装ステップ（最小）
+
+1. **storage API 追加**：
+   - `storage.loadReference(pid)` → `reference/reference.json` を読む（無ければ空）
+   - `storage.saveReference(pid, data)` → 書く（R2 なら PUT、フォルダなら書き込み）
+   - LayCAT の既存 `loadReels` / `saveReels` の構造をコピーして `reference/` サブディレクトリに向ける
+2. **画像保存**：`storage.putMedia('reference/images', fn, blob, {projectId})` で保存。ref を `reference.json` のアイテムに持たせる（既存 version.file ref と同じ流儀）
+3. **LayCAT 側**：
+   - `const REF_MOCK_ITEMS` を廃止
+   - `renderProjReference` の冒頭で `await storage.loadReference(root.id)` → `state.refItems` にキャッシュ
+   - 編集後は `storage.saveReference(root.id, state.refItems)` で保存
+4. **pmboard 側**：
+   - 同じ `loadReference` を pmboard の storage レイヤに実装（pmboard は既に project フォルダを FSA で読み書きできる）
+   - 現在のプロジェクト（`DATA.project.id`）に対して `loadReference` を呼ぶ
+5. **ビュー状態（tx/ty/scale）**：ユーザー個別で `localStorage.laycat_refView_{pid}` 保持（他ユーザーに影響させない）
+6. **書き込み境界**：
+   - `reference/reference.json` と `reference/images/*` のみ新規書込
+   - 既存の `shots/` / `status/` / `submits/` / `laycat.project.json` / `reels.json` 等への副作用なし
+   - `persist()`（REG 全体保存）は呼ばない
+
+### 編集機能のプランと同時に設計する項目
+
+- アイテムスキーマ（title/image/group、x/y/w/h、画像の ref、group の子アイテム紐付け）
+- Undo/Redo のための履歴データ（memory のみ or ファイルに書くか）
+- 競合解決（LayCAT・pmboard 両方から同時編集が起きたときの last-write-wins 等）
+- マイグレーション：空の `reference.json` → 初期配置（空 or テンプレート）
+
+### 影響範囲
+
+- `laycat_dev.html`：`REF_MOCK_ITEMS` 削除、`renderProjReference` 書き換え、`storage` に 2 ヘルパ追加
+- `pmboard_dev.html`：`REF_MOCK_ITEMS` 削除、`_refInit` 書き換え、storage ヘルパ追加
+- プロジェクトフォルダ：新規に `reference/` サブディレクトリが作られる（既存プロジェクトは空から開始）
+
+---
+
 ## （今後の TODO 追加はここに）
