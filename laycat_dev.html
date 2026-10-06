@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.114';
+const APP_VERSION='2026.10.06.115';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7099,7 +7099,9 @@ function renderProjReference(main, root){
       sel.removeAllRanges(); sel.addRange(range);
     }catch(_){}
     const finishEdit = ()=>{
-      const newText = (node.innerText || node.textContent || '').replace(/\n{2,}/g, '\n').trim();
+      /* v.115：複数の空行を保持できるよう `\n{2,}` の collapse を廃止。前後の空白のみトリム。
+         (従来は `.replace(/\n{2,}/g, '\n')` で改行二重以上を 1 本にまとめていた) */
+      const newText = (node.innerText || node.textContent || '').replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, '');
       const textChanged = (newText && newText !== it.text);
       if(textChanged){ it.text = newText; scheduleItemSave(it); }
       state.refEditingId = null;
