@@ -725,7 +725,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.050';
+const APP_VERSION='2026.10.06.051';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4349,13 +4349,18 @@ async function _refInit(){
   let mode = null, dragX=0, dragY=0, startTx=0, startTy=0;
   let moveOrigin = {}, rubberEl = null, rubberStart = {x:0, y:0};
   vp.addEventListener('mousedown',(e)=>{
+    /* v.051：マウス中ボタン（button===1）はいつでも pan に割り当て */
+    if(e.button === 1){
+      if(e.target.closest('.ref-toolbar, .ref-ctrls, .ref-handles, .ref-ctx')) return;
+      cancelAnim();
+      mode = 'pan'; dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+      vp.classList.add('panning');
+      e.preventDefault();
+      return;
+    }
     if(e.button!==0) return;
     /* v.050：ツールバー・コントロール類・リサイズハンドル・コンテキストメニューへのクリックは
-       pan / 選択 / rubber band などのキャンバス操作に横取りされないように、ここで早期 return。
-       これを入れていないと、ツールバーのカラーピッカーを押しても mousedown が vp に
-       バブリングして hitTest が null → 「空白クリック」として選択がクリアされ、
-       applyToSelected が対象ゼロになって文字色が変わらない現象、
-       また Delete 前にツールバーを触ると選択が消えて Delete が no-op になる現象の両方を解消。 */
+       pan / 選択 / rubber band などのキャンバス操作に横取りされないように、ここで早期 return。 */
     if(e.target.closest('.ref-toolbar, .ref-ctrls, .ref-handles, .ref-ctx')) return;
     cancelAnim();
     const editMode = _REF_STATE.editMode;

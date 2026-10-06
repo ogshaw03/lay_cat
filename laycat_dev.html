@@ -4163,7 +4163,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.099';
+const APP_VERSION='2026.10.06.100';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6810,6 +6810,18 @@ function renderProjReference(main, root){
   let rubberEl = null;
   let rubberStart = {x:0, y:0}; /* world 座標 */
   vp.addEventListener('mousedown',(e)=>{
+    /* v.100：マウス中ボタン（button===1）はいつでも pan に割り当て。
+       編集モード中は Alt+ドラッグが pan、中ボタン押し込みドラッグも pan。
+       ブラウザのオートスクロール（中ボタンクリックの既定動作）は preventDefault でキャンセル。 */
+    if(e.button === 1){
+      if(e.target.closest('.ref-toolbar, .ref-ctrls, .ref-handles, .ref-ctx')) return;
+      cancelAnim();
+      mode = 'pan';
+      dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+      vp.classList.add('panning');
+      e.preventDefault();
+      return;
+    }
     if(e.button!==0) return;
     /* v.098：ツールバー・コントロール類・リサイズハンドル・コンテキストメニューへのクリックは
        pan / 選択 / rubber band などのキャンバス操作に横取りされないように、ここで早期 return。

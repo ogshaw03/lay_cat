@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.100) **資料タブ：マウス中ボタン押し込みドラッグで画面移動（LayCAT）**：
+  - 編集モード中は `Alt+ドラッグ` が pan だったが、より標準的な「中ボタン押し込みドラッグ」でも pan できるようにした。編集モード OFF でも常時有効。
+  - 実装：`vp.mousedown` の冒頭で `e.button === 1` を検出 → `mode='pan'` に設定 → `e.preventDefault()` でブラウザのオートスクロールを抑止。
+  - toolbar/ctrls/handles/ctx 上の中ボタンはこれまで通り素通し。
+  - 書き込み系副作用なし。
+  - APP_VERSION：2026.10.06.099 → 2026.10.06.100
+
 - (dev v2026.10.06.099) **資料タブ：Delete キー無効化のリアル原因修正（累積リスナーの除去）（LayCAT）**：
   - 事象：v.098 でも Delete キーが効かないという現場報告。
   - 真の原因：`render()` は頻繁に呼ばれるため、その都度 `renderProjReference` が実行され、`window.addEventListener('keydown', onRefKey)` などが**毎回新規追加されていた**。古いリスナーは一度も `removeEventListener` されず残り続け、最も古い（＝detached な canvas / vp を参照する）リスナーが Delete を先に消費して「見えないキャンバスで splice → applyTransform」を実行していた。結果、ユーザーの目には何も起きていないように見えていた。
@@ -3353,6 +3360,10 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.06.051) **資料タブ：マウス中ボタン押し込みドラッグで画面移動（PMB、LayCAT v.100 連動）**：
+  - `vp.mousedown` の冒頭で `e.button === 1` を検出して pan を開始。
+  - APP_VERSION：2026.10.06.050 → 2026.10.06.051
 
 - (dev v2026.10.06.050) **資料タブ：Delete 無効化／文字色変化なし／目次にタイトルが出ない問題を一括修正（PMB、LayCAT v.098 連動）**：
   - `vp.mousedown` の冒頭に toolbar/ctrls/handles/ctx への早期 return を追加
