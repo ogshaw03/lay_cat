@@ -18,6 +18,17 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.099) **資料タブ：Delete キー無効化のリアル原因修正（累積リスナーの除去）（LayCAT）**：
+  - 事象：v.098 でも Delete キーが効かないという現場報告。
+  - 真の原因：`render()` は頻繁に呼ばれるため、その都度 `renderProjReference` が実行され、`window.addEventListener('keydown', onRefKey)` などが**毎回新規追加されていた**。古いリスナーは一度も `removeEventListener` されず残り続け、最も古い（＝detached な canvas / vp を参照する）リスナーが Delete を先に消費して「見えないキャンバスで splice → applyTransform」を実行していた。結果、ユーザーの目には何も起きていないように見えていた。
+    - pmboard は `_refInit` が初回 1 回のみ呼ばれる設計なのでこの症状は出ない。
+  - 修正：`state._refCleanup = []` に removeEventListener クロージャを積む仕組みを導入。レンダ冒頭で前回分を全消去してから新規登録。対象リスナー：
+    - `window: mousemove / mouseup / keydown / resize`
+    - `document: paste / copy`
+  - mousemove / mouseup はこれまで匿名関数で登録していたが、`const onRefMouseMove = (e)=>{...}` 形式に書き換え、`removeEventListener` を可能にした。
+  - 書き込み系副作用なし。
+  - APP_VERSION：2026.10.06.098 → 2026.10.06.099
+
 - (dev v2026.10.06.098) **資料タブ：Delete 無効化／文字色変化なし／目次にタイトルが出ない問題を一括修正（LayCAT）**：
   - 根本原因（3 件とも同根）：`vp` のマウスダウンハンドラが**ツールバー／ズームコントロール／リサイズハンドルへのクリックまで奪っていた**。これにより：
     - ツールバーのカラーピッカーをクリック → mousedown が vp にバブリング → `hitTestItem` が null → 「空白クリック」判定で `state.refSelection.clear()` → `applyToSelected` が対象ゼロで実行 → **文字色が変わらない**

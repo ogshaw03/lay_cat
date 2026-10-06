@@ -4163,7 +4163,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.098';
+const APP_VERSION='2026.10.06.099';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6411,6 +6411,16 @@ function renderProjReference(main, root){
   if(!state.refSelection) state.refSelection = new Set();
   if(state.refEditMode == null) state.refEditMode = false;
   if(!state.refEditingId) state.refEditingId = null;
+  /* v.099：renderProjReference は render() 毎に呼ばれるため、window / document に
+     attachedしたリスナーが累積していた（keydown / mousemove / mouseup / paste / copy）。
+     古い keydown リスナーが最も古い `canvas` / `vp` 参照を保持しており、Delete キーが
+     来ると「古い（detached な）canvas 側で選択解除・splice・applyTransform」を実行して
+     消費し、現在の DOM に反映されない現象を引き起こしていた。
+     レンダ冒頭で前回のリスナー群を全部外してから新しく張り直す。 */
+  if(state._refCleanup){
+    for(const fn of state._refCleanup){ try{ fn(); }catch(_){} }
+  }
+  state._refCleanup = [];
   const view = state.refView;
   /* v.090：実データロード。state.refItemsByPid[pid] は編集対象の実配列（永続化対象）。 */
   let workingItems = state.refItemsByPid[root.id];
@@ -6889,7 +6899,7 @@ function renderProjReference(main, root){
     renderVisible();
     e.preventDefault();
   });
-  window.addEventListener('mousemove',(e)=>{
+  const onRefMouseMove = (e)=>{
     if(!mode) return;
     if(mode === 'pan'){
       view.tx = startTx + (e.clientX - dragX);
@@ -6919,8 +6929,8 @@ function renderProjReference(main, root){
       rubberEl.style.width  = ((x2-x1) * view.scale) + 'px';
       rubberEl.style.height = ((y2-y1) * view.scale) + 'px';
     }
-  });
-  window.addEventListener('mouseup',(e)=>{
+  };
+  const onRefMouseUp = (e)=>{
     if(!mode) return;
     if(mode === 'pan'){
       vp.classList.remove('panning');
@@ -6965,7 +6975,11 @@ function renderProjReference(main, root){
       renderVisible();
     }
     mode = null;
-  });
+  };
+  window.addEventListener('mousemove', onRefMouseMove);
+  window.addEventListener('mouseup',   onRefMouseUp);
+  state._refCleanup.push(()=>window.removeEventListener('mousemove', onRefMouseMove));
+  state._refCleanup.push(()=>window.removeEventListener('mouseup',   onRefMouseUp));
   /* ---------- キーボード：Delete / Backspace で削除、Esc で選択解除 ---------- */
   const onRefKey = (e) => {
     if(state.projTab !== 'reference') return;
@@ -7000,6 +7014,7 @@ function renderProjReference(main, root){
     }
   };
   window.addEventListener('keydown', onRefKey);
+  state._refCleanup.push(()=>window.removeEventListener('keydown', onRefKey));
   /* v.097：タイトル／テキストをダブルクリックでインライン編集開始 */
   canvas.addEventListener('dblclick', (e)=>{
     if(!state.refEditMode) return;
@@ -7212,6 +7227,8 @@ function renderProjReference(main, root){
   };
   document.addEventListener('paste', onRefPaste);
   document.addEventListener('copy', onRefCopy);
+  state._refCleanup.push(()=>document.removeEventListener('paste', onRefPaste));
+  state._refCleanup.push(()=>document.removeEventListener('copy',  onRefCopy));
   /* ---------- Zoom（ホイール） ---------- */
   vp.addEventListener('wheel',(e)=>{
     e.preventDefault();
@@ -7264,6 +7281,7 @@ function renderProjReference(main, root){
   /* リサイズ時に再描画 */
   const onResize = ()=>applyTransform();
   window.addEventListener('resize', onResize);
+  state._refCleanup.push(()=>window.removeEventListener('resize', onResize));
 }
 /* 資料タブ：アイテム 1 件分の DOM を生成するヘルパ */
 function _refBuildItem(it){
