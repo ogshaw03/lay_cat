@@ -268,6 +268,19 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
   linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
   linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
   background-size:100px 100px;background-position:0 0}
+/* v.091：資料タブ 編集モード関連
+   - .ref-main.edit-mode：編集中はカーソルを default（grab ではなく矢印）
+   - .ref-item.selected：青いアウトライン＋タイトル文字色反転
+   - .ref-rubber：範囲選択の矩形
+   - .ref-edit-badge：編集モード中であることのバッジ（右下 HUD の左）
+   - .ref-edit-btn.on：編集 ON のときのボタン装飾 */
+.ref-main.edit-mode .ref-canvas{cursor:default}
+.ref-main.edit-mode.panning .ref-canvas{cursor:grabbing}
+.ref-item.selected{outline:2px solid #4a9eff;outline-offset:2px;box-shadow:0 0 0 2px rgba(74,158,255,0.3);z-index:5}
+.ref-item.ref-group.selected{outline-color:#4a9eff;outline-style:solid;z-index:1}
+.ref-rubber{position:absolute;border:1px dashed #4a9eff;background:rgba(74,158,255,0.08);pointer-events:none;z-index:10}
+.ref-edit-badge{display:inline-block;padding:2px 8px;border-radius:5px;background:rgba(74,158,255,0.22);color:#9ac4ff;border:1px solid rgba(74,158,255,0.44);font-family:var(--font-head);font-weight:700;font-size:10px;letter-spacing:0.5px;margin-right:8px}
+.ref-ctrls button.ref-edit-btn.on{background:#4a9eff;border-color:#4a9eff;color:#0a0a0e;font-weight:700}
 /* 単色ラインアイコン */
 .ico{width:1.05em;height:1.05em;vertical-align:-0.16em;flex-shrink:0}
 button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-chip .ico{margin-right:.4em}
@@ -4109,7 +4122,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.090';
+const APP_VERSION='2026.10.06.091';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6398,30 +6411,29 @@ function renderProjReference(main, root){
   main.innerHTML='';
   if(!state.refView) state.refView = { tx: 60, ty: 60, scale: 0.5 };
   if(!state.refItemsByPid) state.refItemsByPid = {};
+  if(!state.refSelection) state.refSelection = new Set();
+  if(state.refEditMode == null) state.refEditMode = false;
   const view = state.refView;
-  /* v.090：実データロード。state.refItemsByPid[pid] にキャッシュして再描画の重複フェッチを避ける。
-     空プロジェクトは REF_MOCK_ITEMS を暫定表示（Phase 2 で編集モードから実アイテムを追加できたら
-     mock は自然に押しのけられる。目視デモ用途として温存）。 */
-  let items = state.refItemsByPid[root.id];
-  if(!items){
-    items = []; /* ロード完了まで空のまま描画 */
-    state.refItemsByPid[root.id] = items;
+  /* v.090：実データロード。state.refItemsByPid[pid] は編集対象の実配列（永続化対象）。 */
+  let workingItems = state.refItemsByPid[root.id];
+  if(!workingItems){
+    workingItems = [];
+    state.refItemsByPid[root.id] = workingItems;
     (async()=>{
       try{
         const loaded = await storage.loadReferenceItems(root.id);
         if(Array.isArray(loaded) && loaded.length){
           state.refItemsByPid[root.id] = loaded;
-          /* 現在開いているタブがまだ資料なら再描画して反映 */
           if(state.projTab==='reference' && state.currentId===root.id){
             try{ render(); }catch(_){}
           }
         }
       }catch(_){}
     })();
-    /* 初回：loaded 完了まで mock を表示（空プロジェクトでも何か見える） */
-    items = REF_MOCK_ITEMS;
   }
-  if(!items.length) items = REF_MOCK_ITEMS; /* 読み込み完了して空ならデモを出す（Phase 2 で add 機能実装後は実アイテムで置換される） */
+  /* v.091：表示用アイテム。編集 OFF ＋ 実配列が空 → mock をデモ表示。
+     編集 ON またはアイテムが 1 件でもある → 実配列（workingItems）を使う。 */
+  let items = (!state.refEditMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
   const titleItems = items.filter(x=>x.type==='title');
   const root_=el('div','ref-root');
   /* 左サイドバー：目次 */
@@ -6431,14 +6443,19 @@ function renderProjReference(main, root){
   side.appendChild(toc);
   /* 右メイン：キャンバスビューポート */
   const vp=el('div','ref-main');
+  if(state.refEditMode) vp.classList.add('edit-mode');
   const grid=el('div','ref-grid-bg');vp.appendChild(grid);
   const canvas=el('div','ref-canvas');vp.appendChild(canvas);
   const hud=el('div','ref-hud');vp.appendChild(hud);
   const ctrls=el('div','ref-ctrls');
+  /* v.091：編集モード ON/OFF トグル。ON のときはボタンが青く、HUD に "編集中" バッジが出る。 */
+  const editBtn=el('button','ref-edit-btn'+(state.refEditMode?' on':''),state.refEditMode?'✏ 編集中':'✏ 編集');
+  editBtn.title='編集モードを切替（ON のときのみアイテムの選択・移動・追加・削除が可能。Alt+ドラッグで画面移動）';
   const zIn=el('button',null,'＋');zIn.title='拡大';
   const zOut=el('button',null,'−');zOut.title='縮小';
   const zFit=el('button',null,'100%');zFit.title='等倍';
   const zAll=el('button',null,'⊡');zAll.title='全体表示';
+  ctrls.appendChild(editBtn);
   ctrls.appendChild(zOut);ctrls.appendChild(zFit);ctrls.appendChild(zIn);ctrls.appendChild(zAll);
   vp.appendChild(ctrls);
   root_.appendChild(side);root_.appendChild(vp);
@@ -6458,18 +6475,22 @@ function renderProjReference(main, root){
   const renderVisible = ()=>{
     const rect = vp.getBoundingClientRect();
     const vw = rect.width, vh = rect.height;
-    /* 画面範囲を canvas 座標に逆変換 */
     const vLeft   = -view.tx / view.scale - BUFFER;
     const vTop    = -view.ty / view.scale - BUFFER;
     const vRight  = vLeft + vw / view.scale + BUFFER * 2;
     const vBottom = vTop  + vh / view.scale + BUFFER * 2;
-    /* 既存アイテムを一旦削除してから可視分だけ再描画。アイテム数が多くないので
-       差分 reconciliation は後回し（モックは数十個の想定）。 */
     [...canvas.querySelectorAll('.ref-item')].forEach(n=>n.remove());
     for(const it of items){
       const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
       if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom) continue;
       const node = _refBuildItem(it);
+      node.dataset.refId = it.id || '';
+      /* v.091：選択状態を反映。編集モード OFF のときは選択解除扱い */
+      if(state.refEditMode && it.id && state.refSelection.has(it.id)){
+        node.classList.add('selected');
+      }
+      /* 編集モードでは個別アイテムの pointer-events を有効化（通常は pointer-events:none な group を含めて） */
+      if(state.refEditMode) node.style.pointerEvents = 'auto';
       canvas.appendChild(node);
     }
   };
@@ -6533,23 +6554,191 @@ function renderProjReference(main, root){
     }
   };
   rebuildToc();
-  /* ---------- Pan（ドラッグ） ---------- */
-  let dragging=false, dragX=0, dragY=0, startTx=0, startTy=0;
+  /* ---------- 保存スケジューラ（アイテム単位でデバウンス） ---------- */
+  const _refSaveTimers = {};
+  const scheduleItemSave = (it) => {
+    if(!it || !it.id) return;
+    clearTimeout(_refSaveTimers[it.id]);
+    _refSaveTimers[it.id] = setTimeout(()=>{
+      storage.saveReferenceItem(root.id, it).catch(()=>{});
+      delete _refSaveTimers[it.id];
+    }, 350);
+  };
+  /* ---------- 編集モードトグル ---------- */
+  const setEditMode = (on) => {
+    state.refEditMode = !!on;
+    vp.classList.toggle('edit-mode', state.refEditMode);
+    editBtn.classList.toggle('on', state.refEditMode);
+    editBtn.textContent = state.refEditMode ? '✏ 編集中' : '✏ 編集';
+    if(!state.refEditMode) state.refSelection.clear();
+    /* 編集 ON で mock→実データ切替が起きるのでアイテム表示を切り替えて再描画 */
+    items = (!state.refEditMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    applyTransform();
+  };
+  editBtn.onclick = () => setEditMode(!state.refEditMode);
+  /* ---------- アイテム座標ヘルパ ---------- */
+  const screenToWorld = (sx, sy) => {
+    const r = vp.getBoundingClientRect();
+    return { x: (sx - r.left - view.tx) / view.scale, y: (sy - r.top - view.ty) / view.scale };
+  };
+  const hitTestItem = (sx, sy) => {
+    /* world 座標でアイテムとの当たり判定。z-index 順（配列末尾優先）で検索。
+       group はヒット対象外（枠図形なのでクリックは通したい）。 */
+    const w = screenToWorld(sx, sy);
+    for(let i = items.length - 1; i >= 0; i--){
+      const it = items[i];
+      if(it.type === 'group') continue;
+      const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
+      if(w.x >= x1 && w.x <= x2 && w.y >= y1 && w.y <= y2) return it;
+    }
+    return null;
+  };
+  /* ---------- Pan + 選択 + 移動 + 範囲選択（統合ハンドラ） ---------- */
+  let mode = null; /* 'pan' | 'move' | 'rubber' | null */
+  let dragX=0, dragY=0;
+  let startTx=0, startTy=0;
+  let moveOrigin = {}; /* 選択中アイテムの初期座標 {itemId: {x,y}} */
+  let rubberEl = null;
+  let rubberStart = {x:0, y:0}; /* world 座標 */
   vp.addEventListener('mousedown',(e)=>{
-    if(e.button!==0) return; /* 左クリックのみ */
-    cancelAnim(); /* 目次アニメーション中にドラッグ開始したら即座にキャンセル */
-    /* アイテム（image）のクリックは pan 対象外にしたい場合は後で対応。今回は背景・アイテム問わず pan 開始 */
-    dragging=true;dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
-    vp.classList.add('panning');
+    if(e.button!==0) return;
+    cancelAnim();
+    const editMode = state.refEditMode;
+    /* 編集 OFF：従来通り pan。 */
+    if(!editMode){
+      mode = 'pan';
+      dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+      vp.classList.add('panning');
+      e.preventDefault();
+      return;
+    }
+    /* 編集 ON ＋ Alt → pan */
+    if(e.altKey){
+      mode = 'pan';
+      dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+      vp.classList.add('panning');
+      e.preventDefault();
+      return;
+    }
+    /* 編集 ON：アイテムをヒットしたか？ */
+    const hit = hitTestItem(e.clientX, e.clientY);
+    if(hit){
+      if(e.shiftKey){
+        /* Shift+クリック：選択トグル */
+        if(state.refSelection.has(hit.id)) state.refSelection.delete(hit.id);
+        else state.refSelection.add(hit.id);
+      }else{
+        /* 通常クリック：すでに選択されていなければ単独選択に切替 */
+        if(!state.refSelection.has(hit.id)){
+          state.refSelection.clear();
+          state.refSelection.add(hit.id);
+        }
+      }
+      /* 選択されたアイテム群の初期座標を記録して move モードへ */
+      mode = 'move';
+      dragX=e.clientX; dragY=e.clientY;
+      moveOrigin = {};
+      for(const id of state.refSelection){
+        const it = workingItems.find(x=>x.id===id);
+        if(it) moveOrigin[id] = {x: it.x, y: it.y};
+      }
+      renderVisible();
+      e.preventDefault();
+      return;
+    }
+    /* 空白クリック：範囲選択 */
+    if(!e.shiftKey) state.refSelection.clear();
+    mode = 'rubber';
+    rubberStart = screenToWorld(e.clientX, e.clientY);
+    rubberEl = document.createElement('div');
+    rubberEl.className = 'ref-rubber';
+    vp.appendChild(rubberEl);
+    renderVisible();
     e.preventDefault();
   });
   window.addEventListener('mousemove',(e)=>{
-    if(!dragging) return;
-    view.tx = startTx + (e.clientX - dragX);
-    view.ty = startTy + (e.clientY - dragY);
-    applyTransform();
+    if(!mode) return;
+    if(mode === 'pan'){
+      view.tx = startTx + (e.clientX - dragX);
+      view.ty = startTy + (e.clientY - dragY);
+      applyTransform();
+    }else if(mode === 'move'){
+      const dx = (e.clientX - dragX) / view.scale;
+      const dy = (e.clientY - dragY) / view.scale;
+      for(const id of state.refSelection){
+        const it = workingItems.find(x=>x.id===id);
+        const org = moveOrigin[id];
+        if(it && org){
+          it.x = Math.round(org.x + dx);
+          it.y = Math.round(org.y + dy);
+        }
+      }
+      renderVisible();
+    }else if(mode === 'rubber' && rubberEl){
+      const w = screenToWorld(e.clientX, e.clientY);
+      const x1 = Math.min(rubberStart.x, w.x), y1 = Math.min(rubberStart.y, w.y);
+      const x2 = Math.max(rubberStart.x, w.x), y2 = Math.max(rubberStart.y, w.y);
+      /* world→screen で overlay 位置に変換 */
+      const sx = x1 * view.scale + view.tx;
+      const sy = y1 * view.scale + view.ty;
+      rubberEl.style.left   = sx + 'px';
+      rubberEl.style.top    = sy + 'px';
+      rubberEl.style.width  = ((x2-x1) * view.scale) + 'px';
+      rubberEl.style.height = ((y2-y1) * view.scale) + 'px';
+    }
   });
-  window.addEventListener('mouseup',()=>{if(dragging){dragging=false;vp.classList.remove('panning');}});
+  window.addEventListener('mouseup',(e)=>{
+    if(!mode) return;
+    if(mode === 'pan'){
+      vp.classList.remove('panning');
+    }else if(mode === 'move'){
+      /* 移動したアイテムを保存（選択中すべてデバウンス保存） */
+      for(const id of state.refSelection){
+        const it = workingItems.find(x=>x.id===id);
+        if(it) scheduleItemSave(it);
+      }
+    }else if(mode === 'rubber' && rubberEl){
+      const w = screenToWorld(e.clientX, e.clientY);
+      const x1 = Math.min(rubberStart.x, w.x), y1 = Math.min(rubberStart.y, w.y);
+      const x2 = Math.max(rubberStart.x, w.x), y2 = Math.max(rubberStart.y, w.y);
+      /* 矩形と重なるアイテムを選択に追加 */
+      for(const it of workingItems){
+        if(it.type === 'group') continue;
+        const ix1=it.x, iy1=it.y, ix2=it.x+(it.w||400), iy2=it.y+(it.h||100);
+        if(ix2 < x1 || ix1 > x2 || iy2 < y1 || iy1 > y2) continue;
+        state.refSelection.add(it.id);
+      }
+      try{ rubberEl.remove(); }catch(_){}
+      rubberEl = null;
+      renderVisible();
+    }
+    mode = null;
+  });
+  /* ---------- キーボード：Delete / Backspace で削除、Esc で選択解除 ---------- */
+  const onRefKey = (e) => {
+    if(state.projTab !== 'reference') return;
+    /* input/textarea にフォーカスがあるときは無視 */
+    const tag = (e.target && e.target.tagName) || '';
+    if(tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+    if(!state.refEditMode) return;
+    if((e.key === 'Delete' || e.key === 'Backspace') && state.refSelection.size){
+      e.preventDefault();
+      const ids = Array.from(state.refSelection);
+      for(const id of ids){
+        const idx = workingItems.findIndex(x=>x.id===id);
+        if(idx >= 0){
+          workingItems.splice(idx, 1);
+          storage.deleteReferenceItem(root.id, id).catch(()=>{});
+        }
+      }
+      state.refSelection.clear();
+      renderVisible();
+    }else if(e.key === 'Escape'){
+      state.refSelection.clear();
+      renderVisible();
+    }
+  };
+  window.addEventListener('keydown', onRefKey);
   /* ---------- Zoom（ホイール） ---------- */
   vp.addEventListener('wheel',(e)=>{
     e.preventDefault();
