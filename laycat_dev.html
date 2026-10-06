@@ -300,6 +300,21 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .ref-item.ref-shape{box-sizing:border-box;border:2px solid;pointer-events:none}
 .ref-item.ref-shape.shape-circle{border-radius:50%}
 .ref-main.edit-mode .ref-item{pointer-events:auto}
+/* v.093：リサイズハンドル（選択中アイテム 1 件のみ表示）。
+   位置：キャンバスオーバーレイで vp に貼る（canvas の transform を通さない）。 */
+.ref-handles{position:absolute;pointer-events:none;z-index:6}
+.ref-handles .rh{position:absolute;width:11px;height:11px;background:#4a9eff;border:1.5px solid #0a0a0e;border-radius:50%;pointer-events:auto;transform:translate(-50%,-50%);box-shadow:0 0 0 1px rgba(255,255,255,0.3)}
+.ref-handles .rh.nw{cursor:nw-resize;left:0;top:0}
+.ref-handles .rh.ne{cursor:ne-resize;left:100%;top:0}
+.ref-handles .rh.sw{cursor:sw-resize;left:0;top:100%}
+.ref-handles .rh.se{cursor:se-resize;left:100%;top:100%}
+/* v.093：右クリックメニュー */
+.ref-ctx{position:absolute;z-index:20;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:5px 0;min-width:170px;box-shadow:0 8px 24px rgba(0,0,0,0.4);font-family:inherit;font-size:12px}
+.ref-ctx .cx-item{padding:7px 14px;cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:8px}
+.ref-ctx .cx-item:hover{background:var(--bg3);color:var(--text)}
+.ref-ctx .cx-item.disabled{opacity:0.4;pointer-events:none}
+.ref-ctx .cx-sep{height:1px;background:var(--border);margin:4px 0}
+.ref-ctx .cx-hint{font-size:10px;color:var(--text3);margin-left:auto}
 /* 単色ラインアイコン */
 .ico{width:1.05em;height:1.05em;vertical-align:-0.16em;flex-shrink:0}
 button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-chip .ico{margin-right:.4em}
@@ -4141,7 +4156,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.092';
+const APP_VERSION='2026.10.06.093';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6878,6 +6893,206 @@ function renderProjReference(main, root){
     }
   };
   window.addEventListener('keydown', onRefKey);
+  /* ---------- v.093：リサイズハンドル（単一選択時のみ表示） ---------- */
+  let handlesEl = null;
+  const updateHandles = ()=>{
+    if(handlesEl){ try{ handlesEl.remove(); }catch(_){} handlesEl = null; }
+    if(!state.refEditMode || state.refSelection.size !== 1) return;
+    const id = Array.from(state.refSelection)[0];
+    const it = workingItems.find(x=>x.id===id);
+    if(!it || !it.w || !it.h) return;
+    const r = vp.getBoundingClientRect();
+    const sx = it.x * view.scale + view.tx;
+    const sy = it.y * view.scale + view.ty;
+    const sw = (it.w||100) * view.scale;
+    const sh = (it.h||100) * view.scale;
+    handlesEl = el('div','ref-handles');
+    handlesEl.style.left = sx + 'px';
+    handlesEl.style.top  = sy + 'px';
+    handlesEl.style.width  = sw + 'px';
+    handlesEl.style.height = sh + 'px';
+    for(const c of ['nw','ne','sw','se']){
+      const h = el('div','rh '+c);
+      h.dataset.corner = c;
+      h.addEventListener('mousedown',(e)=>{
+        if(e.button!==0) return;
+        e.stopPropagation(); e.preventDefault();
+        const startX = e.clientX, startY = e.clientY;
+        const origin = {x:it.x, y:it.y, w:it.w, h:it.h};
+        const onMv = (ev)=>{
+          const dx = (ev.clientX - startX) / view.scale;
+          const dy = (ev.clientY - startY) / view.scale;
+          let nx=origin.x, ny=origin.y, nw=origin.w, nh=origin.h;
+          if(c==='se'){ nw = Math.max(20, origin.w + dx); nh = Math.max(20, origin.h + dy); }
+          else if(c==='sw'){ nw = Math.max(20, origin.w - dx); nh = Math.max(20, origin.h + dy); nx = origin.x + (origin.w - nw); }
+          else if(c==='ne'){ nw = Math.max(20, origin.w + dx); nh = Math.max(20, origin.h - dy); ny = origin.y + (origin.h - nh); }
+          else if(c==='nw'){ nw = Math.max(20, origin.w - dx); nh = Math.max(20, origin.h - dy); nx = origin.x + (origin.w - nw); ny = origin.y + (origin.h - nh); }
+          it.x = Math.round(nx); it.y = Math.round(ny);
+          it.w = Math.round(nw); it.h = Math.round(nh);
+          renderVisible();
+          updateHandles();
+        };
+        const onUp = ()=>{
+          window.removeEventListener('mousemove', onMv);
+          window.removeEventListener('mouseup', onUp);
+          scheduleItemSave(it);
+        };
+        window.addEventListener('mousemove', onMv);
+        window.addEventListener('mouseup', onUp);
+      });
+      handlesEl.appendChild(h);
+    }
+    vp.appendChild(handlesEl);
+  };
+  /* applyTransform ＆ renderVisible 直後にハンドルも更新。既存の applyTransform をラップする代わりに、
+     renderVisible の末尾でハンドル更新を呼ぶように変更する。 */
+  const _origRenderVisible = renderVisible;
+  const renderVisible2 = ()=>{ _origRenderVisible(); updateHandles(); };
+  renderVisible = renderVisible2;
+  /* ---------- v.093：右クリックメニュー ---------- */
+  let ctxEl = null;
+  const closeCtx = ()=>{ if(ctxEl){ try{ ctxEl.remove(); }catch(_){} ctxEl = null; } };
+  let _refClipboard = []; /* in-memory クリップボード（コピー・貼付用、deep clone） */
+  const alignSelected = (axis) => {
+    /* axis: 'left'|'right'|'top'|'bottom'|'cx'|'cy' */
+    const sels = Array.from(state.refSelection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean);
+    if(sels.length < 2) return;
+    if(axis==='left'){ const m=Math.min(...sels.map(s=>s.x)); for(const s of sels){ s.x = m; scheduleItemSave(s); } }
+    else if(axis==='right'){ const m=Math.max(...sels.map(s=>s.x+(s.w||0))); for(const s of sels){ s.x = m - (s.w||0); scheduleItemSave(s); } }
+    else if(axis==='top'){ const m=Math.min(...sels.map(s=>s.y)); for(const s of sels){ s.y = m; scheduleItemSave(s); } }
+    else if(axis==='bottom'){ const m=Math.max(...sels.map(s=>s.y+(s.h||0))); for(const s of sels){ s.y = m - (s.h||0); scheduleItemSave(s); } }
+    else if(axis==='cx'){ const m=sels.reduce((a,s)=>a + s.x + (s.w||0)/2, 0)/sels.length; for(const s of sels){ s.x = Math.round(m - (s.w||0)/2); scheduleItemSave(s); } }
+    else if(axis==='cy'){ const m=sels.reduce((a,s)=>a + s.y + (s.h||0)/2, 0)/sels.length; for(const s of sels){ s.y = Math.round(m - (s.h||0)/2); scheduleItemSave(s); } }
+    renderVisible();
+  };
+  const copySelected = ()=>{
+    _refClipboard = Array.from(state.refSelection).map(id=>{
+      const it = workingItems.find(x=>x.id===id);
+      return it ? JSON.parse(JSON.stringify(it)) : null;
+    }).filter(Boolean);
+    toast(`${_refClipboard.length} 件をコピーしました`);
+  };
+  const pasteClipboard = (atX, atY)=>{
+    if(!_refClipboard.length) return;
+    const c = (atX!=null && atY!=null) ? {x:atX, y:atY} : _viewportCenterWorld();
+    /* クリップボード群のバウンディング（左上）を基準に貼付位置を揃える */
+    const minX = Math.min(..._refClipboard.map(x=>x.x));
+    const minY = Math.min(..._refClipboard.map(x=>x.y));
+    state.refSelection.clear();
+    for(const src of _refClipboard){
+      const copy = JSON.parse(JSON.stringify(src));
+      copy.id = _nextId();
+      copy.x = Math.round(c.x + (src.x - minX));
+      copy.y = Math.round(c.y + (src.y - minY));
+      workingItems.push(copy);
+      state.refSelection.add(copy.id);
+      scheduleItemSave(copy);
+    }
+    renderVisible();
+  };
+  const matchThumbSize = ()=>{
+    /* 選択中の画像／動画の w/h を、選択内「最初の画像」の w/h に揃える */
+    const sels = Array.from(state.refSelection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean).filter(x=>x.type==='image');
+    if(sels.length < 2){ toast('画像/動画を 2 件以上選択してください'); return; }
+    const ref = sels[0];
+    for(const s of sels){ s.w = ref.w; s.h = ref.h; scheduleItemSave(s); }
+    renderVisible();
+    toast(`${sels.length} 件のサイズを統一しました`);
+  };
+  vp.addEventListener('contextmenu',(e)=>{
+    if(!state.refEditMode) return;
+    e.preventDefault();
+    closeCtx();
+    const hit = hitTestItem(e.clientX, e.clientY);
+    if(hit && !state.refSelection.has(hit.id)){
+      state.refSelection.clear(); state.refSelection.add(hit.id);
+      renderVisible();
+    }
+    const hasSel = state.refSelection.size > 0;
+    const multiSel = state.refSelection.size >= 2;
+    const w = screenToWorld(e.clientX, e.clientY);
+    ctxEl = el('div','ref-ctx');
+    const r = vp.getBoundingClientRect();
+    ctxEl.style.left = (e.clientX - r.left + 4) + 'px';
+    ctxEl.style.top  = (e.clientY - r.top  + 4) + 'px';
+    const mk = (label, fn, disabled, hint)=>{
+      const it = el('div','cx-item'+(disabled?' disabled':''));
+      it.appendChild(document.createTextNode(label));
+      if(hint){ const h=el('span','cx-hint',hint); it.appendChild(h); }
+      if(!disabled) it.onclick = ()=>{ closeCtx(); try{ fn(); }catch(err){ console.warn(err); } };
+      ctxEl.appendChild(it);
+    };
+    mk('左揃え',   ()=>alignSelected('left'),   !multiSel);
+    mk('右揃え',   ()=>alignSelected('right'),  !multiSel);
+    mk('上揃え',   ()=>alignSelected('top'),    !multiSel);
+    mk('下揃え',   ()=>alignSelected('bottom'), !multiSel);
+    mk('横中央',   ()=>alignSelected('cx'),     !multiSel);
+    mk('縦中央',   ()=>alignSelected('cy'),     !multiSel);
+    ctxEl.appendChild(el('div','cx-sep'));
+    mk('コピー',    copySelected,                  !hasSel, 'Ctrl+C');
+    mk('貼付',      ()=>pasteClipboard(w.x, w.y),  !_refClipboard.length, 'Ctrl+V');
+    ctxEl.appendChild(el('div','cx-sep'));
+    mk('サイズ統一（画像/動画）', matchThumbSize, !multiSel);
+    vp.appendChild(ctxEl);
+    /* 外クリックで閉じる */
+    setTimeout(()=>{
+      const closer = (ev)=>{ if(!ctxEl || !ctxEl.contains(ev.target)){ closeCtx(); window.removeEventListener('mousedown', closer, true); } };
+      window.addEventListener('mousedown', closer, true);
+    }, 0);
+  });
+  /* ---------- v.093：クリップボードペースト（Ctrl+V で画像貼付 or copySelected） ---------- */
+  const onRefPaste = async (e)=>{
+    if(state.projTab !== 'reference') return;
+    if(!state.refEditMode) return;
+    const cd = e.clipboardData;
+    if(!cd) return;
+    /* 画像を探す */
+    const files = [];
+    for(const it of (cd.items||[])){
+      if(it.kind === 'file' && String(it.type||'').startsWith('image/')){
+        const f = it.getAsFile();
+        if(f) files.push(f);
+      }
+    }
+    if(files.length){
+      e.preventDefault();
+      const c0 = _viewportCenterWorld();
+      let dx=0;
+      for(const f of files){
+        try{
+          const ext = (f.type==='image/png'?'.png':f.type==='image/webp'?'.webp':'.jpg');
+          const uid = _nextId();
+          const ref = await storage.putReferenceMedia(root.id, uid+ext, f);
+          if(!ref) continue;
+          let w=320,h=240;
+          try{
+            const url = URL.createObjectURL(f);
+            await new Promise((res)=>{ const img=new Image(); img.onload=()=>{ w=img.naturalWidth; h=img.naturalHeight; URL.revokeObjectURL(url); res(); }; img.onerror=()=>{ URL.revokeObjectURL(url); res(); }; img.src=url; });
+            const scale = Math.min(1, 480 / Math.max(w,h));
+            w = Math.round(w*scale); h = Math.round(h*scale);
+          }catch(_){}
+          insertItem({ type:'image', mediaRef:ref, mediaType:'image', label:'paste', w, h,
+            x: Math.round(c0.x + dx - w/2), y: Math.round(c0.y - h/2) });
+          dx += 30;
+        }catch(_){}
+      }
+      return;
+    }
+    /* 画像が無ければ内部クリップボードを貼付 */
+    if(_refClipboard.length){
+      e.preventDefault();
+      pasteClipboard();
+    }
+  };
+  const onRefCopy = (e)=>{
+    if(state.projTab !== 'reference') return;
+    if(!state.refEditMode) return;
+    if(!state.refSelection.size) return;
+    e.preventDefault();
+    copySelected();
+  };
+  document.addEventListener('paste', onRefPaste);
+  document.addEventListener('copy', onRefCopy);
   /* ---------- Zoom（ホイール） ---------- */
   vp.addEventListener('wheel',(e)=>{
     e.preventDefault();
