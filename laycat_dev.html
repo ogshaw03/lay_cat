@@ -260,8 +260,8 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .ref-item.ref-image .ref-image-ph .ic{font-size:28px;opacity:0.5}
 .ref-item.ref-group{border:1.5px dashed;border-radius:12px;background:transparent;pointer-events:none}
 .ref-item.ref-group .ref-group-lbl{position:absolute;top:-14px;left:12px;background:var(--bg);padding:1px 8px;font-size:11px;font-family:var(--font-head);font-weight:700;letter-spacing:0.5px;border-radius:4px}
-.ref-hud{position:absolute;left:12px;bottom:36px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);font-family:var(--font-code);background:rgba(10,10,14,0.72);border:1px solid var(--border);border-radius:7px;padding:4px 10px;z-index:3;pointer-events:none}
-.ref-ctrls{position:absolute;right:12px;bottom:36px;display:flex;gap:4px;z-index:3}
+.ref-hud{position:absolute;left:12px;bottom:22px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);font-family:var(--font-code);background:rgba(10,10,14,0.72);border:1px solid var(--border);border-radius:7px;padding:4px 10px;z-index:3;pointer-events:none}
+.ref-ctrls{position:absolute;right:12px;bottom:22px;display:flex;gap:4px;z-index:3}
 .ref-ctrls button{background:rgba(10,10,14,0.72);border:1px solid var(--border);color:var(--text2);font-family:var(--font-code);font-size:12px;padding:4px 10px;border-radius:7px;cursor:pointer}
 .ref-ctrls button:hover{color:var(--text);border-color:var(--border2)}
 .ref-grid-bg{position:absolute;inset:0;pointer-events:none;background-image:
@@ -4179,7 +4179,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.109';
+const APP_VERSION='2026.10.06.110';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
