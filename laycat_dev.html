@@ -4156,7 +4156,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.094';
+const APP_VERSION='2026.10.06.095';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6396,51 +6396,7 @@ function tlSubmitItem(e,cur){
    - 書き込み系なし：モックデータは関数内 const、state 側に view（tx/ty/scale）のみ保持
    - viewport virtualization：画面外（+バッファ）アイテムは DOM 省略
    実データ連携・編集 UI は後続タスク（今回は UI のみ）。 */
-const REF_MOCK_ITEMS = [
-  /* 群 1：キャラクター設定（左上） */
-  { id:'g_char',  type:'group', x:0,     y:0,     w:1700, h:1050, color:'#7fbf9a', label:'キャラクター設定' },
-  { id:'t_char',  type:'title', x:24,    y:32,    text:'キャラクター設定', fontSize:48, color:'#7fbf9a' },
-  { id:'c_lead',  type:'image', x:40,    y:120,   w:320, h:420, label:'主役・立ち絵' },
-  { id:'c_lead2', type:'image', x:380,   y:120,   w:320, h:420, label:'主役・表情集' },
-  { id:'c_sub',   type:'image', x:40,    y:560,   w:320, h:420, label:'サブキャラA' },
-  { id:'c_sub2',  type:'image', x:380,   y:560,   w:320, h:420, label:'サブキャラB' },
-  { id:'c_prop',  type:'image', x:740,   y:120,   w:480, h:420, label:'衣装・小物' },
-  { id:'c_ref',   type:'image', x:740,   y:560,   w:480, h:420, label:'参考写真' },
-  { id:'c_memo',  type:'image', x:1240,  y:120,   w:420, h:860, label:'監督メモ・方針' },
-  /* 群 2：美術設定（右上） */
-  { id:'g_bg',    type:'group', x:1800,  y:0,     w:1500, h:1050, color:'#f0b872', label:'美術設定' },
-  { id:'t_bg',    type:'title', x:1824,  y:32,    text:'美術設定', fontSize:48, color:'#f0b872' },
-  { id:'bg_room', type:'image', x:1840,  y:120,   w:460, h:300, label:'部屋 内観' },
-  { id:'bg_hall', type:'image', x:2320,  y:120,   w:460, h:300, label:'廊下' },
-  { id:'bg_sch',  type:'image', x:2800,  y:120,   w:460, h:300, label:'校舎外観' },
-  { id:'bg_sky',  type:'image', x:1840,  y:440,   w:720, h:280, label:'空・雲（日中／夕）' },
-  { id:'bg_night',type:'image', x:2580,  y:440,   w:680, h:280, label:'夜景' },
-  { id:'bg_plot', type:'image', x:1840,  y:740,   w:1420, h:240, label:'ロケーション配置図' },
-  /* 群 3：プロップ・小道具（左下） */
-  { id:'g_prop',  type:'group', x:0,     y:1150,  w:1700, h:800, color:'#6fa8dc', label:'プロップ・小道具' },
-  { id:'t_prop',  type:'title', x:24,    y:1182,  text:'プロップ・小道具', fontSize:48, color:'#6fa8dc' },
-  { id:'p_a',     type:'image', x:40,    y:1270,  w:300, h:300, label:'バッグ' },
-  { id:'p_b',     type:'image', x:360,   y:1270,  w:300, h:300, label:'ノート' },
-  { id:'p_c',     type:'image', x:680,   y:1270,  w:300, h:300, label:'ペン類' },
-  { id:'p_d',     type:'image', x:1000,  y:1270,  w:300, h:300, label:'食器' },
-  { id:'p_e',     type:'image', x:1320,  y:1270,  w:360, h:300, label:'その他 雑貨' },
-  { id:'p_dim',   type:'image', x:40,    y:1590,  w:1640, h:320, label:'サイズ比較表' },
-  /* 群 4：カラースクリプト・ライティング（右下） */
-  { id:'g_light', type:'group', x:1800,  y:1150,  w:1500, h:800, color:'#d682c6', label:'カラースクリプト・ライティング' },
-  { id:'t_light', type:'title', x:1824,  y:1182,  text:'カラースクリプト・ライティング', fontSize:44, color:'#d682c6' },
-  { id:'l_a',     type:'image', x:1840,  y:1270,  w:460, h:300, label:'シーン1 カラー' },
-  { id:'l_b',     type:'image', x:2320,  y:1270,  w:460, h:300, label:'シーン2 カラー' },
-  { id:'l_c',     type:'image', x:2800,  y:1270,  w:460, h:300, label:'シーン3 カラー' },
-  { id:'l_lgt',   type:'image', x:1840,  y:1590,  w:1420, h:320, label:'ライト方向 ガイド' },
-  /* 群 5：カメラワーク（下帯） */
-  { id:'g_cam',   type:'group', x:0,     y:2050,  w:3300, h:720,  color:'#c0ca7a', label:'カメラワーク・絵コンテ補足' },
-  { id:'t_cam',   type:'title', x:24,    y:2080,  text:'カメラワーク・絵コンテ補足', fontSize:44, color:'#c0ca7a' },
-  { id:'cam_a',   type:'image', x:40,    y:2170,  w:520, h:560, label:'PAN ガイド' },
-  { id:'cam_b',   type:'image', x:580,   y:2170,  w:520, h:560, label:'ZOOM ガイド' },
-  { id:'cam_c',   type:'image', x:1120,  y:2170,  w:520, h:560, label:'DOLLY ガイド' },
-  { id:'cam_d',   type:'image', x:1660,  y:2170,  w:520, h:560, label:'HAND HELD ガイド' },
-  { id:'cam_e',   type:'image', x:2200,  y:2170,  w:1060,h:560, label:'画角一覧（24/35/50mm 等）' },
-];
+const REF_MOCK_ITEMS = []; /* v.095 (laycat) / v.047 (pmboard)：デモ用モック資料は撤去。空プロジェクトは本当に空の状態で表示する */
 function renderProjReference(main, root){
   main.innerHTML='';
   if(!state.refView) state.refView = { tx: 60, ty: 60, scale: 0.5 };

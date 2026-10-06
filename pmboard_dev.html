@@ -719,7 +719,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.046';
+const APP_VERSION='2026.10.06.047';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -3953,46 +3953,7 @@ document.getElementById('tabs').addEventListener('click',e=>{
    LayCAT 本体の renderProjReference と同構造・同仕様（モックアイテム・虚像位置・pan/zoom/
    目次クリックでパン・viewport virtualization）。
    実データ連携・編集 UI は後続タスク。 */
-const REF_MOCK_ITEMS = [
-  { id:'g_char',  type:'group', x:0,     y:0,     w:1700, h:1050, color:'#7fbf9a', label:'キャラクター設定' },
-  { id:'t_char',  type:'title', x:24,    y:32,    text:'キャラクター設定', fontSize:48, color:'#7fbf9a' },
-  { id:'c_lead',  type:'image', x:40,    y:120,   w:320, h:420, label:'主役・立ち絵' },
-  { id:'c_lead2', type:'image', x:380,   y:120,   w:320, h:420, label:'主役・表情集' },
-  { id:'c_sub',   type:'image', x:40,    y:560,   w:320, h:420, label:'サブキャラA' },
-  { id:'c_sub2',  type:'image', x:380,   y:560,   w:320, h:420, label:'サブキャラB' },
-  { id:'c_prop',  type:'image', x:740,   y:120,   w:480, h:420, label:'衣装・小物' },
-  { id:'c_ref',   type:'image', x:740,   y:560,   w:480, h:420, label:'参考写真' },
-  { id:'c_memo',  type:'image', x:1240,  y:120,   w:420, h:860, label:'監督メモ・方針' },
-  { id:'g_bg',    type:'group', x:1800,  y:0,     w:1500, h:1050, color:'#f0b872', label:'美術設定' },
-  { id:'t_bg',    type:'title', x:1824,  y:32,    text:'美術設定', fontSize:48, color:'#f0b872' },
-  { id:'bg_room', type:'image', x:1840,  y:120,   w:460, h:300, label:'部屋 内観' },
-  { id:'bg_hall', type:'image', x:2320,  y:120,   w:460, h:300, label:'廊下' },
-  { id:'bg_sch',  type:'image', x:2800,  y:120,   w:460, h:300, label:'校舎外観' },
-  { id:'bg_sky',  type:'image', x:1840,  y:440,   w:720, h:280, label:'空・雲（日中／夕）' },
-  { id:'bg_night',type:'image', x:2580,  y:440,   w:680, h:280, label:'夜景' },
-  { id:'bg_plot', type:'image', x:1840,  y:740,   w:1420, h:240, label:'ロケーション配置図' },
-  { id:'g_prop',  type:'group', x:0,     y:1150,  w:1700, h:800, color:'#6fa8dc', label:'プロップ・小道具' },
-  { id:'t_prop',  type:'title', x:24,    y:1182,  text:'プロップ・小道具', fontSize:48, color:'#6fa8dc' },
-  { id:'p_a',     type:'image', x:40,    y:1270,  w:300, h:300, label:'バッグ' },
-  { id:'p_b',     type:'image', x:360,   y:1270,  w:300, h:300, label:'ノート' },
-  { id:'p_c',     type:'image', x:680,   y:1270,  w:300, h:300, label:'ペン類' },
-  { id:'p_d',     type:'image', x:1000,  y:1270,  w:300, h:300, label:'食器' },
-  { id:'p_e',     type:'image', x:1320,  y:1270,  w:360, h:300, label:'その他 雑貨' },
-  { id:'p_dim',   type:'image', x:40,    y:1590,  w:1640, h:320, label:'サイズ比較表' },
-  { id:'g_light', type:'group', x:1800,  y:1150,  w:1500, h:800, color:'#d682c6', label:'カラースクリプト・ライティング' },
-  { id:'t_light', type:'title', x:1824,  y:1182,  text:'カラースクリプト・ライティング', fontSize:44, color:'#d682c6' },
-  { id:'l_a',     type:'image', x:1840,  y:1270,  w:460, h:300, label:'シーン1 カラー' },
-  { id:'l_b',     type:'image', x:2320,  y:1270,  w:460, h:300, label:'シーン2 カラー' },
-  { id:'l_c',     type:'image', x:2800,  y:1270,  w:460, h:300, label:'シーン3 カラー' },
-  { id:'l_lgt',   type:'image', x:1840,  y:1590,  w:1420, h:320, label:'ライト方向 ガイド' },
-  { id:'g_cam',   type:'group', x:0,     y:2050,  w:3300, h:720,  color:'#c0ca7a', label:'カメラワーク・絵コンテ補足' },
-  { id:'t_cam',   type:'title', x:24,    y:2080,  text:'カメラワーク・絵コンテ補足', fontSize:44, color:'#c0ca7a' },
-  { id:'cam_a',   type:'image', x:40,    y:2170,  w:520, h:560, label:'PAN ガイド' },
-  { id:'cam_b',   type:'image', x:580,   y:2170,  w:520, h:560, label:'ZOOM ガイド' },
-  { id:'cam_c',   type:'image', x:1120,  y:2170,  w:520, h:560, label:'DOLLY ガイド' },
-  { id:'cam_d',   type:'image', x:1660,  y:2170,  w:520, h:560, label:'HAND HELD ガイド' },
-  { id:'cam_e',   type:'image', x:2200,  y:2170,  w:1060,h:560, label:'画角一覧（24/35/50mm 等）' },
-];
+const REF_MOCK_ITEMS = []; /* v.095 (laycat) / v.047 (pmboard)：デモ用モック資料は撤去。空プロジェクトは本当に空の状態で表示する */
 function _refBuildItem(it){
   const n = document.createElement('div');
   n.className = 'ref-item ref-'+it.type;
