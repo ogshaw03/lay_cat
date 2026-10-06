@@ -2308,7 +2308,9 @@ const storage={
   supportsFolder(){return typeof window.showDirectoryPicker==='function'},
   useIdb(){this.mode='idb';try{localStorage.setItem('layna_mode','idb')}catch(_){}},
   /* ヘッダー表示：プロジェクトを開いていて専用フォルダ指定があればその名前、なければブラウザ内保存 */
-  folderLabel(){const cur=(DB&&state&&state.currentId)?getNode(state.currentId):null;const root=cur?rootOf(cur):null;if(root){if(root.storageBackend==='r2')return '☁ R2';if(root.folderName)return root.folderName}return '⚠ フォルダ未設定';},
+  /* v.112：右上のチップ表示をフォルダ名ではなくプロジェクト名に。
+     バックエンド判別が必要な警告（未設定・再接続要）は updateFolderStatus 側の .warn クラス／再接続テキストで表示される。 */
+  folderLabel(){const cur=(DB&&state&&state.currentId)?getNode(state.currentId):null;const root=cur?rootOf(cur):null;if(root&&root.name)return root.name;if(root&&root.storageBackend==='r2')return '☁ R2';if(root&&root.folderName)return root.folderName;return '⚠ フォルダ未設定';},
   /* ---- R2 バックエンド ----
      プロジェクトデータ（laycat.project.json）と動画・画像・reels.json を Cloudflare R2 に
      置く。ブラウザから直接 R2 は叩かず、Cloudflare Workers のプロキシ API を経由する
@@ -4179,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.111';
+const APP_VERSION='2026.10.06.112';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
