@@ -514,7 +514,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
   </div>
   <div class="app-ver" id="appVer">…</div>
   <div class="header-sep"></div>
-  <button class="btn btn-ghost btn-sm" id="pmHomeBtn" title="ホーム（プロジェクト一覧へ戻る）">🏠 ホーム</button>
+  <button class="btn btn-ghost btn-sm" id="pmHomeBtn" title="ホーム（プロジェクト一覧へ戻る）"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M3 10 L10 3 L17 10"/><path d="M5 9 V17 H15 V9"/></svg>ホーム</button>
   <div class="proj-picker" id="projPicker" title="プロジェクトを切り替え">
     <select id="projSelect"></select>
   </div>
@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.064';
+const APP_VERSION='2026.10.06.065';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -3336,12 +3336,17 @@ function showHomeView(){
   if(host){ renderHomeView(); host.classList.add('on'); }
   const btn = document.getElementById('pmHomeBtn');
   if(btn) btn.classList.remove('show'); /* ホーム表示中はボタン自身を隠す */
+  /* v.065：ホーム画面ではヘッダのプロジェクトプルダウンも隠す（カード選択に一本化） */
+  const pk = document.getElementById('projPicker');
+  if(pk) pk.style.display = 'none';
 }
 function hideHomeView(){
   const host = document.getElementById('pmHomeView');
   if(host) host.classList.remove('on');
   const btn = document.getElementById('pmHomeBtn');
   if(btn) btn.classList.add('show');
+  const pk = document.getElementById('projPicker');
+  if(pk) pk.style.display = '';
 }
 async function switchToProject(pid){
   hideHomeView(); /* v.064：ホーム表示中なら閉じる */
