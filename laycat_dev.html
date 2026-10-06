@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.120';
+const APP_VERSION='2026.10.07.121';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7636,12 +7636,24 @@ function openRefMediaModal(mediaRef, mediaType, label){
   if(mediaType === 'video'){ media.controls = true; media.autoplay = true; media.playsInline = true; }
   else{ media.alt = label || ''; }
   media.onclick = (e)=>e.stopPropagation();
+  /* v.121：動画はダブルクリックでフルスクリーン再生に。ESC で解除は browser 既定。 */
+  if(mediaType === 'video'){
+    media.addEventListener('dblclick',(e)=>{
+      e.stopPropagation();
+      try{
+        const r = media.requestFullscreen || media.webkitRequestFullscreen || media.msRequestFullscreen;
+        if(r) r.call(media);
+      }catch(_){}
+    });
+  }
   overlay.appendChild(media);
   overlay.appendChild(close);
   document.body.appendChild(overlay);
   const esc = (e)=>{ if(e.key === 'Escape'){ e.stopPropagation(); closeModal(); } };
   window.addEventListener('keydown', esc, true);
   function closeModal(){
+    /* フルスクリーン中なら先に抜けてからモーダルを閉じる */
+    try{ if(document.fullscreenElement){ document.exitFullscreen(); } }catch(_){}
     try{ overlay.remove(); }catch(_){}
     window.removeEventListener('keydown', esc, true);
   }
@@ -7687,40 +7699,40 @@ function _refBuildItem(it){
       const inner = (it.mediaType === 'video')
         ? el('video') : el('img');
       inner.setAttribute(it.mediaType === 'video' ? 'muted':'alt', it.mediaType === 'video' ? 'muted' : (it.label||''));
-      /* v.118：画像の decode を非同期にしてメインスレッドブロックを低減。 */
       if(it.mediaType !== 'video'){ inner.decoding = 'async'; inner.loading = 'lazy'; }
       inner.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:7px;display:block';
       if(it.mediaType === 'video'){
-        inner.controls = true; inner.muted = true; inner.playsInline = true;
-        /* v.120：アップロード時に生成したサムネを poster として表示。読込み前も中身が見える。 */
+        /* v.121：キャンバス上の動画は「静止サムネ」として扱い、クリックでモーダルで再生する。
+           controls は付けない（タイル上で誤って再生されるのを防ぐ）。 */
+        inner.muted = true; inner.playsInline = true;
         if(it.thumbDataUrl) inner.poster = it.thumbDataUrl;
-        inner.preload = 'metadata'; /* サムネ無い既存動画も最初のフレームを拾う */
+        inner.preload = 'metadata';
       }
-      /* 非同期で URL 解決（R2/FSA 両対応） */
       storage.getURLRetry(it.mediaRef, 3).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
       n.appendChild(inner);
-      /* v.111：画像/動画クリックで拡大モーダル。
-         - 編集 OFF：シングルクリックで拡大（ドラッグ中は mousedown→mousemove で発火抑制）。
-         - 編集 ON：ダブルクリックで拡大（単発クリックは選択・移動を優先）。
-         動画の場合は controls を優先するため、画像のみ編集 OFF のクリックで開く。 */
-      if(it.mediaType !== 'video'){
-        let _down=null, _moved=false;
-        inner.addEventListener('mousedown',(ev)=>{ _down={x:ev.clientX,y:ev.clientY}; _moved=false; });
-        inner.addEventListener('mousemove',(ev)=>{ if(_down && (Math.abs(ev.clientX-_down.x)>3 || Math.abs(ev.clientY-_down.y)>3)) _moved=true; });
-        inner.addEventListener('click',(ev)=>{
-          if(state.refEditMode) return;      /* 編集中は dblclick で開く */
-          if(_moved){ _down=null; return; }
-          ev.stopPropagation();
-          openRefMediaModal(it.mediaRef, it.mediaType, it.label);
-          _down=null;
-        });
-        inner.style.cursor = state.refEditMode ? '' : 'zoom-in';
-      }
+      /* v.121：動画も画像と同じ扱いに統一。編集 OFF＝シングルクリックでモーダル再生／編集 ON＝ダブルクリック。 */
+      let _down=null, _moved=false;
+      inner.addEventListener('mousedown',(ev)=>{ _down={x:ev.clientX,y:ev.clientY}; _moved=false; });
+      inner.addEventListener('mousemove',(ev)=>{ if(_down && (Math.abs(ev.clientX-_down.x)>3 || Math.abs(ev.clientY-_down.y)>3)) _moved=true; });
+      inner.addEventListener('click',(ev)=>{
+        if(state.refEditMode) return;
+        if(_moved){ _down=null; return; }
+        ev.stopPropagation();
+        openRefMediaModal(it.mediaRef, it.mediaType, it.label);
+        _down=null;
+      });
+      inner.style.cursor = state.refEditMode ? '' : 'zoom-in';
       n.addEventListener('dblclick',(ev)=>{
-        /* 編集中もダブルクリックで拡大（画像／動画どちらも対応） */
         ev.stopPropagation();
         openRefMediaModal(it.mediaRef, it.mediaType, it.label);
       });
+      /* v.121：動画タイルに ▶ 再生アイコン・オーバーレイを重ねる */
+      if(it.mediaType === 'video'){
+        const ov = el('div','ref-video-play-overlay');
+        ov.innerHTML = '<svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true"><circle cx="24" cy="24" r="22" fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.6)" stroke-width="1.5"/><path d="M19 15 L35 24 L19 33 Z" fill="#fff"/></svg>';
+        ov.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;border-radius:7px';
+        n.appendChild(ov);
+      }
     }else{
       const ph = el('div','ref-image-ph');
       ph.appendChild(el('div','ic','🖼'));

@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.073';
+const APP_VERSION='2026.10.07.074';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4112,12 +4112,23 @@ function openRefMediaModal(mediaRef, mediaType, label){
   if(mediaType === 'video'){ media.controls = true; media.autoplay = true; media.playsInline = true; }
   else{ media.alt = label || ''; }
   media.onclick = (e)=>e.stopPropagation();
+  /* v.074：動画はダブルクリックでフルスクリーン再生。 */
+  if(mediaType === 'video'){
+    media.addEventListener('dblclick',(e)=>{
+      e.stopPropagation();
+      try{
+        const r = media.requestFullscreen || media.webkitRequestFullscreen || media.msRequestFullscreen;
+        if(r) r.call(media);
+      }catch(_){}
+    });
+  }
   overlay.appendChild(media);
   overlay.appendChild(close);
   document.body.appendChild(overlay);
   const esc = (e)=>{ if(e.key === 'Escape'){ e.stopPropagation(); closeModal(); } };
   window.addEventListener('keydown', esc, true);
   function closeModal(){
+    try{ if(document.fullscreenElement){ document.exitFullscreen(); } }catch(_){}
     try{ overlay.remove(); }catch(_){}
     window.removeEventListener('keydown', esc, true);
   }
@@ -4159,35 +4170,37 @@ function _refBuildItem(it){
       const inner = (it.mediaType === 'video') ? document.createElement('video') : document.createElement('img');
       inner.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:7px;display:block';
       if(it.mediaType === 'video'){
-        inner.controls = true; inner.muted = true; inner.playsInline = true;
-        /* v.073：アップロード時に生成したサムネを poster として表示。 */
+        /* v.074：キャンバス上では controls を付けず、静止サムネとして扱う。クリックでモーダル再生。 */
+        inner.muted = true; inner.playsInline = true;
         if(it.thumbDataUrl) inner.poster = it.thumbDataUrl;
         inner.preload = 'metadata';
       }
       else { inner.alt = it.label||''; inner.decoding = 'async'; inner.loading = 'lazy'; }
-      /* v.046：mediaRef は "reference/Media/<filename>" のフォルダパス */
       storage.resolveMediaUrl(it.mediaRef).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
       n.appendChild(inner);
-      /* v.062：画像/動画クリックで拡大モーダル（LayCAT 本体 v.111 と同仕様）。
-         編集 OFF：画像のシングルクリックで拡大（ドラッグは発火抑制）
-         編集 ON ：ダブルクリックで拡大（単発クリックは選択・移動を優先） */
-      if(it.mediaType !== 'video'){
-        let _down=null, _moved=false;
-        inner.addEventListener('mousedown',(ev)=>{ _down={x:ev.clientX,y:ev.clientY}; _moved=false; });
-        inner.addEventListener('mousemove',(ev)=>{ if(_down && (Math.abs(ev.clientX-_down.x)>3 || Math.abs(ev.clientY-_down.y)>3)) _moved=true; });
-        inner.addEventListener('click',(ev)=>{
-          if(_REF_STATE.editMode) return;
-          if(_moved){ _down=null; return; }
-          ev.stopPropagation();
-          openRefMediaModal(it.mediaRef, it.mediaType, it.label);
-          _down=null;
-        });
-        inner.style.cursor = _REF_STATE.editMode ? '' : 'zoom-in';
-      }
+      /* v.074：動画も画像と同じ扱いに統一。編集 OFF＝シングルクリックでモーダル再生／編集 ON＝ダブルクリック。 */
+      let _down=null, _moved=false;
+      inner.addEventListener('mousedown',(ev)=>{ _down={x:ev.clientX,y:ev.clientY}; _moved=false; });
+      inner.addEventListener('mousemove',(ev)=>{ if(_down && (Math.abs(ev.clientX-_down.x)>3 || Math.abs(ev.clientY-_down.y)>3)) _moved=true; });
+      inner.addEventListener('click',(ev)=>{
+        if(_REF_STATE.editMode) return;
+        if(_moved){ _down=null; return; }
+        ev.stopPropagation();
+        openRefMediaModal(it.mediaRef, it.mediaType, it.label);
+        _down=null;
+      });
+      inner.style.cursor = _REF_STATE.editMode ? '' : 'zoom-in';
       n.addEventListener('dblclick',(ev)=>{
         ev.stopPropagation();
         openRefMediaModal(it.mediaRef, it.mediaType, it.label);
       });
+      /* v.074：動画タイルに ▶ 再生アイコン・オーバーレイ */
+      if(it.mediaType === 'video'){
+        const ov = document.createElement('div');
+        ov.innerHTML = '<svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true"><circle cx="24" cy="24" r="22" fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.6)" stroke-width="1.5"/><path d="M19 15 L35 24 L19 33 Z" fill="#fff"/></svg>';
+        ov.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;border-radius:7px';
+        n.appendChild(ov);
+      }
     }else{
       const ph = document.createElement('div'); ph.className='ref-image-ph';
       const ic = document.createElement('div'); ic.className='ic'; ic.textContent='🖼';
