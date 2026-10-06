@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.070';
+const APP_VERSION='2026.10.06.071';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4159,7 +4159,7 @@ function _refBuildItem(it){
       const inner = (it.mediaType === 'video') ? document.createElement('video') : document.createElement('img');
       inner.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:7px;display:block';
       if(it.mediaType === 'video'){ inner.controls = true; inner.muted = true; inner.playsInline = true; }
-      else { inner.alt = it.label||''; }
+      else { inner.alt = it.label||''; inner.decoding = 'async'; inner.loading = 'lazy'; }
       /* v.046：mediaRef は "reference/Media/<filename>" のフォルダパス */
       storage.resolveMediaUrl(it.mediaRef).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
       n.appendChild(inner);
@@ -4248,6 +4248,14 @@ async function _refInit(){
     if(grid){ grid.style.backgroundSize = `${g}px ${g}px`; grid.style.backgroundPosition = `${view.tx}px ${view.ty}px`; }
     renderVisible();
   };
+  /* v.071：LayCAT v.118 と同じ DOM ノードキャッシュを導入。pan/zoom の都度 remove→build する
+     従来実装では画像数十枚で毎回 img を復号し直して重かった。 */
+  const _refNodeCache = new Map();
+  const _refInvalidate = (id)=>{
+    if(!id) return;
+    const n = _refNodeCache.get(id);
+    if(n){ try{ n.remove(); }catch(_){} _refNodeCache.delete(id); }
+  };
   const renderVisible = ()=>{
     const rect = vp.getBoundingClientRect();
     const vw = rect.width, vh = rect.height;
@@ -4255,31 +4263,36 @@ async function _refInit(){
     const vTop    = -view.ty / view.scale - BUFFER;
     const vRight  = vLeft + vw / view.scale + BUFFER * 2;
     const vBottom = vTop  + vh / view.scale + BUFFER * 2;
-    /* v.053：編集中アイテムの DOM ノードは破棄せず再利用（フォーカス維持のため） */
-    const editingNode = _REF_STATE.editingId
-      ? canvas.querySelector('.ref-item[data-ref-id="'+(window.CSS&&CSS.escape?CSS.escape(_REF_STATE.editingId):_REF_STATE.editingId)+'"]')
-      : null;
-    [...canvas.querySelectorAll('.ref-item')].forEach(n=>{
-      if(n === editingNode) return;
-      n.remove();
-    });
-    /* v.067：レイヤー順（it.z）でソートして描画。z 未設定は配列順位をフォールバック。 */
     const _sorted = items.map((it,i)=>({it, z:(it.z==null?i:it.z), i}))
                          .sort((a,b)=> (a.z - b.z) || (a.i - b.i))
                          .map(x=>x.it);
+    const visibleIds = new Set();
+    const existingIds = new Set(items.map(it=>it.id));
     for(const it of _sorted){
       const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
       if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom) continue;
-      if(_REF_STATE.editingId === it.id && editingNode){
-        editingNode.style.left = it.x + 'px';
-        editingNode.style.top  = it.y + 'px';
-        continue;
+      visibleIds.add(it.id);
+      let node = _refNodeCache.get(it.id);
+      if(!node){
+        node = _refBuildItem(it);
+        node.dataset.refId = it.id || '';
+        _refNodeCache.set(it.id, node);
       }
-      const node = _refBuildItem(it);
-      node.dataset.refId = it.id || '';
+      node.style.left = it.x + 'px';
+      node.style.top  = it.y + 'px';
+      if(it.w != null) node.style.width  = it.w + 'px';
+      if(it.h != null) node.style.height = it.h + 'px';
       if(_REF_STATE.editMode && it.id && _REF_STATE.selection.has(it.id)) node.classList.add('selected');
-      if(_REF_STATE.editMode) node.style.pointerEvents = 'auto';
-      canvas.appendChild(node);
+      else node.classList.remove('selected');
+      node.style.pointerEvents = _REF_STATE.editMode ? 'auto' : '';
+      if(_REF_STATE.editingId !== it.id) canvas.appendChild(node);
+    }
+    for(const [id, node] of _refNodeCache){
+      if(id === _REF_STATE.editingId) continue;
+      if(!visibleIds.has(id) || !existingIds.has(id)){
+        try{ node.remove(); }catch(_){}
+        _refNodeCache.delete(id);
+      }
     }
     updateHandles();
   };
@@ -4522,7 +4535,7 @@ async function _refInit(){
   const applyToSelected = (fn)=>{
     for(const id of _REF_STATE.selection){
       const it = workingItems.find(x=>x.id===id);
-      if(it){ fn(it); scheduleItemSave(it); }
+      if(it){ fn(it); _refInvalidate(id); scheduleItemSave(it); }
     }
     renderVisible();
   };
@@ -4876,6 +4889,8 @@ async function _refInit(){
       _REF_STATE.editingId = null;
       node.contentEditable = 'false';
       node.classList.remove('editing');
+      /* v.071：contenteditable の残骸をクリアするためノードを破棄→次回ビルドで textContent から再構築。 */
+      _refInvalidate(it.id);
       renderVisible();
       if(textChanged && it.type === 'title'){ try{ rebuildToc(); }catch(_){} }
     };

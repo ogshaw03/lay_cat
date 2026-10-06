@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.117';
+const APP_VERSION='2026.10.06.118';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6545,7 +6545,17 @@ function renderProjReference(main, root){
   };
   /* v.094：let に変更（Phase 4 の updateHandles を末尾で呼ぶためのラッパ再代入を可能に）。
      const のままだと再代入時に TypeError で落ち、以降の wheel/right-click/paste ハンドラが
-     登録されなくなり「中ボタンのホイールでズームできない」症状が出ていた。 */
+     登録されなくなり「中ボタンのホイールでズームできない」症状が出ていた。
+     v.118：DOM ノードキャッシュを導入。pan/zoom の都度 remove→build する従来実装では
+     画像数十枚でブラウザが毎回 img を復号し直して重かった。キャッシュで既存ノードを再利用し、
+     ビジビリティ変化（＝ virtualization 入退場）だけ add/remove する。
+     データ変更時は呼び出し側で `_refInvalidate(id)` を呼んでノードを破棄→次回ビルドで反映。 */
+  const _refNodeCache = new Map(); /* id -> node */
+  const _refInvalidate = (id)=>{
+    if(!id) return;
+    const n = _refNodeCache.get(id);
+    if(n){ try{ n.remove(); }catch(_){} _refNodeCache.delete(id); }
+  };
   let renderVisible = ()=>{
     const rect = vp.getBoundingClientRect();
     const vw = rect.width, vh = rect.height;
@@ -6553,41 +6563,45 @@ function renderProjReference(main, root){
     const vTop    = -view.ty / view.scale - BUFFER;
     const vRight  = vLeft + vw / view.scale + BUFFER * 2;
     const vBottom = vTop  + vh / view.scale + BUFFER * 2;
-    /* v.102：編集中アイテムの DOM ノードは破棄せず再利用する（従来は毎回 remove→append で
-       contenteditable のフォーカスが失われ、文字入力ができなかった）。 */
-    const editingNode = state.refEditingId
-      ? canvas.querySelector('.ref-item[data-ref-id="'+(window.CSS&&CSS.escape?CSS.escape(state.refEditingId):state.refEditingId)+'"]')
-      : null;
-    [...canvas.querySelectorAll('.ref-item')].forEach(n=>{
-      if(n === editingNode) return; /* 編集中ノードは残す */
-      n.remove();
-    });
     /* v.114：レイヤー順（it.z）でソートして描画。z 未設定のアイテムは配列順位を使う。
        同じ z のときは配列順位でタイブレーク（新規は末尾＝上に来る）。 */
     const _sorted = items.map((it,i)=>({it, z:(it.z==null?i:it.z), i}))
                          .sort((a,b)=> (a.z - b.z) || (a.i - b.i))
                          .map(x=>x.it);
+    const visibleIds = new Set();
+    const existingIds = new Set(items.map(it=>it.id));
     for(const it of _sorted){
       const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
-      if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom){
-        /* 編集中ノードが virtualization 外に出てしまったら残しつつスキップ（削除はしない） */
-        continue;
+      if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom) continue;
+      visibleIds.add(it.id);
+      let node = _refNodeCache.get(it.id);
+      if(!node){
+        node = _refBuildItem(it);
+        node.dataset.refId = it.id || '';
+        _refNodeCache.set(it.id, node);
       }
-      /* 編集中のアイテムは既存ノードを再利用（位置だけ更新） */
-      if(state.refEditingId === it.id && editingNode){
-        editingNode.style.left = it.x + 'px';
-        editingNode.style.top  = it.y + 'px';
-        continue;
+      /* 位置・サイズは毎回更新（ドラッグ移動／リサイズをノード破棄せず反映） */
+      node.style.left = it.x + 'px';
+      node.style.top  = it.y + 'px';
+      if(it.w != null) node.style.width  = it.w + 'px';
+      if(it.h != null) node.style.height = it.h + 'px';
+      /* 選択状態の反映 */
+      if(state.refEditMode && it.id && state.refSelection.has(it.id)) node.classList.add('selected');
+      else node.classList.remove('selected');
+      /* 編集モードでは個別アイテムの pointer-events を有効化 */
+      node.style.pointerEvents = state.refEditMode ? 'auto' : '';
+      /* append で再配置（既にある場合は末尾へ移動＝ z 順の反映）。
+         編集中ノードは appendChild で動かすと contenteditable のフォーカスが外れるので除外。 */
+      if(state.refEditingId !== it.id) canvas.appendChild(node);
+    }
+    /* ビジビリティ外・既に消えたアイテムのノードをキャッシュから削除。
+       編集中ノードは virtualization 外に出ても保持する（contenteditable を壊さない）。 */
+    for(const [id, node] of _refNodeCache){
+      if(id === state.refEditingId) continue;
+      if(!visibleIds.has(id) || !existingIds.has(id)){
+        try{ node.remove(); }catch(_){}
+        _refNodeCache.delete(id);
       }
-      const node = _refBuildItem(it);
-      node.dataset.refId = it.id || '';
-      /* v.091：選択状態を反映。編集モード OFF のときは選択解除扱い */
-      if(state.refEditMode && it.id && state.refSelection.has(it.id)){
-        node.classList.add('selected');
-      }
-      /* 編集モードでは個別アイテムの pointer-events を有効化（通常は pointer-events:none な group を含めて） */
-      if(state.refEditMode) node.style.pointerEvents = 'auto';
-      canvas.appendChild(node);
     }
   };
   /* ---------- イージング付き view アニメーション ----------
@@ -6747,7 +6761,7 @@ function renderProjReference(main, root){
   const applyToSelected = (fn) => {
     for(const id of state.refSelection){
       const it = workingItems.find(x=>x.id===id);
-      if(it){ fn(it); scheduleItemSave(it); }
+      if(it){ fn(it); _refInvalidate(id); scheduleItemSave(it); }
     }
     renderVisible();
   };
@@ -7160,15 +7174,16 @@ function renderProjReference(main, root){
       sel.removeAllRanges(); sel.addRange(range);
     }catch(_){}
     const finishEdit = ()=>{
-      /* v.115：複数の空行を保持できるよう `\n{2,}` の collapse を廃止。前後の空白のみトリム。
-         (従来は `.replace(/\n{2,}/g, '\n')` で改行二重以上を 1 本にまとめていた) */
+      /* v.115：複数の空行を保持できるよう `\n{2,}` の collapse を廃止。前後の空白のみトリム。 */
       const newText = (node.innerText || node.textContent || '').replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, '');
       const textChanged = (newText && newText !== it.text);
       if(textChanged){ it.text = newText; scheduleItemSave(it); }
       state.refEditingId = null;
       node.contentEditable = 'false';
       node.classList.remove('editing');
-      /* ステータス反映のため再描画＋目次更新 */
+      /* v.118：contenteditable の残骸（<div> / <br>）をクリアするためノードを破棄し、
+         _refBuildItem で textContent から再構築する。 */
+      _refInvalidate(it.id);
       renderVisible();
       if(textChanged && it.type === 'title'){ try{ rebuildToc(); }catch(_){} }
     };
@@ -7619,6 +7634,8 @@ function _refBuildItem(it){
       const inner = (it.mediaType === 'video')
         ? el('video') : el('img');
       inner.setAttribute(it.mediaType === 'video' ? 'muted':'alt', it.mediaType === 'video' ? 'muted' : (it.label||''));
+      /* v.118：画像の decode を非同期にしてメインスレッドブロックを低減。 */
+      if(it.mediaType !== 'video'){ inner.decoding = 'async'; inner.loading = 'lazy'; }
       inner.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:7px;display:block';
       if(it.mediaType === 'video'){ inner.controls = true; inner.muted = true; inner.playsInline = true; }
       /* 非同期で URL 解決（R2/FSA 両対応） */

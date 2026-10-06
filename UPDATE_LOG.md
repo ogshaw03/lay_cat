@@ -18,6 +18,15 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.118) **資料タブ：画像数十枚でも重くならないよう DOM ノードキャッシュを導入（LayCAT）**：
+  - 従来：`renderVisible` が pan/zoom の都度 `canvas.querySelectorAll('.ref-item').forEach(remove)` → 全アイテムを `_refBuildItem` で再生成 → `canvas.appendChild` していた。画像数十枚で毎フレーム img を再構築＆復号し、重くなる原因。
+  - 修正：`_refNodeCache: Map<id, node>` を導入。既存ノードは再利用し、位置・サイズ・選択状態・pointer-events だけ毎フレーム更新。ビジビリティ外・削除済みアイテムのみ DOM から remove。
+  - データ変更（色・フォント・テキスト等）があるパスには `_refInvalidate(id)` を追加（applyToSelected・finishEdit）。リサイズは位置・サイズ更新のみなので自動反映。
+  - `<img>` 要素に `decoding="async"` と `loading="lazy"` を追加。復号を非メインスレッド化。
+  - レイヤー順（z）は `appendChild` の自動並び替えで反映（新しい順に appendChild = 末尾 = 最前面）。
+  - 書き込み系副作用なし（表示パスのみ）。
+  - APP_VERSION：2026.10.06.117 → 2026.10.06.118
+
 - (dev v2026.10.06.117) **資料タブ：非編集モードの dblclick 文字選択が発火しない不具合を修正（LayCAT）**：
   - 事象：v.116 で非編集モード × ダブルクリック→文字選択モードを追加したが、実際には何も起きなかった。
   - 原因：dblclick リスナーを `canvas` にアタッチしていたが、`.ref-canvas` は `width:0;height:0`。
@@ -3488,6 +3497,11 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.06.071) **資料タブ：画像数十枚でも重くならないよう DOM ノードキャッシュを導入（PMB、LayCAT v.118 連動）**：
+  - `_refNodeCache: Map<id, node>` 導入、`_refInvalidate(id)` ヘルパ追加。
+  - `<img>` に `decoding="async"` / `loading="lazy"`。
+  - APP_VERSION：2026.10.06.070 → 2026.10.06.071
 
 - (dev v2026.10.06.070) **資料タブ：非編集モードの dblclick 文字選択が発火しない不具合を修正（PMB、LayCAT v.117 連動）**：
   - dblclick リスナーを `canvas`（width/height=0 のため非編集モードでは対象外）→ `vp` に移動。
