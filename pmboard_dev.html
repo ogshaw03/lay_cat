@@ -239,6 +239,12 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .ref-ctx .cx-item.disabled{opacity:0.4;pointer-events:none}
 .ref-ctx .cx-sep{height:1px;background:var(--border);margin:4px 0}
 .ref-ctx .cx-hint{font-size:10px;color:var(--text3);margin-left:auto}
+/* v.052：整列サブメニュー */
+.ref-ctx .cx-has-sub{position:relative}
+.ref-ctx .cx-has-sub .cx-arrow{margin-left:auto;color:var(--text3);font-size:10px;padding-left:10px}
+.ref-ctx .cx-has-sub .cx-sub{display:none;position:absolute;left:100%;top:-6px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:5px 0;min-width:140px;box-shadow:0 8px 24px rgba(0,0,0,0.4);margin-left:2px;z-index:21}
+.ref-ctx .cx-has-sub:hover .cx-sub{display:block}
+.ref-ctx .cx-has-sub.disabled .cx-sub{display:none!important}
 
 /* サブタブ列（メインタブの一段下・スケジュールタブでのみ表示） */
 .sub-tabs{display:flex;gap:2px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
@@ -725,7 +731,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.051';
+const APP_VERSION='2026.10.06.052';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4612,12 +4618,27 @@ async function _refInit(){
       ctxEl.appendChild(it);
     };
     const sep = ()=>{ const s=document.createElement('div'); s.className='cx-sep'; ctxEl.appendChild(s); };
-    mk('左揃え', ()=>alignSelected('left'), !multiSel);
-    mk('右揃え', ()=>alignSelected('right'), !multiSel);
-    mk('上揃え', ()=>alignSelected('top'), !multiSel);
-    mk('下揃え', ()=>alignSelected('bottom'), !multiSel);
-    mk('横中央', ()=>alignSelected('cx'), !multiSel);
-    mk('縦中央', ()=>alignSelected('cy'), !multiSel);
+    /* v.052：整列サブメニュー化 */
+    const alignParent = document.createElement('div');
+    alignParent.className = 'cx-item cx-has-sub' + (multiSel?'':' disabled');
+    alignParent.appendChild(document.createTextNode('整列'));
+    const alignArrow = document.createElement('span'); alignArrow.className='cx-arrow'; alignArrow.textContent='▶';
+    alignParent.appendChild(alignArrow);
+    const alignSub = document.createElement('div'); alignSub.className='cx-sub';
+    const mkSub = (label, axis)=>{
+      const si = document.createElement('div'); si.className='cx-item';
+      si.appendChild(document.createTextNode(label));
+      si.onclick = (ev)=>{ ev.stopPropagation(); closeCtx(); try{ alignSelected(axis); }catch(err){ console.warn(err); } };
+      alignSub.appendChild(si);
+    };
+    mkSub('左揃え', 'left');
+    mkSub('右揃え', 'right');
+    mkSub('上揃え', 'top');
+    mkSub('下揃え', 'bottom');
+    mkSub('横中央', 'cx');
+    mkSub('縦中央', 'cy');
+    alignParent.appendChild(alignSub);
+    ctxEl.appendChild(alignParent);
     sep();
     mk('コピー', copySelected, !hasSel, 'Ctrl+C');
     mk('貼付', ()=>pasteClipboard(w.x, w.y), !_REF_STATE.clipboard.length, 'Ctrl+V');

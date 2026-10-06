@@ -322,6 +322,12 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .ref-ctx .cx-item.disabled{opacity:0.4;pointer-events:none}
 .ref-ctx .cx-sep{height:1px;background:var(--border);margin:4px 0}
 .ref-ctx .cx-hint{font-size:10px;color:var(--text3);margin-left:auto}
+/* v.101：整列サブメニュー（マウスホバーで右側に縦並び表示） */
+.ref-ctx .cx-has-sub{position:relative}
+.ref-ctx .cx-has-sub .cx-arrow{margin-left:auto;color:var(--text3);font-size:10px;padding-left:10px}
+.ref-ctx .cx-has-sub .cx-sub{display:none;position:absolute;left:100%;top:-6px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:5px 0;min-width:140px;box-shadow:0 8px 24px rgba(0,0,0,0.4);margin-left:2px;z-index:21}
+.ref-ctx .cx-has-sub:hover .cx-sub{display:block}
+.ref-ctx .cx-has-sub.disabled .cx-sub{display:none!important}
 /* 単色ラインアイコン */
 .ico{width:1.05em;height:1.05em;vertical-align:-0.16em;flex-shrink:0}
 button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-chip .ico{margin-right:.4em}
@@ -4163,7 +4169,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.100';
+const APP_VERSION='2026.10.06.101';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7168,12 +7174,26 @@ function renderProjReference(main, root){
       if(!disabled) it.onclick = ()=>{ closeCtx(); try{ fn(); }catch(err){ console.warn(err); } };
       ctxEl.appendChild(it);
     };
-    mk('左揃え',   ()=>alignSelected('left'),   !multiSel);
-    mk('右揃え',   ()=>alignSelected('right'),  !multiSel);
-    mk('上揃え',   ()=>alignSelected('top'),    !multiSel);
-    mk('下揃え',   ()=>alignSelected('bottom'), !multiSel);
-    mk('横中央',   ()=>alignSelected('cx'),     !multiSel);
-    mk('縦中央',   ()=>alignSelected('cy'),     !multiSel);
+    /* v.101：整列はサブメニュー化（ホバーで右側に縦並び） */
+    const alignParent = el('div','cx-item cx-has-sub' + (multiSel?'':' disabled'));
+    alignParent.appendChild(document.createTextNode('整列'));
+    const alignArrow = el('span','cx-arrow','▶');
+    alignParent.appendChild(alignArrow);
+    const alignSub = el('div','cx-sub');
+    const mkSub = (label, axis)=>{
+      const si = el('div','cx-item');
+      si.appendChild(document.createTextNode(label));
+      si.onclick = (ev)=>{ ev.stopPropagation(); closeCtx(); try{ alignSelected(axis); }catch(err){ console.warn(err); } };
+      alignSub.appendChild(si);
+    };
+    mkSub('左揃え',  'left');
+    mkSub('右揃え',  'right');
+    mkSub('上揃え',  'top');
+    mkSub('下揃え',  'bottom');
+    mkSub('横中央',  'cx');
+    mkSub('縦中央',  'cy');
+    alignParent.appendChild(alignSub);
+    ctxEl.appendChild(alignParent);
     ctxEl.appendChild(el('div','cx-sep'));
     mk('コピー',    copySelected,                  !hasSel, 'Ctrl+C');
     mk('貼付',      ()=>pasteClipboard(w.x, w.y),  !_refClipboard.length, 'Ctrl+V');
