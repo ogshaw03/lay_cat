@@ -4163,7 +4163,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.097';
+const APP_VERSION='2026.10.06.098';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6432,7 +6432,8 @@ function renderProjReference(main, root){
   /* v.091：表示用アイテム。編集 OFF ＋ 実配列が空 → mock をデモ表示。
      編集 ON またはアイテムが 1 件でもある → 実配列（workingItems）を使う。 */
   let items = (!state.refEditMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
-  const titleItems = items.filter(x=>x.type==='title');
+  /* v.098：titleItems は rebuildToc 内で毎回動的計算（追加・削除・編集で変化するため、
+     ここでのスナップショットは廃止） */
   const root_=el('div','ref-root');
   /* 左サイドバー：目次 */
   const side=el('div','ref-side');
@@ -6554,12 +6555,15 @@ function renderProjReference(main, root){
         });
         node.addEventListener('blur', ()=>{
           const newText = (node.innerText || node.textContent || '').replace(/\n{2,}/g, '\n').trim();
-          if(newText && newText !== it.text){
+          const textChanged = (newText && newText !== it.text);
+          if(textChanged){
             it.text = newText;
             scheduleItemSave(it);
           }
           state.refEditingId = null;
           renderVisible();
+          /* v.098：タイトルの文字が変わったら目次も更新 */
+          if(textChanged && it.type === 'title'){ try{ rebuildToc(); }catch(_){} }
         }, { once:true });
         node.addEventListener('keydown', (e)=>{
           e.stopPropagation();
@@ -6602,8 +6606,10 @@ function renderProjReference(main, root){
     _refAnimRaf = requestAnimationFrame(step);
   };
   /* ---------- 目次ビルド ---------- */
+  /* v.098：titleItems を毎回動的に計算（追加・削除・編集で変化するため） */
   const rebuildToc = ()=>{
     toc.innerHTML='';
+    const titleItems = items.filter(x=>x.type==='title');
     for(const t of titleItems){
       const row=el('div','ref-toc-item');
       const dot=el('span','ref-toc-dot');dot.style.background=t.color||'var(--accent)';
@@ -6662,6 +6668,7 @@ function renderProjReference(main, root){
     scheduleItemSave(def);
     items = (!state.refEditMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
     renderVisible();
+    try{ rebuildToc(); }catch(_){} /* v.098：目次を即更新 */
     return def;
   };
   /* 中央配置（画像/動画アップロード用。元の insertItem と同じ振る舞い）。 */
@@ -6761,9 +6768,13 @@ function renderProjReference(main, root){
   btnBold.onclick  = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.bold = !it.bold; });
   btnUline.onclick = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.underline = !it.underline; });
   inpSize.oninput  = ()=>{ const v = parseInt(inpSize.value,10); if(!isNaN(v) && v>=4 && v<=200) applyToSelected(it => { if(it.type==='text'||it.type==='title') it.fontSize = v; }); };
-  inpTxtCol.oninput= ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.color = inpTxtCol.value; });
-  inpShapeCol.oninput = ()=> applyToSelected(it => { if(it.type==='shape') it.color = inpShapeCol.value; });
-  inpOpacity.oninput  = ()=> applyToSelected(it => { if(it.type==='shape') it.opacity = (parseInt(inpOpacity.value,10)||0)/100; });
+  /* v.098：input と change 両方を拾う（Firefox の input[type=color] は input イベントを吐かないケースあり） */
+  const _applyTxtColor = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.color = inpTxtCol.value; });
+  inpTxtCol.oninput = _applyTxtColor; inpTxtCol.onchange = _applyTxtColor;
+  const _applyShapeColor = ()=> applyToSelected(it => { if(it.type==='shape') it.color = inpShapeCol.value; });
+  inpShapeCol.oninput = _applyShapeColor; inpShapeCol.onchange = _applyShapeColor;
+  const _applyOpacity  = ()=> applyToSelected(it => { if(it.type==='shape') it.opacity = (parseInt(inpOpacity.value,10)||0)/100; });
+  inpOpacity.oninput = _applyOpacity; inpOpacity.onchange = _applyOpacity;
   /* ---------- アイテム座標ヘルパ ---------- */
   const screenToWorld = (sx, sy) => {
     const r = vp.getBoundingClientRect();
@@ -6790,6 +6801,13 @@ function renderProjReference(main, root){
   let rubberStart = {x:0, y:0}; /* world 座標 */
   vp.addEventListener('mousedown',(e)=>{
     if(e.button!==0) return;
+    /* v.098：ツールバー・コントロール類・リサイズハンドル・コンテキストメニューへのクリックは
+       pan / 選択 / rubber band などのキャンバス操作に横取りされないように、ここで早期 return。
+       これを入れていないと、ツールバーのカラーピッカーを押しても mousedown が vp に
+       バブリングして hitTest が null → 「空白クリック」として選択がクリアされ、
+       applyToSelected が対象ゼロになって文字色が変わらない現象、
+       また Delete 前にツールバーを触ると選択が消えて Delete が no-op になる現象の両方を解消。 */
+    if(e.target.closest('.ref-toolbar, .ref-ctrls, .ref-handles, .ref-ctx')) return;
     cancelAnim();
     const editMode = state.refEditMode;
     /* v.096：追加モード中なら、他のアクションより優先してアイテム配置を処理 */
@@ -6972,6 +6990,7 @@ function renderProjReference(main, root){
          これで Delete 1 回で確実に消える。 */
       try{ if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }catch(_){}
       applyTransform();
+      try{ rebuildToc(); }catch(_){} /* v.098：タイトル削除時に目次も更新 */
     }else if(e.key === 'Escape'){
       /* v.096：追加モード中の Esc は追加キャンセルを優先 */
       if(_pendingInsert){ _cancelInsert(); return; }

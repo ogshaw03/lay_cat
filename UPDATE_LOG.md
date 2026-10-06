@@ -18,6 +18,20 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.098) **資料タブ：Delete 無効化／文字色変化なし／目次にタイトルが出ない問題を一括修正（LayCAT）**：
+  - 根本原因（3 件とも同根）：`vp` のマウスダウンハンドラが**ツールバー／ズームコントロール／リサイズハンドルへのクリックまで奪っていた**。これにより：
+    - ツールバーのカラーピッカーをクリック → mousedown が vp にバブリング → `hitTestItem` が null → 「空白クリック」判定で `state.refSelection.clear()` → `applyToSelected` が対象ゼロで実行 → **文字色が変わらない**
+    - ツールバーのいずれかを触った直後に Delete キー → 選択が空なので削除処理が no-op → **Delete が効かない**
+    - カラーピッカーの OS ダイアログも `e.preventDefault()` でブロックされる副作用あり
+  - 加えて、`titleItems` を関数先頭でキャプチャして rebuildToc に流し込んでいたため、アイテム追加・削除後に **目次が更新されなかった**。
+  - 修正：
+    - `vp.addEventListener('mousedown', e=>{ if(e.target.closest('.ref-toolbar, .ref-ctrls, .ref-handles, .ref-ctx')) return; ... })` で早期 return
+    - `rebuildToc` 内で `titleItems` を毎回動的に計算
+    - `_commitItem` ／ Delete ハンドラ ／ インライン編集の blur（タイトル文字変更時）から `rebuildToc()` を呼ぶ
+    - カラーピッカー・透明度・文字サイズに `input` と `change` 両方のイベントを登録（Firefox の input[type=color] は input を吐かないケースがあるため）
+  - 書き込み系副作用なし。
+  - APP_VERSION：2026.10.06.097 → 2026.10.06.098
+
 - (dev v2026.10.06.097) **資料タブ：タイトル/テキストのインライン編集・削除即反映・編集ボタン強調（LayCAT）**：
   - 事象：
     - ① タイトル／テキストの文字が編集できない
@@ -3328,6 +3342,12 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.06.050) **資料タブ：Delete 無効化／文字色変化なし／目次にタイトルが出ない問題を一括修正（PMB、LayCAT v.098 連動）**：
+  - `vp.mousedown` の冒頭に toolbar/ctrls/handles/ctx への早期 return を追加
+  - `_commitItem` ／ Delete ハンドラ ／ インライン編集の blur から `rebuildToc()` を呼ぶ
+  - カラーピッカー・透明度・文字サイズに `input` と `change` 両方のイベントを登録
+  - APP_VERSION：2026.10.06.049 → 2026.10.06.050
 
 - (dev v2026.10.06.049) **資料タブ：タイトル/テキスト インライン編集・削除即反映・編集ボタン強調（PMB、LayCAT v.097 連動）**：
   - タイトル/テキストをダブルクリックで contenteditable 化（黄色アウトライン、Enter/Esc/blur で確定）。

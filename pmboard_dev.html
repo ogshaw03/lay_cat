@@ -725,7 +725,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.049';
+const APP_VERSION='2026.10.06.050';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4042,6 +4042,7 @@ async function _refInit(){
     }
   }catch(_){}
   let items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+  /* v.050：titleItems は rebuildToc 内で毎回動的計算（従来の外部キャプチャ版は廃止） */
   const BUFFER = 400;
   let handlesEl = null;
   let ctxEl = null;
@@ -4083,11 +4084,12 @@ async function _refInit(){
         });
         node.addEventListener('blur', ()=>{
           const newText = (node.innerText || node.textContent || '').replace(/\n{2,}/g, '\n').trim();
-          if(newText && newText !== it.text){
-            it.text = newText; scheduleItemSave(it);
-          }
+          const textChanged = (newText && newText !== it.text);
+          if(textChanged){ it.text = newText; scheduleItemSave(it); }
           _REF_STATE.editingId = null;
           renderVisible();
+          /* v.050：タイトルの文字が変わったら目次も更新 */
+          if(textChanged && it.type === 'title'){ try{ rebuildToc(); }catch(_){} }
         }, { once:true });
         node.addEventListener('keydown', (e)=>{
           e.stopPropagation();
@@ -4224,6 +4226,7 @@ async function _refInit(){
     scheduleItemSave(def);
     items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
     renderVisible();
+    try{ rebuildToc(); }catch(_){} /* v.050：目次を即更新 */
     return def;
   };
   const insertItem = (partial)=>{
@@ -4335,14 +4338,25 @@ async function _refInit(){
   btnBold.onclick  = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.bold = !it.bold; });
   btnUline.onclick = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.underline = !it.underline; });
   inpSize.oninput  = ()=>{ const v=parseInt(inpSize.value,10); if(!isNaN(v)&&v>=4&&v<=200) applyToSelected(it => { if(it.type==='text'||it.type==='title') it.fontSize = v; }); };
-  inpTxtCol.oninput= ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.color = inpTxtCol.value; });
-  inpShapeCol.oninput = ()=> applyToSelected(it => { if(it.type==='shape') it.color = inpShapeCol.value; });
-  inpOpacity.oninput  = ()=> applyToSelected(it => { if(it.type==='shape') it.opacity = (parseInt(inpOpacity.value,10)||0)/100; });
+  /* v.050：input と change 両方を拾う（Firefox の input[type=color] 対策） */
+  const _applyTxtColor = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.color = inpTxtCol.value; });
+  inpTxtCol.oninput = _applyTxtColor; inpTxtCol.onchange = _applyTxtColor;
+  const _applyShapeColor = ()=> applyToSelected(it => { if(it.type==='shape') it.color = inpShapeCol.value; });
+  inpShapeCol.oninput = _applyShapeColor; inpShapeCol.onchange = _applyShapeColor;
+  const _applyOpacity  = ()=> applyToSelected(it => { if(it.type==='shape') it.opacity = (parseInt(inpOpacity.value,10)||0)/100; });
+  inpOpacity.oninput = _applyOpacity; inpOpacity.onchange = _applyOpacity;
   /* 編集モード対応ハンドラ */
   let mode = null, dragX=0, dragY=0, startTx=0, startTy=0;
   let moveOrigin = {}, rubberEl = null, rubberStart = {x:0, y:0};
   vp.addEventListener('mousedown',(e)=>{
     if(e.button!==0) return;
+    /* v.050：ツールバー・コントロール類・リサイズハンドル・コンテキストメニューへのクリックは
+       pan / 選択 / rubber band などのキャンバス操作に横取りされないように、ここで早期 return。
+       これを入れていないと、ツールバーのカラーピッカーを押しても mousedown が vp に
+       バブリングして hitTest が null → 「空白クリック」として選択がクリアされ、
+       applyToSelected が対象ゼロになって文字色が変わらない現象、
+       また Delete 前にツールバーを触ると選択が消えて Delete が no-op になる現象の両方を解消。 */
+    if(e.target.closest('.ref-toolbar, .ref-ctrls, .ref-handles, .ref-ctx')) return;
     cancelAnim();
     const editMode = _REF_STATE.editMode;
     /* v.048：追加モード中は配置を優先 */
@@ -4510,6 +4524,7 @@ async function _refInit(){
       /* ツールバーボタンにフォーカスが残っていると視覚更新が遅延することがあるため blur */
       try{ if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }catch(_){}
       applyTransform();
+      try{ rebuildToc(); }catch(_){} /* v.050：タイトル削除時に目次更新 */
     }else if(e.key === 'Escape'){
       /* v.048：追加モード中の Esc は追加キャンセルを優先 */
       if(_pendingInsert){ _cancelInsert(); return; }
