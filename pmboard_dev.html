@@ -220,12 +220,16 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .ref-main.edit-mode .ref-toolbar{display:flex}
 .ref-toolbar .tb-grp{display:flex;align-items:center;gap:2px;padding:0 6px;border-right:1px solid var(--border);height:28px}
 .ref-toolbar .tb-grp:last-child{border-right:0}
-.ref-toolbar button, .ref-toolbar select{background:transparent;border:1px solid transparent;color:var(--text2);font-family:inherit;font-size:11px;padding:4px 9px;border-radius:5px;cursor:pointer;height:26px;display:inline-flex;align-items:center;justify-content:center;min-width:28px}
-.ref-toolbar button:hover, .ref-toolbar select:hover{background:var(--bg3);color:var(--text);border-color:var(--border2)}
+.ref-toolbar button{background:transparent;border:1px solid transparent;color:var(--text2);font-family:inherit;font-size:11px;padding:4px 9px;border-radius:5px;cursor:pointer;height:26px;display:inline-flex;align-items:center;justify-content:center;min-width:28px}
+.ref-toolbar button:hover{background:var(--bg3);color:var(--text);border-color:var(--border2)}
+/* v.056：ショットページ流の select ルック（appearance:none + カスタム arrow） */
+.ref-toolbar select{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:4px 22px 4px 9px;border-radius:7px;cursor:pointer;height:26px;min-width:76px;appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'><path fill='none' stroke='%239a9aaa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5l4 4 4-4'/></svg>");background-repeat:no-repeat;background-position:right 7px center}
+.ref-toolbar select:hover{background-color:var(--bg2);border-color:var(--border2);color:var(--text)}
+.ref-toolbar select:focus{outline:none;border-color:var(--accent)}
+.ref-toolbar select option{background:var(--bg2);color:var(--text)}
 .ref-toolbar input[type=number]{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:3px 5px;border-radius:5px;width:48px;height:26px;box-sizing:border-box}
 .ref-toolbar input[type=range]{height:26px;width:80px}
 .ref-toolbar input[type=color]{background:transparent;border:1px solid var(--border);border-radius:5px;width:30px;height:26px;padding:1px;cursor:pointer}
-.ref-toolbar select{min-width:62px;padding-right:16px}
 .ref-toolbar .tb-lbl{font-size:10px;color:var(--text3);font-family:var(--font-head);letter-spacing:0.5px;margin-right:3px}
 .ref-item.ref-text{font-family:var(--font-body);color:var(--text);line-height:1.3;pointer-events:none;white-space:pre-wrap;word-break:break-word}
 .ref-item.ref-shape{box-sizing:border-box;border:2px solid;pointer-events:none}
@@ -735,7 +739,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.055';
+const APP_VERSION='2026.10.06.057';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4172,8 +4176,36 @@ async function _refInit(){
       row.appendChild(dot);
       row.appendChild(document.createTextNode(t.text||''));
       row.onclick = ()=>{
+        /* v.056：group が無ければ「このタイトルに最も近いアイテム群」で bbox を作る */
+        let b;
         const g = items.find(x => x.type==='group' && t.x >= x.x && t.x <= x.x + x.w && t.y >= x.y && t.y <= x.y + x.h);
-        const b = g ? {x:g.x, y:g.y, w:g.w, h:g.h} : {x:t.x-40, y:t.y-40, w:800, h:600};
+        if(g){
+          b = { x:g.x, y:g.y, w:g.w, h:g.h };
+        }else{
+          const titles = items.filter(x=>x.type==='title');
+          const cx = x=> x.x + (x.w||100)/2;
+          const cy = x=> x.y + (x.h||40)/2;
+          let minX = t.x, minY = t.y, maxX = t.x + (t.w||300), maxY = t.y + (t.h||80);
+          for(const it of items){
+            if(it.type === 'title' || it.type === 'group') continue;
+            let nearest = null, nd = Infinity;
+            const ix = cx(it), iy = cy(it);
+            for(const tt of titles){
+              const dx = ix - cx(tt), dy = iy - cy(tt);
+              const d = dx*dx + dy*dy;
+              if(d < nd){ nd = d; nearest = tt; }
+            }
+            if(nearest === t){
+              const ix2 = it.x + (it.w||100), iy2 = it.y + (it.h||40);
+              if(it.x < minX) minX = it.x;
+              if(it.y < minY) minY = it.y;
+              if(ix2 > maxX) maxX = ix2;
+              if(iy2 > maxY) maxY = iy2;
+            }
+          }
+          const pad2 = 80;
+          b = { x: minX - pad2, y: minY - pad2, w: (maxX - minX) + pad2*2, h: (maxY - minY) + pad2*2 };
+        }
         const rect = vp.getBoundingClientRect();
         const pad = 40;
         const targetScale = Math.max(0.08, Math.min((rect.width-pad*2)/b.w, (rect.height-pad*2)/b.h, 2));
