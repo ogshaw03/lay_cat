@@ -4031,7 +4031,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.087';
+const APP_VERSION='2026.10.06.088';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6379,7 +6379,7 @@ function renderProjReference(main, root){
   let _refAnimRaf = 0;
   const easeInOutQuad = t => t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t;
   const animatePanTo = (targetTx, targetTy, duration)=>{
-    duration = duration || 500;
+    duration = duration || 250; /* v.088：目視追従できる最低限の速度まで短縮 */
     if(_refAnimRaf){ cancelAnimationFrame(_refAnimRaf); _refAnimRaf=0; }
     const startTx = view.tx, startTy = view.ty;
     const dx = targetTx - startTx, dy = targetTy - startTy;
