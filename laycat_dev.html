@@ -4179,7 +4179,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.106';
+const APP_VERSION='2026.10.06.107';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6624,14 +6624,16 @@ function renderProjReference(main, root){
       row.appendChild(document.createTextNode(t.text||''));
       row.onclick=()=>{
         /* v.089：タイトルを含む group（枠図形）のバウンディングボックスにフィット。
-           v.106：group が無い場合は「このタイトルに最も近いアイテム群（画像／テキスト／図形）」
-           の総バウンディングボックスを使う。各非タイトルアイテムを最も近いタイトルに割り当てて
-           Voronoi 風にクラスタ化し、現在のタイトルのクラスタだけで bbox を作る。
-           これにより group を手で描いていなくても「このトピックに属するアイテム群」にフィットする。 */
+           v.106：group が無い場合は Voronoi 風クラスタリング。
+           v.107：ユーザーが描いた shape（四角／円）がタイトルを含んでいれば group と同等に扱う
+           → 「ここが 1 トピック」とユーザーが明示的にスコープ指定できる。
+           旧 group タイプ（レガシーデータ）も引き続き尊重する。 */
         let b;
-        const g = items.find(x => x.type==='group'
-          && t.x >= x.x && t.x <= x.x + x.w
-          && t.y >= x.y && t.y <= x.y + x.h);
+        const g = items.find(x =>
+          (x.type==='group' || x.type==='shape')
+          && t.x >= x.x && t.x <= x.x + (x.w||0)
+          && t.y >= x.y && t.y <= x.y + (x.h||0)
+          && x.w && x.h);
         if(g){
           b = { x:g.x, y:g.y, w:g.w, h:g.h };
         }else{

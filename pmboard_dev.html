@@ -739,7 +739,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.057';
+const APP_VERSION='2026.10.06.058';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4176,9 +4176,12 @@ async function _refInit(){
       row.appendChild(dot);
       row.appendChild(document.createTextNode(t.text||''));
       row.onclick = ()=>{
-        /* v.056：group が無ければ「このタイトルに最も近いアイテム群」で bbox を作る */
+        /* v.056／v.058：ユーザーが描いた shape（四角／円）がタイトルを含んでいれば
+           group と同等に扱う（＝「ここが 1 トピック」とユーザーが明示指定）。
+           無ければ Voronoi 風クラスタリングで最寄りアイテム群の bbox を使う。 */
         let b;
-        const g = items.find(x => x.type==='group' && t.x >= x.x && t.x <= x.x + x.w && t.y >= x.y && t.y <= x.y + x.h);
+        const g = items.find(x => (x.type==='group' || x.type==='shape') && x.w && x.h
+          && t.x >= x.x && t.x <= x.x + x.w && t.y >= x.y && t.y <= x.y + x.h);
         if(g){
           b = { x:g.x, y:g.y, w:g.w, h:g.h };
         }else{
