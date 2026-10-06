@@ -4169,7 +4169,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.101';
+const APP_VERSION='2026.10.06.102';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6541,10 +6541,27 @@ function renderProjReference(main, root){
     const vTop    = -view.ty / view.scale - BUFFER;
     const vRight  = vLeft + vw / view.scale + BUFFER * 2;
     const vBottom = vTop  + vh / view.scale + BUFFER * 2;
-    [...canvas.querySelectorAll('.ref-item')].forEach(n=>n.remove());
+    /* v.102：編集中アイテムの DOM ノードは破棄せず再利用する（従来は毎回 remove→append で
+       contenteditable のフォーカスが失われ、文字入力ができなかった）。 */
+    const editingNode = state.refEditingId
+      ? canvas.querySelector('.ref-item[data-ref-id="'+(window.CSS&&CSS.escape?CSS.escape(state.refEditingId):state.refEditingId)+'"]')
+      : null;
+    [...canvas.querySelectorAll('.ref-item')].forEach(n=>{
+      if(n === editingNode) return; /* 編集中ノードは残す */
+      n.remove();
+    });
     for(const it of items){
       const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
-      if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom) continue;
+      if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom){
+        /* 編集中ノードが virtualization 外に出てしまったら残しつつスキップ（削除はしない） */
+        continue;
+      }
+      /* 編集中のアイテムは既存ノードを再利用（位置だけ更新） */
+      if(state.refEditingId === it.id && editingNode){
+        editingNode.style.left = it.x + 'px';
+        editingNode.style.top  = it.y + 'px';
+        continue;
+      }
       const node = _refBuildItem(it);
       node.dataset.refId = it.id || '';
       /* v.091：選択状態を反映。編集モード OFF のときは選択解除扱い */
@@ -6553,42 +6570,6 @@ function renderProjReference(main, root){
       }
       /* 編集モードでは個別アイテムの pointer-events を有効化（通常は pointer-events:none な group を含めて） */
       if(state.refEditMode) node.style.pointerEvents = 'auto';
-      /* v.097：タイトル／テキストのインライン編集。state.refEditingId に一致したら contenteditable 化。 */
-      if(state.refEditMode && (it.type==='title' || it.type==='text') && state.refEditingId === it.id){
-        node.contentEditable = 'true';
-        node.classList.add('editing');
-        node.classList.remove('selected');
-        /* contenteditable 時のサイズ指定を解除（text は自動幅、title は内容次第） */
-        if(it.type === 'text' && it.w) node.style.width = it.w + 'px';
-        requestAnimationFrame(()=>{
-          try{
-            node.focus();
-            const range = document.createRange();
-            range.selectNodeContents(node);
-            const sel = window.getSelection();
-            sel.removeAllRanges(); sel.addRange(range);
-          }catch(_){}
-        });
-        node.addEventListener('blur', ()=>{
-          const newText = (node.innerText || node.textContent || '').replace(/\n{2,}/g, '\n').trim();
-          const textChanged = (newText && newText !== it.text);
-          if(textChanged){
-            it.text = newText;
-            scheduleItemSave(it);
-          }
-          state.refEditingId = null;
-          renderVisible();
-          /* v.098：タイトルの文字が変わったら目次も更新 */
-          if(textChanged && it.type === 'title'){ try{ rebuildToc(); }catch(_){} }
-        }, { once:true });
-        node.addEventListener('keydown', (e)=>{
-          e.stopPropagation();
-          if(e.key === 'Escape' || (e.key === 'Enter' && it.type === 'title' && !e.shiftKey)){
-            e.preventDefault();
-            node.blur();
-          }
-        });
-      }
       canvas.appendChild(node);
     }
   };
@@ -7033,7 +7014,8 @@ function renderProjReference(main, root){
   };
   window.addEventListener('keydown', onRefKey);
   state._refCleanup.push(()=>window.removeEventListener('keydown', onRefKey));
-  /* v.097：タイトル／テキストをダブルクリックでインライン編集開始 */
+  /* v.097／v.102：タイトル／テキストをダブルクリックでインライン編集。
+     既存 DOM ノードをその場で contenteditable 化（破棄・再生成しない）→ フォーカス維持。 */
   canvas.addEventListener('dblclick', (e)=>{
     if(!state.refEditMode) return;
     const node = e.target.closest('.ref-item');
@@ -7043,7 +7025,38 @@ function renderProjReference(main, root){
     if(!it || (it.type !== 'title' && it.type !== 'text')) return;
     state.refEditingId = id;
     state.refSelection.clear(); state.refSelection.add(id);
-    renderVisible();
+    node.contentEditable = 'true';
+    node.classList.add('editing');
+    node.classList.remove('selected');
+    /* contenteditable 時のサイズ指定を解除（text は自動幅、title は内容次第） */
+    if(it.type === 'text' && it.w) node.style.width = it.w + 'px';
+    /* 選択してフォーカス */
+    try{
+      node.focus();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(range);
+    }catch(_){}
+    const finishEdit = ()=>{
+      const newText = (node.innerText || node.textContent || '').replace(/\n{2,}/g, '\n').trim();
+      const textChanged = (newText && newText !== it.text);
+      if(textChanged){ it.text = newText; scheduleItemSave(it); }
+      state.refEditingId = null;
+      node.contentEditable = 'false';
+      node.classList.remove('editing');
+      /* ステータス反映のため再描画＋目次更新 */
+      renderVisible();
+      if(textChanged && it.type === 'title'){ try{ rebuildToc(); }catch(_){} }
+    };
+    node.addEventListener('blur', finishEdit, { once:true });
+    node.addEventListener('keydown', (ev)=>{
+      ev.stopPropagation(); /* onRefKey の Delete/Escape を抑止 */
+      if(ev.key === 'Escape' || (ev.key === 'Enter' && it.type === 'title' && !ev.shiftKey)){
+        ev.preventDefault();
+        node.blur();
+      }
+    });
   });
   /* ---------- v.093：リサイズハンドル（単一選択時のみ表示） ---------- */
   let handlesEl = null;

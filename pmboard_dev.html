@@ -731,7 +731,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.052';
+const APP_VERSION='2026.10.06.053';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4066,45 +4066,26 @@ async function _refInit(){
     const vTop    = -view.ty / view.scale - BUFFER;
     const vRight  = vLeft + vw / view.scale + BUFFER * 2;
     const vBottom = vTop  + vh / view.scale + BUFFER * 2;
-    [...canvas.querySelectorAll('.ref-item')].forEach(n=>n.remove());
+    /* v.053：編集中アイテムの DOM ノードは破棄せず再利用（フォーカス維持のため） */
+    const editingNode = _REF_STATE.editingId
+      ? canvas.querySelector('.ref-item[data-ref-id="'+(window.CSS&&CSS.escape?CSS.escape(_REF_STATE.editingId):_REF_STATE.editingId)+'"]')
+      : null;
+    [...canvas.querySelectorAll('.ref-item')].forEach(n=>{
+      if(n === editingNode) return;
+      n.remove();
+    });
     for(const it of items){
       const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
       if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom) continue;
+      if(_REF_STATE.editingId === it.id && editingNode){
+        editingNode.style.left = it.x + 'px';
+        editingNode.style.top  = it.y + 'px';
+        continue;
+      }
       const node = _refBuildItem(it);
       node.dataset.refId = it.id || '';
       if(_REF_STATE.editMode && it.id && _REF_STATE.selection.has(it.id)) node.classList.add('selected');
       if(_REF_STATE.editMode) node.style.pointerEvents = 'auto';
-      /* v.049：インライン編集 */
-      if(_REF_STATE.editMode && (it.type==='title' || it.type==='text') && _REF_STATE.editingId === it.id){
-        node.contentEditable = 'true';
-        node.classList.add('editing');
-        node.classList.remove('selected');
-        if(it.type === 'text' && it.w) node.style.width = it.w + 'px';
-        requestAnimationFrame(()=>{
-          try{
-            node.focus();
-            const range = document.createRange();
-            range.selectNodeContents(node);
-            const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
-          }catch(_){}
-        });
-        node.addEventListener('blur', ()=>{
-          const newText = (node.innerText || node.textContent || '').replace(/\n{2,}/g, '\n').trim();
-          const textChanged = (newText && newText !== it.text);
-          if(textChanged){ it.text = newText; scheduleItemSave(it); }
-          _REF_STATE.editingId = null;
-          renderVisible();
-          /* v.050：タイトルの文字が変わったら目次も更新 */
-          if(textChanged && it.type === 'title'){ try{ rebuildToc(); }catch(_){} }
-        }, { once:true });
-        node.addEventListener('keydown', (e)=>{
-          e.stopPropagation();
-          if(e.key === 'Escape' || (e.key === 'Enter' && it.type === 'title' && !e.shiftKey)){
-            e.preventDefault();
-            node.blur();
-          }
-        });
-      }
       canvas.appendChild(node);
     }
     updateHandles();
@@ -4544,7 +4525,8 @@ async function _refInit(){
     }
   };
   window.addEventListener('keydown', onRefKey);
-  /* v.049：タイトル／テキストをダブルクリックでインライン編集 */
+  /* v.049／v.053：タイトル／テキストをダブルクリックでインライン編集。
+     既存 DOM ノードをその場で contenteditable 化（フォーカス維持）。 */
   canvas.addEventListener('dblclick', (e)=>{
     if(!_REF_STATE.editMode) return;
     const node = e.target.closest('.ref-item');
@@ -4554,7 +4536,34 @@ async function _refInit(){
     if(!it || (it.type !== 'title' && it.type !== 'text')) return;
     _REF_STATE.editingId = id;
     _REF_STATE.selection.clear(); _REF_STATE.selection.add(id);
-    renderVisible();
+    node.contentEditable = 'true';
+    node.classList.add('editing');
+    node.classList.remove('selected');
+    if(it.type === 'text' && it.w) node.style.width = it.w + 'px';
+    try{
+      node.focus();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    }catch(_){}
+    const finishEdit = ()=>{
+      const newText = (node.innerText || node.textContent || '').replace(/\n{2,}/g, '\n').trim();
+      const textChanged = (newText && newText !== it.text);
+      if(textChanged){ it.text = newText; scheduleItemSave(it); }
+      _REF_STATE.editingId = null;
+      node.contentEditable = 'false';
+      node.classList.remove('editing');
+      renderVisible();
+      if(textChanged && it.type === 'title'){ try{ rebuildToc(); }catch(_){} }
+    };
+    node.addEventListener('blur', finishEdit, { once:true });
+    node.addEventListener('keydown', (ev)=>{
+      ev.stopPropagation();
+      if(ev.key === 'Escape' || (ev.key === 'Enter' && it.type === 'title' && !ev.shiftKey)){
+        ev.preventDefault();
+        node.blur();
+      }
+    });
   });
   /* 右クリックメニュー・コピー・貼付 */
   const closeCtx = ()=>{ if(ctxEl){ try{ ctxEl.remove(); }catch(_){} ctxEl = null; } };
