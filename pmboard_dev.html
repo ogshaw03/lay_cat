@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.071';
+const APP_VERSION='2026.10.06.072';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4594,27 +4594,54 @@ async function _refInit(){
     if(!files.length) return;
     inpFile.value = '';
     const c0 = _viewportCenterWorld();
-    let dx = 0;
-    for(const f of files){
-      try{
-        const ext = (f.name.match(/(\.[A-Za-z0-9]+)$/)||[])[1] || (f.type.startsWith('video/')?'.mp4':'.jpg');
-        const uid = _nextId();
-        const ref = await storage.putReferenceMedia(uid+ext, f);
-        if(!ref) continue;
-        let w=320, h=240;
-        if(f.type.startsWith('image/')){
-          try{
-            const url = URL.createObjectURL(f);
-            await new Promise((res)=>{ const img=new Image(); img.onload=()=>{ w=img.naturalWidth; h=img.naturalHeight; URL.revokeObjectURL(url); res(); }; img.onerror=()=>{ URL.revokeObjectURL(url); res(); }; img.src=url; });
-            const scale = Math.min(1, 480/Math.max(w,h));
-            w = Math.round(w*scale); h = Math.round(h*scale);
-          }catch(_){}
-        }
-        insertItem({ type:'image', mediaRef:ref, mediaType:f.type.startsWith('video/')?'video':'image', label:f.name, w, h,
-          x: Math.round(c0.x + dx - w/2), y: Math.round(c0.y - h/2) });
-        dx += 30;
-      }catch(_){}
-    }
+    /* v.071：まとめアップロード最適化（LayCAT v.118 と同仕様）。
+       並列度 4 で寸法計測＋書き込みを並行、最後に一括 push + 単発 renderVisible。 */
+    const CONCURRENCY = 4;
+    const defs = new Array(files.length);
+    const _measureDim = (f)=>new Promise((res)=>{
+      if(!f.type.startsWith('image/')) return res({w:320,h:240});
+      const url = URL.createObjectURL(f);
+      const img = new Image();
+      img.onload = ()=>{ const w=img.naturalWidth||320, h=img.naturalHeight||240; URL.revokeObjectURL(url); const s=Math.min(1, 480/Math.max(w,h)); res({w:Math.round(w*s), h:Math.round(h*s)}); };
+      img.onerror = ()=>{ URL.revokeObjectURL(url); res({w:320,h:240}); };
+      img.src = url;
+    });
+    let next = 0;
+    const workers = Array.from({length: Math.min(CONCURRENCY, files.length)}, async ()=>{
+      while(true){
+        const i = next++;
+        if(i >= files.length) return;
+        const f = files[i];
+        try{
+          const ext = (f.name.match(/(\.[A-Za-z0-9]+)$/)||[])[1] || (f.type.startsWith('video/')?'.mp4':'.jpg');
+          const uid = _nextId();
+          const [ref, dim] = await Promise.all([
+            storage.putReferenceMedia(uid+ext, f),
+            _measureDim(f),
+          ]);
+          if(!ref) continue;
+          defs[i] = {
+            id: _nextId(),
+            type:'image',
+            mediaRef: ref,
+            mediaType: f.type.startsWith('video/')?'video':'image',
+            label: f.name,
+            w: dim.w, h: dim.h,
+            x: Math.round(c0.x + i*30 - dim.w/2),
+            y: Math.round(c0.y - dim.h/2),
+          };
+        }catch(_){}
+      }
+    });
+    await Promise.all(workers);
+    const added = defs.filter(Boolean);
+    if(!added.length) return;
+    workingItems.push(...added);
+    _REF_STATE.selection.clear();
+    for(const d of added){ _REF_STATE.selection.add(d.id); scheduleItemSave(d); }
+    items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    renderVisible();
+    try{ rebuildToc(); }catch(_){}
   };
   btnBold.onclick  = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.bold = !it.bold; });
   btnUline.onclick = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.underline = !it.underline; });

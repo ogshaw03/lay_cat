@@ -18,6 +18,15 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.119) **資料タブ：まとめアップロード最適化（LayCAT）**：
+  - 従来：ファイルを 1 枚ずつ `await storage.putReferenceMedia → await 寸法計測 → insertItem → renderVisible` を直列で N 回。10 枚で 10 回 renderVisible / rebuildToc が走って重かった。
+  - 修正：
+    - 並列度 4 の worker プールで `putReferenceMedia` と `_measureDim` を並列実行（寸法計測は書き込みを待たない）。
+    - 全ファイル完了後に `defs` を `workingItems` へ一括 push → `renderVisible` / `rebuildToc` を**1 回だけ**呼ぶ。
+    - 書き込み（単品 JSON）は `scheduleItemSave` に委譲（デバウンスで並列実行）。
+  - 既存プロジェクトデータへの副作用なし（新規アイテム追加のみ、既存 shot.json 等は触らない）。
+  - APP_VERSION：2026.10.06.118 → 2026.10.06.119
+
 - (dev v2026.10.06.118) **資料タブ：画像数十枚でも重くならないよう DOM ノードキャッシュを導入（LayCAT）**：
   - 従来：`renderVisible` が pan/zoom の都度 `canvas.querySelectorAll('.ref-item').forEach(remove)` → 全アイテムを `_refBuildItem` で再生成 → `canvas.appendChild` していた。画像数十枚で毎フレーム img を再構築＆復号し、重くなる原因。
   - 修正：`_refNodeCache: Map<id, node>` を導入。既存ノードは再利用し、位置・サイズ・選択状態・pointer-events だけ毎フレーム更新。ビジビリティ外・削除済みアイテムのみ DOM から remove。
@@ -3497,6 +3506,10 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.06.072) **資料タブ：まとめアップロード最適化（PMB、LayCAT v.119 連動）**：
+  - 並列度 4 で寸法計測＋書き込みを並行、最後に一括 push + 単発 renderVisible。
+  - APP_VERSION：2026.10.06.071 → 2026.10.06.072
 
 - (dev v2026.10.06.071) **資料タブ：画像数十枚でも重くならないよう DOM ノードキャッシュを導入（PMB、LayCAT v.118 連動）**：
   - `_refNodeCache: Map<id, node>` 導入、`_refInvalidate(id)` ヘルパ追加。

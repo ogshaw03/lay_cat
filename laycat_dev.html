@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.118';
+const APP_VERSION='2026.10.06.119';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6792,38 +6792,60 @@ function renderProjReference(main, root){
     if(!files.length) return;
     inpFile.value = ''; /* 同じファイルを再度選べるようにクリア */
     const c0 = _viewportCenterWorld();
-    let dx = 0;
-    for(const f of files){
-      try{
-        const ext = (f.name.match(/(\.[A-Za-z0-9]+)$/)||[])[1] || (f.type.startsWith('video/')?'.mp4':'.jpg');
-        const uid = _nextId();
-        const fn = uid + ext;
-        const ref = await storage.putReferenceMedia(root.id, fn, f);
-        if(!ref){ toast('ファイル保存に失敗しました'); continue; }
-        /* 画像の場合はネイティブサイズで、動画はデフォルトサイズで作成 */
-        let w = 320, h = 240;
-        if(f.type.startsWith('image/')){
-          try{
-            const url = URL.createObjectURL(f);
-            await new Promise((res)=>{ const img=new Image(); img.onload=()=>{ w=img.naturalWidth; h=img.naturalHeight; URL.revokeObjectURL(url); res(); }; img.onerror=()=>{ URL.revokeObjectURL(url); res(); }; img.src=url; });
-            /* 画面に収まるように縮小（最大 480） */
-            const scale = Math.min(1, 480 / Math.max(w,h));
-            w = Math.round(w*scale); h = Math.round(h*scale);
-          }catch(_){}
-        }
-        insertItem({
-          type:'image',
-          mediaRef: ref,
-          mediaType: f.type.startsWith('video/')?'video':'image',
-          label: f.name,
-          w, h,
-          /* 複数アップロード時に少しずらす */
-          x: Math.round(c0.x + dx - w/2),
-          y: Math.round(c0.y - h/2),
-        });
-        dx += 30;
-      }catch(err){ toast('アップロード失敗: '+(err&&err.message||'')); }
-    }
+    /* v.118：まとめアップロード最適化。
+       - 画像の寸法計測を並列化（I/O 待ちの間に他ファイルも処理）。
+       - 書き込み（File System Access）は並列度 4 で逐次に近い実行（folder handle の
+         同時書き込み衝突を避けつつスループットを上げる）。
+       - 作業は defs 配列に貯めて最後に一括で workingItems へ push ＋ renderVisible / rebuildToc は 1 回だけ呼ぶ。 */
+    const CONCURRENCY = 4;
+    const defs = new Array(files.length);
+    const _measureDim = (f)=>new Promise((res)=>{
+      if(!f.type.startsWith('image/')) return res({w:320,h:240});
+      const url = URL.createObjectURL(f);
+      const img = new Image();
+      img.onload = ()=>{ const w=img.naturalWidth||320, h=img.naturalHeight||240; URL.revokeObjectURL(url); const s=Math.min(1, 480/Math.max(w,h)); res({w:Math.round(w*s), h:Math.round(h*s)}); };
+      img.onerror = ()=>{ URL.revokeObjectURL(url); res({w:320,h:240}); };
+      img.src = url;
+    });
+    let next = 0;
+    const workers = Array.from({length: Math.min(CONCURRENCY, files.length)}, async ()=>{
+      while(true){
+        const i = next++;
+        if(i >= files.length) return;
+        const f = files[i];
+        try{
+          const ext = (f.name.match(/(\.[A-Za-z0-9]+)$/)||[])[1] || (f.type.startsWith('video/')?'.mp4':'.jpg');
+          const uid = _nextId();
+          const fn = uid + ext;
+          /* 寸法計測と書き込みを同時並行で（寸法は f から取れるので書き込みを待たない） */
+          const [ref, dim] = await Promise.all([
+            storage.putReferenceMedia(root.id, fn, f),
+            _measureDim(f),
+          ]);
+          if(!ref){ toast('ファイル保存に失敗しました: '+f.name); continue; }
+          defs[i] = {
+            id: _nextId(),
+            type:'image',
+            mediaRef: ref,
+            mediaType: f.type.startsWith('video/')?'video':'image',
+            label: f.name,
+            w: dim.w, h: dim.h,
+            x: Math.round(c0.x + i*30 - dim.w/2),
+            y: Math.round(c0.y - dim.h/2),
+          };
+        }catch(err){ toast('アップロード失敗: '+(err&&err.message||'')); }
+      }
+    });
+    await Promise.all(workers);
+    /* 一括追加＋単発レンダ。_commitItem を回すと N 回 renderVisible/rebuildToc で重くなる */
+    const added = defs.filter(Boolean);
+    if(!added.length) return;
+    workingItems.push(...added);
+    state.refSelection.clear();
+    for(const d of added){ state.refSelection.add(d.id); scheduleItemSave(d); }
+    items = (!state.refEditMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    renderVisible();
+    try{ rebuildToc(); }catch(_){}
   };
   /* 書式ボタン：選択中のテキスト／タイトルに適用 */
   btnBold.onclick  = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.bold = !it.bold; });
