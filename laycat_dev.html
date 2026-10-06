@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.07.121';
+const APP_VERSION='2026.10.07.122';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6588,8 +6588,22 @@ function renderProjReference(main, root){
       /* 選択状態の反映 */
       if(state.refEditMode && it.id && state.refSelection.has(it.id)) node.classList.add('selected');
       else node.classList.remove('selected');
-      /* 編集モードでは個別アイテムの pointer-events を有効化 */
-      node.style.pointerEvents = state.refEditMode ? 'auto' : '';
+      /* 編集モードでは個別アイテムの pointer-events を有効化。
+         v.122：非編集モードでも text/title はホバーだけで文字選択できるように
+         pointer-events:auto + user-select:text + cursor:text を付与。 */
+      if(state.refEditMode){
+        node.style.pointerEvents = 'auto';
+        node.style.userSelect = '';
+        if(!node.classList.contains('text-selectable')) node.style.cursor = '';
+      }else if(it.type === 'text' || it.type === 'title'){
+        node.style.pointerEvents = 'auto';
+        node.style.userSelect = 'text';
+        node.style.cursor = 'text';
+      }else{
+        node.style.pointerEvents = '';
+        node.style.userSelect = '';
+        node.style.cursor = '';
+      }
       /* append で再配置（既にある場合は末尾へ移動＝ z 順の反映）。
          編集中ノードは appendChild で動かすと contenteditable のフォーカスが外れるので除外。 */
       if(state.refEditingId !== it.id) canvas.appendChild(node);
@@ -6963,6 +6977,9 @@ function renderProjReference(main, root){
        applyToSelected が対象ゼロになって文字色が変わらない現象、
        また Delete 前にツールバーを触ると選択が消えて Delete が no-op になる現象の両方を解消。 */
     if(e.target.closest('.ref-toolbar, .ref-ctrls, .ref-handles, .ref-ctx')) return;
+    /* v.122：非編集モードで text/title の上をクリックしたときは pan を開始しない
+       （ブラウザの文字選択ドラッグに任せる）。中ボタン・編集モードは従来通り。 */
+    if(!state.refEditMode && e.target.closest('.ref-item.ref-text, .ref-item.ref-title')) return;
     cancelAnim();
     const editMode = state.refEditMode;
     /* v.096：追加モード中なら、他のアクションより優先してアイテム配置を処理 */

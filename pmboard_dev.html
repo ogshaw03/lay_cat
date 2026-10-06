@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.07.074';
+const APP_VERSION='2026.10.07.075';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4302,7 +4302,21 @@ async function _refInit(){
       if(it.h != null) node.style.height = it.h + 'px';
       if(_REF_STATE.editMode && it.id && _REF_STATE.selection.has(it.id)) node.classList.add('selected');
       else node.classList.remove('selected');
-      node.style.pointerEvents = _REF_STATE.editMode ? 'auto' : '';
+      /* v.075：非編集モードでも text/title はホバーだけで文字選択できるように
+         pointer-events:auto + user-select:text + cursor:text（LayCAT v.122 と同仕様）。 */
+      if(_REF_STATE.editMode){
+        node.style.pointerEvents = 'auto';
+        node.style.userSelect = '';
+        if(!node.classList.contains('text-selectable')) node.style.cursor = '';
+      }else if(it.type === 'text' || it.type === 'title'){
+        node.style.pointerEvents = 'auto';
+        node.style.userSelect = 'text';
+        node.style.cursor = 'text';
+      }else{
+        node.style.pointerEvents = '';
+        node.style.userSelect = '';
+        node.style.cursor = '';
+      }
       if(_REF_STATE.editingId !== it.id) canvas.appendChild(node);
     }
     for(const [id, node] of _refNodeCache){
@@ -4720,6 +4734,8 @@ async function _refInit(){
     /* v.050：ツールバー・コントロール類・リサイズハンドル・コンテキストメニューへのクリックは
        pan / 選択 / rubber band などのキャンバス操作に横取りされないように、ここで早期 return。 */
     if(e.target.closest('.ref-toolbar, .ref-ctrls, .ref-handles, .ref-ctx')) return;
+    /* v.075：非編集モードで text/title の上をクリックしたときは pan を開始しない。 */
+    if(!_REF_STATE.editMode && e.target.closest('.ref-item.ref-text, .ref-item.ref-title')) return;
     cancelAnim();
     const editMode = _REF_STATE.editMode;
     /* v.048：追加モード中は配置を優先 */

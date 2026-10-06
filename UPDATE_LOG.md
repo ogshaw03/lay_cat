@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.07.122) **資料タブ：非編集モードで text/title をホバーだけで文字選択可能に（LayCAT）**：
+  - 従来：ダブルクリックで「選択モード」に入る必要があった。
+  - 修正：非編集モードでは text/title に常時 `pointer-events:auto` + `user-select:text` + `cursor:text` を付与。マウスを乗せただけでカーソルが I-beam になり、そのままドラッグで文字範囲選択・Ctrl+C でコピーできる。
+  - 競合回避：vp.mousedown の pan 開始を「非編集 × target が .ref-item.ref-text / .ref-item.ref-title」のとき skip（ブラウザのネイティブな文字選択ドラッグに任せる）。pan は従来通り空きキャンバス・中ボタン・編集 Alt-ドラッグで。
+  - 書き込み系副作用なし（UI のみ）。
+  - APP_VERSION：2026.10.07.121 → 2026.10.07.122
+
 - (dev v2026.10.07.121) **資料タブ：動画はクリックでモーダル再生／ダブルクリックでフルスクリーン（LayCAT）**：
   - キャンバス上の動画タイルからは `controls` 属性を外し、「静止サムネ」として表示（誤タップで再生されない）。
   - 動画タイルクリック（編集 OFF）／ダブルクリック（編集 ON）→ モーダルで autoplay + controls 付き再生。
@@ -3520,6 +3527,11 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.07.075) **資料タブ：非編集モードで text/title をホバーだけで文字選択可能に（PMB、LayCAT v.122 連動）**：
+  - 非編集モードで text/title に常時 `pointer-events:auto` + `user-select:text` + `cursor:text` を付与し、ホバーで I-beam → ドラッグ選択可能。
+  - vp.mousedown は text/title ターゲットで pan を開始しない。
+  - APP_VERSION：2026.10.07.074 → 2026.10.07.075
 
 - (dev v2026.10.07.074) **資料タブ：動画はクリックでモーダル再生／ダブルクリックでフルスクリーン（PMB、LayCAT v.121 連動）**：
   - キャンバス上の動画タイルは controls 無しの静止サムネ。クリックでモーダル再生、モーダル内ダブルクリックで `requestFullscreen`。
