@@ -205,7 +205,13 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .ref-item.selected{outline:2px solid #4a9eff;outline-offset:2px;box-shadow:0 0 0 2px rgba(74,158,255,0.3);z-index:5}
 .ref-item.ref-group.selected{outline-color:#4a9eff;outline-style:solid;z-index:1}
 .ref-rubber{position:absolute;border:1px dashed #4a9eff;background:rgba(74,158,255,0.08);pointer-events:none;z-index:10}
-.ref-ctrls button.ref-edit-btn.on{background:#4a9eff;border-color:#4a9eff;color:#0a0a0e;font-weight:700}
+/* v.049：編集ボタンを目立たせる＋編集中のキャンバスに青枠＋インライン編集スタイル */
+.ref-ctrls button.ref-edit-btn{padding:6px 13px;font-size:12px;font-weight:700;min-width:84px;background:var(--bg2);border-color:var(--border2);color:var(--text)}
+.ref-ctrls button.ref-edit-btn:hover{background:var(--bg3);border-color:#4a9eff}
+.ref-ctrls button.ref-edit-btn.on{background:#4a9eff;border-color:#4a9eff;color:#0a0a0e}
+.ref-main.edit-mode{box-shadow:inset 0 0 0 3px rgba(74,158,255,0.45)}
+.ref-item.editing{outline:2px solid #ffd36a!important;outline-offset:2px;box-shadow:0 0 0 2px rgba(255,211,106,0.3);cursor:text;background:rgba(255,211,106,0.08);z-index:7;pointer-events:auto!important;white-space:normal!important;min-width:40px}
+.ref-item.editing:focus{outline:2px solid #ffd36a!important}
 .ref-toolbar{position:absolute;top:10px;left:12px;right:12px;display:none;z-index:4;background:rgba(10,10,14,0.86);border:1px solid var(--border);border-radius:9px;padding:5px 8px;align-items:center;gap:4px;flex-wrap:wrap;backdrop-filter:blur(6px)}
 .ref-main.edit-mode .ref-toolbar{display:flex}
 .ref-toolbar .tb-grp{display:flex;align-items:center;gap:2px;padding:0 6px;border-right:1px solid var(--border);height:28px}
@@ -642,7 +648,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
           <div class="ref-toolbar" id="refToolbar"></div>
           <div class="ref-hud" id="refHud">pan: 0, 0   zoom: 100%</div>
           <div class="ref-ctrls">
-            <button id="refEditBtn" class="ref-edit-btn" title="編集モード">✏ 編集</button>
+            <button id="refEditBtn" class="ref-edit-btn" title="編集モードを切替（ON：アイテムの選択・移動・追加・削除／Alt+ドラッグで画面移動／タイトルはダブルクリックで文字編集）">📝 編集モード</button>
             <button id="refZoomOut" title="縮小">−</button>
             <button id="refZoomFit" title="等倍">100%</button>
             <button id="refZoomIn" title="拡大">＋</button>
@@ -719,7 +725,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.048';
+const APP_VERSION='2026.10.06.049';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4016,7 +4022,7 @@ function _refBuildItem(it){
 /* v.046：編集モード対応版 _refInit。LayCAT 本体 v.093 と同構造。
    モック (REF_MOCK_ITEMS) は空プロジェクト時のデモ用。実データは
    storage.loadReferenceItems() で reference/items/*.json から読み込み。 */
-const _REF_STATE = { editMode:false, selection:new Set(), workingItems:[], clipboard:[], view:{tx:60,ty:60,scale:0.5} };
+const _REF_STATE = { editMode:false, selection:new Set(), workingItems:[], clipboard:[], view:{tx:60,ty:60,scale:0.5}, editingId:null };
 async function _refInit(){
   const vp = document.getElementById('refMain');
   const canvas = document.getElementById('refCanvas');
@@ -4061,6 +4067,36 @@ async function _refInit(){
       node.dataset.refId = it.id || '';
       if(_REF_STATE.editMode && it.id && _REF_STATE.selection.has(it.id)) node.classList.add('selected');
       if(_REF_STATE.editMode) node.style.pointerEvents = 'auto';
+      /* v.049：インライン編集 */
+      if(_REF_STATE.editMode && (it.type==='title' || it.type==='text') && _REF_STATE.editingId === it.id){
+        node.contentEditable = 'true';
+        node.classList.add('editing');
+        node.classList.remove('selected');
+        if(it.type === 'text' && it.w) node.style.width = it.w + 'px';
+        requestAnimationFrame(()=>{
+          try{
+            node.focus();
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+          }catch(_){}
+        });
+        node.addEventListener('blur', ()=>{
+          const newText = (node.innerText || node.textContent || '').replace(/\n{2,}/g, '\n').trim();
+          if(newText && newText !== it.text){
+            it.text = newText; scheduleItemSave(it);
+          }
+          _REF_STATE.editingId = null;
+          renderVisible();
+        }, { once:true });
+        node.addEventListener('keydown', (e)=>{
+          e.stopPropagation();
+          if(e.key === 'Escape' || (e.key === 'Enter' && it.type === 'title' && !e.shiftKey)){
+            e.preventDefault();
+            node.blur();
+          }
+        });
+      }
       canvas.appendChild(node);
     }
     updateHandles();
@@ -4255,8 +4291,8 @@ async function _refInit(){
     _REF_STATE.editMode = !!on;
     vp.classList.toggle('edit-mode', _REF_STATE.editMode);
     editBtn.classList.toggle('on', _REF_STATE.editMode);
-    editBtn.textContent = _REF_STATE.editMode ? '✏ 編集中' : '✏ 編集';
-    if(!_REF_STATE.editMode) _REF_STATE.selection.clear();
+    editBtn.textContent = _REF_STATE.editMode ? '📝 編集中' : '📝 編集モード';
+    if(!_REF_STATE.editMode){ _REF_STATE.selection.clear(); _REF_STATE.editingId = null; }
     items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
     applyTransform();
   };
@@ -4332,6 +4368,11 @@ async function _refInit(){
     if(e.altKey){
       mode = 'pan'; dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
       vp.classList.add('panning'); e.preventDefault(); return;
+    }
+    /* v.049：インライン編集中のアイテム上は contenteditable に委ねる */
+    if(_REF_STATE.editingId){
+      const hp = hitTestItem(e.clientX, e.clientY);
+      if(hp && hp.id === _REF_STATE.editingId){ return; }
     }
     const hit = hitTestItem(e.clientX, e.clientY);
     if(hit){
@@ -4460,18 +4501,35 @@ async function _refInit(){
     if((e.key === 'Delete' || e.key === 'Backspace') && _REF_STATE.selection.size){
       e.preventDefault();
       const ids = Array.from(_REF_STATE.selection);
+      _REF_STATE.selection.clear(); /* v.049：先にクリアして即座に反映 */
+      _REF_STATE.editingId = null;
       for(const id of ids){
         const idx = workingItems.findIndex(x=>x.id===id);
         if(idx >= 0){ workingItems.splice(idx, 1); storage.deleteReferenceItem(id).catch(()=>{}); }
       }
-      _REF_STATE.selection.clear(); renderVisible();
+      /* ツールバーボタンにフォーカスが残っていると視覚更新が遅延することがあるため blur */
+      try{ if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }catch(_){}
+      applyTransform();
     }else if(e.key === 'Escape'){
       /* v.048：追加モード中の Esc は追加キャンセルを優先 */
       if(_pendingInsert){ _cancelInsert(); return; }
+      if(_REF_STATE.editingId){ _REF_STATE.editingId = null; renderVisible(); return; }
       _REF_STATE.selection.clear(); renderVisible();
     }
   };
   window.addEventListener('keydown', onRefKey);
+  /* v.049：タイトル／テキストをダブルクリックでインライン編集 */
+  canvas.addEventListener('dblclick', (e)=>{
+    if(!_REF_STATE.editMode) return;
+    const node = e.target.closest('.ref-item');
+    if(!node) return;
+    const id = node.dataset.refId;
+    const it = workingItems.find(x=>x.id===id);
+    if(!it || (it.type !== 'title' && it.type !== 'text')) return;
+    _REF_STATE.editingId = id;
+    _REF_STATE.selection.clear(); _REF_STATE.selection.add(id);
+    renderVisible();
+  });
   /* 右クリックメニュー・コピー・貼付 */
   const closeCtx = ()=>{ if(ctxEl){ try{ ctxEl.remove(); }catch(_){} ctxEl = null; } };
   const alignSelected = (axis)=>{

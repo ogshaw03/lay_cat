@@ -280,7 +280,14 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .ref-item.ref-group.selected{outline-color:#4a9eff;outline-style:solid;z-index:1}
 .ref-rubber{position:absolute;border:1px dashed #4a9eff;background:rgba(74,158,255,0.08);pointer-events:none;z-index:10}
 .ref-edit-badge{display:inline-block;padding:2px 8px;border-radius:5px;background:rgba(74,158,255,0.22);color:#9ac4ff;border:1px solid rgba(74,158,255,0.44);font-family:var(--font-head);font-weight:700;font-size:10px;letter-spacing:0.5px;margin-right:8px}
-.ref-ctrls button.ref-edit-btn.on{background:#4a9eff;border-color:#4a9eff;color:#0a0a0e;font-weight:700}
+/* v.097：編集ボタンをより目立たせる＋編集中キャンバスに青枠 */
+.ref-ctrls button.ref-edit-btn{padding:6px 13px;font-size:12px;font-weight:700;min-width:84px;background:var(--bg2);border-color:var(--border2);color:var(--text)}
+.ref-ctrls button.ref-edit-btn:hover{background:var(--bg3);border-color:#4a9eff}
+.ref-ctrls button.ref-edit-btn.on{background:#4a9eff;border-color:#4a9eff;color:#0a0a0e}
+.ref-main.edit-mode{box-shadow:inset 0 0 0 3px rgba(74,158,255,0.45)}
+/* v.097：タイトル／テキストのインライン編集中スタイル */
+.ref-item.editing{outline:2px solid #ffd36a!important;outline-offset:2px;box-shadow:0 0 0 2px rgba(255,211,106,0.3);cursor:text;background:rgba(255,211,106,0.08);z-index:7;pointer-events:auto!important;white-space:normal!important;min-width:40px}
+.ref-item.editing:focus{outline:2px solid #ffd36a!important}
 /* v.092：資料タブ 編集ツールバー（画面上部に浮かせる） */
 .ref-toolbar{position:absolute;top:10px;left:12px;right:12px;display:none;z-index:4;background:rgba(10,10,14,0.86);border:1px solid var(--border);border-radius:9px;padding:5px 8px;align-items:center;gap:4px;flex-wrap:wrap;backdrop-filter:blur(6px)}
 .ref-main.edit-mode .ref-toolbar{display:flex}
@@ -4156,7 +4163,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.096';
+const APP_VERSION='2026.10.06.097';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6403,6 +6410,7 @@ function renderProjReference(main, root){
   if(!state.refItemsByPid) state.refItemsByPid = {};
   if(!state.refSelection) state.refSelection = new Set();
   if(state.refEditMode == null) state.refEditMode = false;
+  if(!state.refEditingId) state.refEditingId = null;
   const view = state.refView;
   /* v.090：実データロード。state.refItemsByPid[pid] は編集対象の実配列（永続化対象）。 */
   let workingItems = state.refItemsByPid[root.id];
@@ -6482,9 +6490,9 @@ function renderProjReference(main, root){
   vp.appendChild(tb);
   const hud=el('div','ref-hud');vp.appendChild(hud);
   const ctrls=el('div','ref-ctrls');
-  /* v.091：編集モード ON/OFF トグル。ON のときはボタンが青く、HUD に "編集中" バッジが出る。 */
-  const editBtn=el('button','ref-edit-btn'+(state.refEditMode?' on':''),state.refEditMode?'✏ 編集中':'✏ 編集');
-  editBtn.title='編集モードを切替（ON のときのみアイテムの選択・移動・追加・削除が可能。Alt+ドラッグで画面移動）';
+  /* v.091 / v.097：編集モード ON/OFF トグル。ON のとき青ハイライト＋キャンバスに青枠。 */
+  const editBtn=el('button','ref-edit-btn'+(state.refEditMode?' on':''),state.refEditMode?'📝 編集中':'📝 編集モード');
+  editBtn.title='編集モードを切替（ON：アイテムの選択・移動・追加・削除／Alt+ドラッグで画面移動／タイトルはダブルクリックで文字編集）';
   const zIn=el('button',null,'＋');zIn.title='拡大';
   const zOut=el('button',null,'−');zOut.title='縮小';
   const zFit=el('button',null,'100%');zFit.title='等倍';
@@ -6528,6 +6536,39 @@ function renderProjReference(main, root){
       }
       /* 編集モードでは個別アイテムの pointer-events を有効化（通常は pointer-events:none な group を含めて） */
       if(state.refEditMode) node.style.pointerEvents = 'auto';
+      /* v.097：タイトル／テキストのインライン編集。state.refEditingId に一致したら contenteditable 化。 */
+      if(state.refEditMode && (it.type==='title' || it.type==='text') && state.refEditingId === it.id){
+        node.contentEditable = 'true';
+        node.classList.add('editing');
+        node.classList.remove('selected');
+        /* contenteditable 時のサイズ指定を解除（text は自動幅、title は内容次第） */
+        if(it.type === 'text' && it.w) node.style.width = it.w + 'px';
+        requestAnimationFrame(()=>{
+          try{
+            node.focus();
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const sel = window.getSelection();
+            sel.removeAllRanges(); sel.addRange(range);
+          }catch(_){}
+        });
+        node.addEventListener('blur', ()=>{
+          const newText = (node.innerText || node.textContent || '').replace(/\n{2,}/g, '\n').trim();
+          if(newText && newText !== it.text){
+            it.text = newText;
+            scheduleItemSave(it);
+          }
+          state.refEditingId = null;
+          renderVisible();
+        }, { once:true });
+        node.addEventListener('keydown', (e)=>{
+          e.stopPropagation();
+          if(e.key === 'Escape' || (e.key === 'Enter' && it.type === 'title' && !e.shiftKey)){
+            e.preventDefault();
+            node.blur();
+          }
+        });
+      }
       canvas.appendChild(node);
     }
   };
@@ -6661,8 +6702,8 @@ function renderProjReference(main, root){
     state.refEditMode = !!on;
     vp.classList.toggle('edit-mode', state.refEditMode);
     editBtn.classList.toggle('on', state.refEditMode);
-    editBtn.textContent = state.refEditMode ? '✏ 編集中' : '✏ 編集';
-    if(!state.refEditMode) state.refSelection.clear();
+    editBtn.textContent = state.refEditMode ? '📝 編集中' : '📝 編集モード';
+    if(!state.refEditMode){ state.refSelection.clear(); state.refEditingId = null; }
     /* 編集 ON で mock→実データ切替が起きるのでアイテム表示を切り替えて再描画 */
     items = (!state.refEditMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
     applyTransform();
@@ -6787,6 +6828,13 @@ function renderProjReference(main, root){
       e.preventDefault();
       return;
     }
+    /* v.097：インライン編集中のアイテム上は何もしない（contenteditable に委ねる） */
+    if(state.refEditingId){
+      /* ただし別のアイテムをクリックしたら編集完了して通常の選択に戻す */
+      const hitProbe = hitTestItem(e.clientX, e.clientY);
+      if(hitProbe && hitProbe.id === state.refEditingId){ return; }
+      /* 他をクリックしたら blur 経由で編集終了 */
+    }
     /* 編集 ON：アイテムをヒットしたか？ */
     const hit = hitTestItem(e.clientX, e.clientY);
     if(hit){
@@ -6903,13 +6951,15 @@ function renderProjReference(main, root){
   /* ---------- キーボード：Delete / Backspace で削除、Esc で選択解除 ---------- */
   const onRefKey = (e) => {
     if(state.projTab !== 'reference') return;
-    /* input/textarea にフォーカスがあるときは無視 */
+    /* input/textarea/contenteditable にフォーカスがあるときは無視（インライン編集中の文字入力を妨げない） */
     const tag = (e.target && e.target.tagName) || '';
     if(tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
     if(!state.refEditMode) return;
     if((e.key === 'Delete' || e.key === 'Backspace') && state.refSelection.size){
       e.preventDefault();
       const ids = Array.from(state.refSelection);
+      state.refSelection.clear(); /* 先にクリア（renderVisible の selection 判定を即反映） */
+      state.refEditingId = null;
       for(const id of ids){
         const idx = workingItems.findIndex(x=>x.id===id);
         if(idx >= 0){
@@ -6917,16 +6967,32 @@ function renderProjReference(main, root){
           storage.deleteReferenceItem(root.id, id).catch(()=>{});
         }
       }
-      state.refSelection.clear();
-      renderVisible();
+      /* v.097：フォーカスがツールバーボタン等にあると keydown→renderVisible のあと
+         視覚更新が遅延することがあるため、active element を blur させてから applyTransform。
+         これで Delete 1 回で確実に消える。 */
+      try{ if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }catch(_){}
+      applyTransform();
     }else if(e.key === 'Escape'){
       /* v.096：追加モード中の Esc は追加キャンセルを優先 */
       if(_pendingInsert){ _cancelInsert(); return; }
+      if(state.refEditingId){ state.refEditingId = null; renderVisible(); return; }
       state.refSelection.clear();
       renderVisible();
     }
   };
   window.addEventListener('keydown', onRefKey);
+  /* v.097：タイトル／テキストをダブルクリックでインライン編集開始 */
+  canvas.addEventListener('dblclick', (e)=>{
+    if(!state.refEditMode) return;
+    const node = e.target.closest('.ref-item');
+    if(!node) return;
+    const id = node.dataset.refId;
+    const it = workingItems.find(x=>x.id===id);
+    if(!it || (it.type !== 'title' && it.type !== 'text')) return;
+    state.refEditingId = id;
+    state.refSelection.clear(); state.refSelection.add(id);
+    renderVisible();
+  });
   /* ---------- v.093：リサイズハンドル（単一選択時のみ表示） ---------- */
   let handlesEl = null;
   const updateHandles = ()=>{
