@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.065';
+const APP_VERSION='2026.10.06.066';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4284,11 +4284,21 @@ async function _refInit(){
     if(!_REF_STATE.editMode || _REF_STATE.selection.size !== 1) return;
     const id = Array.from(_REF_STATE.selection)[0];
     const it = workingItems.find(x=>x.id===id);
-    if(!it || !it.w || !it.h) return;
+    if(!it) return;
+    /* v.066：text/title は w/h 未設定でも DOM 実寸でハンドルを出す（LayCAT v.113 と同仕様） */
+    let effW = it.w, effH = it.h;
+    if((it.type === 'text' || it.type === 'title') && (!effW || !effH)){
+      const node = canvas.querySelector('.ref-item[data-ref-id="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
+      if(node){
+        if(!effW) effW = node.offsetWidth  || 120;
+        if(!effH) effH = node.offsetHeight || 32;
+      }
+    }
+    if(!effW || !effH) return;
     const sx = it.x * view.scale + view.tx;
     const sy = it.y * view.scale + view.ty;
-    const sw = (it.w||100) * view.scale;
-    const sh = (it.h||100) * view.scale;
+    const sw = effW * view.scale;
+    const sh = effH * view.scale;
     handlesEl = document.createElement('div');
     handlesEl.className = 'ref-handles';
     handlesEl.style.left = sx + 'px';
@@ -4301,7 +4311,8 @@ async function _refInit(){
         if(e.button!==0) return;
         e.stopPropagation(); e.preventDefault();
         const startX = e.clientX, startY = e.clientY;
-        const origin = {x:it.x, y:it.y, w:it.w, h:it.h};
+        /* v.066：text/title が w/h 未設定の場合は effW/effH で補完して resize 開始。 */
+        const origin = {x:it.x, y:it.y, w: it.w || effW, h: it.h || effH};
         /* v.059：画像は比率ロック（アスペクト維持）、Shift で解除可。 */
         const lockAspect = (it.type === 'image') && origin.w>0 && origin.h>0;
         const aspect = origin.w / origin.h;
@@ -4808,7 +4819,8 @@ async function _refInit(){
     node.addEventListener('blur', finishEdit, { once:true });
     node.addEventListener('keydown', (ev)=>{
       ev.stopPropagation();
-      if(ev.key === 'Escape' || (ev.key === 'Enter' && it.type === 'title' && !ev.shiftKey)){
+      /* v.066：Enter で確定（title / text 両方）。改行は Shift+Enter。 */
+      if(ev.key === 'Escape' || (ev.key === 'Enter' && !ev.shiftKey)){
         ev.preventDefault();
         node.blur();
       }
@@ -4957,6 +4969,22 @@ async function _refInit(){
           fontSize: 14,
           w: Math.min(460, Math.max(240, trimmed.length * 8)),
         }, c.x - 180, c.y - 10);
+        return;
+      }
+      /* v.066：URL ではない単純なテキストもクリップボードから貼付可能に（LayCAT v.113 と同仕様）。
+         内部クリップボードがあればそちらを優先する。 */
+      if(!_REF_STATE.clipboard.length){
+        e.preventDefault();
+        const c = _viewportCenterWorld();
+        const longest = trimmed.split(/\r?\n/).reduce((m,s)=>Math.max(m, s.length), 0);
+        const w = Math.min(560, Math.max(240, longest * 8));
+        insertItemAt({
+          type:'text',
+          text: trimmed,
+          fontSize: 16,
+          color: '#e8e8ec',
+          w,
+        }, c.x - w/2, c.y - 10);
         return;
       }
     }

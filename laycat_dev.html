@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.112';
+const APP_VERSION='2026.10.06.113';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7107,25 +7107,37 @@ function renderProjReference(main, root){
     node.addEventListener('blur', finishEdit, { once:true });
     node.addEventListener('keydown', (ev)=>{
       ev.stopPropagation(); /* onRefKey の Delete/Escape を抑止 */
-      if(ev.key === 'Escape' || (ev.key === 'Enter' && it.type === 'title' && !ev.shiftKey)){
+      /* v.113：Enter で確定（title / text 両方）。改行は Shift+Enter。 */
+      if(ev.key === 'Escape' || (ev.key === 'Enter' && !ev.shiftKey)){
         ev.preventDefault();
         node.blur();
       }
     });
   });
-  /* ---------- v.093：リサイズハンドル（単一選択時のみ表示） ---------- */
+  /* ---------- v.093：リサイズハンドル（単一選択時のみ表示） ----------
+     v.113：text/title は w/h 未設定でも DOM 実寸でハンドルを出せるようにする。
+     resize 開始時に origin.w/h を DOM 実寸で補完し、以降は通常の resize ロジックで動く。 */
   let handlesEl = null;
   const updateHandles = ()=>{
     if(handlesEl){ try{ handlesEl.remove(); }catch(_){} handlesEl = null; }
     if(!state.refEditMode || state.refSelection.size !== 1) return;
     const id = Array.from(state.refSelection)[0];
     const it = workingItems.find(x=>x.id===id);
-    if(!it || !it.w || !it.h) return;
+    if(!it) return;
+    let effW = it.w, effH = it.h;
+    if((it.type === 'text' || it.type === 'title') && (!effW || !effH)){
+      const node = canvas.querySelector('.ref-item[data-ref-id="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
+      if(node){
+        if(!effW) effW = node.offsetWidth  || 120;
+        if(!effH) effH = node.offsetHeight || 32;
+      }
+    }
+    if(!effW || !effH) return;
     const r = vp.getBoundingClientRect();
     const sx = it.x * view.scale + view.tx;
     const sy = it.y * view.scale + view.ty;
-    const sw = (it.w||100) * view.scale;
-    const sh = (it.h||100) * view.scale;
+    const sw = effW * view.scale;
+    const sh = effH * view.scale;
     handlesEl = el('div','ref-handles');
     handlesEl.style.left = sx + 'px';
     handlesEl.style.top  = sy + 'px';
@@ -7138,7 +7150,9 @@ function renderProjReference(main, root){
         if(e.button!==0) return;
         e.stopPropagation(); e.preventDefault();
         const startX = e.clientX, startY = e.clientY;
-        const origin = {x:it.x, y:it.y, w:it.w, h:it.h};
+        /* v.113：text/title が w/h 未設定の場合は effW/effH で補完して resize 開始。
+           resize 完了後は it.w / it.h が確定するので以降は通常ロジック。 */
+        const origin = {x:it.x, y:it.y, w: it.w || effW, h: it.h || effH};
         /* v.108：画像は比率ロック（アスペクト維持）、Shift で解除可。 */
         const lockAspect = (it.type === 'image') && origin.w>0 && origin.h>0;
         const aspect = origin.w / origin.h;
@@ -7351,8 +7365,25 @@ function renderProjReference(main, root){
         }, c.x - 180, c.y - 10);
         return;
       }
+      /* v.113：URL ではない単純なテキストもクリップボードから貼付可能に。
+         内部クリップボード（PureRef 式コピー）があればそちらを優先する。 */
+      if(!_refClipboard.length){
+        e.preventDefault();
+        const c = _viewportCenterWorld();
+        /* 幅：長い行の文字数×8px を目安に 240〜560 でクランプ。改行はそのまま保持（pre-wrap）。 */
+        const longest = trimmed.split(/\r?\n/).reduce((m,s)=>Math.max(m, s.length), 0);
+        const w = Math.min(560, Math.max(240, longest * 8));
+        insertItemAt({
+          type:'text',
+          text: trimmed,
+          fontSize: 16,
+          color: '#e8e8ec',
+          w,
+        }, c.x - w/2, c.y - 10);
+        return;
+      }
     }
-    /* 画像・URL が無ければ内部クリップボードを貼付 */
+    /* 画像・URL・平文テキストが無ければ内部クリップボードを貼付 */
     if(_refClipboard.length){
       e.preventDefault();
       pasteClipboard();
