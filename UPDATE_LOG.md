@@ -18,6 +18,18 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.094) **資料タブ：ホイールズーム（および右クリック・ペースト）が動かなくなる不具合を修正**：
+  - 事象：Phase 4 の変更以降、資料タブでマウスホイールによるズームが効かなくなっていた。右クリックメニュー・クリップボードペーストも効かず。
+  - 原因：Phase 4 で `renderVisible` を `const` 宣言のまま
+    ```js
+    const _origRenderVisible = renderVisible;
+    renderVisible = renderVisible2;  // TypeError
+    ```
+    と再代入しており、実行時 `TypeError: Assignment to constant variable.` で `renderProjReference` の初期化が中断。結果として該当行より後ろに書かれていた `wheel` / `contextmenu` / `paste` ハンドラがどれも登録されていなかった。
+  - 修正：`const renderVisible` → `let renderVisible` に変更。再代入が通るようにして以降の初期化を復活。
+  - 書き込み系副作用なし（表示のみ）。
+  - APP_VERSION：2026.10.06.093 → 2026.10.06.094
+
 - (dev v2026.10.06.093) **資料タブ Phase 4：リサイズハンドル・右クリックメニュー・クリップボードペースト（LayCAT）**：
   - **リサイズハンドル**（単一選択時のみ表示）：4 隅の青い丸ハンドルを vp オーバーレイで描画。それぞれ NW/NE/SW/SE cursor。ドラッグで w/h（必要なら x/y も）を更新し、確定時に 350ms デバウンス保存。
   - **右クリックメニュー**（編集モード時のみ）：

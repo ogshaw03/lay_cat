@@ -4156,7 +4156,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.093';
+const APP_VERSION='2026.10.06.094';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6550,7 +6550,10 @@ function renderProjReference(main, root){
     grid.style.backgroundPosition = `${view.tx}px ${view.ty}px`;
     renderVisible();
   };
-  const renderVisible = ()=>{
+  /* v.094：let に変更（Phase 4 の updateHandles を末尾で呼ぶためのラッパ再代入を可能に）。
+     const のままだと再代入時に TypeError で落ち、以降の wheel/right-click/paste ハンドラが
+     登録されなくなり「中ボタンのホイールでズームできない」症状が出ていた。 */
+  let renderVisible = ()=>{
     const rect = vp.getBoundingClientRect();
     const vw = rect.width, vh = rect.height;
     const vLeft   = -view.tx / view.scale - BUFFER;
