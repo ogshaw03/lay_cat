@@ -4179,7 +4179,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.110';
+const APP_VERSION='2026.10.06.111';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7421,6 +7421,35 @@ function renderProjReference(main, root){
   window.addEventListener('resize', onResize);
   state._refCleanup.push(()=>window.removeEventListener('resize', onResize));
 }
+/* 資料タブ：画像／動画の拡大モーダル（v.111）。
+   クリックで開く。ESC・背景クリック・× で閉じる。URL 解決は storage.getURLRetry。 */
+function openRefMediaModal(mediaRef, mediaType, label){
+  if(!mediaRef) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'ref-media-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;backdrop-filter:blur(6px)';
+  overlay.onclick = ()=>closeModal();
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = '×';
+  close.style.cssText = 'position:absolute;top:14px;right:20px;background:rgba(10,10,14,0.6);border:1px solid rgba(255,255,255,0.15);color:#fff;font-size:28px;line-height:1;cursor:pointer;padding:2px 14px;border-radius:8px;z-index:1';
+  close.onclick = (e)=>{ e.stopPropagation(); closeModal(); };
+  const media = (mediaType === 'video') ? document.createElement('video') : document.createElement('img');
+  media.style.cssText = 'max-width:92vw;max-height:92vh;object-fit:contain;box-shadow:0 20px 60px rgba(0,0,0,0.6);border-radius:6px;background:#0a0a0e';
+  if(mediaType === 'video'){ media.controls = true; media.autoplay = true; media.playsInline = true; }
+  else{ media.alt = label || ''; }
+  media.onclick = (e)=>e.stopPropagation();
+  overlay.appendChild(media);
+  overlay.appendChild(close);
+  document.body.appendChild(overlay);
+  const esc = (e)=>{ if(e.key === 'Escape'){ e.stopPropagation(); closeModal(); } };
+  window.addEventListener('keydown', esc, true);
+  function closeModal(){
+    try{ overlay.remove(); }catch(_){}
+    window.removeEventListener('keydown', esc, true);
+  }
+  storage.getURLRetry(mediaRef, 3).then(u=>{ if(u) media.src = u; }).catch(()=>{});
+}
 /* 資料タブ：アイテム 1 件分の DOM を生成するヘルパ */
 function _refBuildItem(it){
   const n = el('div','ref-item ref-'+it.type);
@@ -7466,6 +7495,28 @@ function _refBuildItem(it){
       /* 非同期で URL 解決（R2/FSA 両対応） */
       storage.getURLRetry(it.mediaRef, 3).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
       n.appendChild(inner);
+      /* v.111：画像/動画クリックで拡大モーダル。
+         - 編集 OFF：シングルクリックで拡大（ドラッグ中は mousedown→mousemove で発火抑制）。
+         - 編集 ON：ダブルクリックで拡大（単発クリックは選択・移動を優先）。
+         動画の場合は controls を優先するため、画像のみ編集 OFF のクリックで開く。 */
+      if(it.mediaType !== 'video'){
+        let _down=null, _moved=false;
+        inner.addEventListener('mousedown',(ev)=>{ _down={x:ev.clientX,y:ev.clientY}; _moved=false; });
+        inner.addEventListener('mousemove',(ev)=>{ if(_down && (Math.abs(ev.clientX-_down.x)>3 || Math.abs(ev.clientY-_down.y)>3)) _moved=true; });
+        inner.addEventListener('click',(ev)=>{
+          if(state.refEditMode) return;      /* 編集中は dblclick で開く */
+          if(_moved){ _down=null; return; }
+          ev.stopPropagation();
+          openRefMediaModal(it.mediaRef, it.mediaType, it.label);
+          _down=null;
+        });
+        inner.style.cursor = state.refEditMode ? '' : 'zoom-in';
+      }
+      n.addEventListener('dblclick',(ev)=>{
+        /* 編集中もダブルクリックで拡大（画像／動画どちらも対応） */
+        ev.stopPropagation();
+        openRefMediaModal(it.mediaRef, it.mediaType, it.label);
+      });
     }else{
       const ph = el('div','ref-image-ph');
       ph.appendChild(el('div','ic','🖼'));

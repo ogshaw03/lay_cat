@@ -739,7 +739,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.061';
+const APP_VERSION='2026.10.06.062';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1046,8 +1046,18 @@ const storage = {
     if(!path) return null;
     if(this._urlCache.has(path)) return this._urlCache.get(path);
     if(!this.dirHandle) return null;
+    /* v.062：LayCAT 本体が書き込む "p:<pid>|<path>" / "r2:<pid>|<path>" 形式に対応。
+       - p: は "|" 以降のパスだけ切り出して dirHandle 基準でローカル解決（PMB は 1 プロジェクト 1 フォルダ接続）
+       - r2: は PMB 非対応（null を返す）
+       - プレフィックスなしは従来通りそのまま使う（レガシー PMB-written 用） */
+    let relPath = path;
+    if(path.startsWith('r2:')) return null;
+    if(path.startsWith('p:')){
+      const i = path.indexOf('|');
+      if(i >= 0) relPath = path.slice(i+1);
+    }
     try{
-      const parts = path.split('/');
+      const parts = relPath.split('/');
       let cur = this.dirHandle;
       for(let i=0;i<parts.length-1;i++){cur=await cur.getDirectoryHandle(parts[i])}
       const fh = await cur.getFileHandle(parts[parts.length-1]);
@@ -1079,7 +1089,10 @@ const storage = {
   },
   async putReferenceMedia(filename, blob){
     const ok = await this.writeBlob('reference/Media/'+filename, blob);
-    return ok ? 'reference/Media/'+filename : null;
+    if(!ok) return null;
+    /* v.062：LayCAT 本体と相互運用するため、mediaRef を "p:<pid>|reference/Media/<fn>" 形式で返す。
+       pid が無い（接続前など）場合は従来の素のパスにフォールバック。 */
+    return this.pid ? ('p:'+this.pid+'|reference/Media/'+filename) : ('reference/Media/'+filename);
   },
 };
 
@@ -3974,6 +3987,34 @@ document.getElementById('tabs').addEventListener('click',e=>{
    目次クリックでパン・viewport virtualization）。
    実データ連携・編集 UI は後続タスク。 */
 const REF_MOCK_ITEMS = []; /* v.095 (laycat) / v.047 (pmboard)：デモ用モック資料は撤去。空プロジェクトは本当に空の状態で表示する */
+/* 資料タブ：画像／動画の拡大モーダル（v.062）。LayCAT 本体 v.111 と同仕様。 */
+function openRefMediaModal(mediaRef, mediaType, label){
+  if(!mediaRef) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'ref-media-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;backdrop-filter:blur(6px)';
+  overlay.onclick = ()=>closeModal();
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = '×';
+  close.style.cssText = 'position:absolute;top:14px;right:20px;background:rgba(10,10,14,0.6);border:1px solid rgba(255,255,255,0.15);color:#fff;font-size:28px;line-height:1;cursor:pointer;padding:2px 14px;border-radius:8px;z-index:1';
+  close.onclick = (e)=>{ e.stopPropagation(); closeModal(); };
+  const media = (mediaType === 'video') ? document.createElement('video') : document.createElement('img');
+  media.style.cssText = 'max-width:92vw;max-height:92vh;object-fit:contain;box-shadow:0 20px 60px rgba(0,0,0,0.6);border-radius:6px;background:#0a0a0e';
+  if(mediaType === 'video'){ media.controls = true; media.autoplay = true; media.playsInline = true; }
+  else{ media.alt = label || ''; }
+  media.onclick = (e)=>e.stopPropagation();
+  overlay.appendChild(media);
+  overlay.appendChild(close);
+  document.body.appendChild(overlay);
+  const esc = (e)=>{ if(e.key === 'Escape'){ e.stopPropagation(); closeModal(); } };
+  window.addEventListener('keydown', esc, true);
+  function closeModal(){
+    try{ overlay.remove(); }catch(_){}
+    window.removeEventListener('keydown', esc, true);
+  }
+  storage.resolveMediaUrl(mediaRef).then(u=>{ if(u) media.src = u; }).catch(()=>{});
+}
 function _refBuildItem(it){
   const n = document.createElement('div');
   n.className = 'ref-item ref-'+it.type;
@@ -4014,6 +4055,26 @@ function _refBuildItem(it){
       /* v.046：mediaRef は "reference/Media/<filename>" のフォルダパス */
       storage.resolveMediaUrl(it.mediaRef).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
       n.appendChild(inner);
+      /* v.062：画像/動画クリックで拡大モーダル（LayCAT 本体 v.111 と同仕様）。
+         編集 OFF：画像のシングルクリックで拡大（ドラッグは発火抑制）
+         編集 ON ：ダブルクリックで拡大（単発クリックは選択・移動を優先） */
+      if(it.mediaType !== 'video'){
+        let _down=null, _moved=false;
+        inner.addEventListener('mousedown',(ev)=>{ _down={x:ev.clientX,y:ev.clientY}; _moved=false; });
+        inner.addEventListener('mousemove',(ev)=>{ if(_down && (Math.abs(ev.clientX-_down.x)>3 || Math.abs(ev.clientY-_down.y)>3)) _moved=true; });
+        inner.addEventListener('click',(ev)=>{
+          if(_REF_STATE.editMode) return;
+          if(_moved){ _down=null; return; }
+          ev.stopPropagation();
+          openRefMediaModal(it.mediaRef, it.mediaType, it.label);
+          _down=null;
+        });
+        inner.style.cursor = _REF_STATE.editMode ? '' : 'zoom-in';
+      }
+      n.addEventListener('dblclick',(ev)=>{
+        ev.stopPropagation();
+        openRefMediaModal(it.mediaRef, it.mediaType, it.label);
+      });
     }else{
       const ph = document.createElement('div'); ph.className='ref-image-ph';
       const ic = document.createElement('div'); ic.className='ic'; ic.textContent='🖼';
