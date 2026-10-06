@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.116';
+const APP_VERSION='2026.10.06.117';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7102,8 +7102,10 @@ function renderProjReference(main, root){
   window.addEventListener('keydown', onRefKey);
   state._refCleanup.push(()=>window.removeEventListener('keydown', onRefKey));
   /* v.097／v.102：タイトル／テキストをダブルクリックでインライン編集。
-     既存 DOM ノードをその場で contenteditable 化（破棄・再生成しない）→ フォーカス維持。 */
-  canvas.addEventListener('dblclick', (e)=>{
+     既存 DOM ノードをその場で contenteditable 化（破棄・再生成しない）→ フォーカス維持。
+     v.117：listener を canvas から vp に移動。canvas は幅 0x0 なので非編集モードで text が
+     pointer-events:none のとき dblclick は vp に落ち、canvas までは bubble しない（canvas は vp の子）。 */
+  vp.addEventListener('dblclick', (e)=>{
     /* v.116：編集モード OFF でもダブルクリックで「文字選択モード」に入れるようにする。
        編集はできないが、ディレクトリパスなどのテキストを選択してコピーできる。
        hitTestItem で座標から対象を特定（text/title は pointer-events:none なので DOM target では拾えない）。 */

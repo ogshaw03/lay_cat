@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.069';
+const APP_VERSION='2026.10.06.070';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4817,8 +4817,10 @@ async function _refInit(){
   };
   window.addEventListener('keydown', onRefKey);
   /* v.049／v.053：タイトル／テキストをダブルクリックでインライン編集。
-     既存 DOM ノードをその場で contenteditable 化（フォーカス維持）。 */
-  canvas.addEventListener('dblclick', (e)=>{
+     既存 DOM ノードをその場で contenteditable 化（フォーカス維持）。
+     v.070：listener を canvas → vp に。canvas は幅 0x0 なので、非編集モードで text が
+     pointer-events:none のとき dblclick ターゲットが vp になり canvas までは bubble しない。 */
+  vp.addEventListener('dblclick', (e)=>{
     /* v.069：編集 OFF でもダブルクリックで「文字選択モード」に入れるようにする（LayCAT v.116 と同仕様）。 */
     if(!_REF_STATE.editMode){
       const hit = hitTestItem(e.clientX, e.clientY);
