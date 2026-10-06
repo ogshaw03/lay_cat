@@ -18,6 +18,17 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.104) **資料タブ：日本語タイトルを編集すると縦書き風になる問題を修正（LayCAT）**：
+  - 事象：日本語のタイトル／テキストをダブルクリックで編集すると、1 文字ずつ折り返されて縦書きのように見えていた。英語では発生しない。
+  - 原因：`.ref-item.editing` に `white-space:normal!important` + `min-width:40px` を設定していたため、固定幅のないタイトルが「幅 40px の箱＋通常改行」で CJK 文字をどこでも折り返す状態になっていた（英語は単語区切りなので目立たなかっただけ）。
+  - 修正：
+    - `.ref-item.editing` から `white-space:normal!important` を削除
+    - `.ref-item.ref-title.editing` に `white-space:nowrap!important` を追加（タイトルは 1 行で伸びる）
+    - `.ref-item.ref-text.editing` に `white-space:pre-wrap!important` + `word-break:break-word` を追加（テキストは幅内で折り返す）
+    - `min-width` を 40px → 24px に縮小（空の編集中箱が小さくなりすぎず、かつ目立ちすぎない）
+  - 書き込み系副作用なし（表示のみ）。
+  - APP_VERSION：2026.10.06.103 → 2026.10.06.104
+
 - (dev v2026.10.06.103) **資料タブ：クリック選択時に DOM 再構築せず dblclick を発火可能に（LayCAT）**：
   - 事象：v.102 でダブルクリック編集を実装したが実際にはまだ編集に入れなかった。
   - 原因：クリック選択のたびに `renderVisible` が全アイテムを `remove()` → `append()` で作り直していたため、ブラウザが「同じ要素への 2 連打」として dblclick を検出できなかった。
@@ -3389,6 +3400,10 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.06.055) **資料タブ：日本語タイトル編集時の縦書き化を修正（PMB、LayCAT v.104 連動）**：
+  - `.ref-item.editing` から `white-space:normal!important` を削除、title=nowrap / text=pre-wrap に分離。
+  - APP_VERSION：2026.10.06.054 → 2026.10.06.055
 
 - (dev v2026.10.06.054) **資料タブ：クリック選択時に DOM 再構築せず dblclick を発火可能に（PMB、LayCAT v.103 連動）**：
   - クリック選択の DOM 更新を `.selected` クラスの差分適用だけに変更。dblclick が正しく発火。

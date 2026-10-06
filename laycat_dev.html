@@ -286,7 +286,12 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .ref-ctrls button.ref-edit-btn.on{background:#4a9eff;border-color:#4a9eff;color:#0a0a0e}
 .ref-main.edit-mode{box-shadow:inset 0 0 0 3px rgba(74,158,255,0.45)}
 /* v.097：タイトル／テキストのインライン編集中スタイル */
-.ref-item.editing{outline:2px solid #ffd36a!important;outline-offset:2px;box-shadow:0 0 0 2px rgba(255,211,106,0.3);cursor:text;background:rgba(255,211,106,0.08);z-index:7;pointer-events:auto!important;white-space:normal!important;min-width:40px}
+/* v.104：editing 時に white-space:normal を全体に強制していたため、固定幅のない
+   タイトルが min-width:40px の狭い箱で日本語を 1 文字ずつ折り返して縦書き風になっていた。
+   title は nowrap 維持、text だけ pre-wrap を許可。min-width は小さめで維持。 */
+.ref-item.editing{outline:2px solid #ffd36a!important;outline-offset:2px;box-shadow:0 0 0 2px rgba(255,211,106,0.3);cursor:text;background:rgba(255,211,106,0.08);z-index:7;pointer-events:auto!important;min-width:24px}
+.ref-item.ref-title.editing{white-space:nowrap!important}
+.ref-item.ref-text.editing{white-space:pre-wrap!important;word-break:break-word}
 .ref-item.editing:focus{outline:2px solid #ffd36a!important}
 /* v.092：資料タブ 編集ツールバー（画面上部に浮かせる） */
 .ref-toolbar{position:absolute;top:10px;left:12px;right:12px;display:none;z-index:4;background:rgba(10,10,14,0.86);border:1px solid var(--border);border-radius:9px;padding:5px 8px;align-items:center;gap:4px;flex-wrap:wrap;backdrop-filter:blur(6px)}
@@ -4169,7 +4174,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.103';
+const APP_VERSION='2026.10.06.104';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
