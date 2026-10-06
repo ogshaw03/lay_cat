@@ -2266,6 +2266,9 @@ const storage={
     async getBlob(key){try{const r=await this._fetch('GET','/api/r2/'+key);if(!r.ok)return null;return await r.blob()}catch(_){return null}},
     async getJson(key){try{const r=await this._fetch('GET','/api/r2/'+key);if(!r.ok)return null;return await r.json()}catch(_){return null}},
     async putJson(key,obj){return this.put(key,JSON.stringify(obj,null,2),'application/json')},
+    /* v.090：prefix 配下のオブジェクト列挙（Worker 側 /api/r2/list/<prefix>）。
+       資料タブで reference/items/*.json を列挙する用途。 */
+    async listByPrefix(prefix){try{const r=await this._fetch('GET','/api/r2/list/'+prefix);if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}},
     async purge(pid){try{const r=await this._fetch('DELETE','/api/r2/purge/projects/'+pid+'/');return r.ok}catch(_){return false}},
     async ping(){try{const ep=this.endpoint();if(!ep)return false;const tok=await this._token();if(!tok)return false;/* 存在しないダミー key を GET し、404 が返ることで到達＋認証を確認 */const r=await fetch(ep+'/api/r2/projects/__ping__/nothing.json',{method:'GET',headers:{authorization:'Bearer '+tok}});return r.status===404||r.status===200}catch(_){return false}},
     /* _access.json 管理：Worker 側で owner/members 判定に使う小さな JSON。
@@ -2585,7 +2588,7 @@ const storage={
   },
   /* backend は削除前に外から明示的に渡すのが望ましい（DB/REG から node/entry が消えた後だと _backend が folder に戻ってしまい R2 purge が呼ばれない）。
      省略時は _backend で判定するが、フォールバック扱い。 */
-  async delProject(id,backend){try{localStorage.removeItem('layna_proj_'+id)}catch(_){}try{localStorage.removeItem('layna_reels_'+id)}catch(_){}try{await idbDel('kv','proj_'+id)}catch(_){}try{const ph=await this.projRoot(id);if(ph){try{await ph.removeEntry(this._projFileName)}catch(_){}try{await ph.removeEntry(this._projFileNameOld)}catch(_){}/* Phase 1/2: 個別サブミット / ショット JSON も掃除（残しても実害は無いが混乱防止） */try{await ph.removeEntry('submits',{recursive:true})}catch(_){}try{await ph.removeEntry('shots',{recursive:true})}catch(_){}/* リールも共有フォルダから削除（reels/reels.json） */try{await ph.removeEntry('reels',{recursive:true})}catch(_){}}}catch(_){}const be=backend||this._backend(id);if(be==='r2'){try{await this._r2.purge(id)}catch(_){}}/* 変更検知キャッシュも破棄 */try{delete _saveCache.submit[id];delete _saveCache.shot[id];delete _saveCache.proj[id];delete _saveCache.reels[id]}catch(_){}},
+  async delProject(id,backend){try{localStorage.removeItem('layna_proj_'+id)}catch(_){}try{localStorage.removeItem('layna_reels_'+id)}catch(_){}try{await idbDel('kv','proj_'+id)}catch(_){}try{const ph=await this.projRoot(id);if(ph){try{await ph.removeEntry(this._projFileName)}catch(_){}try{await ph.removeEntry(this._projFileNameOld)}catch(_){}/* Phase 1/2: 個別サブミット / ショット JSON も掃除（残しても実害は無いが混乱防止） */try{await ph.removeEntry('submits',{recursive:true})}catch(_){}try{await ph.removeEntry('shots',{recursive:true})}catch(_){}/* リールも共有フォルダから削除（reels/reels.json） */try{await ph.removeEntry('reels',{recursive:true})}catch(_){}/* v.090：資料タブのサブフォルダ reference/ も掃除 */try{await ph.removeEntry('reference',{recursive:true})}catch(_){}}}catch(_){}const be=backend||this._backend(id);if(be==='r2'){try{await this._r2.purge(id)}catch(_){}}/* 変更検知キャッシュも破棄 */try{delete _saveCache.submit[id];delete _saveCache.shot[id];delete _saveCache.proj[id];delete _saveCache.reels[id]}catch(_){}},
   /* リール：プロジェクトフォルダ内 reels/reels.json に格納（共有可能）。フォルダ未設定なら localStorage */
   async loadReels(id){
     if(this._backend(id)==='r2'){
@@ -2616,6 +2619,81 @@ const storage={
     /* フォルダ設定済みだがアクセス権無し：古い内容で上書きしない（プロジェクトデータと同方針） */
     if(await this.hasFolderConfigured(id))return false;
     this._lsSet('layna_reels_'+id,out);return true;
+  },
+  /* v.090：資料タブ 実データ層。細粒度 JSON（1 アイテム = 1 ファイル）で競合回避。
+     レイアウト：
+       <project folder>/reference/
+         ├── items/<itemId>.json   アイテム 1 件分の情報（type, x, y, w, h, text, color, 画像 ref, 等）
+         └── Media/<uuid>.<ext>    画像・動画の実データ（putReferenceMedia 経由）
+     - LayCAT 本体・pmboard の両方から同じ `<pid>/reference/` を読み書きする。
+     - 複数人同時編集：各自が別アイテムを編集する限り競合しない。
+       同一アイテムの同時編集は last-write-wins（通常の運用では事故にはならない前提）。
+     - 書き込み境界：reference/ 配下のみ。shots/, status/, submits/, reels.json, laycat.project.json
+       等への副作用は一切なし。persist() 不発火。 */
+  async loadReferenceItems(id){
+    const items=[];
+    if(this._backend(id)==='r2'){
+      const prefix='projects/'+id+'/reference/items/';
+      const keys=await this._r2.listByPrefix(prefix);
+      if(!keys.length)return [];
+      const results=await Promise.all(keys.filter(k=>k.endsWith('.json')).map(async k=>{
+        try{return await this._r2.getJson(k)}catch(_){return null}
+      }));
+      for(const r of results){if(r&&r.id)items.push(r)}
+      return items;
+    }
+    const ph=await this.projRoot(id);if(!ph)return [];
+    try{
+      const refDir=await ph.getDirectoryHandle('reference');
+      const itemsDir=await refDir.getDirectoryHandle('items');
+      if(typeof itemsDir.entries!=='function'&&typeof itemsDir.keys!=='function')return [];
+      const names=[];
+      if(typeof itemsDir.entries==='function'){
+        for await(const [name,handle] of itemsDir.entries()){
+          if(!name.endsWith('.json'))continue;
+          if(handle&&handle.kind&&handle.kind!=='file')continue;
+          names.push(name);
+        }
+      }else{
+        for await(const name of itemsDir.keys()){if(name.endsWith('.json'))names.push(name)}
+      }
+      const files=await Promise.all(names.map(async name=>{
+        try{const fh=await itemsDir.getFileHandle(name);return JSON.parse(await (await fh.getFile()).text());}
+        catch(_){return null}
+      }));
+      for(const r of files){if(r&&r.id)items.push(r)}
+      return items;
+    }catch(_){return []}
+  },
+  async saveReferenceItem(id,item){
+    if(!item||!item.id)return false;
+    const key='reference/items/'+item.id+'.json';
+    if(this._backend(id)==='r2'){
+      if(!this._r2.endpoint())return false;
+      return await this._r2.putJson('projects/'+id+'/'+key,item);
+    }
+    const ph=await this.projRoot(id);if(!ph)return false;
+    try{
+      await this._write(()=>this._subdir('reference/items',ph,true),item.id+'.json',JSON.stringify(item,null,2));
+      return true;
+    }catch(_){return false}
+  },
+  async deleteReferenceItem(id,itemId){
+    if(!itemId)return false;
+    if(this._backend(id)==='r2'){
+      return await this._r2.del('projects/'+id+'/reference/items/'+itemId+'.json');
+    }
+    const ph=await this.projRoot(id);if(!ph)return false;
+    try{
+      const refDir=await ph.getDirectoryHandle('reference');
+      const itemsDir=await refDir.getDirectoryHandle('items');
+      await itemsDir.removeEntry(itemId+'.json');
+      return true;
+    }catch(_){return false}
+  },
+  async putReferenceMedia(id,filename,blob){
+    /* reference/Media/<filename> に書き込み。既存 putMedia 経由。戻り値：ref（p: or r2: 形式） */
+    return await this.putMedia('reference/Media',filename,blob,{projectId:id});
   },
   /* v.018：マイルストーン。プロジェクト直下 milestones.json に別ファイルで保存。
      shot.json / laycat.project.json は一切触らない（ユーザー要望：書込境界を分離）。
@@ -4031,7 +4109,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.089';
+const APP_VERSION='2026.10.06.090';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6319,8 +6397,31 @@ const REF_MOCK_ITEMS = [
 function renderProjReference(main, root){
   main.innerHTML='';
   if(!state.refView) state.refView = { tx: 60, ty: 60, scale: 0.5 };
+  if(!state.refItemsByPid) state.refItemsByPid = {};
   const view = state.refView;
-  const items = REF_MOCK_ITEMS;
+  /* v.090：実データロード。state.refItemsByPid[pid] にキャッシュして再描画の重複フェッチを避ける。
+     空プロジェクトは REF_MOCK_ITEMS を暫定表示（Phase 2 で編集モードから実アイテムを追加できたら
+     mock は自然に押しのけられる。目視デモ用途として温存）。 */
+  let items = state.refItemsByPid[root.id];
+  if(!items){
+    items = []; /* ロード完了まで空のまま描画 */
+    state.refItemsByPid[root.id] = items;
+    (async()=>{
+      try{
+        const loaded = await storage.loadReferenceItems(root.id);
+        if(Array.isArray(loaded) && loaded.length){
+          state.refItemsByPid[root.id] = loaded;
+          /* 現在開いているタブがまだ資料なら再描画して反映 */
+          if(state.projTab==='reference' && state.currentId===root.id){
+            try{ render(); }catch(_){}
+          }
+        }
+      }catch(_){}
+    })();
+    /* 初回：loaded 完了まで mock を表示（空プロジェクトでも何か見える） */
+    items = REF_MOCK_ITEMS;
+  }
+  if(!items.length) items = REF_MOCK_ITEMS; /* 読み込み完了して空ならデモを出す（Phase 2 で add 機能実装後は実アイテムで置換される） */
   const titleItems = items.filter(x=>x.type==='title');
   const root_=el('div','ref-root');
   /* 左サイドバー：目次 */

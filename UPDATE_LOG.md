@@ -18,6 +18,27 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.090) **資料タブ Phase 1：実データ層（細粒度 JSON）＋ローダー導入**：
+  - 編集モード実装（Phase 2 以降）に先立ち、競合回避を優先した細粒度 JSON の実データ層を導入。
+  - **ファイルレイアウト**：
+    - `<project folder>/reference/items/<itemId>.json` … アイテム 1 件 = 1 ファイル（type, x, y, w, h, text, color, 画像 ref 等）
+    - `<project folder>/reference/Media/<uuid>.<ext>` … 画像・動画の実データ
+  - **新規 storage API**（R2 / FSA 両対応）：
+    - `storage.loadReferenceItems(pid)` … `reference/items/*.json` を全列挙してロード（FSA は directory iteration、R2 は `_r2.listByPrefix` 経由）
+    - `storage.saveReferenceItem(pid, item)` … 1 アイテムのみ書き込み（他アイテム・他ファイルは触らない → 競合最小）
+    - `storage.deleteReferenceItem(pid, itemId)` … 該当ファイルのみ削除
+    - `storage.putReferenceMedia(pid, filename, blob)` … `reference/Media/` に実データ保存、既存 `putMedia` に委譲
+    - `_r2.listByPrefix(prefix)` … Worker `/api/r2/list/<prefix>` 経由で R2 列挙
+  - **ローダー統合**：`renderProjReference` で `state.refItemsByPid[pid]` にキャッシュして非同期ロード。空プロジェクトは `REF_MOCK_ITEMS` を暫定表示（Phase 2 で add 機能が入ったら自然に実アイテムで置換される）。
+  - **プロジェクト削除時のクリーンアップ**：`delProject` に `reference/` サブフォルダ削除を追加（既存の `shots/` `submits/` `reels/` 削除と同列）。
+  - **書き込み境界（CLAUDE.md 準拠）**：
+    - `reference/items/*.json` と `reference/Media/*` のみ新規書込・削除
+    - 既存の `shots/` / `status/` / `submits/` / `laycat.project.json` / `reels.json` / その他 project 側データへの副作用一切なし
+    - `persist()` 不発火（REG 全体保存は呼ばない）
+    - 複数人同時編集：各自が別アイテムを編集する限り競合しない（同一アイテムは last-write-wins）
+  - APP_VERSION：2026.10.06.089 → 2026.10.06.090
+  - 続く Phase 2〜5：編集モード UI、ツールバー、リサイズ、右クリックメニュー、クリップボードペースト、PMB 移植。
+
 - (dev v2026.10.06.089) **資料タブ：目次クリックで資料範囲（group）にフィットするよう pan + zoom をアニメーション**：
   - 事象：従来は目次クリックでパンのみ（スケール維持）だったが、資料ごとにサイズが異なるため「カテゴリ全体を見渡す」操作に手動ズームが必要だった。
   - 修正：
