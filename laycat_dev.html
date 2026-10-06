@@ -4031,7 +4031,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.088';
+const APP_VERSION='2026.10.06.089';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6372,19 +6372,21 @@ function renderProjReference(main, root){
       canvas.appendChild(node);
     }
   };
-  /* ---------- イージング付き pan アニメーション ----------
+  /* ---------- イージング付き view アニメーション ----------
      v.087：目次クリックで一瞬で切り替わると「どこに移動したか」が分かりにくいため、
-     easeInOutQuad で ~500ms かけてスッと移動する。
-     ドラッグやホイールで割り込まれたら即キャンセル（applyTransform 直接呼びに戻る）。 */
+     easeInOutQuad で ~250ms かけてスッと移動する。
+     v.089：pan に加えて scale も同時にアニメーション（目次クリックで資料範囲へズーム）。
+     ドラッグやホイールで割り込まれたら即キャンセル。 */
   let _refAnimRaf = 0;
   const easeInOutQuad = t => t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t;
-  const animatePanTo = (targetTx, targetTy, duration)=>{
-    duration = duration || 250; /* v.088：目視追従できる最低限の速度まで短縮 */
-    if(_refAnimRaf){ cancelAnimationFrame(_refAnimRaf); _refAnimRaf=0; }
-    const startTx = view.tx, startTy = view.ty;
-    const dx = targetTx - startTx, dy = targetTy - startTy;
-    if(Math.abs(dx) < 1 && Math.abs(dy) < 1){
-      view.tx = targetTx; view.ty = targetTy; applyTransform(); return;
+  const cancelAnim = ()=>{ if(_refAnimRaf){ cancelAnimationFrame(_refAnimRaf); _refAnimRaf=0; } };
+  const animateViewTo = (targetTx, targetTy, targetScale, duration)=>{
+    duration = duration || 250;
+    cancelAnim();
+    const startTx = view.tx, startTy = view.ty, startSc = view.scale;
+    const dx = targetTx - startTx, dy = targetTy - startTy, ds = targetScale - startSc;
+    if(Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(ds) < 0.001){
+      view.tx = targetTx; view.ty = targetTy; view.scale = targetScale; applyTransform(); return;
     }
     const t0 = performance.now();
     const step = (now)=>{
@@ -6392,13 +6394,13 @@ function renderProjReference(main, root){
       const k = easeInOutQuad(t);
       view.tx = startTx + dx * k;
       view.ty = startTy + dy * k;
+      view.scale = startSc + ds * k;
       applyTransform();
       if(t < 1) _refAnimRaf = requestAnimationFrame(step);
       else _refAnimRaf = 0;
     };
     _refAnimRaf = requestAnimationFrame(step);
   };
-  const cancelAnim = ()=>{ if(_refAnimRaf){ cancelAnimationFrame(_refAnimRaf); _refAnimRaf=0; } };
   /* ---------- 目次ビルド ---------- */
   const rebuildToc = ()=>{
     toc.innerHTML='';
@@ -6408,12 +6410,21 @@ function renderProjReference(main, root){
       row.appendChild(dot);
       row.appendChild(document.createTextNode(t.text||''));
       row.onclick=()=>{
-        /* クリック時：そのタイトルの位置が画面左上少し内側に来るようにパン。
-           スケールは維持。easeInOutQuad の ~500ms アニメーションで滑らかに移動。 */
-        const targetScale = view.scale;
-        const targetTx = -t.x * targetScale + 80;
-        const targetTy = -t.y * targetScale + 60;
-        animatePanTo(targetTx, targetTy);
+        /* v.089：タイトルを含む group（枠図形）のバウンディングボックスにフィットするよう
+           pan + zoom を同時にアニメーション。group が見つからなければタイトル周辺を適当な
+           バウンディングとして扱う（モックでは全タイトルが group 内に収まる想定）。 */
+        const g = items.find(x => x.type==='group'
+          && t.x >= x.x && t.x <= x.x + x.w
+          && t.y >= x.y && t.y <= x.y + x.h);
+        const b = g ? {x:g.x, y:g.y, w:g.w, h:g.h} : {x:t.x-40, y:t.y-40, w:800, h:600};
+        const rect = vp.getBoundingClientRect();
+        const pad = 40;
+        const sx = (rect.width  - pad*2) / b.w;
+        const sy = (rect.height - pad*2) / b.h;
+        const targetScale = Math.max(0.08, Math.min(sx, sy, 2)); /* 2x でキャップ */
+        const targetTx = -b.x * targetScale + (rect.width  - b.w * targetScale) / 2;
+        const targetTy = -b.y * targetScale + (rect.height - b.h * targetScale) / 2;
+        animateViewTo(targetTx, targetTy, targetScale);
         toc.querySelectorAll('.ref-toc-item').forEach(x=>x.classList.remove('active'));
         row.classList.add('active');
       };
