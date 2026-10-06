@@ -3284,6 +3284,23 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.046) **資料タブ Phase 5：PMB 移植（編集モード・ツールバー・リサイズ・右クリック・ペースト）**：
+  - LayCAT 本体 v.090〜v.093 で実装した編集モード一式を pmboard にも移植。LayCAT と同じプロジェクトフォルダ（`<project>/reference/items/*.json` + `<project>/reference/Media/<uuid>.*`）を読み書きするため、両ツールから同じ資料キャンバスを編集可能。
+  - pmboard の `storage` に追加：
+    - `writeBlob(path, blob)` / `removeFile(path)` / `resolveMediaUrl(path)`（キャッシュ付き）
+    - `loadReferenceItems()` / `saveReferenceItem(item)` / `deleteReferenceItem(itemId)` / `putReferenceMedia(filename, blob)`
+  - `_refInit` を async に変更：ロード完了後に描画。モックは空プロジェクト時のデモ表示用。
+  - 編集モード機能：
+    - 編集 ON/OFF トグル（右下コントロール）
+    - Alt+ドラッグで pan、クリックで単独選択、Shift+クリックでトグル、空白ドラッグで範囲選択
+    - 選択アイテムのドラッグ移動、Delete/Backspace で削除、Esc で選択解除
+    - 単一選択時 4 隅リサイズハンドル
+    - 上部ツールバー：大/中/小タイトル・テキスト・図形プルダウン（四角/円）・画像/動画アップロード・B/U・文字サイズ/色・図形色/透明度
+    - 右クリックメニュー：各種揃え・コピー・貼付・サイズ統一
+    - Ctrl+C / Ctrl+V（画像ペースト含む）
+  - 保存：`storage.saveReferenceItem` を 350ms デバウンス書込（アイテム単位の細粒度書込で競合最小）
+  - APP_VERSION：2026.10.06.045 → 2026.10.06.046
+
 - (dev v2026.10.06.045) **資料タブ：目次クリックで資料範囲（group）にフィットするよう pan + zoom をアニメーション（LayCAT v.089 連動）**：
   - `animateViewTo` で pan と scale を同時アニメーション。タイトルを含む group のバウンディングボックスにフィット。
   - 書き込み系副作用なし（表示のみ）。

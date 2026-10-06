@@ -199,6 +199,40 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
   linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
   linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
   background-size:100px 100px;background-position:0 0}
+/* v.046：資料タブ 編集モード */
+.ref-main.edit-mode .ref-canvas{cursor:default}
+.ref-main.edit-mode.panning .ref-canvas{cursor:grabbing}
+.ref-item.selected{outline:2px solid #4a9eff;outline-offset:2px;box-shadow:0 0 0 2px rgba(74,158,255,0.3);z-index:5}
+.ref-item.ref-group.selected{outline-color:#4a9eff;outline-style:solid;z-index:1}
+.ref-rubber{position:absolute;border:1px dashed #4a9eff;background:rgba(74,158,255,0.08);pointer-events:none;z-index:10}
+.ref-ctrls button.ref-edit-btn.on{background:#4a9eff;border-color:#4a9eff;color:#0a0a0e;font-weight:700}
+.ref-toolbar{position:absolute;top:10px;left:12px;right:12px;display:none;z-index:4;background:rgba(10,10,14,0.86);border:1px solid var(--border);border-radius:9px;padding:5px 8px;align-items:center;gap:4px;flex-wrap:wrap;backdrop-filter:blur(6px)}
+.ref-main.edit-mode .ref-toolbar{display:flex}
+.ref-toolbar .tb-grp{display:flex;align-items:center;gap:2px;padding:0 6px;border-right:1px solid var(--border);height:28px}
+.ref-toolbar .tb-grp:last-child{border-right:0}
+.ref-toolbar button, .ref-toolbar select{background:transparent;border:1px solid transparent;color:var(--text2);font-family:inherit;font-size:11px;padding:4px 9px;border-radius:5px;cursor:pointer;height:26px;display:inline-flex;align-items:center;justify-content:center;min-width:28px}
+.ref-toolbar button:hover, .ref-toolbar select:hover{background:var(--bg3);color:var(--text);border-color:var(--border2)}
+.ref-toolbar input[type=number]{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:3px 5px;border-radius:5px;width:48px;height:26px;box-sizing:border-box}
+.ref-toolbar input[type=range]{height:26px;width:80px}
+.ref-toolbar input[type=color]{background:transparent;border:1px solid var(--border);border-radius:5px;width:30px;height:26px;padding:1px;cursor:pointer}
+.ref-toolbar select{min-width:62px;padding-right:16px}
+.ref-toolbar .tb-lbl{font-size:10px;color:var(--text3);font-family:var(--font-head);letter-spacing:0.5px;margin-right:3px}
+.ref-item.ref-text{font-family:var(--font-body);color:var(--text);line-height:1.3;pointer-events:none;white-space:pre-wrap;word-break:break-word}
+.ref-item.ref-shape{box-sizing:border-box;border:2px solid;pointer-events:none}
+.ref-item.ref-shape.shape-circle{border-radius:50%}
+.ref-main.edit-mode .ref-item{pointer-events:auto}
+.ref-handles{position:absolute;pointer-events:none;z-index:6}
+.ref-handles .rh{position:absolute;width:11px;height:11px;background:#4a9eff;border:1.5px solid #0a0a0e;border-radius:50%;pointer-events:auto;transform:translate(-50%,-50%);box-shadow:0 0 0 1px rgba(255,255,255,0.3)}
+.ref-handles .rh.nw{cursor:nw-resize;left:0;top:0}
+.ref-handles .rh.ne{cursor:ne-resize;left:100%;top:0}
+.ref-handles .rh.sw{cursor:sw-resize;left:0;top:100%}
+.ref-handles .rh.se{cursor:se-resize;left:100%;top:100%}
+.ref-ctx{position:absolute;z-index:20;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:5px 0;min-width:170px;box-shadow:0 8px 24px rgba(0,0,0,0.4);font-family:inherit;font-size:12px}
+.ref-ctx .cx-item{padding:7px 14px;cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:8px}
+.ref-ctx .cx-item:hover{background:var(--bg3);color:var(--text)}
+.ref-ctx .cx-item.disabled{opacity:0.4;pointer-events:none}
+.ref-ctx .cx-sep{height:1px;background:var(--border);margin:4px 0}
+.ref-ctx .cx-hint{font-size:10px;color:var(--text3);margin-left:auto}
 
 /* サブタブ列（メインタブの一段下・スケジュールタブでのみ表示） */
 .sub-tabs{display:flex;gap:2px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
@@ -595,7 +629,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
       </div>
     </div>
 
-    <!-- ========== 資料（PureRef 風 無限キャンバス UI、モック） ========== -->
+    <!-- ========== 資料（PureRef 風 無限キャンバス UI、v.046 編集モード対応） ========== -->
     <div class="pane" data-pane="reference">
       <div class="ref-root">
         <div class="ref-side">
@@ -605,8 +639,10 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
         <div class="ref-main" id="refMain">
           <div class="ref-grid-bg" id="refGridBg"></div>
           <div class="ref-canvas" id="refCanvas"></div>
+          <div class="ref-toolbar" id="refToolbar"></div>
           <div class="ref-hud" id="refHud">pan: 0, 0   zoom: 100%</div>
           <div class="ref-ctrls">
+            <button id="refEditBtn" class="ref-edit-btn" title="編集モード">✏ 編集</button>
             <button id="refZoomOut" title="縮小">−</button>
             <button id="refZoomFit" title="等倍">100%</button>
             <button id="refZoomIn" title="拡大">＋</button>
@@ -683,7 +719,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.045';
+const APP_VERSION='2026.10.06.046';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -956,6 +992,74 @@ const storage = {
       }
       return names;
     }catch(_){return [];}
+  },
+  /* v.046：資料タブ用の read/write ヘルパ。
+     - writeBlob(path, blob)：Media/<uuid>.<ext> への画像/動画書込
+     - resolveMediaBlob(path)：読み込んだ File を返す
+     - removeFile(path)：ファイル削除（削除時に親フォルダは残す）
+     - resolveMediaUrl(path)：URL オブジェクトを返す（キャッシュ付き） */
+  _urlCache: new Map(),
+  async writeBlob(path, blob){
+    if(!this.dirHandle) return false;
+    try{
+      const parts = path.split('/');
+      let cur = this.dirHandle;
+      for(let i=0;i<parts.length-1;i++){cur=await cur.getDirectoryHandle(parts[i],{create:true})}
+      const fh = await cur.getFileHandle(parts[parts.length-1],{create:true});
+      const w = await fh.createWritable();
+      await w.write(blob);
+      await w.close();
+      return true;
+    }catch(e){console.warn('writeBlob failed',path,e);return false;}
+  },
+  async removeFile(path){
+    if(!this.dirHandle) return false;
+    try{
+      const parts = path.split('/');
+      let cur = this.dirHandle;
+      for(let i=0;i<parts.length-1;i++){cur=await cur.getDirectoryHandle(parts[i])}
+      await cur.removeEntry(parts[parts.length-1]);
+      return true;
+    }catch(_){return false;}
+  },
+  async resolveMediaUrl(path){
+    if(!path) return null;
+    if(this._urlCache.has(path)) return this._urlCache.get(path);
+    if(!this.dirHandle) return null;
+    try{
+      const parts = path.split('/');
+      let cur = this.dirHandle;
+      for(let i=0;i<parts.length-1;i++){cur=await cur.getDirectoryHandle(parts[i])}
+      const fh = await cur.getFileHandle(parts[parts.length-1]);
+      const file = await fh.getFile();
+      const url = URL.createObjectURL(file);
+      this._urlCache.set(path, url);
+      return url;
+    }catch(_){return null;}
+  },
+  /* ---- 資料タブ：細粒度 JSON API ---- */
+  async loadReferenceItems(){
+    const names = await this.listDir('reference/items');
+    if(!names.length) return [];
+    const items = [];
+    for(const name of names){
+      if(!name.endsWith('.json')) continue;
+      const data = await this.readJson('reference/items/'+name);
+      if(data && data.id) items.push(data);
+    }
+    return items;
+  },
+  async saveReferenceItem(item){
+    if(!item || !item.id) return false;
+    return await this.writeJson('reference/items/'+item.id+'.json', item);
+  },
+  async deleteReferenceItem(itemId){
+    if(!itemId) return false;
+    return await this.removeFile('reference/items/'+itemId+'.json');
+  },
+  async putReferenceMedia(filename, blob){
+    const ok = await this.writeBlob('reference/Media/'+filename, blob);
+    return ok ? 'reference/Media/'+filename : null;
   },
 };
 
@@ -3841,8 +3945,9 @@ document.getElementById('tabs').addEventListener('click',e=>{
   b.classList.add('on');
   document.querySelector(`[data-pane="${b.dataset.tab}"]`).classList.add('on');
   /* v.042：資料タブは遅延初期化（最初に開いたときに 1 回だけビルド）。
-     content が display:none の状態で getBoundingClientRect すると幅 0 になるため。 */
-  if(b.dataset.tab === 'reference' && !window._refInited){ _refInit(); window._refInited=true; }
+     content が display:none の状態で getBoundingClientRect すると幅 0 になるため。
+     v.046：_refInit は async（データロード含む）になったので fire-and-forget。 */
+  if(b.dataset.tab === 'reference' && !window._refInited){ _refInit().catch(e=>console.warn(e)); window._refInited=true; }
 });
 /* v.042：資料タブ（PureRef 風 無限キャンバス UI、モックデータ）。
    LayCAT 本体の renderProjReference と同構造・同仕様（モックアイテム・虚像位置・pan/zoom/
@@ -3899,12 +4004,38 @@ function _refBuildItem(it){
     n.textContent = it.text || '';
     if(it.fontSize) n.style.fontSize = it.fontSize + 'px';
     if(it.color)    n.style.color    = it.color;
+    if(it.bold)      n.style.fontWeight = '700';
+    if(it.underline) n.style.textDecoration = 'underline';
+  }else if(it.type === 'text'){
+    n.textContent = it.text || '';
+    n.style.fontSize = (it.fontSize || 16) + 'px';
+    if(it.color)     n.style.color = it.color;
+    if(it.bold)      n.style.fontWeight = '700';
+    if(it.underline) n.style.textDecoration = 'underline';
   }else if(it.type === 'image'){
-    const ph = document.createElement('div'); ph.className='ref-image-ph';
-    const ic = document.createElement('div'); ic.className='ic'; ic.textContent='🖼';
-    const lb = document.createElement('div'); lb.className='lb'; lb.textContent=it.label||'';
-    ph.appendChild(ic); ph.appendChild(lb);
-    n.appendChild(ph);
+    if(it.mediaRef){
+      const inner = (it.mediaType === 'video') ? document.createElement('video') : document.createElement('img');
+      inner.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:7px;display:block';
+      if(it.mediaType === 'video'){ inner.controls = true; inner.muted = true; inner.playsInline = true; }
+      else { inner.alt = it.label||''; }
+      /* v.046：mediaRef は "reference/Media/<filename>" のフォルダパス */
+      storage.resolveMediaUrl(it.mediaRef).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
+      n.appendChild(inner);
+    }else{
+      const ph = document.createElement('div'); ph.className='ref-image-ph';
+      const ic = document.createElement('div'); ic.className='ic'; ic.textContent='🖼';
+      const lb = document.createElement('div'); lb.className='lb'; lb.textContent=it.label||'';
+      ph.appendChild(ic); ph.appendChild(lb);
+      n.appendChild(ph);
+    }
+  }else if(it.type === 'shape'){
+    n.classList.add('shape-'+(it.shape||'rect'));
+    const col = it.color || '#4a9eff';
+    n.style.borderColor = col;
+    const alpha = (typeof it.opacity === 'number') ? Math.max(0, Math.min(1, it.opacity)) : 0.15;
+    const hex = String(col).replace('#','');
+    const r = parseInt(hex.slice(0,2),16)||74, g = parseInt(hex.slice(2,4),16)||158, b = parseInt(hex.slice(4,6),16)||255;
+    n.style.background = `rgba(${r},${g},${b},${alpha})`;
   }else if(it.type === 'group'){
     if(it.color){
       n.style.borderColor = it.color;
@@ -3921,17 +4052,32 @@ function _refBuildItem(it){
   }
   return n;
 }
-function _refInit(){
+/* v.046：編集モード対応版 _refInit。LayCAT 本体 v.093 と同構造。
+   モック (REF_MOCK_ITEMS) は空プロジェクト時のデモ用。実データは
+   storage.loadReferenceItems() で reference/items/*.json から読み込み。 */
+const _REF_STATE = { editMode:false, selection:new Set(), workingItems:[], clipboard:[], view:{tx:60,ty:60,scale:0.5} };
+async function _refInit(){
   const vp = document.getElementById('refMain');
   const canvas = document.getElementById('refCanvas');
   const toc = document.getElementById('refToc');
   const hud = document.getElementById('refHud');
   const grid = document.getElementById('refGridBg');
+  const tb = document.getElementById('refToolbar');
+  const editBtn = document.getElementById('refEditBtn');
   if(!vp || !canvas) return;
-  const view = { tx: 60, ty: 60, scale: 0.5 };
-  const items = REF_MOCK_ITEMS;
-  const titleItems = items.filter(x=>x.type==='title');
+  const view = _REF_STATE.view;
+  const workingItems = _REF_STATE.workingItems;
+  /* 実データロード（非同期で終わったら再描画） */
+  try{
+    const loaded = await storage.loadReferenceItems();
+    if(Array.isArray(loaded) && loaded.length){
+      workingItems.splice(0, workingItems.length, ...loaded);
+    }
+  }catch(_){}
+  let items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
   const BUFFER = 400;
+  let handlesEl = null;
+  let ctxEl = null;
   const applyTransform = ()=>{
     canvas.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
     if(hud) hud.textContent = `pan: ${Math.round(view.tx)}, ${Math.round(view.ty)}   zoom: ${(view.scale*100).toFixed(0)}%`;
@@ -3950,18 +4096,67 @@ function _refInit(){
     for(const it of items){
       const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
       if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom) continue;
-      canvas.appendChild(_refBuildItem(it));
+      const node = _refBuildItem(it);
+      node.dataset.refId = it.id || '';
+      if(_REF_STATE.editMode && it.id && _REF_STATE.selection.has(it.id)) node.classList.add('selected');
+      if(_REF_STATE.editMode) node.style.pointerEvents = 'auto';
+      canvas.appendChild(node);
     }
+    updateHandles();
   };
-  /* v.043：イージング付き view アニメーション。目次クリックで ~250ms かけてスッと移動。
-     v.045：pan に加えて scale も同時にアニメーション（目次クリックで資料範囲へズーム）。
-     ドラッグ・ホイール・ズームボタンの操作でキャンセル。 */
+  const updateHandles = ()=>{
+    if(handlesEl){ try{ handlesEl.remove(); }catch(_){} handlesEl = null; }
+    if(!_REF_STATE.editMode || _REF_STATE.selection.size !== 1) return;
+    const id = Array.from(_REF_STATE.selection)[0];
+    const it = workingItems.find(x=>x.id===id);
+    if(!it || !it.w || !it.h) return;
+    const sx = it.x * view.scale + view.tx;
+    const sy = it.y * view.scale + view.ty;
+    const sw = (it.w||100) * view.scale;
+    const sh = (it.h||100) * view.scale;
+    handlesEl = document.createElement('div');
+    handlesEl.className = 'ref-handles';
+    handlesEl.style.left = sx + 'px';
+    handlesEl.style.top  = sy + 'px';
+    handlesEl.style.width  = sw + 'px';
+    handlesEl.style.height = sh + 'px';
+    for(const c of ['nw','ne','sw','se']){
+      const h = document.createElement('div'); h.className = 'rh '+c;
+      h.addEventListener('mousedown',(e)=>{
+        if(e.button!==0) return;
+        e.stopPropagation(); e.preventDefault();
+        const startX = e.clientX, startY = e.clientY;
+        const origin = {x:it.x, y:it.y, w:it.w, h:it.h};
+        const onMv = (ev)=>{
+          const dx = (ev.clientX - startX) / view.scale;
+          const dy = (ev.clientY - startY) / view.scale;
+          let nx=origin.x, ny=origin.y, nw=origin.w, nh=origin.h;
+          if(c==='se'){ nw = Math.max(20, origin.w + dx); nh = Math.max(20, origin.h + dy); }
+          else if(c==='sw'){ nw = Math.max(20, origin.w - dx); nh = Math.max(20, origin.h + dy); nx = origin.x + (origin.w - nw); }
+          else if(c==='ne'){ nw = Math.max(20, origin.w + dx); nh = Math.max(20, origin.h - dy); ny = origin.y + (origin.h - nh); }
+          else if(c==='nw'){ nw = Math.max(20, origin.w - dx); nh = Math.max(20, origin.h - dy); nx = origin.x + (origin.w - nw); ny = origin.y + (origin.h - nh); }
+          it.x = Math.round(nx); it.y = Math.round(ny);
+          it.w = Math.round(nw); it.h = Math.round(nh);
+          renderVisible();
+        };
+        const onUp = ()=>{
+          window.removeEventListener('mousemove', onMv);
+          window.removeEventListener('mouseup', onUp);
+          scheduleItemSave(it);
+        };
+        window.addEventListener('mousemove', onMv);
+        window.addEventListener('mouseup', onUp);
+      });
+      handlesEl.appendChild(h);
+    }
+    vp.appendChild(handlesEl);
+  };
+  /* アニメーション */
   let _refAnimRaf = 0;
   const easeInOutQuad = t => t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t;
   const cancelAnim = ()=>{ if(_refAnimRaf){ cancelAnimationFrame(_refAnimRaf); _refAnimRaf=0; } };
   const animateViewTo = (targetTx, targetTy, targetScale, duration)=>{
-    duration = duration || 250;
-    cancelAnim();
+    duration = duration || 250; cancelAnim();
     const startTx = view.tx, startTy = view.ty, startSc = view.scale;
     const dx = targetTx - startTx, dy = targetTy - startTy, ds = targetScale - startSc;
     if(Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(ds) < 0.001){
@@ -3971,82 +4166,261 @@ function _refInit(){
     const step = (now)=>{
       const t = Math.min(1, (now - t0) / duration);
       const k = easeInOutQuad(t);
-      view.tx = startTx + dx * k;
-      view.ty = startTy + dy * k;
-      view.scale = startSc + ds * k;
+      view.tx = startTx + dx * k; view.ty = startTy + dy * k; view.scale = startSc + ds * k;
       applyTransform();
-      if(t < 1) _refAnimRaf = requestAnimationFrame(step);
-      else _refAnimRaf = 0;
+      if(t < 1) _refAnimRaf = requestAnimationFrame(step); else _refAnimRaf = 0;
     };
     _refAnimRaf = requestAnimationFrame(step);
   };
-  /* 目次ビルド */
-  toc.innerHTML='';
-  for(const t of titleItems){
-    const row = document.createElement('div'); row.className='ref-toc-item';
-    const dot = document.createElement('span'); dot.className='ref-toc-dot'; dot.style.background=t.color||'var(--accent)';
-    row.appendChild(dot);
-    row.appendChild(document.createTextNode(t.text||''));
-    row.onclick = ()=>{
-      /* v.045：タイトルを含む group（枠図形）にフィットするよう pan + zoom をアニメーション。 */
-      const g = items.find(x => x.type==='group'
-        && t.x >= x.x && t.x <= x.x + x.w
-        && t.y >= x.y && t.y <= x.y + x.h);
-      const b = g ? {x:g.x, y:g.y, w:g.w, h:g.h} : {x:t.x-40, y:t.y-40, w:800, h:600};
-      const rect = vp.getBoundingClientRect();
-      const pad = 40;
-      const sx = (rect.width  - pad*2) / b.w;
-      const sy = (rect.height - pad*2) / b.h;
-      const targetScale = Math.max(0.08, Math.min(sx, sy, 2));
-      const targetTx = -b.x * targetScale + (rect.width  - b.w * targetScale) / 2;
-      const targetTy = -b.y * targetScale + (rect.height - b.h * targetScale) / 2;
-      animateViewTo(targetTx, targetTy, targetScale);
-      toc.querySelectorAll('.ref-toc-item').forEach(x=>x.classList.remove('active'));
-      row.classList.add('active');
-    };
-    toc.appendChild(row);
-  }
-  /* Pan */
-  let dragging=false, dragX=0, dragY=0, startTx=0, startTy=0;
+  /* 目次 */
+  const rebuildToc = ()=>{
+    toc.innerHTML='';
+    const titleItems = items.filter(x=>x.type==='title');
+    for(const t of titleItems){
+      const row = document.createElement('div'); row.className='ref-toc-item';
+      const dot = document.createElement('span'); dot.className='ref-toc-dot'; dot.style.background=t.color||'var(--accent)';
+      row.appendChild(dot);
+      row.appendChild(document.createTextNode(t.text||''));
+      row.onclick = ()=>{
+        const g = items.find(x => x.type==='group' && t.x >= x.x && t.x <= x.x + x.w && t.y >= x.y && t.y <= x.y + x.h);
+        const b = g ? {x:g.x, y:g.y, w:g.w, h:g.h} : {x:t.x-40, y:t.y-40, w:800, h:600};
+        const rect = vp.getBoundingClientRect();
+        const pad = 40;
+        const targetScale = Math.max(0.08, Math.min((rect.width-pad*2)/b.w, (rect.height-pad*2)/b.h, 2));
+        const targetTx = -b.x * targetScale + (rect.width  - b.w * targetScale) / 2;
+        const targetTy = -b.y * targetScale + (rect.height - b.h * targetScale) / 2;
+        animateViewTo(targetTx, targetTy, targetScale);
+        toc.querySelectorAll('.ref-toc-item').forEach(x=>x.classList.remove('active'));
+        row.classList.add('active');
+      };
+      toc.appendChild(row);
+    }
+  };
+  rebuildToc();
+  /* 保存スケジューラ */
+  const _saveTimers = {};
+  const scheduleItemSave = (it)=>{
+    if(!it||!it.id) return;
+    clearTimeout(_saveTimers[it.id]);
+    _saveTimers[it.id] = setTimeout(()=>{ storage.saveReferenceItem(it).catch(()=>{}); delete _saveTimers[it.id]; }, 350);
+  };
+  /* ヘルパ */
+  const _nextId = ()=> 'r_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,7);
+  const _viewportCenterWorld = ()=>{ const r = vp.getBoundingClientRect(); return { x:(r.width/2 - view.tx)/view.scale, y:(r.height/2 - view.ty)/view.scale }; };
+  const screenToWorld = (sx, sy)=>{ const r = vp.getBoundingClientRect(); return { x:(sx - r.left - view.tx)/view.scale, y:(sy - r.top - view.ty)/view.scale }; };
+  const hitTestItem = (sx, sy)=>{
+    const w = screenToWorld(sx, sy);
+    for(let i = items.length - 1; i >= 0; i--){
+      const it = items[i];
+      if(it.type === 'group') continue;
+      const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
+      if(w.x >= x1 && w.x <= x2 && w.y >= y1 && w.y <= y2) return it;
+    }
+    return null;
+  };
+  const insertItem = (partial)=>{
+    const c = _viewportCenterWorld();
+    const def = Object.assign({ id: _nextId(), x: Math.round(c.x - (partial.w||200)/2), y: Math.round(c.y - (partial.h||40)/2) }, partial);
+    workingItems.push(def);
+    _REF_STATE.selection.clear(); _REF_STATE.selection.add(def.id);
+    scheduleItemSave(def);
+    items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    renderVisible();
+    return def;
+  };
+  const applyToSelected = (fn)=>{
+    for(const id of _REF_STATE.selection){
+      const it = workingItems.find(x=>x.id===id);
+      if(it){ fn(it); scheduleItemSave(it); }
+    }
+    renderVisible();
+  };
+  /* ツールバー構築（LayCAT と同じ） */
+  tb.innerHTML = '';
+  const _tbEl = (tag, cls, text)=>{ const n=document.createElement(tag); if(cls) n.className=cls; if(text!=null) n.textContent=text; return n; };
+  const _tbGrp = ()=>{ const g = _tbEl('div','tb-grp'); tb.appendChild(g); return g; };
+  const _tbBtn = (p,l,t)=>{ const b=_tbEl('button',null,l); if(t) b.title=t; p.appendChild(b); return b; };
+  const grpAdd = _tbGrp();
+  const btnH1 = _tbBtn(grpAdd,'大','大タイトル追加');
+  const btnH2 = _tbBtn(grpAdd,'中','中タイトル追加');
+  const btnH3 = _tbBtn(grpAdd,'小','小タイトル追加');
+  const btnTxt= _tbBtn(grpAdd,'T','テキスト追加');
+  const grpShape = _tbGrp();
+  const selShape = document.createElement('select');
+  for(const [v,t] of [['rect','◼ 四角形'],['circle','● 円']]){ const o=document.createElement('option'); o.value=v; o.textContent=t; selShape.appendChild(o); }
+  grpShape.appendChild(selShape);
+  const btnShape = _tbBtn(grpShape,'＋図形','選択中の図形タイプを追加');
+  const grpMedia = _tbGrp();
+  const btnUpload = _tbBtn(grpMedia,'🖼 画像/動画','画像/動画をアップロード');
+  const inpFile = document.createElement('input'); inpFile.type='file'; inpFile.multiple=true; inpFile.accept='image/*,video/*'; inpFile.style.display='none';
+  grpMedia.appendChild(inpFile);
+  const grpText = _tbGrp();
+  const btnBold = _tbBtn(grpText,'B','太字'); btnBold.style.fontWeight='700';
+  const btnUline= _tbBtn(grpText,'U','アンダーライン'); btnUline.style.textDecoration='underline';
+  grpText.appendChild(_tbEl('span','tb-lbl','px'));
+  const inpSize = document.createElement('input'); inpSize.type='number'; inpSize.min='8'; inpSize.max='120'; inpSize.placeholder='--'; grpText.appendChild(inpSize);
+  grpText.appendChild(_tbEl('span','tb-lbl','文字'));
+  const inpTxtCol = document.createElement('input'); inpTxtCol.type='color'; inpTxtCol.value='#e8e8ec'; grpText.appendChild(inpTxtCol);
+  const grpShapeFmt = _tbGrp();
+  grpShapeFmt.appendChild(_tbEl('span','tb-lbl','図形色'));
+  const inpShapeCol = document.createElement('input'); inpShapeCol.type='color'; inpShapeCol.value='#4a9eff'; grpShapeFmt.appendChild(inpShapeCol);
+  grpShapeFmt.appendChild(_tbEl('span','tb-lbl','透明度'));
+  const inpOpacity = document.createElement('input'); inpOpacity.type='range'; inpOpacity.min='0'; inpOpacity.max='100'; inpOpacity.value='15'; grpShapeFmt.appendChild(inpOpacity);
+  /* 編集モードトグル */
+  const setEditMode = (on)=>{
+    _REF_STATE.editMode = !!on;
+    vp.classList.toggle('edit-mode', _REF_STATE.editMode);
+    editBtn.classList.toggle('on', _REF_STATE.editMode);
+    editBtn.textContent = _REF_STATE.editMode ? '✏ 編集中' : '✏ 編集';
+    if(!_REF_STATE.editMode) _REF_STATE.selection.clear();
+    items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    applyTransform();
+  };
+  editBtn.onclick = ()=> setEditMode(!_REF_STATE.editMode);
+  /* ツールバー配線 */
+  btnH1.onclick = ()=> insertItem({type:'title', text:'大タイトル', fontSize:48, color:'#e8e8ec'});
+  btnH2.onclick = ()=> insertItem({type:'title', text:'中タイトル', fontSize:32, color:'#e8e8ec'});
+  btnH3.onclick = ()=> insertItem({type:'title', text:'小タイトル', fontSize:22, color:'#e8e8ec'});
+  btnTxt.onclick= ()=> insertItem({type:'text',  text:'テキスト',   fontSize:16, color:'#e8e8ec', w:260});
+  btnShape.onclick = ()=> insertItem({type:'shape', shape:selShape.value||'rect', color:inpShapeCol.value, opacity:(parseInt(inpOpacity.value,10)||15)/100, w:240, h:160});
+  btnUpload.onclick = ()=> inpFile.click();
+  inpFile.onchange = async (e)=>{
+    const files = Array.from(e.target.files||[]);
+    if(!files.length) return;
+    inpFile.value = '';
+    const c0 = _viewportCenterWorld();
+    let dx = 0;
+    for(const f of files){
+      try{
+        const ext = (f.name.match(/(\.[A-Za-z0-9]+)$/)||[])[1] || (f.type.startsWith('video/')?'.mp4':'.jpg');
+        const uid = _nextId();
+        const ref = await storage.putReferenceMedia(uid+ext, f);
+        if(!ref) continue;
+        let w=320, h=240;
+        if(f.type.startsWith('image/')){
+          try{
+            const url = URL.createObjectURL(f);
+            await new Promise((res)=>{ const img=new Image(); img.onload=()=>{ w=img.naturalWidth; h=img.naturalHeight; URL.revokeObjectURL(url); res(); }; img.onerror=()=>{ URL.revokeObjectURL(url); res(); }; img.src=url; });
+            const scale = Math.min(1, 480/Math.max(w,h));
+            w = Math.round(w*scale); h = Math.round(h*scale);
+          }catch(_){}
+        }
+        insertItem({ type:'image', mediaRef:ref, mediaType:f.type.startsWith('video/')?'video':'image', label:f.name, w, h,
+          x: Math.round(c0.x + dx - w/2), y: Math.round(c0.y - h/2) });
+        dx += 30;
+      }catch(_){}
+    }
+  };
+  btnBold.onclick  = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.bold = !it.bold; });
+  btnUline.onclick = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.underline = !it.underline; });
+  inpSize.oninput  = ()=>{ const v=parseInt(inpSize.value,10); if(!isNaN(v)&&v>=4&&v<=200) applyToSelected(it => { if(it.type==='text'||it.type==='title') it.fontSize = v; }); };
+  inpTxtCol.oninput= ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.color = inpTxtCol.value; });
+  inpShapeCol.oninput = ()=> applyToSelected(it => { if(it.type==='shape') it.color = inpShapeCol.value; });
+  inpOpacity.oninput  = ()=> applyToSelected(it => { if(it.type==='shape') it.opacity = (parseInt(inpOpacity.value,10)||0)/100; });
+  /* 編集モード対応ハンドラ */
+  let mode = null, dragX=0, dragY=0, startTx=0, startTy=0;
+  let moveOrigin = {}, rubberEl = null, rubberStart = {x:0, y:0};
   vp.addEventListener('mousedown',(e)=>{
     if(e.button!==0) return;
     cancelAnim();
-    dragging=true;dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
-    vp.classList.add('panning');
-    e.preventDefault();
+    const editMode = _REF_STATE.editMode;
+    if(!editMode){
+      mode = 'pan'; dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+      vp.classList.add('panning'); e.preventDefault(); return;
+    }
+    if(e.altKey){
+      mode = 'pan'; dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+      vp.classList.add('panning'); e.preventDefault(); return;
+    }
+    const hit = hitTestItem(e.clientX, e.clientY);
+    if(hit){
+      if(e.shiftKey){
+        if(_REF_STATE.selection.has(hit.id)) _REF_STATE.selection.delete(hit.id);
+        else _REF_STATE.selection.add(hit.id);
+      }else{
+        if(!_REF_STATE.selection.has(hit.id)){ _REF_STATE.selection.clear(); _REF_STATE.selection.add(hit.id); }
+      }
+      mode = 'move'; dragX=e.clientX; dragY=e.clientY;
+      moveOrigin = {};
+      for(const id of _REF_STATE.selection){
+        const it = workingItems.find(x=>x.id===id);
+        if(it) moveOrigin[id] = {x:it.x, y:it.y};
+      }
+      renderVisible(); e.preventDefault(); return;
+    }
+    if(!e.shiftKey) _REF_STATE.selection.clear();
+    mode = 'rubber';
+    rubberStart = screenToWorld(e.clientX, e.clientY);
+    rubberEl = document.createElement('div'); rubberEl.className = 'ref-rubber';
+    vp.appendChild(rubberEl); renderVisible(); e.preventDefault();
   });
   window.addEventListener('mousemove',(e)=>{
-    if(!dragging) return;
-    view.tx = startTx + (e.clientX - dragX);
-    view.ty = startTy + (e.clientY - dragY);
-    applyTransform();
+    if(!mode) return;
+    if(mode==='pan'){
+      view.tx = startTx + (e.clientX - dragX);
+      view.ty = startTy + (e.clientY - dragY);
+      applyTransform();
+    }else if(mode==='move'){
+      const dx = (e.clientX - dragX) / view.scale;
+      const dy = (e.clientY - dragY) / view.scale;
+      for(const id of _REF_STATE.selection){
+        const it = workingItems.find(x=>x.id===id);
+        const org = moveOrigin[id];
+        if(it && org){ it.x = Math.round(org.x + dx); it.y = Math.round(org.y + dy); }
+      }
+      renderVisible();
+    }else if(mode==='rubber' && rubberEl){
+      const w = screenToWorld(e.clientX, e.clientY);
+      const x1 = Math.min(rubberStart.x, w.x), y1 = Math.min(rubberStart.y, w.y);
+      const x2 = Math.max(rubberStart.x, w.x), y2 = Math.max(rubberStart.y, w.y);
+      rubberEl.style.left = (x1 * view.scale + view.tx) + 'px';
+      rubberEl.style.top  = (y1 * view.scale + view.ty) + 'px';
+      rubberEl.style.width  = ((x2-x1) * view.scale) + 'px';
+      rubberEl.style.height = ((y2-y1) * view.scale) + 'px';
+    }
   });
-  window.addEventListener('mouseup',()=>{if(dragging){dragging=false;vp.classList.remove('panning');}});
-  /* Zoom */
+  window.addEventListener('mouseup',(e)=>{
+    if(!mode) return;
+    if(mode==='pan'){ vp.classList.remove('panning'); }
+    else if(mode==='move'){
+      for(const id of _REF_STATE.selection){
+        const it = workingItems.find(x=>x.id===id);
+        if(it) scheduleItemSave(it);
+      }
+    }else if(mode==='rubber' && rubberEl){
+      const w = screenToWorld(e.clientX, e.clientY);
+      const x1 = Math.min(rubberStart.x, w.x), y1 = Math.min(rubberStart.y, w.y);
+      const x2 = Math.max(rubberStart.x, w.x), y2 = Math.max(rubberStart.y, w.y);
+      for(const it of workingItems){
+        if(it.type === 'group') continue;
+        const ix1=it.x, iy1=it.y, ix2=it.x+(it.w||400), iy2=it.y+(it.h||100);
+        if(ix2 < x1 || ix1 > x2 || iy2 < y1 || iy1 > y2) continue;
+        _REF_STATE.selection.add(it.id);
+      }
+      try{ rubberEl.remove(); }catch(_){}
+      rubberEl = null; renderVisible();
+    }
+    mode = null;
+  });
+  /* ズーム */
   vp.addEventListener('wheel',(e)=>{
-    e.preventDefault();
-    cancelAnim();
+    e.preventDefault(); cancelAnim();
     const rect = vp.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const worldX = (mx - view.tx) / view.scale;
-    const worldY = (my - view.ty) / view.scale;
+    const worldX = (mx - view.tx) / view.scale, worldY = (my - view.ty) / view.scale;
     const factor = e.deltaY < 0 ? 1.12 : (1/1.12);
     const nextScale = Math.min(4, Math.max(0.05, view.scale * factor));
     view.scale = nextScale;
-    view.tx = mx - worldX * nextScale;
-    view.ty = my - worldY * nextScale;
+    view.tx = mx - worldX * nextScale; view.ty = my - worldY * nextScale;
     applyTransform();
   }, { passive:false });
-  /* Ctrls */
-  const zoomAt = (factor) => {
+  const zoomAt = (factor)=>{
     cancelAnim();
     const rect = vp.getBoundingClientRect();
     const mx = rect.width/2, my = rect.height/2;
-    const worldX = (mx - view.tx) / view.scale;
-    const worldY = (my - view.ty) / view.scale;
+    const worldX = (mx - view.tx) / view.scale, worldY = (my - view.ty) / view.scale;
     view.scale = Math.min(4, Math.max(0.05, view.scale * factor));
-    view.tx = mx - worldX * view.scale;
-    view.ty = my - worldY * view.scale;
+    view.tx = mx - worldX * view.scale; view.ty = my - worldY * view.scale;
     applyTransform();
   };
   document.getElementById('refZoomIn').onclick  = ()=>zoomAt(1.25);
@@ -4057,16 +4431,151 @@ function _refInit(){
     if(!items.length) return;
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
     for(const it of items){const x1=it.x,y1=it.y,x2=it.x+(it.w||400),y2=it.y+(it.h||100);if(x1<minX)minX=x1;if(y1<minY)minY=y1;if(x2>maxX)maxX=x2;if(y2>maxY)maxY=y2;}
-    const rect=vp.getBoundingClientRect();
-    const pad=60;
-    const sx=(rect.width - pad*2)/(maxX-minX);
-    const sy=(rect.height - pad*2)/(maxY-minY);
+    const rect=vp.getBoundingClientRect(); const pad=60;
+    const sx=(rect.width-pad*2)/(maxX-minX), sy=(rect.height-pad*2)/(maxY-minY);
     const s=Math.min(sx,sy,1);
-    view.scale=s;
-    view.tx = pad - minX*s;
-    view.ty = pad - minY*s;
+    view.scale=s; view.tx = pad - minX*s; view.ty = pad - minY*s;
     applyTransform();
   };
+  /* キーボード */
+  const onRefKey = (e)=>{
+    if(!document.querySelector('.pane[data-pane="reference"]')?.classList.contains('on')) return;
+    const tag = (e.target && e.target.tagName) || '';
+    if(tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+    if(!_REF_STATE.editMode) return;
+    if((e.key === 'Delete' || e.key === 'Backspace') && _REF_STATE.selection.size){
+      e.preventDefault();
+      const ids = Array.from(_REF_STATE.selection);
+      for(const id of ids){
+        const idx = workingItems.findIndex(x=>x.id===id);
+        if(idx >= 0){ workingItems.splice(idx, 1); storage.deleteReferenceItem(id).catch(()=>{}); }
+      }
+      _REF_STATE.selection.clear(); renderVisible();
+    }else if(e.key === 'Escape'){ _REF_STATE.selection.clear(); renderVisible(); }
+  };
+  window.addEventListener('keydown', onRefKey);
+  /* 右クリックメニュー・コピー・貼付 */
+  const closeCtx = ()=>{ if(ctxEl){ try{ ctxEl.remove(); }catch(_){} ctxEl = null; } };
+  const alignSelected = (axis)=>{
+    const sels = Array.from(_REF_STATE.selection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean);
+    if(sels.length < 2) return;
+    if(axis==='left'){ const m=Math.min(...sels.map(s=>s.x)); for(const s of sels){ s.x = m; scheduleItemSave(s); } }
+    else if(axis==='right'){ const m=Math.max(...sels.map(s=>s.x+(s.w||0))); for(const s of sels){ s.x = m - (s.w||0); scheduleItemSave(s); } }
+    else if(axis==='top'){ const m=Math.min(...sels.map(s=>s.y)); for(const s of sels){ s.y = m; scheduleItemSave(s); } }
+    else if(axis==='bottom'){ const m=Math.max(...sels.map(s=>s.y+(s.h||0))); for(const s of sels){ s.y = m - (s.h||0); scheduleItemSave(s); } }
+    else if(axis==='cx'){ const m=sels.reduce((a,s)=>a + s.x + (s.w||0)/2, 0)/sels.length; for(const s of sels){ s.x = Math.round(m - (s.w||0)/2); scheduleItemSave(s); } }
+    else if(axis==='cy'){ const m=sels.reduce((a,s)=>a + s.y + (s.h||0)/2, 0)/sels.length; for(const s of sels){ s.y = Math.round(m - (s.h||0)/2); scheduleItemSave(s); } }
+    renderVisible();
+  };
+  const copySelected = ()=>{
+    _REF_STATE.clipboard = Array.from(_REF_STATE.selection).map(id=>{ const it = workingItems.find(x=>x.id===id); return it ? JSON.parse(JSON.stringify(it)) : null; }).filter(Boolean);
+  };
+  const pasteClipboard = (atX, atY)=>{
+    if(!_REF_STATE.clipboard.length) return;
+    const c = (atX!=null && atY!=null) ? {x:atX, y:atY} : _viewportCenterWorld();
+    const minX = Math.min(..._REF_STATE.clipboard.map(x=>x.x));
+    const minY = Math.min(..._REF_STATE.clipboard.map(x=>x.y));
+    _REF_STATE.selection.clear();
+    for(const src of _REF_STATE.clipboard){
+      const copy = JSON.parse(JSON.stringify(src));
+      copy.id = _nextId();
+      copy.x = Math.round(c.x + (src.x - minX));
+      copy.y = Math.round(c.y + (src.y - minY));
+      workingItems.push(copy); _REF_STATE.selection.add(copy.id);
+      scheduleItemSave(copy);
+    }
+    renderVisible();
+  };
+  const matchThumbSize = ()=>{
+    const sels = Array.from(_REF_STATE.selection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean).filter(x=>x.type==='image');
+    if(sels.length < 2) return;
+    const ref = sels[0];
+    for(const s of sels){ s.w = ref.w; s.h = ref.h; scheduleItemSave(s); }
+    renderVisible();
+  };
+  vp.addEventListener('contextmenu',(e)=>{
+    if(!_REF_STATE.editMode) return;
+    e.preventDefault(); closeCtx();
+    const hit = hitTestItem(e.clientX, e.clientY);
+    if(hit && !_REF_STATE.selection.has(hit.id)){
+      _REF_STATE.selection.clear(); _REF_STATE.selection.add(hit.id);
+      renderVisible();
+    }
+    const hasSel = _REF_STATE.selection.size > 0;
+    const multiSel = _REF_STATE.selection.size >= 2;
+    const w = screenToWorld(e.clientX, e.clientY);
+    ctxEl = document.createElement('div'); ctxEl.className = 'ref-ctx';
+    const r = vp.getBoundingClientRect();
+    ctxEl.style.left = (e.clientX - r.left + 4) + 'px';
+    ctxEl.style.top  = (e.clientY - r.top  + 4) + 'px';
+    const mk = (label, fn, disabled, hint)=>{
+      const it = document.createElement('div'); it.className = 'cx-item'+(disabled?' disabled':'');
+      it.appendChild(document.createTextNode(label));
+      if(hint){ const h=document.createElement('span'); h.className='cx-hint'; h.textContent=hint; it.appendChild(h); }
+      if(!disabled) it.onclick = ()=>{ closeCtx(); try{ fn(); }catch(err){ console.warn(err); } };
+      ctxEl.appendChild(it);
+    };
+    const sep = ()=>{ const s=document.createElement('div'); s.className='cx-sep'; ctxEl.appendChild(s); };
+    mk('左揃え', ()=>alignSelected('left'), !multiSel);
+    mk('右揃え', ()=>alignSelected('right'), !multiSel);
+    mk('上揃え', ()=>alignSelected('top'), !multiSel);
+    mk('下揃え', ()=>alignSelected('bottom'), !multiSel);
+    mk('横中央', ()=>alignSelected('cx'), !multiSel);
+    mk('縦中央', ()=>alignSelected('cy'), !multiSel);
+    sep();
+    mk('コピー', copySelected, !hasSel, 'Ctrl+C');
+    mk('貼付', ()=>pasteClipboard(w.x, w.y), !_REF_STATE.clipboard.length, 'Ctrl+V');
+    sep();
+    mk('サイズ統一（画像/動画）', matchThumbSize, !multiSel);
+    vp.appendChild(ctxEl);
+    setTimeout(()=>{
+      const closer = (ev)=>{ if(!ctxEl || !ctxEl.contains(ev.target)){ closeCtx(); window.removeEventListener('mousedown', closer, true); } };
+      window.addEventListener('mousedown', closer, true);
+    }, 0);
+  });
+  const onPaste = async (e)=>{
+    if(!document.querySelector('.pane[data-pane="reference"]')?.classList.contains('on')) return;
+    if(!_REF_STATE.editMode) return;
+    const cd = e.clipboardData;
+    if(!cd) return;
+    const files = [];
+    for(const it of (cd.items||[])){
+      if(it.kind === 'file' && String(it.type||'').startsWith('image/')){
+        const f = it.getAsFile(); if(f) files.push(f);
+      }
+    }
+    if(files.length){
+      e.preventDefault();
+      const c0 = _viewportCenterWorld(); let dx=0;
+      for(const f of files){
+        try{
+          const ext = (f.type==='image/png'?'.png':f.type==='image/webp'?'.webp':'.jpg');
+          const uid = _nextId();
+          const ref = await storage.putReferenceMedia(uid+ext, f);
+          if(!ref) continue;
+          let w=320, h=240;
+          try{
+            const url = URL.createObjectURL(f);
+            await new Promise((res)=>{ const img=new Image(); img.onload=()=>{ w=img.naturalWidth; h=img.naturalHeight; URL.revokeObjectURL(url); res(); }; img.onerror=()=>{ URL.revokeObjectURL(url); res(); }; img.src=url; });
+            const scale = Math.min(1, 480/Math.max(w,h));
+            w = Math.round(w*scale); h = Math.round(h*scale);
+          }catch(_){}
+          insertItem({ type:'image', mediaRef:ref, mediaType:'image', label:'paste', w, h, x: Math.round(c0.x + dx - w/2), y: Math.round(c0.y - h/2) });
+          dx += 30;
+        }catch(_){}
+      }
+      return;
+    }
+    if(_REF_STATE.clipboard.length){ e.preventDefault(); pasteClipboard(); }
+  };
+  const onCopy = (e)=>{
+    if(!document.querySelector('.pane[data-pane="reference"]')?.classList.contains('on')) return;
+    if(!_REF_STATE.editMode) return;
+    if(!_REF_STATE.selection.size) return;
+    e.preventDefault(); copySelected();
+  };
+  document.addEventListener('paste', onPaste);
+  document.addEventListener('copy', onCopy);
   requestAnimationFrame(()=>applyTransform());
   window.addEventListener('resize', ()=>applyTransform());
 }
