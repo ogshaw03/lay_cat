@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.072';
+const APP_VERSION='2026.10.06.073';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4158,7 +4158,12 @@ function _refBuildItem(it){
     if(it.mediaRef){
       const inner = (it.mediaType === 'video') ? document.createElement('video') : document.createElement('img');
       inner.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:7px;display:block';
-      if(it.mediaType === 'video'){ inner.controls = true; inner.muted = true; inner.playsInline = true; }
+      if(it.mediaType === 'video'){
+        inner.controls = true; inner.muted = true; inner.playsInline = true;
+        /* v.073：アップロード時に生成したサムネを poster として表示。 */
+        if(it.thumbDataUrl) inner.poster = it.thumbDataUrl;
+        inner.preload = 'metadata';
+      }
       else { inner.alt = it.label||''; inner.decoding = 'async'; inner.loading = 'lazy'; }
       /* v.046：mediaRef は "reference/Media/<filename>" のフォルダパス */
       storage.resolveMediaUrl(it.mediaRef).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
@@ -4599,12 +4604,43 @@ async function _refInit(){
     const CONCURRENCY = 4;
     const defs = new Array(files.length);
     const _measureDim = (f)=>new Promise((res)=>{
-      if(!f.type.startsWith('image/')) return res({w:320,h:240});
-      const url = URL.createObjectURL(f);
-      const img = new Image();
-      img.onload = ()=>{ const w=img.naturalWidth||320, h=img.naturalHeight||240; URL.revokeObjectURL(url); const s=Math.min(1, 480/Math.max(w,h)); res({w:Math.round(w*s), h:Math.round(h*s)}); };
-      img.onerror = ()=>{ URL.revokeObjectURL(url); res({w:320,h:240}); };
-      img.src = url;
+      if(f.type.startsWith('image/')){
+        const url = URL.createObjectURL(f);
+        const img = new Image();
+        img.onload = ()=>{ const w=img.naturalWidth||320, h=img.naturalHeight||240; URL.revokeObjectURL(url); const s=Math.min(1, 480/Math.max(w,h)); res({w:Math.round(w*s), h:Math.round(h*s), poster:null}); };
+        img.onerror = ()=>{ URL.revokeObjectURL(url); res({w:320,h:240,poster:null}); };
+        img.src = url;
+        return;
+      }
+      if(f.type.startsWith('video/')){
+        /* v.073：動画の最初のフレームをキャンバスに描画して data URL のポスターを生成。 */
+        const url = URL.createObjectURL(f);
+        const video = document.createElement('video');
+        video.muted = true; video.playsInline = true; video.preload = 'auto';
+        const done = (ret)=>{ try{URL.revokeObjectURL(url)}catch(_){} res(ret); };
+        const to = setTimeout(()=>done({w:320,h:240,poster:null}), 6000);
+        video.addEventListener('loadeddata', ()=>{
+          try{ video.currentTime = Math.min(0.5, (video.duration||1)*0.1); }
+          catch(_){ clearTimeout(to); done({w:320,h:240,poster:null}); }
+        });
+        video.addEventListener('seeked', ()=>{
+          clearTimeout(to);
+          try{
+            const vw = video.videoWidth||320, vh = video.videoHeight||240;
+            const s = Math.min(1, 480/Math.max(vw,vh));
+            const tw = Math.round(vw*s), th = Math.round(vh*s);
+            const can = document.createElement('canvas');
+            can.width = tw; can.height = th;
+            can.getContext('2d').drawImage(video, 0, 0, tw, th);
+            const poster = can.toDataURL('image/jpeg', 0.7);
+            done({w: tw, h: th, poster});
+          }catch(e){ done({w:320,h:240,poster:null}); }
+        });
+        video.addEventListener('error', ()=>{ clearTimeout(to); done({w:320,h:240,poster:null}); });
+        video.src = url;
+        return;
+      }
+      res({w:320,h:240,poster:null});
     });
     let next = 0;
     const workers = Array.from({length: Math.min(CONCURRENCY, files.length)}, async ()=>{
@@ -4629,6 +4665,7 @@ async function _refInit(){
             w: dim.w, h: dim.h,
             x: Math.round(c0.x + i*30 - dim.w/2),
             y: Math.round(c0.y - dim.h/2),
+            ...(dim.poster ? { thumbDataUrl: dim.poster } : {}),
           };
         }catch(_){}
       }
@@ -5100,22 +5137,20 @@ async function _refInit(){
         }, c.x - 180, c.y - 10);
         return;
       }
-      /* v.066：URL ではない単純なテキストもクリップボードから貼付可能に（LayCAT v.113 と同仕様）。
-         内部クリップボードがあればそちらを優先する。 */
-      if(!_REF_STATE.clipboard.length){
-        e.preventDefault();
-        const c = _viewportCenterWorld();
-        const longest = trimmed.split(/\r?\n/).reduce((m,s)=>Math.max(m, s.length), 0);
-        const w = Math.min(560, Math.max(240, longest * 8));
-        insertItemAt({
-          type:'text',
-          text: trimmed,
-          fontSize: 16,
-          color: '#e8e8ec',
-          w,
-        }, c.x - w/2, c.y - 10);
-        return;
-      }
+      /* v.066／v.072：URL ではない単純なテキストもクリップボードから貼付可能に。
+         v.073：外部クリップボードのテキストは内部クリップボードより優先する。 */
+      e.preventDefault();
+      const c = _viewportCenterWorld();
+      const longest = trimmed.split(/\r?\n/).reduce((m,s)=>Math.max(m, s.length), 0);
+      const w = Math.min(560, Math.max(240, longest * 8));
+      insertItemAt({
+        type:'text',
+        text: trimmed,
+        fontSize: 16,
+        color: '#e8e8ec',
+        w,
+      }, c.x - w/2, c.y - 10);
+      return;
     }
     if(_REF_STATE.clipboard.length){ e.preventDefault(); pasteClipboard(); }
   };

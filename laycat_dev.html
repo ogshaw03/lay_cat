@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.119';
+const APP_VERSION='2026.10.06.120';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6800,12 +6800,44 @@ function renderProjReference(main, root){
     const CONCURRENCY = 4;
     const defs = new Array(files.length);
     const _measureDim = (f)=>new Promise((res)=>{
-      if(!f.type.startsWith('image/')) return res({w:320,h:240});
-      const url = URL.createObjectURL(f);
-      const img = new Image();
-      img.onload = ()=>{ const w=img.naturalWidth||320, h=img.naturalHeight||240; URL.revokeObjectURL(url); const s=Math.min(1, 480/Math.max(w,h)); res({w:Math.round(w*s), h:Math.round(h*s)}); };
-      img.onerror = ()=>{ URL.revokeObjectURL(url); res({w:320,h:240}); };
-      img.src = url;
+      if(f.type.startsWith('image/')){
+        const url = URL.createObjectURL(f);
+        const img = new Image();
+        img.onload = ()=>{ const w=img.naturalWidth||320, h=img.naturalHeight||240; URL.revokeObjectURL(url); const s=Math.min(1, 480/Math.max(w,h)); res({w:Math.round(w*s), h:Math.round(h*s), poster:null}); };
+        img.onerror = ()=>{ URL.revokeObjectURL(url); res({w:320,h:240,poster:null}); };
+        img.src = url;
+        return;
+      }
+      if(f.type.startsWith('video/')){
+        /* v.120：動画の最初のフレーム（またはその付近）をキャンバスに描画して data URL のポスターを生成。
+           JSON に data URL として格納するため、320x240 以内・JPEG q=0.7 でサイズを抑える。 */
+        const url = URL.createObjectURL(f);
+        const video = document.createElement('video');
+        video.muted = true; video.playsInline = true; video.preload = 'auto';
+        const done = (ret)=>{ try{URL.revokeObjectURL(url)}catch(_){} res(ret); };
+        const to = setTimeout(()=>done({w:320,h:240,poster:null}), 6000);
+        video.addEventListener('loadeddata', ()=>{
+          try{ video.currentTime = Math.min(0.5, (video.duration||1)*0.1); }
+          catch(_){ clearTimeout(to); done({w:320,h:240,poster:null}); }
+        });
+        video.addEventListener('seeked', ()=>{
+          clearTimeout(to);
+          try{
+            const vw = video.videoWidth||320, vh = video.videoHeight||240;
+            const s = Math.min(1, 480/Math.max(vw,vh));
+            const tw = Math.round(vw*s), th = Math.round(vh*s);
+            const can = document.createElement('canvas');
+            can.width = tw; can.height = th;
+            can.getContext('2d').drawImage(video, 0, 0, tw, th);
+            const poster = can.toDataURL('image/jpeg', 0.7);
+            done({w: tw, h: th, poster});
+          }catch(e){ done({w:320, h:240, poster:null}); }
+        });
+        video.addEventListener('error', ()=>{ clearTimeout(to); done({w:320,h:240,poster:null}); });
+        video.src = url;
+        return;
+      }
+      res({w:320,h:240,poster:null});
     });
     let next = 0;
     const workers = Array.from({length: Math.min(CONCURRENCY, files.length)}, async ()=>{
@@ -6832,6 +6864,7 @@ function renderProjReference(main, root){
             w: dim.w, h: dim.h,
             x: Math.round(c0.x + i*30 - dim.w/2),
             y: Math.round(c0.y - dim.h/2),
+            ...(dim.poster ? { thumbDataUrl: dim.poster } : {}),
           };
         }catch(err){ toast('アップロード失敗: '+(err&&err.message||'')); }
       }
@@ -7498,23 +7531,21 @@ function renderProjReference(main, root){
         }, c.x - 180, c.y - 10);
         return;
       }
-      /* v.113：URL ではない単純なテキストもクリップボードから貼付可能に。
-         内部クリップボード（PureRef 式コピー）があればそちらを優先する。 */
-      if(!_refClipboard.length){
-        e.preventDefault();
-        const c = _viewportCenterWorld();
-        /* 幅：長い行の文字数×8px を目安に 240〜560 でクランプ。改行はそのまま保持（pre-wrap）。 */
-        const longest = trimmed.split(/\r?\n/).reduce((m,s)=>Math.max(m, s.length), 0);
-        const w = Math.min(560, Math.max(240, longest * 8));
-        insertItemAt({
-          type:'text',
-          text: trimmed,
-          fontSize: 16,
-          color: '#e8e8ec',
-          w,
-        }, c.x - w/2, c.y - 10);
-        return;
-      }
+      /* v.113／v.119：URL ではない単純なテキストもクリップボードから貼付可能に。
+         v.120：外部クリップボードのテキストは内部クリップボードより優先する
+         （外で何かをコピーしたのに内部クリップボードが貼られる混乱を回避）。 */
+      e.preventDefault();
+      const c = _viewportCenterWorld();
+      const longest = trimmed.split(/\r?\n/).reduce((m,s)=>Math.max(m, s.length), 0);
+      const w = Math.min(560, Math.max(240, longest * 8));
+      insertItemAt({
+        type:'text',
+        text: trimmed,
+        fontSize: 16,
+        color: '#e8e8ec',
+        w,
+      }, c.x - w/2, c.y - 10);
+      return;
     }
     /* 画像・URL・平文テキストが無ければ内部クリップボードを貼付 */
     if(_refClipboard.length){
@@ -7659,7 +7690,12 @@ function _refBuildItem(it){
       /* v.118：画像の decode を非同期にしてメインスレッドブロックを低減。 */
       if(it.mediaType !== 'video'){ inner.decoding = 'async'; inner.loading = 'lazy'; }
       inner.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:7px;display:block';
-      if(it.mediaType === 'video'){ inner.controls = true; inner.muted = true; inner.playsInline = true; }
+      if(it.mediaType === 'video'){
+        inner.controls = true; inner.muted = true; inner.playsInline = true;
+        /* v.120：アップロード時に生成したサムネを poster として表示。読込み前も中身が見える。 */
+        if(it.thumbDataUrl) inner.poster = it.thumbDataUrl;
+        inner.preload = 'metadata'; /* サムネ無い既存動画も最初のフレームを拾う */
+      }
       /* 非同期で URL 解決（R2/FSA 両対応） */
       storage.getURLRetry(it.mediaRef, 3).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
       n.appendChild(inner);
