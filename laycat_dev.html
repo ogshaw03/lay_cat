@@ -4031,7 +4031,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.086';
+const APP_VERSION='2026.10.06.087';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6372,6 +6372,33 @@ function renderProjReference(main, root){
       canvas.appendChild(node);
     }
   };
+  /* ---------- イージング付き pan アニメーション ----------
+     v.087：目次クリックで一瞬で切り替わると「どこに移動したか」が分かりにくいため、
+     easeInOutQuad で ~500ms かけてスッと移動する。
+     ドラッグやホイールで割り込まれたら即キャンセル（applyTransform 直接呼びに戻る）。 */
+  let _refAnimRaf = 0;
+  const easeInOutQuad = t => t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t;
+  const animatePanTo = (targetTx, targetTy, duration)=>{
+    duration = duration || 500;
+    if(_refAnimRaf){ cancelAnimationFrame(_refAnimRaf); _refAnimRaf=0; }
+    const startTx = view.tx, startTy = view.ty;
+    const dx = targetTx - startTx, dy = targetTy - startTy;
+    if(Math.abs(dx) < 1 && Math.abs(dy) < 1){
+      view.tx = targetTx; view.ty = targetTy; applyTransform(); return;
+    }
+    const t0 = performance.now();
+    const step = (now)=>{
+      const t = Math.min(1, (now - t0) / duration);
+      const k = easeInOutQuad(t);
+      view.tx = startTx + dx * k;
+      view.ty = startTy + dy * k;
+      applyTransform();
+      if(t < 1) _refAnimRaf = requestAnimationFrame(step);
+      else _refAnimRaf = 0;
+    };
+    _refAnimRaf = requestAnimationFrame(step);
+  };
+  const cancelAnim = ()=>{ if(_refAnimRaf){ cancelAnimationFrame(_refAnimRaf); _refAnimRaf=0; } };
   /* ---------- 目次ビルド ---------- */
   const rebuildToc = ()=>{
     toc.innerHTML='';
@@ -6382,12 +6409,11 @@ function renderProjReference(main, root){
       row.appendChild(document.createTextNode(t.text||''));
       row.onclick=()=>{
         /* クリック時：そのタイトルの位置が画面左上少し内側に来るようにパン。
-           スケールは維持（ユーザー視点ではスムーズに移動したように見える）。 */
-        const rect=vp.getBoundingClientRect();
+           スケールは維持。easeInOutQuad の ~500ms アニメーションで滑らかに移動。 */
         const targetScale = view.scale;
-        view.tx = -t.x * targetScale + 80;
-        view.ty = -t.y * targetScale + 60;
-        applyTransform();
+        const targetTx = -t.x * targetScale + 80;
+        const targetTy = -t.y * targetScale + 60;
+        animatePanTo(targetTx, targetTy);
         toc.querySelectorAll('.ref-toc-item').forEach(x=>x.classList.remove('active'));
         row.classList.add('active');
       };
@@ -6399,6 +6425,7 @@ function renderProjReference(main, root){
   let dragging=false, dragX=0, dragY=0, startTx=0, startTy=0;
   vp.addEventListener('mousedown',(e)=>{
     if(e.button!==0) return; /* 左クリックのみ */
+    cancelAnim(); /* 目次アニメーション中にドラッグ開始したら即座にキャンセル */
     /* アイテム（image）のクリックは pan 対象外にしたい場合は後で対応。今回は背景・アイテム問わず pan 開始 */
     dragging=true;dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
     vp.classList.add('panning');
@@ -6414,6 +6441,7 @@ function renderProjReference(main, root){
   /* ---------- Zoom（ホイール） ---------- */
   vp.addEventListener('wheel',(e)=>{
     e.preventDefault();
+    cancelAnim(); /* アニメ中にホイールしたら即キャンセル */
     const rect = vp.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     /* カーソル位置をワールド座標で保存 → scale 後にその点に戻るように tx/ty 調整 */
@@ -6428,6 +6456,7 @@ function renderProjReference(main, root){
   }, { passive:false });
   /* ---------- Ctrls ---------- */
   const zoomAt = (factor) => {
+    cancelAnim();
     const rect = vp.getBoundingClientRect();
     const mx = rect.width/2, my = rect.height/2;
     const worldX = (mx - view.tx) / view.scale;
@@ -6439,8 +6468,9 @@ function renderProjReference(main, root){
   };
   zIn.onclick  = ()=>zoomAt(1.25);
   zOut.onclick = ()=>zoomAt(1/1.25);
-  zFit.onclick = ()=>{view.scale=1;applyTransform();};
+  zFit.onclick = ()=>{cancelAnim();view.scale=1;applyTransform();};
   zAll.onclick = ()=>{
+    cancelAnim();
     /* 全アイテムのバウンディングボックスを計算して vp に収まる scale を決める */
     if(!items.length) return;
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;

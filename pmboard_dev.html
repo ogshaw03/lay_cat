@@ -683,7 +683,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.042';
+const APP_VERSION='2026.10.06.043';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -3953,6 +3953,31 @@ function _refInit(){
       canvas.appendChild(_refBuildItem(it));
     }
   };
+  /* v.043：イージング付き pan アニメーション。目次クリックで ~500ms かけてスッと移動。
+     ドラッグ・ホイール・ズームボタンの操作でキャンセル。 */
+  let _refAnimRaf = 0;
+  const easeInOutQuad = t => t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t;
+  const cancelAnim = ()=>{ if(_refAnimRaf){ cancelAnimationFrame(_refAnimRaf); _refAnimRaf=0; } };
+  const animatePanTo = (targetTx, targetTy, duration)=>{
+    duration = duration || 500;
+    cancelAnim();
+    const startTx = view.tx, startTy = view.ty;
+    const dx = targetTx - startTx, dy = targetTy - startTy;
+    if(Math.abs(dx) < 1 && Math.abs(dy) < 1){
+      view.tx = targetTx; view.ty = targetTy; applyTransform(); return;
+    }
+    const t0 = performance.now();
+    const step = (now)=>{
+      const t = Math.min(1, (now - t0) / duration);
+      const k = easeInOutQuad(t);
+      view.tx = startTx + dx * k;
+      view.ty = startTy + dy * k;
+      applyTransform();
+      if(t < 1) _refAnimRaf = requestAnimationFrame(step);
+      else _refAnimRaf = 0;
+    };
+    _refAnimRaf = requestAnimationFrame(step);
+  };
   /* 目次ビルド */
   toc.innerHTML='';
   for(const t of titleItems){
@@ -3961,9 +3986,9 @@ function _refInit(){
     row.appendChild(dot);
     row.appendChild(document.createTextNode(t.text||''));
     row.onclick = ()=>{
-      view.tx = -t.x * view.scale + 80;
-      view.ty = -t.y * view.scale + 60;
-      applyTransform();
+      const targetTx = -t.x * view.scale + 80;
+      const targetTy = -t.y * view.scale + 60;
+      animatePanTo(targetTx, targetTy);
       toc.querySelectorAll('.ref-toc-item').forEach(x=>x.classList.remove('active'));
       row.classList.add('active');
     };
@@ -3973,6 +3998,7 @@ function _refInit(){
   let dragging=false, dragX=0, dragY=0, startTx=0, startTy=0;
   vp.addEventListener('mousedown',(e)=>{
     if(e.button!==0) return;
+    cancelAnim();
     dragging=true;dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
     vp.classList.add('panning');
     e.preventDefault();
@@ -3987,6 +4013,7 @@ function _refInit(){
   /* Zoom */
   vp.addEventListener('wheel',(e)=>{
     e.preventDefault();
+    cancelAnim();
     const rect = vp.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     const worldX = (mx - view.tx) / view.scale;
@@ -4000,6 +4027,7 @@ function _refInit(){
   }, { passive:false });
   /* Ctrls */
   const zoomAt = (factor) => {
+    cancelAnim();
     const rect = vp.getBoundingClientRect();
     const mx = rect.width/2, my = rect.height/2;
     const worldX = (mx - view.tx) / view.scale;
@@ -4011,8 +4039,9 @@ function _refInit(){
   };
   document.getElementById('refZoomIn').onclick  = ()=>zoomAt(1.25);
   document.getElementById('refZoomOut').onclick = ()=>zoomAt(1/1.25);
-  document.getElementById('refZoomFit').onclick = ()=>{view.scale=1;applyTransform();};
+  document.getElementById('refZoomFit').onclick = ()=>{cancelAnim();view.scale=1;applyTransform();};
   document.getElementById('refZoomAll').onclick = ()=>{
+    cancelAnim();
     if(!items.length) return;
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
     for(const it of items){const x1=it.x,y1=it.y,x2=it.x+(it.w||400),y2=it.y+(it.h||100);if(x1<minX)minX=x1;if(y1<minY)minY=y1;if(x2>maxX)maxX=x2;if(y2>maxY)maxY=y2;}
