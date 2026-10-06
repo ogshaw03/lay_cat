@@ -739,7 +739,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.062';
+const APP_VERSION='2026.10.06.063';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1001,7 +1001,14 @@ const storage = {
   async listDir(dirName){
     if(!this.dirHandle) return [];
     try{
-      const dir = await this.dirHandle.getDirectoryHandle(dirName);
+      /* v.063：dirName に "/" が含まれる場合はパス分割して段階的に降りる。
+         従来は getDirectoryHandle("reference/items") のようにスラッシュを含む名前を
+         渡していたため TypeError で [] が返り、資料タブが常に空だった。 */
+      let dir = this.dirHandle;
+      for(const p of String(dirName).split('/')){
+        if(!p) continue;
+        dir = await dir.getDirectoryHandle(p);
+      }
       const names=[];
       if(typeof dir.entries==='function'){
         for await(const [name,h] of dir.entries()){

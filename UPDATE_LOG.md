@@ -3446,6 +3446,13 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.063) **資料タブ：PMB で資料が全く表示されない不具合を修正（PMB）**：
+  - 事象：PMB で資料タブを開いても何も表示されない（LayCAT 本体で作成した資料も、PMB 自身で保存したはずの資料も空）。
+  - 原因：`storage.listDir('reference/items')` が `getDirectoryHandle('reference/items')` のように**スラッシュ入りの名前**を渡していたため、File System Access API 側で `TypeError: Name is not allowed to contain '/'` が発生 → catch で `[]` が返り、`loadReferenceItems()` 自身は成功扱いなのに結果が常に空になっていた。
+  - 修正：`listDir` に `/` 分割の段階的な降下処理を追加。`readJson` / `writeJson` / `writeBlob` / `removeFile` は既にパス分割対応していたので、`listDir` だけが欠けていた。
+  - 書き込み系副作用なし。既存の JSON／メディアはそのまま読める。
+  - APP_VERSION：2026.10.06.062 → 2026.10.06.063
+
 - (dev v2026.10.06.062) **資料タブ：画像拡大モーダル＋ LayCAT 本体と mediaRef 形式を共通化（PMB、LayCAT v.111 連動）**：
   - 画像クリックで拡大モーダル（LayCAT 本体 v.111 と同仕様）。編集 OFF＝シングルクリック、編集 ON＝ダブルクリック。
   - **LayCAT 本体との資料データ相互運用**：
