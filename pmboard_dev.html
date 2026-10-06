@@ -77,6 +77,27 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 
 /* =========== BODY =========== */
 .app-body{display:flex;flex:1;overflow:hidden;position:relative}
+/* v.064：ホーム画面（プロジェクト一覧カードグリッド）。
+   app-body 全面にオーバーレイして表示する。表示中は裏の gantt/sidebar は見えない。 */
+.pm-home-view{position:absolute;inset:0;background:var(--bg);z-index:50;display:none;flex-direction:column;overflow:auto}
+.pm-home-view.on{display:flex}
+.pm-home-head{padding:40px 48px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;border-bottom:1px solid var(--border)}
+.pm-home-title{font-family:var(--font-head);font-size:22px;font-weight:700;color:var(--text);letter-spacing:0.5px}
+.pm-home-sub{font-size:12px;color:var(--text3);margin-top:4px}
+.pm-home-body{padding:28px 48px 56px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.pm-home-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px 20px;cursor:pointer;transition:transform .12s ease, border-color .12s ease, background .12s ease;display:flex;flex-direction:column;gap:6px;min-height:116px;position:relative}
+.pm-home-card:hover{border-color:var(--accent);background:var(--bg3);transform:translateY(-2px)}
+.pm-home-card .pm-home-cname{font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--text);line-height:1.25;word-break:break-word}
+.pm-home-card .pm-home-cfolder{font-size:11px;color:var(--text3);font-family:var(--font-code);letter-spacing:.3px;word-break:break-all}
+.pm-home-card .pm-home-cmeta{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:8px}
+.pm-home-card .pm-home-chip{font-size:10px;padding:2px 7px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);letter-spacing:.3px}
+.pm-home-card .pm-home-chip.last{background:rgba(74,158,255,0.12);border-color:rgba(74,158,255,0.4);color:#4a9eff}
+.pm-home-card .pm-home-chip.r2{background:rgba(255,180,80,0.12);border-color:rgba(255,180,80,0.4);color:#ffb450}
+.pm-home-empty{grid-column:1/-1;text-align:center;color:var(--text3);padding:60px 20px;font-size:13px}
+.pm-home-empty a{color:var(--accent);text-decoration:none;font-weight:700}
+.pm-home-empty a:hover{text-decoration:underline}
+#pmHomeBtn{display:none}
+#pmHomeBtn.show{display:inline-flex}
 .sidebar{width:250px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;padding:12px 8px;gap:14px}
 .sidebar-label{font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;padding:0 8px;margin-bottom:4px}
 .sb-box{padding:10px 8px;background:transparent}
@@ -493,6 +514,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
   </div>
   <div class="app-ver" id="appVer">…</div>
   <div class="header-sep"></div>
+  <button class="btn btn-ghost btn-sm" id="pmHomeBtn" title="ホーム（プロジェクト一覧へ戻る）">🏠 ホーム</button>
   <div class="proj-picker" id="projPicker" title="プロジェクトを切り替え">
     <select id="projSelect"></select>
   </div>
@@ -522,6 +544,8 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 
 <!-- =========== BODY =========== -->
 <div class="app-body">
+<!-- v.064：ホーム画面（プロジェクト一覧）。表示中は app-body 全面を覆う -->
+<div class="pm-home-view" id="pmHomeView"></div>
 
 <!-- SIDEBAR -->
 <aside class="sidebar">
@@ -739,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.06.063';
+const APP_VERSION='2026.10.06.064';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -3248,7 +3272,79 @@ function populateProjectPicker(){
   if(!reg.some(p=>p.id===target)) target = reg[0].id;
   sel.value = target;
 }
+/* v.064：ホーム画面（プロジェクト一覧カードグリッド）。
+   - 初期表示（?pid= 無しの場合）
+   - ヘッダ 🏠 ボタンから戻れる
+   クリックで switchToProject を呼び、ホームを閉じる。 */
+function renderHomeView(){
+  const host = document.getElementById('pmHomeView');
+  if(!host) return;
+  const reg = laycatRegistry();
+  const lastPid = pmboardLastPid();
+  if(!reg.length){
+    host.innerHTML = `
+      <div class="pm-home-head">
+        <div>
+          <div class="pm-home-title">プロジェクト一覧</div>
+          <div class="pm-home-sub">LayCAT に接続済みプロジェクトはまだありません。</div>
+        </div>
+      </div>
+      <div class="pm-home-body">
+        <div class="pm-home-empty">
+          🎬 LayCAT 側でプロジェクトを開いてフォルダを接続すると、ここに表示されます。<br><br>
+          <a href="./laycat.html" target="_blank">LayCAT を開く →</a>
+        </div>
+      </div>`;
+    return;
+  }
+  const cards = reg.map(p=>{
+    const isLast = (lastPid && p.id===lastPid);
+    const isR2   = (p.backend === 'r2');
+    const chips = [];
+    if(isLast) chips.push('<span class="pm-home-chip last">前回</span>');
+    if(isR2)   chips.push('<span class="pm-home-chip r2">R2</span>');
+    else if(p.folderName) chips.push('<span class="pm-home-chip">フォルダ</span>');
+    return `
+      <div class="pm-home-card" data-pid="${escapeHtml(p.id)}" tabindex="0" role="button">
+        <div class="pm-home-cname">${escapeHtml(p.name||'(無題)')}</div>
+        <div class="pm-home-cfolder">${escapeHtml(p.folderName||p.id||'')}</div>
+        <div class="pm-home-cmeta">${chips.join('')}</div>
+      </div>`;
+  }).join('');
+  host.innerHTML = `
+    <div class="pm-home-head">
+      <div>
+        <div class="pm-home-title">プロジェクト一覧</div>
+        <div class="pm-home-sub">クリックで PMB を開きます（${reg.length} 件）</div>
+      </div>
+    </div>
+    <div class="pm-home-body">${cards}</div>`;
+  host.querySelectorAll('.pm-home-card').forEach(card=>{
+    const pid = card.dataset.pid;
+    card.addEventListener('click', ()=>{
+      hideHomeView();
+      /* projSelect も合わせて反映しておくとドロップダウンと表示が一致する */
+      const sel = document.getElementById('projSelect');
+      if(sel && Array.from(sel.options).some(o=>o.value===pid)) sel.value = pid;
+      switchToProject(pid).then(updateLastUpdatedLabel);
+    });
+    card.addEventListener('keydown',(e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); card.click(); } });
+  });
+}
+function showHomeView(){
+  const host = document.getElementById('pmHomeView');
+  if(host){ renderHomeView(); host.classList.add('on'); }
+  const btn = document.getElementById('pmHomeBtn');
+  if(btn) btn.classList.remove('show'); /* ホーム表示中はボタン自身を隠す */
+}
+function hideHomeView(){
+  const host = document.getElementById('pmHomeView');
+  if(host) host.classList.remove('on');
+  const btn = document.getElementById('pmHomeBtn');
+  if(btn) btn.classList.add('show');
+}
 async function switchToProject(pid){
+  hideHomeView(); /* v.064：ホーム表示中なら閉じる */
   storage.pid = pid;
   savePmboardLastPid(pid); /* 更新時に復元するため即保存 */
   updateFolderUI(); /* まず未接続表示 */
@@ -5220,10 +5316,20 @@ document.getElementById('refreshBtn').addEventListener('click', hourlyRefresh);
 setInterval(hourlyRefresh, 60*60*1000);
 updateLastUpdatedLabel();
 
-/* 初期プロジェクトへ自動接続を試行 */
-const initialPid = document.getElementById('projSelect').value;
-if(initialPid){ switchToProject(initialPid).then(updateLastUpdatedLabel); }
-else { showInitialEmptyState(); }
+/* v.064：ホームボタン */
+const homeBtn = document.getElementById('pmHomeBtn');
+if(homeBtn) homeBtn.addEventListener('click', showHomeView);
+
+/* 初期表示：?pid=<id> が URL に指定されていればそのプロジェクトを直接開く（ディープリンク維持）。
+   指定が無い場合はホーム（プロジェクト一覧）を表示し、ユーザーが選んだプロジェクトを開く。 */
+const _paramPid = urlParam('pid');
+if(_paramPid){
+  const sel = document.getElementById('projSelect');
+  if(sel && Array.from(sel.options).some(o=>o.value===_paramPid)) sel.value = _paramPid;
+  switchToProject(_paramPid).then(updateLastUpdatedLabel);
+}else{
+  showHomeView();
+}
 } /* end _pmAppInit */
 
 </script>
