@@ -281,6 +281,25 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .ref-rubber{position:absolute;border:1px dashed #4a9eff;background:rgba(74,158,255,0.08);pointer-events:none;z-index:10}
 .ref-edit-badge{display:inline-block;padding:2px 8px;border-radius:5px;background:rgba(74,158,255,0.22);color:#9ac4ff;border:1px solid rgba(74,158,255,0.44);font-family:var(--font-head);font-weight:700;font-size:10px;letter-spacing:0.5px;margin-right:8px}
 .ref-ctrls button.ref-edit-btn.on{background:#4a9eff;border-color:#4a9eff;color:#0a0a0e;font-weight:700}
+/* v.092：資料タブ 編集ツールバー（画面上部に浮かせる） */
+.ref-toolbar{position:absolute;top:10px;left:12px;right:12px;display:none;z-index:4;background:rgba(10,10,14,0.86);border:1px solid var(--border);border-radius:9px;padding:5px 8px;align-items:center;gap:4px;flex-wrap:wrap;backdrop-filter:blur(6px)}
+.ref-main.edit-mode .ref-toolbar{display:flex}
+.ref-toolbar .tb-grp{display:flex;align-items:center;gap:2px;padding:0 6px;border-right:1px solid var(--border);height:28px}
+.ref-toolbar .tb-grp:last-child{border-right:0}
+.ref-toolbar button, .ref-toolbar select{background:transparent;border:1px solid transparent;color:var(--text2);font-family:inherit;font-size:11px;padding:4px 9px;border-radius:5px;cursor:pointer;height:26px;display:inline-flex;align-items:center;justify-content:center;min-width:28px}
+.ref-toolbar button:hover, .ref-toolbar select:hover{background:var(--bg3);color:var(--text);border-color:var(--border2)}
+.ref-toolbar button.on{background:#4a9eff;border-color:#4a9eff;color:#0a0a0e;font-weight:700}
+.ref-toolbar input[type=number]{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:3px 5px;border-radius:5px;width:48px;height:26px;box-sizing:border-box}
+.ref-toolbar input[type=range]{height:26px;width:80px}
+.ref-toolbar input[type=color]{background:transparent;border:1px solid var(--border);border-radius:5px;width:30px;height:26px;padding:1px;cursor:pointer}
+.ref-toolbar select{min-width:62px;padding-right:16px}
+.ref-toolbar .tb-sep{width:1px;align-self:stretch;background:var(--border);margin:0 2px}
+.ref-toolbar .tb-lbl{font-size:10px;color:var(--text3);font-family:var(--font-head);letter-spacing:0.5px;margin-right:3px}
+/* v.092：編集中の新規テキスト／タイトル／shape のデフォルト見栄え */
+.ref-item.ref-text{font-family:var(--font-body);color:var(--text);line-height:1.3;pointer-events:none;white-space:pre-wrap;word-break:break-word}
+.ref-item.ref-shape{box-sizing:border-box;border:2px solid;pointer-events:none}
+.ref-item.ref-shape.shape-circle{border-radius:50%}
+.ref-main.edit-mode .ref-item{pointer-events:auto}
 /* 単色ラインアイコン */
 .ico{width:1.05em;height:1.05em;vertical-align:-0.16em;flex-shrink:0}
 button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-chip .ico{margin-right:.4em}
@@ -4122,7 +4141,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.091';
+const APP_VERSION='2026.10.06.092';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6446,6 +6465,50 @@ function renderProjReference(main, root){
   if(state.refEditMode) vp.classList.add('edit-mode');
   const grid=el('div','ref-grid-bg');vp.appendChild(grid);
   const canvas=el('div','ref-canvas');vp.appendChild(canvas);
+  /* v.092：編集ツールバー（画面上部） */
+  const tb = el('div','ref-toolbar');
+  const _tbGrp = (parent)=>{const g=el('div','tb-grp');parent.appendChild(g);return g};
+  const _tbBtn = (parent, label, title) => {const b=el('button',null,label);if(title)b.title=title;parent.appendChild(b);return b};
+  /* タイトル・テキスト追加 */
+  const grpAdd = _tbGrp(tb);
+  const btnH1 = _tbBtn(grpAdd, '大', '大タイトル（48px）追加');
+  const btnH2 = _tbBtn(grpAdd, '中', '中タイトル（32px）追加');
+  const btnH3 = _tbBtn(grpAdd, '小', '小タイトル（22px）追加');
+  const btnTxt= _tbBtn(grpAdd, 'T', 'テキスト追加');
+  /* 図形 */
+  const grpShape = _tbGrp(tb);
+  const selShape = document.createElement('select');
+  const _opt=(v,t)=>{const o=document.createElement('option');o.value=v;o.textContent=t;selShape.appendChild(o)};
+  _opt('rect','◼ 四角形');_opt('circle','● 円');
+  grpShape.appendChild(selShape);
+  const btnShape = _tbBtn(grpShape, '＋図形', '選択中の図形タイプを追加');
+  /* 画像／動画アップロード */
+  const grpMedia = _tbGrp(tb);
+  const btnUpload = _tbBtn(grpMedia, '🖼 画像/動画', '画像・動画をアップロード');
+  const inpFile = document.createElement('input');
+  inpFile.type='file'; inpFile.multiple=true; inpFile.accept='image/*,video/*'; inpFile.style.display='none';
+  grpMedia.appendChild(inpFile);
+  /* 書式（テキスト／タイトル向け） */
+  const grpText = _tbGrp(tb);
+  const btnBold = _tbBtn(grpText, 'B', '太字（選択中テキストに適用）');
+  btnBold.style.fontWeight='700';
+  const btnUline= _tbBtn(grpText, 'U', 'アンダーライン');
+  btnUline.style.textDecoration='underline';
+  grpText.appendChild(el('span','tb-lbl','px'));
+  const inpSize = document.createElement('input'); inpSize.type='number'; inpSize.min='8'; inpSize.max='120'; inpSize.step='1'; inpSize.placeholder='--';
+  grpText.appendChild(inpSize);
+  grpText.appendChild(el('span','tb-lbl','文字'));
+  const inpTxtCol = document.createElement('input'); inpTxtCol.type='color'; inpTxtCol.value='#e8e8ec';
+  grpText.appendChild(inpTxtCol);
+  /* 書式（図形向け） */
+  const grpShapeFmt = _tbGrp(tb);
+  grpShapeFmt.appendChild(el('span','tb-lbl','図形色'));
+  const inpShapeCol = document.createElement('input'); inpShapeCol.type='color'; inpShapeCol.value='#4a9eff';
+  grpShapeFmt.appendChild(inpShapeCol);
+  grpShapeFmt.appendChild(el('span','tb-lbl','透明度'));
+  const inpOpacity = document.createElement('input'); inpOpacity.type='range'; inpOpacity.min='0'; inpOpacity.max='100'; inpOpacity.value='15';
+  grpShapeFmt.appendChild(inpOpacity);
+  vp.appendChild(tb);
   const hud=el('div','ref-hud');vp.appendChild(hud);
   const ctrls=el('div','ref-ctrls');
   /* v.091：編集モード ON/OFF トグル。ON のときはボタンが青く、HUD に "編集中" バッジが出る。 */
@@ -6564,6 +6627,30 @@ function renderProjReference(main, root){
       delete _refSaveTimers[it.id];
     }, 350);
   };
+  /* ---------- v.092：新規アイテム追加（画面中央に挿入） ---------- */
+  const _nextId = ()=> 'r_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,7);
+  const _viewportCenterWorld = ()=>{
+    const r = vp.getBoundingClientRect();
+    return { x: (r.width/2 - view.tx) / view.scale, y: (r.height/2 - view.ty) / view.scale };
+  };
+  const insertItem = (partial) => {
+    const c = _viewportCenterWorld();
+    const def = Object.assign({ id: _nextId(), x: Math.round(c.x - (partial.w||200)/2), y: Math.round(c.y - (partial.h||40)/2) }, partial);
+    workingItems.push(def);
+    state.refSelection.clear(); state.refSelection.add(def.id);
+    scheduleItemSave(def);
+    items = (!state.refEditMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    renderVisible();
+    return def;
+  };
+  /* 選択中アイテムをフォーマット書き換え（コールバックで変更）→ 保存 */
+  const applyToSelected = (fn) => {
+    for(const id of state.refSelection){
+      const it = workingItems.find(x=>x.id===id);
+      if(it){ fn(it); scheduleItemSave(it); }
+    }
+    renderVisible();
+  };
   /* ---------- 編集モードトグル ---------- */
   const setEditMode = (on) => {
     state.refEditMode = !!on;
@@ -6576,6 +6663,58 @@ function renderProjReference(main, root){
     applyTransform();
   };
   editBtn.onclick = () => setEditMode(!state.refEditMode);
+  /* ---------- ツールバー 配線 ---------- */
+  btnH1.onclick = ()=> insertItem({type:'title', text:'大タイトル', fontSize:48, color:'#e8e8ec'});
+  btnH2.onclick = ()=> insertItem({type:'title', text:'中タイトル', fontSize:32, color:'#e8e8ec'});
+  btnH3.onclick = ()=> insertItem({type:'title', text:'小タイトル', fontSize:22, color:'#e8e8ec'});
+  btnTxt.onclick= ()=> insertItem({type:'text',  text:'テキスト',   fontSize:16, color:'#e8e8ec', w:260});
+  btnShape.onclick = ()=> insertItem({type:'shape', shape:selShape.value||'rect', color:inpShapeCol.value, opacity:(parseInt(inpOpacity.value,10)||15)/100, w:240, h:160});
+  btnUpload.onclick = ()=> inpFile.click();
+  inpFile.onchange = async (e)=>{
+    const files = Array.from(e.target.files||[]);
+    if(!files.length) return;
+    inpFile.value = ''; /* 同じファイルを再度選べるようにクリア */
+    const c0 = _viewportCenterWorld();
+    let dx = 0;
+    for(const f of files){
+      try{
+        const ext = (f.name.match(/(\.[A-Za-z0-9]+)$/)||[])[1] || (f.type.startsWith('video/')?'.mp4':'.jpg');
+        const uid = _nextId();
+        const fn = uid + ext;
+        const ref = await storage.putReferenceMedia(root.id, fn, f);
+        if(!ref){ toast('ファイル保存に失敗しました'); continue; }
+        /* 画像の場合はネイティブサイズで、動画はデフォルトサイズで作成 */
+        let w = 320, h = 240;
+        if(f.type.startsWith('image/')){
+          try{
+            const url = URL.createObjectURL(f);
+            await new Promise((res)=>{ const img=new Image(); img.onload=()=>{ w=img.naturalWidth; h=img.naturalHeight; URL.revokeObjectURL(url); res(); }; img.onerror=()=>{ URL.revokeObjectURL(url); res(); }; img.src=url; });
+            /* 画面に収まるように縮小（最大 480） */
+            const scale = Math.min(1, 480 / Math.max(w,h));
+            w = Math.round(w*scale); h = Math.round(h*scale);
+          }catch(_){}
+        }
+        insertItem({
+          type:'image',
+          mediaRef: ref,
+          mediaType: f.type.startsWith('video/')?'video':'image',
+          label: f.name,
+          w, h,
+          /* 複数アップロード時に少しずらす */
+          x: Math.round(c0.x + dx - w/2),
+          y: Math.round(c0.y - h/2),
+        });
+        dx += 30;
+      }catch(err){ toast('アップロード失敗: '+(err&&err.message||'')); }
+    }
+  };
+  /* 書式ボタン：選択中のテキスト／タイトルに適用 */
+  btnBold.onclick  = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.bold = !it.bold; });
+  btnUline.onclick = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.underline = !it.underline; });
+  inpSize.oninput  = ()=>{ const v = parseInt(inpSize.value,10); if(!isNaN(v) && v>=4 && v<=200) applyToSelected(it => { if(it.type==='text'||it.type==='title') it.fontSize = v; }); };
+  inpTxtCol.oninput= ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.color = inpTxtCol.value; });
+  inpShapeCol.oninput = ()=> applyToSelected(it => { if(it.type==='shape') it.color = inpShapeCol.value; });
+  inpOpacity.oninput  = ()=> applyToSelected(it => { if(it.type==='shape') it.opacity = (parseInt(inpOpacity.value,10)||0)/100; });
   /* ---------- アイテム座標ヘルパ ---------- */
   const screenToWorld = (sx, sy) => {
     const r = vp.getBoundingClientRect();
@@ -6803,12 +6942,42 @@ function _refBuildItem(it){
     n.textContent = it.text || '';
     if(it.fontSize) n.style.fontSize = it.fontSize + 'px';
     if(it.color)    n.style.color    = it.color;
+    if(it.bold)      n.style.fontWeight = '700';
+    if(it.underline) n.style.textDecoration = 'underline';
+  }else if(it.type === 'text'){
+    /* v.092：フリーテキスト。改行対応・word-break あり */
+    n.textContent = it.text || '';
+    n.style.fontSize = (it.fontSize || 16) + 'px';
+    if(it.color)     n.style.color = it.color;
+    if(it.bold)      n.style.fontWeight = '700';
+    if(it.underline) n.style.textDecoration = 'underline';
   }else if(it.type === 'image'){
-    /* モック：画像プレースホルダ（アイコン＋ラベル） */
-    const ph = el('div','ref-image-ph');
-    ph.appendChild(el('div','ic','🖼'));
-    ph.appendChild(el('div','lb',it.label||''));
-    n.appendChild(ph);
+    /* v.092：実データがあれば img タグで表示。無ければ従来の placeholder。
+       video タイプも同枠で扱う（mediaType:'video' + mediaRef）。 */
+    if(it.mediaRef){
+      const inner = (it.mediaType === 'video')
+        ? el('video') : el('img');
+      inner.setAttribute(it.mediaType === 'video' ? 'muted':'alt', it.mediaType === 'video' ? 'muted' : (it.label||''));
+      inner.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:7px;display:block';
+      if(it.mediaType === 'video'){ inner.controls = true; inner.muted = true; inner.playsInline = true; }
+      /* 非同期で URL 解決（R2/FSA 両対応） */
+      storage.getURLRetry(it.mediaRef, 3).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
+      n.appendChild(inner);
+    }else{
+      const ph = el('div','ref-image-ph');
+      ph.appendChild(el('div','ic','🖼'));
+      ph.appendChild(el('div','lb',it.label||''));
+      n.appendChild(ph);
+    }
+  }else if(it.type === 'shape'){
+    /* v.092：図形（rect / circle）。border 色・background（透明度は inline で bg alpha に反映） */
+    n.classList.add('shape-'+(it.shape||'rect'));
+    const col = it.color || '#4a9eff';
+    n.style.borderColor = col;
+    const alpha = (typeof it.opacity === 'number') ? Math.max(0, Math.min(1, it.opacity)) : 0.15;
+    const hex = String(col).replace('#','');
+    const r = parseInt(hex.slice(0,2),16)||74, g = parseInt(hex.slice(2,4),16)||158, b = parseInt(hex.slice(4,6),16)||255;
+    n.style.background = `rgba(${r},${g},${b},${alpha})`;
   }else if(it.type === 'group'){
     if(it.color){
       n.style.borderColor = it.color;

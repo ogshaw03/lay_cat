@@ -18,6 +18,28 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.06.092) **資料タブ Phase 3：編集ツールバー・追加系ボタン・書式（LayCAT）**：
+  - 編集モード時のみ画面上部に浮かぶツールバーを追加。
+  - **追加ボタン**：
+    - 大／中／小 タイトル（48/32/22px）
+    - T：フリーテキスト
+    - 図形プルダウン（四角形／円）＋「＋図形」ボタン
+    - 🖼 画像／動画 アップロード（複数選択可、画像はネイティブサイズを尊重し最大 480px に収まるよう縮小）
+  - **書式ボタン**（選択中アイテムに適用）：
+    - B（太字）、U（アンダーライン）
+    - フォントサイズ（4〜200px）
+    - 文字色（カラーピッカー）
+    - 図形色（カラーピッカー）
+    - 図形透明度（0〜100% スライダー）
+  - **画像/動画アップロード**：`storage.putReferenceMedia(pid, filename, blob)` で `reference/Media/` に保存。戻り値 ref を item.mediaRef として参照。表示時に `storage.getURLRetry` で解決。video はネイティブ `<video controls muted playsInline>`。
+  - **アイテム追加の挙動**：ビューポート中央に挿入、選択状態に遷移、350ms デバウンス保存。
+  - **新 item type**：
+    - `text`：フリーテキスト（text, fontSize, color, bold, underline, w）
+    - `shape`：図形（shape:'rect'|'circle', color, opacity, w, h）
+    - `image` の拡張：mediaRef（ref 文字列）／mediaType（'image'|'video'）／label
+  - APP_VERSION：2026.10.06.091 → 2026.10.06.092
+  - 続く Phase 4：角リサイズ・右クリックメニュー（整列・コピー・貼付・サムネ揃え）・クリップボードペースト。Phase 5：PMB 移植。
+
 - (dev v2026.10.06.091) **資料タブ Phase 2：編集モード・選択・移動・範囲選択・削除（LayCAT）**：
   - 右下コントロールに「✏ 編集」トグルボタン追加。ON のとき青く点灯＋「✏ 編集中」表示。
   - **編集 OFF**：従来通りドラッグで pan、クリックで何も起きない（アイテムは pointer-events:none）。
