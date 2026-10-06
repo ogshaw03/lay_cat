@@ -239,6 +239,35 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .mention-opt .mo-sub{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 20px 28px}
 .home-main{padding-top:14px}
+/* v.086：資料タブ（PureRef 風 無限キャンバス）
+   キャンバス座標系（canvas space）とスクリーン座標系（screen space）を transform(scale/translate) で接続。
+   アイテムは view.scale・view.tx/ty で変換して描画。viewport virtualization で画面外アイテムは DOM 省略。 */
+.ref-root{display:flex;height:calc(100vh - 170px);min-height:420px;margin:0 -20px 0 -20px;background:var(--bg);border-top:1px solid var(--border)}
+.ref-side{width:240px;flex-shrink:0;border-right:1px solid var(--border);background:var(--bg2);display:flex;flex-direction:column;overflow:hidden}
+.ref-side .ref-side-hd{padding:10px 14px 6px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.4px;text-transform:uppercase;border-bottom:1px solid var(--border)}
+.ref-side .ref-toc{flex:1;overflow-y:auto;padding:6px 4px}
+.ref-side .ref-toc-item{padding:7px 12px;border-radius:6px;cursor:pointer;color:var(--text2);font-size:12px;display:flex;align-items:center;gap:7px;line-height:1.4}
+.ref-side .ref-toc-item:hover{background:var(--bg3);color:var(--text)}
+.ref-side .ref-toc-item.active{background:var(--bg3);color:var(--text);font-weight:600}
+.ref-side .ref-toc-item .ref-toc-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.ref-main{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+.ref-canvas{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;cursor:grab;user-select:none}
+.ref-main.panning .ref-canvas{cursor:grabbing}
+.ref-item{position:absolute;left:0;top:0;box-sizing:border-box}
+.ref-item.ref-title{font-family:var(--font-head);font-weight:700;color:var(--text);letter-spacing:0.5px;line-height:1.1;pointer-events:none;white-space:nowrap}
+.ref-item.ref-image{background:var(--bg3);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--text3);font-size:11px;text-align:center;padding:8px}
+.ref-item.ref-image .ref-image-ph{display:flex;flex-direction:column;align-items:center;gap:4px}
+.ref-item.ref-image .ref-image-ph .ic{font-size:28px;opacity:0.5}
+.ref-item.ref-group{border:1.5px dashed;border-radius:12px;background:transparent;pointer-events:none}
+.ref-item.ref-group .ref-group-lbl{position:absolute;top:-14px;left:12px;background:var(--bg);padding:1px 8px;font-size:11px;font-family:var(--font-head);font-weight:700;letter-spacing:0.5px;border-radius:4px}
+.ref-hud{position:absolute;left:12px;bottom:10px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);font-family:var(--font-code);background:rgba(10,10,14,0.72);border:1px solid var(--border);border-radius:7px;padding:4px 10px;z-index:3;pointer-events:none}
+.ref-ctrls{position:absolute;right:12px;bottom:10px;display:flex;gap:4px;z-index:3}
+.ref-ctrls button{background:rgba(10,10,14,0.72);border:1px solid var(--border);color:var(--text2);font-family:var(--font-code);font-size:12px;padding:4px 10px;border-radius:7px;cursor:pointer}
+.ref-ctrls button:hover{color:var(--text);border-color:var(--border2)}
+.ref-grid-bg{position:absolute;inset:0;pointer-events:none;background-image:
+  linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+  linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size:100px 100px;background-position:0 0}
 /* 単色ラインアイコン */
 .ico{width:1.05em;height:1.05em;vertical-align:-0.16em;flex-shrink:0}
 button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-chip .ico{margin-right:.4em}
@@ -4002,7 +4031,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.06.085';
+const APP_VERSION='2026.10.06.086';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4214,7 +4243,7 @@ async function boot(){
     let restored=false;
     if(_loc&&_loc.id&&getNode(_loc.id)){
       state.currentId=_loc.id;
-      if(['timeline','progress','shots','assets','submit','check','browse'].includes(_loc.tab))state.projTab=_loc.tab;
+      if(['timeline','progress','shots','assets','submit','check','browse','reference'].includes(_loc.tab))state.projTab=_loc.tab;
       for(const n of pathOf(_loc.id))state.expanded.add(n.id);
       render();syncHash();resolveThumbs();restored=true;
     }
@@ -5268,7 +5297,7 @@ function go(id,opts){state.currentId=id;state.search='';state.pmPick=null;state.
    #/n/<nodeId>/<tab>     プロジェクト/セクション/レビューページ（tab: timeline|progress|shots|browse）
    #/r/<nodeId>/<verId>   レビュー（動画FB）画面
    ============================================================ */
-const VALID_TABS=['timeline','progress','shots','assets','submit','check','browse'];
+const VALID_TABS=['timeline','progress','shots','assets','submit','check','browse','reference'];
 function hashOf(){
   if(state.reviewOpen&&getNode(state.reviewOpen.nodeId))return '#/r/'+state.reviewOpen.nodeId+'/'+state.reviewOpen.versionId;
   if(!state.currentId)return '#/';
@@ -5758,12 +5787,12 @@ function shotOf(node){if(!node||!node.parentId)return '';const p=getNode(node.pa
 /* プロジェクトの上部タブ（常に表示）。タブクリックでプロジェクトのトップ＋該当タブへ */
 /* ヘッダ内のプロジェクトタブ（タイムライン / 進捗 / ショット） */
 function buildProjectTabsHead(root){
-  if(!['timeline','progress','shots','assets','submit','check','browse'].includes(state.projTab))state.projTab='timeline';
+  if(!['timeline','progress','shots','assets','submit','check','browse','reference'].includes(state.projTab))state.projTab='timeline';
   const onRoot=state.currentId===root.id&&!state.search.trim();
   const nav=el('div','head-tabs');
   /* タブ帯そのものクリックでもショット選択を解除（余白クリック用の受け皿） */
   nav.addEventListener('mousedown',()=>{if(state.shotSel){state.shotSel=null;renderBody();resolveThumbs()}});
-  [['timeline','タイムライン'],['progress','進捗'],['shots','ショット'],['assets','アセット'],['submit','サブミット'],['check','チェック待ち']].forEach(([id,lab],i)=>{
+  [['timeline','タイムライン'],['progress','進捗'],['shots','ショット'],['assets','アセット'],['reference','資料'],['submit','サブミット'],['check','チェック待ち']].forEach(([id,lab],i)=>{
     if(i)nav.appendChild(el('span','vdiv')); /* タブ間の縦区切り線 */
     const active=onRoot&&state.projTab===id;
     const b=el('button','ptab'+(active?' on':''),lab);
@@ -6083,6 +6112,7 @@ function renderBodyMain(){
     if(state.projTab==='progress')renderProjProgress(main,root);
     else if(state.projTab==='shots')renderProjShots(main,root);
     else if(state.projTab==='assets')renderProjAssets(main,root);
+    else if(state.projTab==='reference')renderProjReference(main,root);
     else if(state.projTab==='submit')renderProjSubmits(main,root);
     else if(state.projTab==='check')renderProjCheck(main,root);
     else if(state.projTab==='browse'){state.lastPageId=root.id;renderSectionBody(main,root)}
@@ -6233,6 +6263,235 @@ function tlSubmitItem(e,cur){
   }
   grp.appendChild(row);
   return grp;
+}
+/* v.086：資料タブ（PureRef 風 無限キャンバス UI）
+   - 左サイドバー：目次（title アイテムをクリックで該当位置へパン）
+   - 右メイン：pan/zoom 可能な無限キャンバス
+   - アイテム：title（見出し）／image（モック：画像プレースホルダ）／group（枠図形）
+   - 書き込み系なし：モックデータは関数内 const、state 側に view（tx/ty/scale）のみ保持
+   - viewport virtualization：画面外（+バッファ）アイテムは DOM 省略
+   実データ連携・編集 UI は後続タスク（今回は UI のみ）。 */
+const REF_MOCK_ITEMS = [
+  /* 群 1：キャラクター設定（左上） */
+  { id:'g_char',  type:'group', x:0,     y:0,     w:1700, h:1050, color:'#7fbf9a', label:'キャラクター設定' },
+  { id:'t_char',  type:'title', x:24,    y:32,    text:'キャラクター設定', fontSize:48, color:'#7fbf9a' },
+  { id:'c_lead',  type:'image', x:40,    y:120,   w:320, h:420, label:'主役・立ち絵' },
+  { id:'c_lead2', type:'image', x:380,   y:120,   w:320, h:420, label:'主役・表情集' },
+  { id:'c_sub',   type:'image', x:40,    y:560,   w:320, h:420, label:'サブキャラA' },
+  { id:'c_sub2',  type:'image', x:380,   y:560,   w:320, h:420, label:'サブキャラB' },
+  { id:'c_prop',  type:'image', x:740,   y:120,   w:480, h:420, label:'衣装・小物' },
+  { id:'c_ref',   type:'image', x:740,   y:560,   w:480, h:420, label:'参考写真' },
+  { id:'c_memo',  type:'image', x:1240,  y:120,   w:420, h:860, label:'監督メモ・方針' },
+  /* 群 2：美術設定（右上） */
+  { id:'g_bg',    type:'group', x:1800,  y:0,     w:1500, h:1050, color:'#f0b872', label:'美術設定' },
+  { id:'t_bg',    type:'title', x:1824,  y:32,    text:'美術設定', fontSize:48, color:'#f0b872' },
+  { id:'bg_room', type:'image', x:1840,  y:120,   w:460, h:300, label:'部屋 内観' },
+  { id:'bg_hall', type:'image', x:2320,  y:120,   w:460, h:300, label:'廊下' },
+  { id:'bg_sch',  type:'image', x:2800,  y:120,   w:460, h:300, label:'校舎外観' },
+  { id:'bg_sky',  type:'image', x:1840,  y:440,   w:720, h:280, label:'空・雲（日中／夕）' },
+  { id:'bg_night',type:'image', x:2580,  y:440,   w:680, h:280, label:'夜景' },
+  { id:'bg_plot', type:'image', x:1840,  y:740,   w:1420, h:240, label:'ロケーション配置図' },
+  /* 群 3：プロップ・小道具（左下） */
+  { id:'g_prop',  type:'group', x:0,     y:1150,  w:1700, h:800, color:'#6fa8dc', label:'プロップ・小道具' },
+  { id:'t_prop',  type:'title', x:24,    y:1182,  text:'プロップ・小道具', fontSize:48, color:'#6fa8dc' },
+  { id:'p_a',     type:'image', x:40,    y:1270,  w:300, h:300, label:'バッグ' },
+  { id:'p_b',     type:'image', x:360,   y:1270,  w:300, h:300, label:'ノート' },
+  { id:'p_c',     type:'image', x:680,   y:1270,  w:300, h:300, label:'ペン類' },
+  { id:'p_d',     type:'image', x:1000,  y:1270,  w:300, h:300, label:'食器' },
+  { id:'p_e',     type:'image', x:1320,  y:1270,  w:360, h:300, label:'その他 雑貨' },
+  { id:'p_dim',   type:'image', x:40,    y:1590,  w:1640, h:320, label:'サイズ比較表' },
+  /* 群 4：カラースクリプト・ライティング（右下） */
+  { id:'g_light', type:'group', x:1800,  y:1150,  w:1500, h:800, color:'#d682c6', label:'カラースクリプト・ライティング' },
+  { id:'t_light', type:'title', x:1824,  y:1182,  text:'カラースクリプト・ライティング', fontSize:44, color:'#d682c6' },
+  { id:'l_a',     type:'image', x:1840,  y:1270,  w:460, h:300, label:'シーン1 カラー' },
+  { id:'l_b',     type:'image', x:2320,  y:1270,  w:460, h:300, label:'シーン2 カラー' },
+  { id:'l_c',     type:'image', x:2800,  y:1270,  w:460, h:300, label:'シーン3 カラー' },
+  { id:'l_lgt',   type:'image', x:1840,  y:1590,  w:1420, h:320, label:'ライト方向 ガイド' },
+  /* 群 5：カメラワーク（下帯） */
+  { id:'g_cam',   type:'group', x:0,     y:2050,  w:3300, h:720,  color:'#c0ca7a', label:'カメラワーク・絵コンテ補足' },
+  { id:'t_cam',   type:'title', x:24,    y:2080,  text:'カメラワーク・絵コンテ補足', fontSize:44, color:'#c0ca7a' },
+  { id:'cam_a',   type:'image', x:40,    y:2170,  w:520, h:560, label:'PAN ガイド' },
+  { id:'cam_b',   type:'image', x:580,   y:2170,  w:520, h:560, label:'ZOOM ガイド' },
+  { id:'cam_c',   type:'image', x:1120,  y:2170,  w:520, h:560, label:'DOLLY ガイド' },
+  { id:'cam_d',   type:'image', x:1660,  y:2170,  w:520, h:560, label:'HAND HELD ガイド' },
+  { id:'cam_e',   type:'image', x:2200,  y:2170,  w:1060,h:560, label:'画角一覧（24/35/50mm 等）' },
+];
+function renderProjReference(main, root){
+  main.innerHTML='';
+  if(!state.refView) state.refView = { tx: 60, ty: 60, scale: 0.5 };
+  const view = state.refView;
+  const items = REF_MOCK_ITEMS;
+  const titleItems = items.filter(x=>x.type==='title');
+  const root_=el('div','ref-root');
+  /* 左サイドバー：目次 */
+  const side=el('div','ref-side');
+  const sideHd=el('div','ref-side-hd','目次');side.appendChild(sideHd);
+  const toc=el('div','ref-toc');
+  side.appendChild(toc);
+  /* 右メイン：キャンバスビューポート */
+  const vp=el('div','ref-main');
+  const grid=el('div','ref-grid-bg');vp.appendChild(grid);
+  const canvas=el('div','ref-canvas');vp.appendChild(canvas);
+  const hud=el('div','ref-hud');vp.appendChild(hud);
+  const ctrls=el('div','ref-ctrls');
+  const zIn=el('button',null,'＋');zIn.title='拡大';
+  const zOut=el('button',null,'−');zOut.title='縮小';
+  const zFit=el('button',null,'100%');zFit.title='等倍';
+  const zAll=el('button',null,'⊡');zAll.title='全体表示';
+  ctrls.appendChild(zOut);ctrls.appendChild(zFit);ctrls.appendChild(zIn);ctrls.appendChild(zAll);
+  vp.appendChild(ctrls);
+  root_.appendChild(side);root_.appendChild(vp);
+  main.appendChild(root_);
+  /* ---------- 描画・virtualization ---------- */
+  const BUFFER = 400; /* canvas 座標系で画面外にこの px だけ余分に描画 */
+  const applyTransform = ()=>{
+    canvas.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+    /* HUD の表示を更新 */
+    hud.textContent = `pan: ${Math.round(view.tx)}, ${Math.round(view.ty)}   zoom: ${(view.scale*100).toFixed(0)}%`;
+    /* グリッド背景も scale に追従（視覚的な方眼） */
+    const g = 100 * view.scale;
+    grid.style.backgroundSize = `${g}px ${g}px`;
+    grid.style.backgroundPosition = `${view.tx}px ${view.ty}px`;
+    renderVisible();
+  };
+  const renderVisible = ()=>{
+    const rect = vp.getBoundingClientRect();
+    const vw = rect.width, vh = rect.height;
+    /* 画面範囲を canvas 座標に逆変換 */
+    const vLeft   = -view.tx / view.scale - BUFFER;
+    const vTop    = -view.ty / view.scale - BUFFER;
+    const vRight  = vLeft + vw / view.scale + BUFFER * 2;
+    const vBottom = vTop  + vh / view.scale + BUFFER * 2;
+    /* 既存アイテムを一旦削除してから可視分だけ再描画。アイテム数が多くないので
+       差分 reconciliation は後回し（モックは数十個の想定）。 */
+    [...canvas.querySelectorAll('.ref-item')].forEach(n=>n.remove());
+    for(const it of items){
+      const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
+      if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom) continue;
+      const node = _refBuildItem(it);
+      canvas.appendChild(node);
+    }
+  };
+  /* ---------- 目次ビルド ---------- */
+  const rebuildToc = ()=>{
+    toc.innerHTML='';
+    for(const t of titleItems){
+      const row=el('div','ref-toc-item');
+      const dot=el('span','ref-toc-dot');dot.style.background=t.color||'var(--accent)';
+      row.appendChild(dot);
+      row.appendChild(document.createTextNode(t.text||''));
+      row.onclick=()=>{
+        /* クリック時：そのタイトルの位置が画面左上少し内側に来るようにパン。
+           スケールは維持（ユーザー視点ではスムーズに移動したように見える）。 */
+        const rect=vp.getBoundingClientRect();
+        const targetScale = view.scale;
+        view.tx = -t.x * targetScale + 80;
+        view.ty = -t.y * targetScale + 60;
+        applyTransform();
+        toc.querySelectorAll('.ref-toc-item').forEach(x=>x.classList.remove('active'));
+        row.classList.add('active');
+      };
+      toc.appendChild(row);
+    }
+  };
+  rebuildToc();
+  /* ---------- Pan（ドラッグ） ---------- */
+  let dragging=false, dragX=0, dragY=0, startTx=0, startTy=0;
+  vp.addEventListener('mousedown',(e)=>{
+    if(e.button!==0) return; /* 左クリックのみ */
+    /* アイテム（image）のクリックは pan 対象外にしたい場合は後で対応。今回は背景・アイテム問わず pan 開始 */
+    dragging=true;dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+    vp.classList.add('panning');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove',(e)=>{
+    if(!dragging) return;
+    view.tx = startTx + (e.clientX - dragX);
+    view.ty = startTy + (e.clientY - dragY);
+    applyTransform();
+  });
+  window.addEventListener('mouseup',()=>{if(dragging){dragging=false;vp.classList.remove('panning');}});
+  /* ---------- Zoom（ホイール） ---------- */
+  vp.addEventListener('wheel',(e)=>{
+    e.preventDefault();
+    const rect = vp.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    /* カーソル位置をワールド座標で保存 → scale 後にその点に戻るように tx/ty 調整 */
+    const worldX = (mx - view.tx) / view.scale;
+    const worldY = (my - view.ty) / view.scale;
+    const factor = e.deltaY < 0 ? 1.12 : (1/1.12);
+    const nextScale = Math.min(4, Math.max(0.05, view.scale * factor));
+    view.scale = nextScale;
+    view.tx = mx - worldX * nextScale;
+    view.ty = my - worldY * nextScale;
+    applyTransform();
+  }, { passive:false });
+  /* ---------- Ctrls ---------- */
+  const zoomAt = (factor) => {
+    const rect = vp.getBoundingClientRect();
+    const mx = rect.width/2, my = rect.height/2;
+    const worldX = (mx - view.tx) / view.scale;
+    const worldY = (my - view.ty) / view.scale;
+    view.scale = Math.min(4, Math.max(0.05, view.scale * factor));
+    view.tx = mx - worldX * view.scale;
+    view.ty = my - worldY * view.scale;
+    applyTransform();
+  };
+  zIn.onclick  = ()=>zoomAt(1.25);
+  zOut.onclick = ()=>zoomAt(1/1.25);
+  zFit.onclick = ()=>{view.scale=1;applyTransform();};
+  zAll.onclick = ()=>{
+    /* 全アイテムのバウンディングボックスを計算して vp に収まる scale を決める */
+    if(!items.length) return;
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    for(const it of items){const x1=it.x,y1=it.y,x2=it.x+(it.w||400),y2=it.y+(it.h||100);if(x1<minX)minX=x1;if(y1<minY)minY=y1;if(x2>maxX)maxX=x2;if(y2>maxY)maxY=y2;}
+    const rect=vp.getBoundingClientRect();
+    const pad=60;
+    const sx=(rect.width - pad*2)/(maxX-minX);
+    const sy=(rect.height - pad*2)/(maxY-minY);
+    const s=Math.min(sx,sy,1);
+    view.scale=s;
+    view.tx = pad - minX*s;
+    view.ty = pad - minY*s;
+    applyTransform();
+  };
+  /* 初期描画（レイアウト確定後にサイズを拾って描画するため 1 tick ずらす） */
+  requestAnimationFrame(()=>applyTransform());
+  /* リサイズ時に再描画 */
+  const onResize = ()=>applyTransform();
+  window.addEventListener('resize', onResize);
+}
+/* 資料タブ：アイテム 1 件分の DOM を生成するヘルパ */
+function _refBuildItem(it){
+  const n = el('div','ref-item ref-'+it.type);
+  n.style.left   = it.x + 'px';
+  n.style.top    = it.y + 'px';
+  if(it.w) n.style.width  = it.w + 'px';
+  if(it.h) n.style.height = it.h + 'px';
+  if(it.type === 'title'){
+    n.textContent = it.text || '';
+    if(it.fontSize) n.style.fontSize = it.fontSize + 'px';
+    if(it.color)    n.style.color    = it.color;
+  }else if(it.type === 'image'){
+    /* モック：画像プレースホルダ（アイコン＋ラベル） */
+    const ph = el('div','ref-image-ph');
+    ph.appendChild(el('div','ic','🖼'));
+    ph.appendChild(el('div','lb',it.label||''));
+    n.appendChild(ph);
+  }else if(it.type === 'group'){
+    if(it.color){
+      n.style.borderColor = it.color;
+      n.style.background = (function(hex,a){const m=/^#?([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})/.exec(hex||'')||[];return 'rgba('+parseInt(m[1]||'7a',16)+','+parseInt(m[2]||'7a',16)+','+parseInt(m[3]||'90',16)+','+a+')'})(it.color, 0.04);
+    }
+    if(it.label){
+      const lbl=el('div','ref-group-lbl',it.label);
+      lbl.style.color = it.color||'var(--accent)';
+      lbl.style.borderColor = it.color||'var(--border)';
+      lbl.style.border = '1px solid '+(it.color||'var(--border)');
+      n.appendChild(lbl);
+    }
+  }
+  return n;
 }
 /* サブミットタブ：作成済みサブミットの一覧（クリックで右側スライドに表示） */
 function renderProjSubmits(main,root){
