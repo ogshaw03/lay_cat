@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.130';
+const APP_VERSION='2026.10.08.131';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12457,18 +12457,15 @@ function _nasTile(p){
     const b=el('span','mp-badge'); b.textContent='NAS';
     meta.appendChild(b);
   }
-  if(p.folderHint){
-    const h=el('span','mp-badge'); h.textContent='📂 '+String(p.folderHint).slice(0,24);
-    h.style.cssText='font-family:var(--font-code);font-size:10px';
-    meta.appendChild(h);
-  }
   foot.appendChild(meta);
-  /* v.130：オーナー入力の NAS パスヒント（道案内メモ）があれば 2 行目に表示 */
-  if(p.pathHint){
+  /* v.131：フルパス（pathHint）があればそれを 1 行で表示（折返し可）。
+     無ければフォルダ名（folderHint）を控えめに表示。両方無ければ何も出さない。 */
+  const _display = p.pathHint || p.folderHint;
+  if(_display){
     const pa=el('div','proj-pathhint');
-    pa.textContent='🔖 '+p.pathHint;
+    pa.textContent='📂 '+_display;
     pa.style.cssText='margin-top:6px;font-family:var(--font-code);font-size:11px;color:var(--text2);word-break:break-all;line-height:1.4';
-    pa.title=p.pathHint;
+    pa.title=_display;
     foot.appendChild(pa);
   }
   card.appendChild(foot);
