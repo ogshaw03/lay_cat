@@ -18,6 +18,10 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.133) **NAS タイル：コピーボタンにホバーハイライト追加（LayCAT）**：
+  - mouseenter/leave で background（bg3）／border（accent）／color（text）を切替。transition で滑らかに。
+  - APP_VERSION：2026.10.08.132 → 2026.10.08.133
+
 - (dev v2026.10.08.132) **NAS タイル：パス行に「コピー」ボタンを追加（LayCAT）**：
   - 事象：タイルをクリックするとピッカーが開くため、表示されているフルパスをコピーできなかった。
   - 修正：パス表示行に小さな「コピー」ボタンを配置。クリックで `navigator.clipboard.writeText` でコピー（失敗時は `execCommand('copy')` フォールバック）。`stopPropagation` でピッカーは起動しない。
