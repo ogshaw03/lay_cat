@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.131';
+const APP_VERSION='2026.10.08.132';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12459,13 +12459,36 @@ function _nasTile(p){
   }
   foot.appendChild(meta);
   /* v.131：フルパス（pathHint）があればそれを 1 行で表示（折返し可）。
-     無ければフォルダ名（folderHint）を控えめに表示。両方無ければ何も出さない。 */
+     無ければフォルダ名（folderHint）を控えめに表示。両方無ければ何も出さない。
+     v.132：行をクリックするとパスをクリップボードにコピー（card の onclick＝ピッカー起動は呼ばれない）。 */
   const _display = p.pathHint || p.folderHint;
   if(_display){
     const pa=el('div','proj-pathhint');
-    pa.textContent='📂 '+_display;
-    pa.style.cssText='margin-top:6px;font-family:var(--font-code);font-size:11px;color:var(--text2);word-break:break-all;line-height:1.4';
-    pa.title=_display;
+    pa.style.cssText='margin-top:6px;font-family:var(--font-code);font-size:11px;color:var(--text2);word-break:break-all;line-height:1.4;display:flex;align-items:flex-start;gap:6px';
+    const ico=el('span',null,'📂');ico.style.flex='0 0 auto';
+    const txt=el('span',null,_display);txt.style.flex='1 1 auto';
+    const cp=el('button',null,'コピー');
+    cp.title='パスをクリップボードにコピー';
+    cp.style.cssText='flex:0 0 auto;background:rgba(10,10,14,0.6);border:1px solid var(--border);color:var(--text2);font-size:10px;padding:2px 7px;border-radius:5px;cursor:pointer;font-family:inherit';
+    cp.onclick=async(ev)=>{
+      ev.stopPropagation();
+      try{
+        await navigator.clipboard.writeText(_display);
+        const _orig=cp.textContent; cp.textContent='✓ コピーしました';
+        setTimeout(()=>{try{cp.textContent=_orig}catch(_){}},1200);
+      }catch(_){
+        /* execCommand フォールバック */
+        try{
+          const ta=document.createElement('textarea');ta.value=_display;
+          ta.style.cssText='position:fixed;left:-9999px;top:0';
+          document.body.appendChild(ta);ta.select();document.execCommand('copy');
+          document.body.removeChild(ta);
+          cp.textContent='✓ コピーしました';setTimeout(()=>{try{cp.textContent='コピー'}catch(_){}},1200);
+        }catch(e){ toast('コピーに失敗しました'); }
+      }
+    };
+    pa.appendChild(ico);pa.appendChild(txt);pa.appendChild(cp);
+    pa.title=_display+'（クリックでパスをコピー）';
     foot.appendChild(pa);
   }
   card.appendChild(foot);
