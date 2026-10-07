@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.128';
+const APP_VERSION='2026.10.08.129';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12440,10 +12440,8 @@ async function _r2Tile(p){
    ブラウザは NAS パスを自動展開できないため、最終的にユーザー側のピッカー操作で確定する。
    REG に既にあれば「接続済み」バッジ。長押し／右クリックで削除は Phase 2 で検討。 */
 function _nasTile(p){
-  const card=el('div','proj-card'); card.style.cssText='cursor:pointer;position:relative';
-  const media=el('div','proj-media');
-  media.appendChild(icoEl('folder'));
-  card.appendChild(media);
+  /* v.129：媒体エリア（.proj-media の大アイコン枠）は無し。テキストのみのコンパクトカード。 */
+  const card=el('div','proj-card nas-tile'); card.style.cssText='cursor:pointer;position:relative;padding:12px 14px;min-height:0';
   const foot=el('div','proj-foot');
   const nameLine=el('div','proj-name', p.name||p.pid);
   foot.appendChild(nameLine);

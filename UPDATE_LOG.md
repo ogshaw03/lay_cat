@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.129) **接続モーダル：NAS プロジェクトタイルをテキストのみのコンパクト表示に（LayCAT）**：
+  - 事象：`_nasTile` が `.proj-media` の大きい四角いアイコン枠（aspect-ratio の黒塗りエリア）を描いていて場所を取っていた。NAS プロジェクトはサムネを取れないので無駄。
+  - 修正：`.proj-media` を削除、`padding:12px 14px` + `min-height:0` のコンパクト構成に。`.nas-tile` クラスを付与して将来 CSS 差分を足せるように。
+  - APP_VERSION：2026.10.08.128 → 2026.10.08.129
+
 - (dev v2026.10.08.128) **NAS 招待：重複チェッククエリの permission denied を修正（LayCAT）**：
   - 事象：`createFolderInvite` の重複チェッククエリに `fromEmailKey` フィルタが抜けていて、Firestore ルール（read: `toEmailKey==myKey OR fromEmailKey==myKey`）の静的検証を通せず permission denied で全招待が失敗していた可能性。
   - 修正：クエリに `fromEmailKey==myKey` 条件を足して、ルールの短絡を通せるように。クエリ失敗時は重複覚悟で addDoc する try/catch フォールバックも追加。
