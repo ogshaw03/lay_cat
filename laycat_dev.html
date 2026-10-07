@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.127';
+const APP_VERSION='2026.10.08.128';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -22702,11 +22702,17 @@ initApp();
         const fs=m.getFirestore(app);
         const toKey=String(toEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         const fromKey=String(fromEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
-        /* 既に同じ (toKey, pid) の未受理 invite があれば重複を避ける */
-        const q=m.query(m.collection(fs,'laycatFolderInvites'),
-          m.where('toEmailKey','==',toKey), m.where('pid','==',pid));
-        const existing=await m.getDocs(q);
-        if(!existing.empty) return true;
+        /* 既に同じ (fromKey, toKey, pid) の未受理 invite があれば重複を避ける。
+           v.128：クエリに fromEmailKey フィルタを足さないと、Firestore ルール（read:
+           toEmailKey==myKey OR fromEmailKey==myKey）の静的検証を通せず permission denied で落ちる。 */
+        try{
+          const q=m.query(m.collection(fs,'laycatFolderInvites'),
+            m.where('fromEmailKey','==',fromKey),
+            m.where('toEmailKey','==',toKey),
+            m.where('pid','==',pid));
+          const existing=await m.getDocs(q);
+          if(!existing.empty) return true;
+        }catch(_){/* クエリ失敗（例：インデックス未発行）は無視して重複覚悟で追加 */}
         await m.addDoc(m.collection(fs,'laycatFolderInvites'),{
           toEmailKey:toKey, fromEmailKey:fromKey,
           pid:String(pid), name:String(name||''), folderHint:String(folderHint||''),

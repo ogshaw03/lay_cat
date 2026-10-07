@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.128) **NAS 招待：重複チェッククエリの permission denied を修正（LayCAT）**：
+  - 事象：`createFolderInvite` の重複チェッククエリに `fromEmailKey` フィルタが抜けていて、Firestore ルール（read: `toEmailKey==myKey OR fromEmailKey==myKey`）の静的検証を通せず permission denied で全招待が失敗していた可能性。
+  - 修正：クエリに `fromEmailKey==myKey` 条件を足して、ルールの短絡を通せるように。クエリ失敗時は重複覚悟で addDoc する try/catch フォールバックも追加。
+  - APP_VERSION：2026.10.08.127 → 2026.10.08.128
+
 - (dev v2026.10.08.127) **NAS プロジェクト招待（オーナー → 新規メンバーの参加可能一覧に自動反映・LayCAT）**：
   - **目的**：オーナーが「プロジェクトメンバー管理」で新規メンバーを追加した時、その人のログイン時に自動で参加可能プロジェクト一覧（モーダル）に出るようにする。
   - **Firestore 側**：新規コレクション `laycatFolderInvites/{autoId}` を追加
