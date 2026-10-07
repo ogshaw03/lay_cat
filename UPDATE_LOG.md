@@ -18,6 +18,18 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.130) **NAS 参加履歴に「オーナー入力のパスヒント」を追加（Phase 3 の一部・LayCAT）**：
+  - 目的：参加側メンバーがピッカーで NAS フォルダを探すときの「道案内メモ」を、オーナーが手入力して渡せるようにする。ブラウザ API 上は NAS フルパスを自動取得できないため、手入力ベース。
+  - **メンバー管理モーダル**：先頭に「NAS パスヒント（任意）」テキスト欄を追加。`root.pathHint` に保存され、新規招待時にも乗せる。
+  - **`createFolderInvite(..., pathHint)`**：`laycatFolderInvites` のレコードに `pathHint` 平文フィールドを追加（ルールで本人以外からの read は遮断）。
+  - **`putFolderProject(..., pathHint)`**：`laycatUserPrivate.folderProjects.{pid}.pathEnc`/`pathIv` を AES-GCM 暗号化して保存。pathHint 省略時は既存の pathEnc/pathIv を温存。
+  - **`listFolderProjects`**：`pathHint` を復号して返す。
+  - **`redeemAllFolderInvites`**：招待レコードから `pathHint` を取り出して `putFolderProject` に渡す。
+  - **`_nasTile` UI**：pathHint があれば `🔖 <path>` を 2 行目に表示（folder 名 badge の下）。
+  - **`connectProjectFlow` 自己同期**：既存のメモ root.pathHint を一緒に Firestore へ送る。
+  - 書き込み系副作用：`laycatUserPrivate.folderProjects.{pid}` に `pathEnc`/`pathIv` が追加されるのみ。既存 pathHint 無しのエントリは何も表示しない（後方互換）。
+  - APP_VERSION：2026.10.08.129 → 2026.10.08.130
+
 - (dev v2026.10.08.129) **接続モーダル：NAS プロジェクトタイルをテキストのみのコンパクト表示に（LayCAT）**：
   - 事象：`_nasTile` が `.proj-media` の大きい四角いアイコン枠（aspect-ratio の黒塗りエリア）を描いていて場所を取っていた。NAS プロジェクトはサムネを取れないので無駄。
   - 修正：`.proj-media` を削除、`padding:12px 14px` + `min-height:0` のコンパクト構成に。`.nas-tile` クラスを付与して将来 CSS 差分を足せるように。

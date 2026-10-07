@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.129';
+const APP_VERSION='2026.10.08.130';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5558,10 +5558,12 @@ async function connectProjectFlow(){
     const sroot=getNode(data.id);if(sroot)sroot.folderName=handle.name;
     if(!REG.some(e=>e.id===data.id))REG.push({id:data.id,name:data.name||'project',folderName:handle.name});
     normalizeNodes();updateFolderStatus();
-    /* v.126：暗号化プロジェクトも Firestore 参加履歴に同期（名前は data.name=封筒名のみ・中身は暗号化のまま） */
+    /* v.126：暗号化プロジェクトも Firestore 参加履歴に同期（名前は data.name=封筒名のみ・中身は暗号化のまま）
+       v.130：root.pathHint があれば一緒に同期 */
     try{
       if(authUser && authUser.email && window.__laynaFB && window.__laynaFB.putFolderProject){
-        window.__laynaFB.putFolderProject(authUser.email, data.id, data.name||'project', handle.name||'').catch(()=>{});
+        const _er=getNode(data.id); const _ph=(_er&&_er.pathHint)||'';
+        window.__laynaFB.putFolderProject(authUser.email, data.id, data.name||'project', handle.name||'', _ph).catch(()=>{});
       }
     }catch(_){}
     toast('保護されたプロジェクト「'+(data.name||'project')+'」を接続しました（開くときにパスワードが必要です）');
@@ -5584,14 +5586,16 @@ async function connectProjectFlow(){
   if(!REG.some(e=>e.id===data.id))REG.push({id:data.id,name:data.name||(root&&root.name)||'project',folderName:handle.name});
   await persist();
   /* v.126：Firestore に NAS 参加履歴を暗号化同期（他端末からも「参加可能プロジェクト」として見える）。
-     laycatUserPrivate/{emailKey}.folderProjects に書き込み。失敗時は静かに無視（接続自体は成立）。 */
+     laycatUserPrivate/{emailKey}.folderProjects に書き込み。失敗時は静かに無視（接続自体は成立）。
+     v.130：root.pathHint があれば一緒に同期（オーナー手入力の NAS パス道案内メモ）。 */
   try{
     if(authUser && authUser.email && window.__laynaFB && window.__laynaFB.putFolderProject){
       window.__laynaFB.putFolderProject(
         authUser.email,
         data.id,
         (root&&root.name)||data.name||'project',
-        handle.name||''
+        handle.name||'',
+        (root&&root.pathHint)||''
       ).catch(()=>{});
     }
   }catch(_){}
@@ -12459,6 +12463,14 @@ function _nasTile(p){
     meta.appendChild(h);
   }
   foot.appendChild(meta);
+  /* v.130：オーナー入力の NAS パスヒント（道案内メモ）があれば 2 行目に表示 */
+  if(p.pathHint){
+    const pa=el('div','proj-pathhint');
+    pa.textContent='🔖 '+p.pathHint;
+    pa.style.cssText='margin-top:6px;font-family:var(--font-code);font-size:11px;color:var(--text2);word-break:break-all;line-height:1.4';
+    pa.title=p.pathHint;
+    foot.appendChild(pa);
+  }
   card.appendChild(foot);
   /* 削除ボタン（右上） */
   const del=el('button','proj-del','×');
@@ -13970,6 +13982,18 @@ function openMembersWindow(root){
   d.body.appendChild(hd);
   const wrap=ce('div','wrap');d.body.appendChild(wrap);
   wrap.appendChild(ce('div','muted','担当割り当て・メンション・ロールに使うプロジェクトのメンバー名簿です。共有フォルダの laycat.project.json に保存され、フォルダを共有する全員に反映されます。ID にはメールアドレス（認証と一致する安定ID）を推奨します。ロールはカンマ区切り（例: director, animator）。'));
+  /* v.130：NAS パスヒント入力（任意）。参加側メンバーが NAS フォルダを探すときの道案内メモ。
+     ここに入力した文字列は暗号化されてメンバーの laycatUserPrivate.folderProjects にも乗る。
+     ブラウザ API 上はフルパスを自動入手できないので、手入力で UNC パス等を書く形。 */
+  const phBox=ce('div');phBox.style.cssText='margin:10px 0 14px;padding:10px 12px;background:#15151a;border:1px solid #2a2a2f;border-radius:8px';
+  phBox.appendChild(ce('div',null,'NAS パスヒント（任意・メンバーへの道案内）'));
+  const phBoxLabel=phBox.firstChild;phBoxLabel.style.cssText='font-size:11px;color:#8a8a99;letter-spacing:.3px;margin-bottom:6px';
+  const phIn=d.createElement('input');phIn.type='text';phIn.value=String(root.pathHint||'');
+  phIn.placeholder='例：\\\\nas01\\projects\\KaraokeMV_Ep3';
+  phIn.style.cssText='width:100%;box-sizing:border-box;background:#1c1c1f;border:1px solid #2a2a2f;border-radius:6px;color:#e8e8ec;padding:6px 8px;font-size:12px;font-family:ui-monospace,"SF Mono",Menlo,monospace';
+  phBox.appendChild(phIn);
+  phBox.appendChild(ce('div','muted','参加側はピッカーで自分で選び直す必要がありますが、このメモが「どこを探せばいいか」の目印になります。ブラウザ API の制約でフルパスは自動取得できないため手入力です。'));
+  wrap.appendChild(phBox);
   const tbl=ce('table');wrap.appendChild(tbl);
 
   function redraw(){
@@ -14001,25 +14025,29 @@ function openMembersWindow(root){
       out.push({id,name:(m.name||'').trim()||id.split('@')[0],roles:String(m.roles||'').split(',').map(s=>s.trim()).filter(Boolean),color:m.color||'#4da6ff',active:m.active!==false});
     }
     /* v.127：新規追加メンバー（既存 root.members に無いメール）に対して NAS 招待を発行。
-       自分宛（自分のメール）には invite 不要（自己の connect フローで既に追加済みのはず）。
-       folder backend プロジェクトのみ対象（R2 は _access.json 経由で別途メンバーシップ管理されるため）。 */
+       v.130：pathHint も招待と自分の folderProjects に乗せる。 */
     const _oldIds=new Set((Array.isArray(root.members)?root.members:[]).map(m=>String(m&&m.id||'').toLowerCase()).filter(Boolean));
     const _myEmail=String((authUser&&authUser.email)||'').toLowerCase();
     const _isFolder=(storage._backend && storage._backend(root.id))==='folder';
     const _newEmails=out.map(m=>String(m.id||'').toLowerCase()).filter(e=>e && e!==_myEmail && !_oldIds.has(e));
     root.members=out;
+    /* v.130：pathHint の保存。空なら削除。 */
+    const _ph=String(phIn.value||'').trim();
+    if(_ph) root.pathHint=_ph; else delete root.pathHint;
     await persist();
     if(typeof render==='function')render();
     saveB.textContent='保存しました ✓';setTimeout(()=>{saveB.textContent='保存'},1200);
     if(_isFolder && _newEmails.length && window.__laynaFB && window.__laynaFB.createFolderInvite && _myEmail){
-      /* fire-and-forget：成功/失敗は UI に大きく出さない。失敗時はコンソール警告のみ。 */
       const _hint=root.folderName||'';
       const _name=root.name||'';
       for(const _em of _newEmails){
-        window.__laynaFB.createFolderInvite(_myEmail, _em, root.id, _name, _hint).catch(()=>{});
+        window.__laynaFB.createFolderInvite(_myEmail, _em, root.id, _name, _hint, _ph).catch(()=>{});
       }
       try{ toast('NAS プロジェクト招待を '+_newEmails.length+' 名に送信しました'); }catch(_){}
     }
+    /* v.130：既存メンバーも pathHint が変わっていれば更新したい。
+       しかし他ユーザーの folderProjects に書けないので、代わりに「招待の再発行」で
+       同じ pid の未受理招待を上書きする方式は複雑すぎるため今は見送り。将来 Phase 5 で検討。 */
   };
 }
 
@@ -22631,8 +22659,11 @@ initApp();
         const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv},ckey,ct);
         return new TextDecoder().decode(pt);
       }catch(_){return null}},
-      /* 参加プロジェクトを追加（既存同 pid は上書き）。 */
-      putFolderProject:async(email, pid, name, folderHint)=>{try{
+      /* 参加プロジェクトを追加（既存同 pid は上書き）。
+         v.130：pathHint（オーナー手入力の NAS パス道案内メモ）を暗号化保存可能に。
+         pathHint を渡さなかった場合は既存の pathEnc/pathIv を温存するため、
+         setDoc merge:true の挙動を踏まえてフィールド自体を書かない。 */
+      putFolderProject:async(email, pid, name, folderHint, pathHint)=>{try{
         if(!email||!pid) return false;
         const ckey=await window.__laynaFB.ensureUserPrivateKey(email);
         if(!ckey) return false;
@@ -22641,12 +22672,17 @@ initApp();
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);
         const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const row={
+          nameEnc:nameEnc.enc, nameIv:nameEnc.iv,
+          hintEnc:hintEnc.enc, hintIv:hintEnc.iv,
+          addedAt:new Date().toISOString()
+        };
+        if(pathHint != null && String(pathHint).trim().length){
+          const pathEnc=await window.__laynaFB._fpEncrypt(ckey, String(pathHint));
+          row.pathEnc=pathEnc.enc; row.pathIv=pathEnc.iv;
+        }
         await m.setDoc(m.doc(fs,'laycatUserPrivate',key),{
-          folderProjects:{[pid]:{
-            nameEnc:nameEnc.enc, nameIv:nameEnc.iv,
-            hintEnc:hintEnc.enc, hintIv:hintEnc.iv,
-            addedAt:new Date().toISOString()
-          }}
+          folderProjects:{[pid]:row}
         },{merge:true});
         return true;
       }catch(e){console.warn('putFolderProject failed',e);return false}},
@@ -22676,7 +22712,8 @@ initApp();
           const row=fp[pid]||{};
           const name=await window.__laynaFB._fpDecrypt(ckey, row.nameEnc, row.nameIv);
           const hint=await window.__laynaFB._fpDecrypt(ckey, row.hintEnc, row.hintIv);
-          out.push({ pid, name:name||'', folderHint:hint||'', addedAt:row.addedAt||'' });
+          const path=(row.pathEnc && row.pathIv) ? await window.__laynaFB._fpDecrypt(ckey, row.pathEnc, row.pathIv) : '';
+          out.push({ pid, name:name||'', folderHint:hint||'', pathHint:path||'', addedAt:row.addedAt||'' });
         }
         out.sort((a,b)=>(b.addedAt||'').localeCompare(a.addedAt||''));
         return out;
@@ -22694,15 +22731,12 @@ initApp();
              allow update: if false;
            }
          招待レコード中の name/folderHint は平文（短命）。ルールで本人以外からの read を遮断。 */
-      createFolderInvite:async(fromEmail, toEmail, pid, name, folderHint)=>{try{
+      createFolderInvite:async(fromEmail, toEmail, pid, name, folderHint, pathHint)=>{try{
         if(!fromEmail||!toEmail||!pid) return false;
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);
         const toKey=String(toEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         const fromKey=String(fromEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
-        /* 既に同じ (fromKey, toKey, pid) の未受理 invite があれば重複を避ける。
-           v.128：クエリに fromEmailKey フィルタを足さないと、Firestore ルール（read:
-           toEmailKey==myKey OR fromEmailKey==myKey）の静的検証を通せず permission denied で落ちる。 */
         try{
           const q=m.query(m.collection(fs,'laycatFolderInvites'),
             m.where('fromEmailKey','==',fromKey),
@@ -22710,12 +22744,16 @@ initApp();
             m.where('pid','==',pid));
           const existing=await m.getDocs(q);
           if(!existing.empty) return true;
-        }catch(_){/* クエリ失敗（例：インデックス未発行）は無視して重複覚悟で追加 */}
-        await m.addDoc(m.collection(fs,'laycatFolderInvites'),{
+        }catch(_){}
+        /* v.130：pathHint はオーナーが手入力した NAS パス道案内メモ（任意）。平文で送るが
+           ルールにより toEmailKey or fromEmailKey == self 以外からは read 不可。 */
+        const payload={
           toEmailKey:toKey, fromEmailKey:fromKey,
           pid:String(pid), name:String(name||''), folderHint:String(folderHint||''),
           byEmail:fromEmail, createdAt:new Date().toISOString()
-        });
+        };
+        if(pathHint != null && String(pathHint).trim().length) payload.pathHint = String(pathHint);
+        await m.addDoc(m.collection(fs,'laycatFolderInvites'),payload);
         return true;
       }catch(e){console.warn('createFolderInvite failed',e);return false}},
       /* ログイン直後に自分宛の招待を全部取り込む。副作用：
@@ -22732,7 +22770,7 @@ initApp();
         let n=0;
         for(const d of snap.docs){
           const data=d.data()||{};
-          const ok=await window.__laynaFB.putFolderProject(email, data.pid, data.name||'', data.folderHint||'');
+          const ok=await window.__laynaFB.putFolderProject(email, data.pid, data.name||'', data.folderHint||'', data.pathHint||'');
           if(ok){ try{ await m.deleteDoc(d.ref); n++; }catch(_){} }
         }
         return n;
