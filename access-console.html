@@ -399,6 +399,17 @@ service cloud.firestore {
       allow delete:         if isStaff();
     }
 
+    // ===== NAS プロジェクト参加履歴（Lv.3 暗号化・v.126）=====
+    // 保存先：laycatUserPrivate/{emailKey}
+    //   encKeyB64         : AES-GCM 256bit 鍵（初回ログイン時に自動発行）
+    //   folderProjects    : { [pid]: {nameEnc, nameIv, hintEnc, hintIv, addedAt} }
+    // プロジェクト名もフォルダ名も暗号化。復号できるのは本人のみ。
+    // 本人以外は read 不可（横断参照・DB ダンプ漏洩対策）。
+    match /laycatUserPrivate/{key} {
+      allow read, write:    if signedIn() && key == myKey();
+      allow delete:         if isStaff();
+    }
+
     // ===== テナント定義（マルチテナント化 Phase M1/M2/M3b）=====
     // 保存先：tenants/{tenantId}
     // ドキュメント内容：{ name, description, domains, ownerEmail, plan, licenseLimit,
