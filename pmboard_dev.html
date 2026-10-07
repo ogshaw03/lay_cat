@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.08.077';
+const APP_VERSION='2026.10.08.078';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4153,17 +4153,15 @@ function _refBuildItem(it){
     if(it.color)     n.style.color = it.color;
     if(it.bold)      n.style.fontWeight = '700';
     if(it.underline) n.style.textDecoration = 'underline';
-    /* v.059：href 付きなら編集 OFF 時にクリックで別タブで開くリンクアイテム */
+    /* v.059／v.078：href 付きリンクアイテム。ハンドラは常に設置し、クリック時に editMode を見て分岐
+       （ノードキャッシュ下で edit→非 edit 切替時にハンドラ不在で不発になるのを防ぐ）。 */
     if(it.href){
       n.title = it.href;
-      if(!_REF_STATE.editMode){
-        n.style.cursor = 'pointer';
-        n.style.pointerEvents = 'auto';
-        n.onclick = (ev)=>{
-          ev.stopPropagation();
-          try{ window.open(it.href, '_blank', 'noopener,noreferrer'); }catch(_){}
-        };
-      }
+      n.onclick = (ev)=>{
+        if(_REF_STATE.editMode) return;
+        ev.stopPropagation();
+        try{ window.open(it.href, '_blank', 'noopener,noreferrer'); }catch(_){}
+      };
     }
   }else if(it.type === 'image'){
     if(it.mediaRef){
@@ -4303,15 +4301,21 @@ async function _refInit(){
       if(_REF_STATE.editMode && it.id && _REF_STATE.selection.has(it.id)) node.classList.add('selected');
       else node.classList.remove('selected');
       /* v.075：非編集モードでも text/title はホバーだけで文字選択できるように
-         pointer-events:auto + user-select:text + cursor:text（LayCAT v.122 と同仕様）。 */
+         pointer-events:auto + user-select:text + cursor:text（LayCAT v.122 と同仕様）。
+         v.078：href 付きリンクは文字選択を無効化し cursor:pointer に（LayCAT v.125 と同仕様）。 */
       if(_REF_STATE.editMode){
         node.style.pointerEvents = 'auto';
         node.style.userSelect = '';
         if(!node.classList.contains('text-selectable')) node.style.cursor = '';
       }else if(it.type === 'text' || it.type === 'title'){
         node.style.pointerEvents = 'auto';
-        node.style.userSelect = 'text';
-        node.style.cursor = 'text';
+        if(it.href){
+          node.style.userSelect = 'none';
+          node.style.cursor = 'pointer';
+        }else{
+          node.style.userSelect = 'text';
+          node.style.cursor = 'text';
+        }
       }else{
         node.style.pointerEvents = '';
         node.style.userSelect = '';

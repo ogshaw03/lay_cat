@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.124';
+const APP_VERSION='2026.10.08.125';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6597,8 +6597,15 @@ function renderProjReference(main, root){
         if(!node.classList.contains('text-selectable')) node.style.cursor = '';
       }else if(it.type === 'text' || it.type === 'title'){
         node.style.pointerEvents = 'auto';
-        node.style.userSelect = 'text';
-        node.style.cursor = 'text';
+        /* v.125：href 付きリンクは文字選択を無効化してクリックで必ず飛べるようにする。
+           user-select:text だと小さいドラッグが selection 開始扱いになり click が発火しなかった。 */
+        if(it.href){
+          node.style.userSelect = 'none';
+          node.style.cursor = 'pointer';
+        }else{
+          node.style.userSelect = 'text';
+          node.style.cursor = 'text';
+        }
       }else{
         node.style.pointerEvents = '';
         node.style.userSelect = '';
@@ -7723,17 +7730,15 @@ function _refBuildItem(it){
     if(it.bold)      n.style.fontWeight = '700';
     if(it.underline) n.style.textDecoration = 'underline';
     /* v.108：href 付きなら編集 OFF 時にクリックで別タブで開く（リンクアイテム）。
-       編集 ON のときはクリック＝選択で、ドラッグ移動・ダブルクリック編集を優先する。 */
+       v.125：ノードキャッシュ対応のため、ハンドラは常に設置し、クリック時に editMode を見て分岐。
+       ビルド時だけ `!editMode` で設置する従来実装だと、edit→非 edit 切替時にハンドラが無く不発になることがあった。 */
     if(it.href){
       n.title = it.href;
-      if(!state.refEditMode){
-        n.style.cursor = 'pointer';
-        n.style.pointerEvents = 'auto';
-        n.onclick = (ev)=>{
-          ev.stopPropagation();
-          try{ window.open(it.href, '_blank', 'noopener,noreferrer'); }catch(_){}
-        };
-      }
+      n.onclick = (ev)=>{
+        if(state.refEditMode) return; /* 編集中はクリック＝選択・移動を優先 */
+        ev.stopPropagation();
+        try{ window.open(it.href, '_blank', 'noopener,noreferrer'); }catch(_){}
+      };
     }
   }else if(it.type === 'image'){
     /* v.092：実データがあれば img タグで表示。無ければ従来の placeholder。

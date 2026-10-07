@@ -18,6 +18,14 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.125) **資料タブ：URL リンクのクリック安定化＋ホバー時に pointer カーソル（LayCAT）**：
+  - 事象：v.122 でホバー文字選択を有効化したことで、URL テキストにも `user-select:text` が付き、わずかなドラッグで selection 開始扱いになって `click` が発火しない＝「クリックしても飛ばない」ことがあった。
+  - 修正：
+    - renderVisible のスタイル付与で `it.href` のあるテキストだけ `user-select:none` + `cursor:pointer`（ホバーで人差し指カーソル）に。
+    - `_refBuildItem` の onclick ハンドラをビルド時 `!editMode` ガード付き設置から、常時設置＋クリック時に `editMode` で分岐に変更（ノードキャッシュで edit→非 edit 切替後にハンドラが残らず不発になるケースを解消）。
+  - 書き込み系副作用なし（UI のみ）。
+  - APP_VERSION：2026.10.08.124 → 2026.10.08.125
+
 - (dev v2026.10.08.124) **資料タブ：選択時のツールバー同期を全選択パスで有効化＋色も同期（LayCAT）**：
   - v.123 の同期は `renderVisible` の末尾でだけ呼ばれていた。しかしクリック選択は DOM 差分更新のため `renderVisible` を呼ばず、同期が走らず「反映されない」状態だった。
   - 修正：`_syncToolbarFromSelection()` を関数化し、`renderVisible` 末尾＋クリック選択の DOM 差分パスの両方から呼ぶ。
@@ -3542,6 +3550,10 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.08.078) **資料タブ：URL リンクのクリック安定化＋ホバー時に pointer カーソル（PMB、LayCAT v.125 連動）**：
+  - href 付きテキストは `user-select:none` + `cursor:pointer`、onclick ハンドラは常時設置＋クリック時 editMode 分岐。
+  - APP_VERSION：2026.10.08.077 → 2026.10.08.078
 
 - (dev v2026.10.08.077) **資料タブ：選択時のツールバー同期を全パスで有効化＋色も同期（PMB、LayCAT v.124 連動）**：
   - クリック選択の DOM 差分パスからも `_syncToolbarFromSelection()` を呼ぶように修正。
