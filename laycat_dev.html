@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.135';
+const APP_VERSION='2026.10.08.137';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5559,11 +5559,15 @@ async function connectProjectFlow(){
     if(!REG.some(e=>e.id===data.id))REG.push({id:data.id,name:data.name||'project',folderName:handle.name});
     normalizeNodes();updateFolderStatus();
     /* v.126：暗号化プロジェクトも Firestore 参加履歴に同期（名前は data.name=封筒名のみ・中身は暗号化のまま）
-       v.130：root.pathHint があれば一緒に同期 */
+       v.130：root.pathHint があれば一緒に同期
+       v.137：招待の削除も実参加タイミング */
     try{
       if(authUser && authUser.email && window.__laynaFB && window.__laynaFB.putFolderProject){
         const _er=getNode(data.id); const _ph=(_er&&_er.pathHint)||'';
         window.__laynaFB.putFolderProject(authUser.email, data.id, data.name||'project', handle.name||'', _ph).catch(()=>{});
+      }
+      if(authUser && authUser.email && window.__laynaFB && window.__laynaFB.clearFolderInvite){
+        window.__laynaFB.clearFolderInvite(authUser.email, data.id).catch(()=>{});
       }
     }catch(_){}
     toast('保護されたプロジェクト「'+(data.name||'project')+'」を接続しました（開くときにパスワードが必要です）');
@@ -5587,7 +5591,8 @@ async function connectProjectFlow(){
   await persist();
   /* v.126：Firestore に NAS 参加履歴を暗号化同期（他端末からも「参加可能プロジェクト」として見える）。
      laycatUserPrivate/{emailKey}.folderProjects に書き込み。失敗時は静かに無視（接続自体は成立）。
-     v.130：root.pathHint があれば一緒に同期（オーナー手入力の NAS パス道案内メモ）。 */
+     v.130：root.pathHint があれば一緒に同期（オーナー手入力の NAS パス道案内メモ）。
+     v.137：実参加のタイミングで自分宛の該当 pid 招待を削除（オーナーの「未受理」から外す）。 */
   try{
     if(authUser && authUser.email && window.__laynaFB && window.__laynaFB.putFolderProject){
       window.__laynaFB.putFolderProject(
@@ -5597,6 +5602,9 @@ async function connectProjectFlow(){
         handle.name||'',
         (root&&root.pathHint)||''
       ).catch(()=>{});
+    }
+    if(authUser && authUser.email && window.__laynaFB && window.__laynaFB.clearFolderInvite){
+      window.__laynaFB.clearFolderInvite(authUser.email, data.id).catch(()=>{});
     }
   }catch(_){}
   toast('プロジェクト「'+((root&&root.name)||data.name)+'」を接続しました'+(_abs.merged?'（競合コピー'+_abs.count+'件を統合して復旧）':''));
@@ -22847,13 +22855,15 @@ initApp();
         const fs=m.getFirestore(app);
         const toKey=String(toEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         const fromKey=String(fromEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        /* v.136：複合インデックス回避のため fromEmailKey 単一フィルタ＋クライアント側で絞込。 */
         try{
           const q=m.query(m.collection(fs,'laycatFolderInvites'),
-            m.where('fromEmailKey','==',fromKey),
-            m.where('toEmailKey','==',toKey),
-            m.where('pid','==',pid));
+            m.where('fromEmailKey','==',fromKey));
           const existing=await m.getDocs(q);
-          if(!existing.empty) return true;
+          for(const d of existing.docs){
+            const dt=d.data()||{};
+            if(dt.toEmailKey===toKey && String(dt.pid)===String(pid)) return true;
+          }
         }catch(_){}
         /* v.130：pathHint はオーナーが手入力した NAS パス道案内メモ（任意）。
            v.134：expiresAt を 30 日後に設定（Phase 3 の TTL）。クライアント側で期限切れを判定・パージ。 */
@@ -22869,10 +22879,10 @@ initApp();
         await m.addDoc(m.collection(fs,'laycatFolderInvites'),payload);
         return true;
       }catch(e){console.warn('createFolderInvite failed',e);return false}},
-      /* ログイン直後に自分宛の招待を全部取り込む。副作用：
-         1) 自分の laycatUserPrivate.folderProjects に putFolderProject で書く（暗号化）
-         2) 招待ドキュメントを削除
-         v.134：expiresAt が過去なら受理せず削除だけ（期限切れパージ）。
+      /* ログイン直後に自分宛の招待を一覧→自分の folderProjects に取り込む。
+         v.137：招待は削除しない（タイルは出すが「未受理」状態を維持）。
+         実際にフォルダピッカーで接続完了したときに connectProjectFlow から clearFolderInvite が呼ばれて削除される。
+         期限切れ（expiresAt 超過）は受理せず削除のみ。
          戻り値：{ redeemed, expired } */
       redeemAllFolderInvites:async(email)=>{try{
         if(!email) return { redeemed:0, expired:0 };
@@ -22890,27 +22900,44 @@ initApp();
             continue;
           }
           const ok=await window.__laynaFB.putFolderProject(email, data.pid, data.name||'', data.folderHint||'', data.pathHint||'');
-          if(ok){ try{ await m.deleteDoc(d.ref); redeemed++; }catch(_){} }
+          if(ok) redeemed++;
+          /* 招待レコードは残す（connectProjectFlow 実行時に clearFolderInvite で削除） */
         }
         return { redeemed, expired };
       }catch(e){console.warn('redeemAllFolderInvites failed',e);return { redeemed:0, expired:0 }}},
-      /* v.134：オーナー視点で、自分が発行した or 自分宛の未受理招待の一覧を取得。
-         引数 pid 指定時はそのプロジェクトに限定。失敗時は空配列。 */
+      /* v.137：実際にフォルダピッカーで接続した時に自分宛の該当 pid 招待を削除。
+         これで「未受理」= 実参加していない、「表示なし」= 実参加済み、を区別できる。 */
+      clearFolderInvite:async(email, pid)=>{try{
+        if(!email||!pid) return 0;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const toKey=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const q=m.query(m.collection(fs,'laycatFolderInvites'), m.where('toEmailKey','==',toKey));
+        const snap=await m.getDocs(q);
+        let n=0;
+        for(const d of snap.docs){
+          const data=d.data()||{};
+          if(String(data.pid)!==String(pid)) continue;
+          try{ await m.deleteDoc(d.ref); n++; }catch(_){}
+        }
+        return n;
+      }catch(e){console.warn('clearFolderInvite failed',e);return 0}},
+      /* v.134：オーナー視点で、自分が発行した未受理招待の一覧を取得。
+         v.136：複合インデックス回避のため、Firestore 側は fromEmailKey 単一フィルタのみに。
+         pid 絞込みはクライアント側。失敗時は空配列。 */
       listPendingFolderInvites:async(email, opts)=>{try{
         if(!email) return [];
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);
         const myKey=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         const pidFilter=(opts && opts.pid) ? String(opts.pid) : null;
-        const base=m.collection(fs,'laycatFolderInvites');
-        const q = pidFilter
-          ? m.query(base, m.where('fromEmailKey','==',myKey), m.where('pid','==',pidFilter))
-          : m.query(base, m.where('fromEmailKey','==',myKey));
+        const q=m.query(m.collection(fs,'laycatFolderInvites'), m.where('fromEmailKey','==',myKey));
         const snap=await m.getDocs(q);
         const out=[];
         const nowIso=new Date().toISOString();
         for(const d of snap.docs){
           const data=d.data()||{};
+          if(pidFilter && String(data.pid)!==pidFilter) continue;
           const expired = data.expiresAt && String(data.expiresAt) < nowIso;
           out.push({ id:d.id, ...data, expired:!!expired });
         }
