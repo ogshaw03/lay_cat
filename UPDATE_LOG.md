@@ -18,6 +18,27 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.127) **NAS プロジェクト招待（オーナー → 新規メンバーの参加可能一覧に自動反映・LayCAT）**：
+  - **目的**：オーナーが「プロジェクトメンバー管理」で新規メンバーを追加した時、その人のログイン時に自動で参加可能プロジェクト一覧（モーダル）に出るようにする。
+  - **Firestore 側**：新規コレクション `laycatFolderInvites/{autoId}` を追加
+    - フィールド：`toEmailKey`, `fromEmailKey`, `pid`, `name`, `folderHint`, `byEmail`, `createdAt`
+    - ルール（access-console にも反映済み）：
+      - `create`：自分を `fromEmailKey` にしているときのみ
+      - `read, delete`：本人（to or from）のみ
+      - `update`：不可
+    - 招待内容は短命・ルールで他人からの read を遮断。
+  - **クライアント側 (`__laynaFB`)**：
+    - `createFolderInvite(fromEmail, toEmail, pid, name, folderHint)`：同じ (toKey, pid) の既存招待があれば重複作成を回避
+    - `redeemAllFolderInvites(email)`：自分宛の招待を読取 → 自分の `laycatUserPrivate.folderProjects` に `putFolderProject`（暗号化）→ 招待レコード削除。取り込み件数を返す
+  - **連携点**：
+    - `openMembersWindow` の保存時：旧メンバー差分で新規メールのみ検出し、folder backend プロジェクトのみ `createFolderInvite` を fire-and-forget 送信。自分宛メールと R2 プロジェクトは対象外。
+    - `onAuthChanged`（ログイン完了直後）：`redeemAllFolderInvites` を fire-and-forget 実行。受理件数は toast で通知。
+  - **書き込み系副作用**：
+    - `laycatFolderInvites/*`（新規 add + 招待削除）と `laycatUserPrivate/{emailKey}.folderProjects.{pid}`（既存の putFolderProject 経路）のみ書込。
+    - 既存プロジェクトデータ（`shots/*.json` / `laycat.project.json` / `_access.json` / `reels.json` 等）は一切触らない。
+    - 招待発行は openMembersWindow の `root.members` 保存とは独立した fire-and-forget（保存失敗が招待発行を止めない／招待失敗が保存を止めない）。
+  - APP_VERSION：2026.10.08.126 → 2026.10.08.127
+
 - (dev v2026.10.08.126) **NAS プロジェクト参加履歴の暗号化同期（Lv.3）＋「接続」モーダルに一覧表示（LayCAT）**：
   - 目的：他端末からも「このユーザーが参加している NAS プロジェクト」をワンクリックで思い出せるようにする。参加プロジェクトを探し回る時間を削減。
   - **Firestore 側**：新規コレクション `laycatUserPrivate/{emailKey}` を導入。

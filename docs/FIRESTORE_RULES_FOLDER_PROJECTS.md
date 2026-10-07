@@ -20,6 +20,16 @@ match /laycatUserPrivate/{emailKey} {
     && request.auth.token.email != null
     && request.auth.token.email.lower().replace('[.@#$/\\[\\]]', '_') == emailKey;
 }
+
+// v.127：NAS プロジェクト招待（オーナー → 新規メンバー）
+match /laycatFolderInvites/{token} {
+  allow create: if request.auth != null
+    && request.resource.data.fromEmailKey == request.auth.token.email.lower().replace('[.@#$/\\[\\]]', '_');
+  allow read, delete: if request.auth != null
+    && (resource.data.toEmailKey   == request.auth.token.email.lower().replace('[.@#$/\\[\\]]', '_')
+     || resource.data.fromEmailKey == request.auth.token.email.lower().replace('[.@#$/\\[\\]]', '_'));
+  allow update: if false;
+}
 ```
 
 **ポイント**

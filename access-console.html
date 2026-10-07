@@ -410,6 +410,20 @@ service cloud.firestore {
       allow delete:         if isStaff();
     }
 
+    // ===== NAS プロジェクト招待（Phase 2・v.127）=====
+    // 保存先：laycatFolderInvites/{autoId}
+    //   toEmailKey   : 招待先のメールキー
+    //   fromEmailKey : 招待元（オーナー）のメールキー
+    //   pid, name, folderHint, byEmail, createdAt : 招待内容（短命・ルールで本人以外から遮断）
+    // 対象ユーザーが次回ログイン時に自分の laycatUserPrivate.folderProjects に取り込み、
+    // 招待レコードは削除される。
+    match /laycatFolderInvites/{token} {
+      allow create:         if signedIn() && request.resource.data.fromEmailKey == myKey();
+      allow read, delete:   if signedIn()
+                              && (resource.data.toEmailKey == myKey() || resource.data.fromEmailKey == myKey());
+      allow update:         if false;
+    }
+
     // ===== テナント定義（マルチテナント化 Phase M1/M2/M3b）=====
     // 保存先：tenants/{tenantId}
     // ドキュメント内容：{ name, description, domains, ownerEmail, plan, licenseLimit,

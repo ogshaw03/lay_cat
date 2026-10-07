@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.126';
+const APP_VERSION='2026.10.08.127';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14002,10 +14002,26 @@ function openMembersWindow(root){
       seen.add(id);
       out.push({id,name:(m.name||'').trim()||id.split('@')[0],roles:String(m.roles||'').split(',').map(s=>s.trim()).filter(Boolean),color:m.color||'#4da6ff',active:m.active!==false});
     }
+    /* v.127：新規追加メンバー（既存 root.members に無いメール）に対して NAS 招待を発行。
+       自分宛（自分のメール）には invite 不要（自己の connect フローで既に追加済みのはず）。
+       folder backend プロジェクトのみ対象（R2 は _access.json 経由で別途メンバーシップ管理されるため）。 */
+    const _oldIds=new Set((Array.isArray(root.members)?root.members:[]).map(m=>String(m&&m.id||'').toLowerCase()).filter(Boolean));
+    const _myEmail=String((authUser&&authUser.email)||'').toLowerCase();
+    const _isFolder=(storage._backend && storage._backend(root.id))==='folder';
+    const _newEmails=out.map(m=>String(m.id||'').toLowerCase()).filter(e=>e && e!==_myEmail && !_oldIds.has(e));
     root.members=out;
     await persist();
     if(typeof render==='function')render();
     saveB.textContent='保存しました ✓';setTimeout(()=>{saveB.textContent='保存'},1200);
+    if(_isFolder && _newEmails.length && window.__laynaFB && window.__laynaFB.createFolderInvite && _myEmail){
+      /* fire-and-forget：成功/失敗は UI に大きく出さない。失敗時はコンソール警告のみ。 */
+      const _hint=root.folderName||'';
+      const _name=root.name||'';
+      for(const _em of _newEmails){
+        window.__laynaFB.createFolderInvite(_myEmail, _em, root.id, _name, _hint).catch(()=>{});
+      }
+      try{ toast('NAS プロジェクト招待を '+_newEmails.length+' 名に送信しました'); }catch(_){}
+    }
   };
 }
 
@@ -22187,6 +22203,16 @@ async function onAuthChanged(u){
   clearAuthScreen();showAuthedHeader();startAppFlow();try{_wireSignals()}catch(_){}
   /* マルチテナント化 Phase M2a-3：テナント管理ボタンの可視判定（認証完了後） */
   try{await refreshTenantAdminButton();}catch(_){}
+  /* v.127：ログイン直後に自分宛の NAS プロジェクト招待を受理（fire-and-forget）。
+     laycatFolderInvites から自分の toEmailKey == me のレコードを拾い、
+     自分の laycatUserPrivate.folderProjects に暗号化転記して invite 側は削除。 */
+  try{
+    if(window.__laynaFB && window.__laynaFB.redeemAllFolderInvites && authUser && authUser.email){
+      window.__laynaFB.redeemAllFolderInvites(authUser.email).then(n=>{
+        if(n>0){ try{ toast('NAS プロジェクト招待を '+n+' 件受理しました'); }catch(_){} }
+      }).catch(()=>{});
+    }
+  }catch(_){}
 }
 /* マルチテナント化 Phase M3a：指定ユーザーの指定テナントにおける役職を算出。
    owner / admin / member / null（所属なし）を返す。 */
@@ -22657,6 +22683,56 @@ initApp();
         out.sort((a,b)=>(b.addedAt||'').localeCompare(a.addedAt||''));
         return out;
       }catch(e){console.warn('listFolderProjects failed',e);return []}},
+
+      /* ========== v.127：NAS プロジェクト招待（Phase 2・オーナー → 新規メンバー） ==========
+         オーナーがメンバー管理 UI でメールを追加すると、`laycatFolderInvites/{autoId}` に
+         一時的な招待レコードを作成する。対象ユーザーが次回ログイン時に自分の
+         `laycatUserPrivate.folderProjects` に復号して取り込み、招待は削除される。
+         Firestore ルール：
+           match /laycatFolderInvites/{token} {
+             allow create: if signedIn() && request.resource.data.fromEmailKey == myKey();
+             allow read, delete: if signedIn()
+               && (resource.data.toEmailKey == myKey() || resource.data.fromEmailKey == myKey());
+             allow update: if false;
+           }
+         招待レコード中の name/folderHint は平文（短命）。ルールで本人以外からの read を遮断。 */
+      createFolderInvite:async(fromEmail, toEmail, pid, name, folderHint)=>{try{
+        if(!fromEmail||!toEmail||!pid) return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const toKey=String(toEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const fromKey=String(fromEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        /* 既に同じ (toKey, pid) の未受理 invite があれば重複を避ける */
+        const q=m.query(m.collection(fs,'laycatFolderInvites'),
+          m.where('toEmailKey','==',toKey), m.where('pid','==',pid));
+        const existing=await m.getDocs(q);
+        if(!existing.empty) return true;
+        await m.addDoc(m.collection(fs,'laycatFolderInvites'),{
+          toEmailKey:toKey, fromEmailKey:fromKey,
+          pid:String(pid), name:String(name||''), folderHint:String(folderHint||''),
+          byEmail:fromEmail, createdAt:new Date().toISOString()
+        });
+        return true;
+      }catch(e){console.warn('createFolderInvite failed',e);return false}},
+      /* ログイン直後に自分宛の招待を全部取り込む。副作用：
+         1) 自分の laycatUserPrivate.folderProjects に putFolderProject で書く（暗号化）
+         2) 招待ドキュメントを削除
+         戻り値：取り込んだ件数 */
+      redeemAllFolderInvites:async(email)=>{try{
+        if(!email) return 0;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const toKey=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const q=m.query(m.collection(fs,'laycatFolderInvites'), m.where('toEmailKey','==',toKey));
+        const snap=await m.getDocs(q);
+        let n=0;
+        for(const d of snap.docs){
+          const data=d.data()||{};
+          const ok=await window.__laynaFB.putFolderProject(email, data.pid, data.name||'', data.folderHint||'');
+          if(ok){ try{ await m.deleteDoc(d.ref); n++; }catch(_){} }
+        }
+        return n;
+      }catch(e){console.warn('redeemAllFolderInvites failed',e);return 0}},
       /* 招待トークンを照合し、有効なら自分を invited に登録（承認なしでメンバー化）。成否を返す。 */
       redeemInvite:async(tok,u)=>{try{
         if(!tok||!u||!u.email)return false;
