@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.123';
+const APP_VERSION='2026.10.08.124';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6617,19 +6617,32 @@ function renderProjReference(main, root){
         _refNodeCache.delete(id);
       }
     }
-    /* v.123：選択中アイテムの属性をツールバーに反映。
-       - 単一選択で text/title なら fontSize を inpSize に出す。
-       - inpSize にフォーカス中はユーザー入力中なので上書きしない。 */
+    _syncToolbarFromSelection();
+  };
+  /* v.124：選択中アイテムの属性をツールバーに反映。
+     - text / title：fontSize → inpSize、color → inpTxtCol
+     - shape       ：color → inpShapeCol、opacity → inpOpacity
+     - フォーカス中の入力は上書きしない（ユーザー入力中の値を潰さない）。
+     - renderVisible 末尾からだけでなく、クリック選択の DOM 差分パスからも呼ぶ。 */
+  const _isHex6 = (s)=> typeof s==='string' && /^#[0-9a-fA-F]{6}$/.test(s);
+  function _syncToolbarFromSelection(){
     try{
       const selIds = Array.from(state.refSelection);
-      if(selIds.length === 1 && document.activeElement !== inpSize){
-        const it = workingItems.find(x=>x.id===selIds[0]);
-        if(it && (it.type==='text' || it.type==='title') && typeof it.fontSize === 'number'){
-          inpSize.value = String(it.fontSize);
+      if(selIds.length !== 1) return;
+      const it = workingItems.find(x=>x.id===selIds[0]);
+      if(!it) return;
+      const af = document.activeElement;
+      if(it.type==='text' || it.type==='title'){
+        if(af !== inpSize && typeof it.fontSize === 'number') inpSize.value = String(it.fontSize);
+        if(af !== inpTxtCol && _isHex6(it.color)) inpTxtCol.value = it.color;
+      }else if(it.type==='shape'){
+        if(af !== inpShapeCol && _isHex6(it.color)) inpShapeCol.value = it.color;
+        if(af !== inpOpacity && typeof it.opacity === 'number'){
+          inpOpacity.value = String(Math.round(it.opacity * 100));
         }
       }
     }catch(_){}
-  };
+  }
   /* ---------- イージング付き view アニメーション ----------
      v.087：目次クリックで一瞬で切り替わると「どこに移動したか」が分かりにくいため、
      easeInOutQuad で ~250ms かけてスッと移動する。
@@ -7070,6 +7083,7 @@ function renderProjReference(main, root){
         if(el) el.classList.add('selected');
       }
       updateHandles();
+      _syncToolbarFromSelection();
       e.preventDefault();
       return;
     }

@@ -18,6 +18,15 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.124) **資料タブ：選択時のツールバー同期を全選択パスで有効化＋色も同期（LayCAT）**：
+  - v.123 の同期は `renderVisible` の末尾でだけ呼ばれていた。しかしクリック選択は DOM 差分更新のため `renderVisible` を呼ばず、同期が走らず「反映されない」状態だった。
+  - 修正：`_syncToolbarFromSelection()` を関数化し、`renderVisible` 末尾＋クリック選択の DOM 差分パスの両方から呼ぶ。
+  - 色・透過度も同期：
+    - text / title：`inpSize`（fontSize）＋ `inpTxtCol`（color）
+    - shape      ：`inpShapeCol`（color）＋ `inpOpacity`（opacity×100）
+  - フォーカス中の入力は上書きしない（ユーザー入力中の値を潰さない）。
+  - APP_VERSION：2026.10.08.123 → 2026.10.08.124
+
 - (dev v2026.10.08.123) **資料タブ：text/title 選択時にツールバーの文字サイズ窓を現在値に同期（LayCAT）**：
   - `renderVisible` の末尾で、単一選択かつ対象が text / title なら `inpSize.value` を `it.fontSize` に更新。
   - `inpSize` にフォーカス中（ユーザー入力中）は上書きしない。
@@ -3533,6 +3542,11 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.08.077) **資料タブ：選択時のツールバー同期を全パスで有効化＋色も同期（PMB、LayCAT v.124 連動）**：
+  - クリック選択の DOM 差分パスからも `_syncToolbarFromSelection()` を呼ぶように修正。
+  - text / title は fontSize + color、shape は color + opacity を同期。
+  - APP_VERSION：2026.10.08.076 → 2026.10.08.077
 
 - (dev v2026.10.08.076) **資料タブ：text/title 選択時にツールバーの文字サイズ窓を現在値に同期（PMB、LayCAT v.123 連動）**：
   - 単一選択の text / title の `fontSize` を `inpSize.value` に反映。フォーカス中は上書きしない。
