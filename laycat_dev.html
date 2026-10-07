@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.125';
+const APP_VERSION='2026.10.08.126';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5558,6 +5558,12 @@ async function connectProjectFlow(){
     const sroot=getNode(data.id);if(sroot)sroot.folderName=handle.name;
     if(!REG.some(e=>e.id===data.id))REG.push({id:data.id,name:data.name||'project',folderName:handle.name});
     normalizeNodes();updateFolderStatus();
+    /* v.126：暗号化プロジェクトも Firestore 参加履歴に同期（名前は data.name=封筒名のみ・中身は暗号化のまま） */
+    try{
+      if(authUser && authUser.email && window.__laynaFB && window.__laynaFB.putFolderProject){
+        window.__laynaFB.putFolderProject(authUser.email, data.id, data.name||'project', handle.name||'').catch(()=>{});
+      }
+    }catch(_){}
     toast('保護されたプロジェクト「'+(data.name||'project')+'」を接続しました（開くときにパスワードが必要です）');
     go(data.id);return;
   }
@@ -5577,6 +5583,18 @@ async function connectProjectFlow(){
   normalizeNodes();
   if(!REG.some(e=>e.id===data.id))REG.push({id:data.id,name:data.name||(root&&root.name)||'project',folderName:handle.name});
   await persist();
+  /* v.126：Firestore に NAS 参加履歴を暗号化同期（他端末からも「参加可能プロジェクト」として見える）。
+     laycatUserPrivate/{emailKey}.folderProjects に書き込み。失敗時は静かに無視（接続自体は成立）。 */
+  try{
+    if(authUser && authUser.email && window.__laynaFB && window.__laynaFB.putFolderProject){
+      window.__laynaFB.putFolderProject(
+        authUser.email,
+        data.id,
+        (root&&root.name)||data.name||'project',
+        handle.name||''
+      ).catch(()=>{});
+    }
+  }catch(_){}
   toast('プロジェクト「'+((root&&root.name)||data.name)+'」を接続しました'+(_abs.merged?'（競合コピー'+_abs.count+'件を統合して復旧）':''));
   go(data.id);
 }
@@ -12310,6 +12328,34 @@ function openConnectModal(){
       }
       r2Host.appendChild(grid);
     })();
+    /* v.126：Firestore 同期済み NAS プロジェクト一覧（Lv.3 暗号化）
+       別端末で接続したことがある NAS プロジェクトをクリックで思い出せる。
+       name / folderHint は AES-GCM 暗号化で laycatUserPrivate/{emailKey} に保存されている。 */
+    inner.appendChild(el('div','divider'));
+    inner.appendChild(el('div','form-label','📁 以前接続した NAS プロジェクト（他端末からも参加可能）'));
+    const nasHost=el('div');nasHost.style.cssText='margin-bottom:14px;min-height:40px';
+    inner.appendChild(nasHost);
+    if(!authUser || !authUser.email || !window.__laynaFB || !window.__laynaFB.listFolderProjects){
+      const em=el('div','form-label','（Google ログイン後に利用可能）');em.style.color='var(--text3)';
+      nasHost.appendChild(em);
+    }else{
+      const loadingNas=el('div','form-label','読み込み中...');loadingNas.style.color='var(--text3)';
+      nasHost.appendChild(loadingNas);
+      (async()=>{
+        const list=await window.__laynaFB.listFolderProjects(authUser.email);
+        loadingNas.remove();
+        if(!list.length){
+          const em=el('div','form-label','（まだ保存された NAS プロジェクトはありません。下の「フォルダを選択」から接続すると自動的に保存され、他端末でもこの一覧から選べるようになります）');
+          em.style.color='var(--text3)';
+          nasHost.appendChild(em);
+          return;
+        }
+        const grid=el('div','proj-grid');
+        grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:6px';
+        for(const p of list) grid.appendChild(_nasTile(p));
+        nasHost.appendChild(grid);
+      })();
+    }
     /* 区切り＋ローカルフォルダ */
     inner.appendChild(el('div','divider'));
     const lfLabel=el('div','form-label');lfLabel.style.cssText='display:flex;align-items:center;gap:6px';
@@ -12386,6 +12432,53 @@ async function _r2Tile(p){
     const ok=await connectR2ProjectById(pid);
     if(ok){closeModal();render();resolveThumbs()}
     else{card.style.pointerEvents='';card.style.opacity=''}
+  };
+  return card;
+}
+/* v.126：Firestore 同期済み NAS プロジェクトのタイル（Lv.3 暗号化）
+   クリックすると「このフォルダ名で選択してください」と案内 → ピッカーを起動。
+   ブラウザは NAS パスを自動展開できないため、最終的にユーザー側のピッカー操作で確定する。
+   REG に既にあれば「接続済み」バッジ。長押し／右クリックで削除は Phase 2 で検討。 */
+function _nasTile(p){
+  const card=el('div','proj-card'); card.style.cssText='cursor:pointer;position:relative';
+  const media=el('div','proj-media');
+  media.appendChild(icoEl('folder'));
+  card.appendChild(media);
+  const foot=el('div','proj-foot');
+  const nameLine=el('div','proj-name', p.name||p.pid);
+  foot.appendChild(nameLine);
+  const meta=el('div','proj-meta');
+  const isConnected=REG.some(e=>e.id===p.pid);
+  if(isConnected){
+    meta.appendChild(el('span','mp-badge active','接続済み'));
+  }else{
+    const b=el('span','mp-badge'); b.textContent='NAS';
+    meta.appendChild(b);
+  }
+  if(p.folderHint){
+    const h=el('span','mp-badge'); h.textContent='📂 '+String(p.folderHint).slice(0,24);
+    h.style.cssText='font-family:var(--font-code);font-size:10px';
+    meta.appendChild(h);
+  }
+  foot.appendChild(meta);
+  card.appendChild(foot);
+  /* 削除ボタン（右上） */
+  const del=el('button','proj-del','×');
+  del.title='この端末 Firestore 履歴から削除（他端末からも消える）';
+  del.style.cssText='position:absolute;top:4px;right:4px;background:rgba(10,10,14,0.72);border:1px solid var(--border);color:var(--text2);width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;padding:0;z-index:2';
+  del.onclick=async(e)=>{
+    e.stopPropagation();
+    if(!confirm('「'+(p.name||p.pid)+'」を Firestore 参加履歴から削除しますか？\nローカルの接続（REG）は影響を受けません。'))return;
+    const ok=await window.__laynaFB.delFolderProject(authUser.email, p.pid);
+    if(ok){ card.remove(); toast('履歴から削除しました'); }
+    else{ toast('削除に失敗しました'); }
+  };
+  card.appendChild(del);
+  card.onclick=async()=>{
+    if(isConnected){ toast('既に接続されています。ホームから開いてください'); return; }
+    toast('フォルダピッカーで「'+(p.folderHint||p.name)+'」を選んでください');
+    closeModal();
+    connectProjectFlow();
   };
   return card;
 }
@@ -22475,6 +22568,95 @@ initApp();
         await m.setDoc(ref,{dates,updatedAt:new Date().toISOString()},{merge:true});
         return true;
       }catch(e){console.error('deleteCompanyHoliday failed',e);return false}},
+      /* ========== v.126：NAS プロジェクト参加履歴の暗号化同期（Lv.3） ==========
+         保存先：laycatUserPrivate/{emailKey}（本人以外は読めない Firestore ルール必須）
+         暗号化：AES-GCM 256bit、鍵は laycatUserPrivate/{emailKey}.encKeyB64
+         name も folderHint も両方暗号化（UI 側で復号して表示）
+         Firestore ルール例：
+           match /laycatUserPrivate/{emailKey} {
+             allow read, write: if request.auth != null
+               && request.auth.token.email.lower().replace('[.@#$/\\[\\]]', '_') == emailKey;
+           }
+      */
+      ensureUserPrivateKey:async(email)=>{try{
+        if(!email) return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const ref=m.doc(fs,'laycatUserPrivate',key);
+        const snap=await m.getDoc(ref);
+        let keyB64 = snap.exists() ? (snap.data()||{}).encKeyB64 : null;
+        if(!keyB64){
+          const buf=new Uint8Array(32); crypto.getRandomValues(buf);
+          keyB64=btoa(String.fromCharCode(...buf));
+          await m.setDoc(ref,{encKeyB64:keyB64,createdAt:new Date().toISOString()},{merge:true});
+        }
+        const raw=Uint8Array.from(atob(keyB64),c=>c.charCodeAt(0));
+        return await crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},false,['encrypt','decrypt']);
+      }catch(e){return null}},
+      _fpEncrypt:async(ckey, text)=>{
+        const iv=crypto.getRandomValues(new Uint8Array(12));
+        const pt=new TextEncoder().encode(String(text||''));
+        const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},ckey,pt));
+        return { enc: btoa(String.fromCharCode(...ct)), iv: btoa(String.fromCharCode(...iv)) };
+      },
+      _fpDecrypt:async(ckey, encB64, ivB64)=>{try{
+        if(!encB64||!ivB64) return null;
+        const ct=Uint8Array.from(atob(encB64),c=>c.charCodeAt(0));
+        const iv=Uint8Array.from(atob(ivB64),c=>c.charCodeAt(0));
+        const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv},ckey,ct);
+        return new TextDecoder().decode(pt);
+      }catch(_){return null}},
+      /* 参加プロジェクトを追加（既存同 pid は上書き）。 */
+      putFolderProject:async(email, pid, name, folderHint)=>{try{
+        if(!email||!pid) return false;
+        const ckey=await window.__laynaFB.ensureUserPrivateKey(email);
+        if(!ckey) return false;
+        const nameEnc=await window.__laynaFB._fpEncrypt(ckey, name||'');
+        const hintEnc=await window.__laynaFB._fpEncrypt(ckey, folderHint||'');
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        await m.setDoc(m.doc(fs,'laycatUserPrivate',key),{
+          folderProjects:{[pid]:{
+            nameEnc:nameEnc.enc, nameIv:nameEnc.iv,
+            hintEnc:hintEnc.enc, hintIv:hintEnc.iv,
+            addedAt:new Date().toISOString()
+          }}
+        },{merge:true});
+        return true;
+      }catch(e){console.warn('putFolderProject failed',e);return false}},
+      /* 参加プロジェクトを削除。 */
+      delFolderProject:async(email, pid)=>{try{
+        if(!email||!pid) return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        await m.updateDoc(m.doc(fs,'laycatUserPrivate',key),{['folderProjects.'+pid]:m.deleteField()});
+        return true;
+      }catch(e){return false}},
+      /* 参加プロジェクト一覧を取得。復号して [{pid, name, folderHint, addedAt}] を返す。 */
+      listFolderProjects:async(email)=>{try{
+        if(!email) return [];
+        const ckey=await window.__laynaFB.ensureUserPrivateKey(email);
+        if(!ckey) return [];
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const snap=await m.getDoc(m.doc(fs,'laycatUserPrivate',key));
+        if(!snap.exists()) return [];
+        const d=snap.data()||{};
+        const fp=d.folderProjects||{};
+        const out=[];
+        for(const pid of Object.keys(fp)){
+          const row=fp[pid]||{};
+          const name=await window.__laynaFB._fpDecrypt(ckey, row.nameEnc, row.nameIv);
+          const hint=await window.__laynaFB._fpDecrypt(ckey, row.hintEnc, row.hintIv);
+          out.push({ pid, name:name||'', folderHint:hint||'', addedAt:row.addedAt||'' });
+        }
+        out.sort((a,b)=>(b.addedAt||'').localeCompare(a.addedAt||''));
+        return out;
+      }catch(e){console.warn('listFolderProjects failed',e);return []}},
       /* 招待トークンを照合し、有効なら自分を invited に登録（承認なしでメンバー化）。成否を返す。 */
       redeemInvite:async(tok,u)=>{try{
         if(!tok||!u||!u.email)return false;

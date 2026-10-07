@@ -18,6 +18,24 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.126) **NAS プロジェクト参加履歴の暗号化同期（Lv.3）＋「接続」モーダルに一覧表示（LayCAT）**：
+  - 目的：他端末からも「このユーザーが参加している NAS プロジェクト」をワンクリックで思い出せるようにする。参加プロジェクトを探し回る時間を削減。
+  - **Firestore 側**：新規コレクション `laycatUserPrivate/{emailKey}` を導入。
+    - `encKeyB64`：AES-GCM 256bit 鍵（初回ログイン時に自動発行）
+    - `folderProjects.{pid}`：`{nameEnc, nameIv, hintEnc, hintIv, addedAt}` — プロジェクト名もフォルダ名も**全て暗号化**
+    - ルール追加必要（docs/FIRESTORE_RULES_FOLDER_PROJECTS.md 参照）：本人以外は read 不可。
+  - **クライアント側 (`__laynaFB`)**：
+    - `ensureUserPrivateKey(email)` → CryptoKey を返す（Web Crypto API）
+    - `putFolderProject(email, pid, name, folderHint)` → 暗号化して書き込み
+    - `delFolderProject(email, pid)` → エントリ削除
+    - `listFolderProjects(email)` → 復号して `[{pid, name, folderHint, addedAt}]` を返す
+  - **連携点**：
+    - `connectProjectFlow` の末尾でフォルダ接続成功時に `putFolderProject` を fire-and-forget（通常プロジェクト・暗号化プロジェクト両方）。
+    - `openConnectModal` に「📁 以前接続した NAS プロジェクト（他端末からも参加可能）」セクションを追加。タイルクリックでピッカー起動、`×` ボタンで Firestore 履歴から削除。
+  - **書き込み系副作用**：`laycatUserPrivate/{emailKey}` にのみ書き込み。既存プロジェクトデータ（`shots/*.json`／`laycat.project.json`／`_access.json`／`reels.json` 等）は一切触らない。`persist()` も追加呼び出しせず（既存の connectProjectFlow の persist() のみ）。
+  - **脅威モデル**：他 LayCAT ユーザーからの横断参照・Firestore バックアップ漏洩対策まで射程。Firebase プロジェクト管理者からの隠蔽は Phase 2（パスフレーズ派生鍵）で検討予定。
+  - APP_VERSION：2026.10.08.125 → 2026.10.08.126
+
 - (dev v2026.10.08.125) **資料タブ：URL リンクのクリック安定化＋ホバー時に pointer カーソル（LayCAT）**：
   - 事象：v.122 でホバー文字選択を有効化したことで、URL テキストにも `user-select:text` が付き、わずかなドラッグで selection 開始扱いになって `click` が発火しない＝「クリックしても飛ばない」ことがあった。
   - 修正：
