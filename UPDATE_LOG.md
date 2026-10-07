@@ -18,6 +18,11 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.135) **接続モーダル：見出し文言変更＋フォルダマーク無彩色化（LayCAT）**：
+  - 見出しを「以前接続した NAS プロジェクト（他端末からも参加可能）」→「**参加可能なプロジェクト一覧**」に変更（招待で加わるプロジェクトも含むので語弊回避）。
+  - 📁 / 📂 絵文字を `currentColor` ストロークの無彩色 SVG（屋根付きフォルダ）に差替。モノクロ基調に揃える。
+  - APP_VERSION：2026.10.08.134 → 2026.10.08.135
+
 - (dev v2026.10.08.134) **Phase 3 残り：未受理可視化／削除伝播／招待 TTL／🔄 更新ボタン（LayCAT）**：
   - **#1 未受理招待の可視化**：メンバー管理モーダルに「📨 未受理の招待」セクションを追加。自分が発行したこのプロジェクトの招待一覧（未受理／失効バッジ付き）＋ 取消ボタン。`listPendingFolderInvites(email, {pid})` と `revokeFolderInvite(id)` を追加。
   - **#2 メンバー削除の伝播**：新規コレクション `laycatFolderRevocations/{autoId}` を追加。オーナーが `root.members` から外した相手には削除指示を発行（`createFolderRevocation(from, to, pid)`）。対象ユーザーの次回ログイン時に `redeemAllFolderRevocations` が走って自分の `folderProjects.{pid}` を削除。90 日 TTL。
