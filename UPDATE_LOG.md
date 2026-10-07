@@ -18,6 +18,12 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.123) **資料タブ：text/title 選択時にツールバーの文字サイズ窓を現在値に同期（LayCAT）**：
+  - `renderVisible` の末尾で、単一選択かつ対象が text / title なら `inpSize.value` を `it.fontSize` に更新。
+  - `inpSize` にフォーカス中（ユーザー入力中）は上書きしない。
+  - 書き込み系副作用なし（UI 同期のみ）。
+  - APP_VERSION：2026.10.07.122 → 2026.10.08.123
+
 - (dev v2026.10.07.122) **資料タブ：非編集モードで text/title をホバーだけで文字選択可能に（LayCAT）**：
   - 従来：ダブルクリックで「選択モード」に入る必要があった。
   - 修正：非編集モードでは text/title に常時 `pointer-events:auto` + `user-select:text` + `cursor:text` を付与。マウスを乗せただけでカーソルが I-beam になり、そのままドラッグで文字範囲選択・Ctrl+C でコピーできる。
@@ -3527,6 +3533,10 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.08.076) **資料タブ：text/title 選択時にツールバーの文字サイズ窓を現在値に同期（PMB、LayCAT v.123 連動）**：
+  - 単一選択の text / title の `fontSize` を `inpSize.value` に反映。フォーカス中は上書きしない。
+  - APP_VERSION：2026.10.07.075 → 2026.10.08.076
 
 - (dev v2026.10.07.075) **資料タブ：非編集モードで text/title をホバーだけで文字選択可能に（PMB、LayCAT v.122 連動）**：
   - 非編集モードで text/title に常時 `pointer-events:auto` + `user-select:text` + `cursor:text` を付与し、ホバーで I-beam → ドラッグ選択可能。

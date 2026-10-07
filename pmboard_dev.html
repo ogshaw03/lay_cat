@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.07.075';
+const APP_VERSION='2026.10.08.076';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4326,6 +4326,16 @@ async function _refInit(){
         _refNodeCache.delete(id);
       }
     }
+    /* v.076：単一選択で text/title なら fontSize を inpSize に反映（LayCAT v.123 と同仕様）。 */
+    try{
+      const selIds = Array.from(_REF_STATE.selection);
+      if(selIds.length === 1 && document.activeElement !== inpSize){
+        const it = workingItems.find(x=>x.id===selIds[0]);
+        if(it && (it.type==='text' || it.type==='title') && typeof it.fontSize === 'number'){
+          inpSize.value = String(it.fontSize);
+        }
+      }
+    }catch(_){}
     updateHandles();
   };
   const updateHandles = ()=>{
