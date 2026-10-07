@@ -18,6 +18,15 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.134) **Phase 3 残り：未受理可視化／削除伝播／招待 TTL／🔄 更新ボタン（LayCAT）**：
+  - **#1 未受理招待の可視化**：メンバー管理モーダルに「📨 未受理の招待」セクションを追加。自分が発行したこのプロジェクトの招待一覧（未受理／失効バッジ付き）＋ 取消ボタン。`listPendingFolderInvites(email, {pid})` と `revokeFolderInvite(id)` を追加。
+  - **#2 メンバー削除の伝播**：新規コレクション `laycatFolderRevocations/{autoId}` を追加。オーナーが `root.members` から外した相手には削除指示を発行（`createFolderRevocation(from, to, pid)`）。対象ユーザーの次回ログイン時に `redeemAllFolderRevocations` が走って自分の `folderProjects.{pid}` を削除。90 日 TTL。
+  - **#3 招待の TTL**：`createFolderInvite` が `expiresAt`（+30 日）を書き込む。`redeemAllFolderInvites` が期限切れを無視して削除のみ。戻り値 `{redeemed, expired}` に変更。
+  - **#4 接続モーダルの 🔄 更新ボタン**：ログインし直さず新規招待・削除指示を取り込める。クリックで `redeemAllFolderInvites` + `redeemAllFolderRevocations` + `_reloadNasList` を実行。
+  - **ルール追加**：access-console に `laycatFolderRevocations` ブロック追加（招待と同構造）。docs/FIRESTORE_RULES_FOLDER_PROJECTS.md にも反映。
+  - **書き込み系副作用**：`laycatFolderInvites`／`laycatFolderRevocations`／`laycatUserPrivate.folderProjects` のみ。既存 shots/*.json 等不触。
+  - APP_VERSION：2026.10.08.133 → 2026.10.08.134
+
 - (dev v2026.10.08.133) **NAS タイル：コピーボタンにホバーハイライト追加（LayCAT）**：
   - mouseenter/leave で background（bg3）／border（accent）／color（text）を切替。transition で滑らかに。
   - APP_VERSION：2026.10.08.132 → 2026.10.08.133

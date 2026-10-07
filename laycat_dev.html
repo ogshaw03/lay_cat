@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.133';
+const APP_VERSION='2026.10.08.134';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12333,33 +12333,53 @@ function openConnectModal(){
       r2Host.appendChild(grid);
     })();
     /* v.126：Firestore 同期済み NAS プロジェクト一覧（Lv.3 暗号化）
-       別端末で接続したことがある NAS プロジェクトをクリックで思い出せる。
-       name / folderHint は AES-GCM 暗号化で laycatUserPrivate/{emailKey} に保存されている。 */
+       v.134：🔄 更新ボタンでログインし直さず新規招待を取り込める。 */
     inner.appendChild(el('div','divider'));
-    inner.appendChild(el('div','form-label','📁 以前接続した NAS プロジェクト（他端末からも参加可能）'));
+    const nasHd=el('div');nasHd.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px';
+    const nasLbl=el('div','form-label','📁 以前接続した NAS プロジェクト（他端末からも参加可能）');nasLbl.style.margin='0';
+    nasHd.appendChild(nasLbl);
+    const nasRe=el('button','btn btn-ghost btn-sm','🔄 更新');nasRe.title='新規招待・削除指示を再取得して一覧を更新';
+    nasRe.style.cssText='padding:2px 10px;font-size:11px';
+    nasHd.appendChild(nasRe);
+    inner.appendChild(nasHd);
     const nasHost=el('div');nasHost.style.cssText='margin-bottom:14px;min-height:40px';
     inner.appendChild(nasHost);
-    if(!authUser || !authUser.email || !window.__laynaFB || !window.__laynaFB.listFolderProjects){
-      const em=el('div','form-label','（Google ログイン後に利用可能）');em.style.color='var(--text3)';
-      nasHost.appendChild(em);
-    }else{
+    async function _reloadNasList(){
+      nasHost.innerHTML='';
+      if(!authUser || !authUser.email || !window.__laynaFB || !window.__laynaFB.listFolderProjects){
+        const em=el('div','form-label','（Google ログイン後に利用可能）');em.style.color='var(--text3)';
+        nasHost.appendChild(em);return;
+      }
       const loadingNas=el('div','form-label','読み込み中...');loadingNas.style.color='var(--text3)';
       nasHost.appendChild(loadingNas);
-      (async()=>{
-        const list=await window.__laynaFB.listFolderProjects(authUser.email);
-        loadingNas.remove();
-        if(!list.length){
-          const em=el('div','form-label','（まだ保存された NAS プロジェクトはありません。下の「フォルダを選択」から接続すると自動的に保存され、他端末でもこの一覧から選べるようになります）');
-          em.style.color='var(--text3)';
-          nasHost.appendChild(em);
-          return;
-        }
-        const grid=el('div','proj-grid');
-        grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:6px';
-        for(const p of list) grid.appendChild(_nasTile(p));
-        nasHost.appendChild(grid);
-      })();
+      const list=await window.__laynaFB.listFolderProjects(authUser.email);
+      loadingNas.remove();
+      if(!list.length){
+        const em=el('div','form-label','（まだ保存された NAS プロジェクトはありません。下の「フォルダを選択」から接続すると自動的に保存され、他端末でもこの一覧から選べるようになります）');
+        em.style.color='var(--text3)';nasHost.appendChild(em);return;
+      }
+      const grid=el('div','proj-grid');
+      grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:6px';
+      for(const p of list) grid.appendChild(_nasTile(p));
+      nasHost.appendChild(grid);
     }
+    _reloadNasList();
+    nasRe.onclick=async()=>{
+      nasRe.disabled=true;nasRe.textContent='更新中…';
+      try{
+        if(window.__laynaFB && window.__laynaFB.redeemAllFolderInvites && authUser && authUser.email){
+          const r=await window.__laynaFB.redeemAllFolderInvites(authUser.email);
+          const n=(r && r.redeemed)||0;
+          if(n>0) try{ toast('NAS プロジェクト招待を '+n+' 件受理しました'); }catch(_){}
+        }
+        if(window.__laynaFB && window.__laynaFB.redeemAllFolderRevocations && authUser && authUser.email){
+          const n2=await window.__laynaFB.redeemAllFolderRevocations(authUser.email);
+          if(n2>0) try{ toast('NAS プロジェクト参加解除を '+n2+' 件適用しました'); }catch(_){}
+        }
+      }catch(_){}
+      await _reloadNasList();
+      nasRe.disabled=false;nasRe.textContent='🔄 更新';
+    };
     /* 区切り＋ローカルフォルダ */
     inner.appendChild(el('div','divider'));
     const lfLabel=el('div','form-label');lfLabel.style.cssText='display:flex;align-items:center;gap:6px';
@@ -14019,6 +14039,57 @@ function openMembersWindow(root){
   wrap.appendChild(phBox);
   const tbl=ce('table');wrap.appendChild(tbl);
 
+  /* v.134：未受理招待の可視化（Phase 3 #1）。
+     自分が発行した招待のうち、相手がまだログインしていないもの一覧。失効も表示。
+     「取消」ボタンで Firestore レコードを削除。 */
+  const pendWrap=ce('div');pendWrap.style.cssText='margin-top:20px;padding-top:16px;border-top:1px solid #23232a';
+  const pendH=ce('div',null,'📨 未受理の招待');pendH.style.cssText='font-size:13px;font-weight:700;color:#e8e8ec;margin-bottom:6px';
+  pendWrap.appendChild(pendH);
+  const pendMuted=ce('div','muted','このプロジェクトの NAS 招待のうち、相手がまだログインしていない or 削除指示待ちのレコードを一覧表示します。「取消」で招待レコードを消せます。');
+  pendWrap.appendChild(pendMuted);
+  const pendList=ce('div');pendList.style.cssText='display:flex;flex-direction:column;gap:6px';
+  pendWrap.appendChild(pendList);
+  wrap.appendChild(pendWrap);
+
+  async function _refreshPendingInvites(){
+    pendList.innerHTML='';
+    if(!window.__laynaFB || !window.__laynaFB.listPendingFolderInvites || !authUser || !authUser.email){
+      const em=ce('div','muted','（Google ログイン後に利用可能）');pendList.appendChild(em);return;
+    }
+    const loading=ce('div','muted','読み込み中…');pendList.appendChild(loading);
+    const invites=await window.__laynaFB.listPendingFolderInvites(authUser.email, {pid:root.id});
+    loading.remove();
+    if(!invites.length){
+      const em=ce('div','muted','（未受理の招待はありません）');pendList.appendChild(em);return;
+    }
+    for(const inv of invites){
+      const row=ce('div');row.style.cssText='display:flex;align-items:center;gap:10px;padding:7px 10px;background:#15151a;border:1px solid #2a2a2f;border-radius:7px';
+      const em=ce('div',null,(inv.byEmail ? '→ ' : '')+String(inv.toEmailKey||'').replace(/_/g,'.'));em.style.cssText='flex:1 1 auto;font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12px;color:#e8e8ec;word-break:break-all';
+      row.appendChild(em);
+      const badges=ce('div');badges.style.cssText='display:flex;gap:4px;flex-wrap:wrap;align-items:center';
+      if(inv.expired){
+        const b=ce('span',null,'失効');b.style.cssText='padding:2px 8px;background:rgba(242,120,80,.15);border:1px solid rgba(242,120,80,.4);color:#f27850;border-radius:999px;font-size:10px';badges.appendChild(b);
+      }else{
+        const b=ce('span',null,'未受理');b.style.cssText='padding:2px 8px;background:rgba(242,200,107,.12);border:1px solid rgba(242,200,107,.4);color:#f2c86b;border-radius:999px;font-size:10px';badges.appendChild(b);
+      }
+      if(inv.createdAt){
+        const d=ce('span',null,String(inv.createdAt).slice(0,10));d.style.cssText='font-size:10px;color:#8a8a99;font-family:var(--font-code)';badges.appendChild(d);
+      }
+      row.appendChild(badges);
+      const rev=ce('button','btn','取消');rev.style.cssText='flex:0 0 auto;background:#1c1c1f;border:1px solid #2a2a2f;color:#ff9999;padding:4px 10px;font-size:11px;border-radius:5px;cursor:pointer';
+      rev.onclick=async()=>{
+        if(!w.confirm('この招待を取消しますか？\n（受理前ならそのまま消え、相手の一覧には出なくなります）')) return;
+        rev.disabled=true;rev.textContent='…';
+        const ok=await window.__laynaFB.revokeFolderInvite(inv.id);
+        if(ok){ row.remove(); if(!pendList.children.length){ const em=ce('div','muted','（未受理の招待はありません）');pendList.appendChild(em); } }
+        else{ rev.disabled=false;rev.textContent='取消';w.alert('取消に失敗しました'); }
+      };
+      row.appendChild(rev);
+      pendList.appendChild(row);
+    }
+  }
+  _refreshPendingInvites();
+
   function redraw(){
     tbl.innerHTML='';
     const head=ce('tr');
@@ -14048,13 +14119,16 @@ function openMembersWindow(root){
       out.push({id,name:(m.name||'').trim()||id.split('@')[0],roles:String(m.roles||'').split(',').map(s=>s.trim()).filter(Boolean),color:m.color||'#4da6ff',active:m.active!==false});
     }
     /* v.127：新規追加メンバー（既存 root.members に無いメール）に対して NAS 招待を発行。
-       v.130：pathHint も招待と自分の folderProjects に乗せる。 */
-    const _oldIds=new Set((Array.isArray(root.members)?root.members:[]).map(m=>String(m&&m.id||'').toLowerCase()).filter(Boolean));
+       v.130：pathHint も招待と自分の folderProjects に乗せる。
+       v.134：旧メンバーから消えたメールには削除指示（revocation）を発行。 */
+    const _oldMembers=(Array.isArray(root.members)?root.members:[]);
+    const _oldIds=new Set(_oldMembers.map(m=>String(m&&m.id||'').toLowerCase()).filter(Boolean));
+    const _newIds=new Set(out.map(m=>String(m.id||'').toLowerCase()).filter(Boolean));
     const _myEmail=String((authUser&&authUser.email)||'').toLowerCase();
     const _isFolder=(storage._backend && storage._backend(root.id))==='folder';
     const _newEmails=out.map(m=>String(m.id||'').toLowerCase()).filter(e=>e && e!==_myEmail && !_oldIds.has(e));
+    const _removedEmails=[..._oldIds].filter(e=>e && e!==_myEmail && !_newIds.has(e));
     root.members=out;
-    /* v.130：pathHint の保存。空なら削除。 */
     const _ph=String(phIn.value||'').trim();
     if(_ph) root.pathHint=_ph; else delete root.pathHint;
     await persist();
@@ -14068,9 +14142,14 @@ function openMembersWindow(root){
       }
       try{ toast('NAS プロジェクト招待を '+_newEmails.length+' 名に送信しました'); }catch(_){}
     }
-    /* v.130：既存メンバーも pathHint が変わっていれば更新したい。
-       しかし他ユーザーの folderProjects に書けないので、代わりに「招待の再発行」で
-       同じ pid の未受理招待を上書きする方式は複雑すぎるため今は見送り。将来 Phase 5 で検討。 */
+    if(_isFolder && _removedEmails.length && window.__laynaFB && window.__laynaFB.createFolderRevocation && _myEmail){
+      for(const _em of _removedEmails){
+        window.__laynaFB.createFolderRevocation(_myEmail, _em, root.id).catch(()=>{});
+      }
+      try{ toast('NAS プロジェクト参加解除を '+_removedEmails.length+' 名に送信しました'); }catch(_){}
+    }
+    /* 未受理招待リストを再描画（削除指示とは別） */
+    try{ _refreshPendingInvites && _refreshPendingInvites(); }catch(_){}
   };
 }
 
@@ -22252,13 +22331,17 @@ async function onAuthChanged(u){
   clearAuthScreen();showAuthedHeader();startAppFlow();try{_wireSignals()}catch(_){}
   /* マルチテナント化 Phase M2a-3：テナント管理ボタンの可視判定（認証完了後） */
   try{await refreshTenantAdminButton();}catch(_){}
-  /* v.127：ログイン直後に自分宛の NAS プロジェクト招待を受理（fire-and-forget）。
-     laycatFolderInvites から自分の toEmailKey == me のレコードを拾い、
-     自分の laycatUserPrivate.folderProjects に暗号化転記して invite 側は削除。 */
+  /* v.127／v.134：ログイン直後に自分宛の NAS プロジェクト招待を受理し、同時に削除指示も適用（fire-and-forget）。 */
   try{
     if(window.__laynaFB && window.__laynaFB.redeemAllFolderInvites && authUser && authUser.email){
-      window.__laynaFB.redeemAllFolderInvites(authUser.email).then(n=>{
+      window.__laynaFB.redeemAllFolderInvites(authUser.email).then(r=>{
+        const n=(r && r.redeemed)||0;
         if(n>0){ try{ toast('NAS プロジェクト招待を '+n+' 件受理しました'); }catch(_){} }
+      }).catch(()=>{});
+    }
+    if(window.__laynaFB && window.__laynaFB.redeemAllFolderRevocations && authUser && authUser.email){
+      window.__laynaFB.redeemAllFolderRevocations(authUser.email).then(n=>{
+        if(n>0){ try{ toast('NAS プロジェクト '+n+' 件の参加解除が適用されました'); }catch(_){} }
       }).catch(()=>{});
     }
   }catch(_){}
@@ -22768,12 +22851,15 @@ initApp();
           const existing=await m.getDocs(q);
           if(!existing.empty) return true;
         }catch(_){}
-        /* v.130：pathHint はオーナーが手入力した NAS パス道案内メモ（任意）。平文で送るが
-           ルールにより toEmailKey or fromEmailKey == self 以外からは read 不可。 */
+        /* v.130：pathHint はオーナーが手入力した NAS パス道案内メモ（任意）。
+           v.134：expiresAt を 30 日後に設定（Phase 3 の TTL）。クライアント側で期限切れを判定・パージ。 */
+        const _now=Date.now();
         const payload={
           toEmailKey:toKey, fromEmailKey:fromKey,
           pid:String(pid), name:String(name||''), folderHint:String(folderHint||''),
-          byEmail:fromEmail, createdAt:new Date().toISOString()
+          byEmail:fromEmail,
+          createdAt:new Date(_now).toISOString(),
+          expiresAt:new Date(_now + 30*24*3600*1000).toISOString()
         };
         if(pathHint != null && String(pathHint).trim().length) payload.pathHint = String(pathHint);
         await m.addDoc(m.collection(fs,'laycatFolderInvites'),payload);
@@ -22782,22 +22868,109 @@ initApp();
       /* ログイン直後に自分宛の招待を全部取り込む。副作用：
          1) 自分の laycatUserPrivate.folderProjects に putFolderProject で書く（暗号化）
          2) 招待ドキュメントを削除
-         戻り値：取り込んだ件数 */
+         v.134：expiresAt が過去なら受理せず削除だけ（期限切れパージ）。
+         戻り値：{ redeemed, expired } */
       redeemAllFolderInvites:async(email)=>{try{
-        if(!email) return 0;
+        if(!email) return { redeemed:0, expired:0 };
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);
         const toKey=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         const q=m.query(m.collection(fs,'laycatFolderInvites'), m.where('toEmailKey','==',toKey));
         const snap=await m.getDocs(q);
+        const nowIso=new Date().toISOString();
+        let redeemed=0, expired=0;
+        for(const d of snap.docs){
+          const data=d.data()||{};
+          if(data.expiresAt && String(data.expiresAt) < nowIso){
+            try{ await m.deleteDoc(d.ref); expired++; }catch(_){}
+            continue;
+          }
+          const ok=await window.__laynaFB.putFolderProject(email, data.pid, data.name||'', data.folderHint||'', data.pathHint||'');
+          if(ok){ try{ await m.deleteDoc(d.ref); redeemed++; }catch(_){} }
+        }
+        return { redeemed, expired };
+      }catch(e){console.warn('redeemAllFolderInvites failed',e);return { redeemed:0, expired:0 }}},
+      /* v.134：オーナー視点で、自分が発行した or 自分宛の未受理招待の一覧を取得。
+         引数 pid 指定時はそのプロジェクトに限定。失敗時は空配列。 */
+      listPendingFolderInvites:async(email, opts)=>{try{
+        if(!email) return [];
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const myKey=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const pidFilter=(opts && opts.pid) ? String(opts.pid) : null;
+        const base=m.collection(fs,'laycatFolderInvites');
+        const q = pidFilter
+          ? m.query(base, m.where('fromEmailKey','==',myKey), m.where('pid','==',pidFilter))
+          : m.query(base, m.where('fromEmailKey','==',myKey));
+        const snap=await m.getDocs(q);
+        const out=[];
+        const nowIso=new Date().toISOString();
+        for(const d of snap.docs){
+          const data=d.data()||{};
+          const expired = data.expiresAt && String(data.expiresAt) < nowIso;
+          out.push({ id:d.id, ...data, expired:!!expired });
+        }
+        out.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+        return out;
+      }catch(e){console.warn('listPendingFolderInvites failed',e);return []}},
+      /* v.134：招待を取消（オーナー側）。失効 or 誤発行の掃除にも使う。 */
+      revokeFolderInvite:async(inviteId)=>{try{
+        if(!inviteId) return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        await m.deleteDoc(m.doc(fs,'laycatFolderInvites',inviteId));
+        return true;
+      }catch(e){console.warn('revokeFolderInvite failed',e);return false}},
+
+      /* ========== v.134：NAS プロジェクト削除伝播（Phase 3 #2） ==========
+         オーナーがメンバーを `root.members` から外した時に、Firestore 経由で相手側の
+         `laycatUserPrivate.folderProjects.{pid}` を自動削除するためのレコード。
+         保存先：laycatFolderRevocations/{autoId}
+            {toEmailKey, fromEmailKey, pid, byEmail, createdAt, expiresAt}
+         Firestore ルール：招待と同じ構造（本人のみ read/delete, 自分発のみ create）。 */
+      createFolderRevocation:async(fromEmail, toEmail, pid)=>{try{
+        if(!fromEmail||!toEmail||!pid) return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const toKey=String(toEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const fromKey=String(fromEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        /* 既存重複は無視（複数作っても害は無いが節約） */
+        try{
+          const q=m.query(m.collection(fs,'laycatFolderRevocations'),
+            m.where('fromEmailKey','==',fromKey),
+            m.where('toEmailKey','==',toKey),
+            m.where('pid','==',String(pid)));
+          const ex=await m.getDocs(q);
+          if(!ex.empty) return true;
+        }catch(_){}
+        const _now=Date.now();
+        await m.addDoc(m.collection(fs,'laycatFolderRevocations'),{
+          toEmailKey:toKey, fromEmailKey:fromKey, pid:String(pid), byEmail:fromEmail,
+          createdAt:new Date(_now).toISOString(),
+          expiresAt:new Date(_now + 90*24*3600*1000).toISOString()
+        });
+        return true;
+      }catch(e){console.warn('createFolderRevocation failed',e);return false}},
+      /* ログイン直後に自分宛の削除指示を適用し、該当 pid を folderProjects から外す。
+         戻り値：適用件数（期限切れは単に捨てる）。 */
+      redeemAllFolderRevocations:async(email)=>{try{
+        if(!email) return 0;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const toKey=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const q=m.query(m.collection(fs,'laycatFolderRevocations'), m.where('toEmailKey','==',toKey));
+        const snap=await m.getDocs(q);
+        const nowIso=new Date().toISOString();
         let n=0;
         for(const d of snap.docs){
           const data=d.data()||{};
-          const ok=await window.__laynaFB.putFolderProject(email, data.pid, data.name||'', data.folderHint||'', data.pathHint||'');
+          if(!data.pid){ try{ await m.deleteDoc(d.ref); }catch(_){}; continue; }
+          if(data.expiresAt && String(data.expiresAt) < nowIso){ try{ await m.deleteDoc(d.ref); }catch(_){}; continue; }
+          const ok=await window.__laynaFB.delFolderProject(email, data.pid);
           if(ok){ try{ await m.deleteDoc(d.ref); n++; }catch(_){} }
         }
         return n;
-      }catch(e){console.warn('redeemAllFolderInvites failed',e);return 0}},
+      }catch(e){console.warn('redeemAllFolderRevocations failed',e);return 0}},
       /* 招待トークンを照合し、有効なら自分を invited に登録（承認なしでメンバー化）。成否を返す。 */
       redeemInvite:async(tok,u)=>{try{
         if(!tok||!u||!u.email)return false;

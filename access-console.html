@@ -414,10 +414,24 @@ service cloud.firestore {
     // 保存先：laycatFolderInvites/{autoId}
     //   toEmailKey   : 招待先のメールキー
     //   fromEmailKey : 招待元（オーナー）のメールキー
-    //   pid, name, folderHint, byEmail, createdAt : 招待内容（短命・ルールで本人以外から遮断）
+    //   pid, name, folderHint, pathHint, byEmail, createdAt, expiresAt
     // 対象ユーザーが次回ログイン時に自分の laycatUserPrivate.folderProjects に取り込み、
     // 招待レコードは削除される。
     match /laycatFolderInvites/{token} {
+      allow create:         if signedIn() && request.resource.data.fromEmailKey == myKey();
+      allow read, delete:   if signedIn()
+                              && (resource.data.toEmailKey == myKey() || resource.data.fromEmailKey == myKey());
+      allow update:         if false;
+    }
+
+    // ===== NAS プロジェクト削除指示（Phase 3・v.134）=====
+    // 保存先：laycatFolderRevocations/{autoId}
+    //   toEmailKey   : 削除対象ユーザー
+    //   fromEmailKey : 削除指示を出した元（オーナー）
+    //   pid, byEmail, createdAt, expiresAt
+    // オーナーがメンバー管理 UI から外した時に発行。対象ユーザーが次回ログイン時に
+    // 自分の laycatUserPrivate.folderProjects.{pid} を削除。レコードは適用後削除される。
+    match /laycatFolderRevocations/{token} {
       allow create:         if signedIn() && request.resource.data.fromEmailKey == myKey();
       allow read, delete:   if signedIn()
                               && (resource.data.toEmailKey == myKey() || resource.data.fromEmailKey == myKey());

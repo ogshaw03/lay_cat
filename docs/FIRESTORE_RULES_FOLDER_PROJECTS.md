@@ -30,6 +30,16 @@ match /laycatFolderInvites/{token} {
      || resource.data.fromEmailKey == request.auth.token.email.lower().replace('[.@#$/\\[\\]]', '_'));
   allow update: if false;
 }
+
+// v.134：NAS プロジェクト削除指示（Phase 3）
+match /laycatFolderRevocations/{token} {
+  allow create: if request.auth != null
+    && request.resource.data.fromEmailKey == request.auth.token.email.lower().replace('[.@#$/\\[\\]]', '_');
+  allow read, delete: if request.auth != null
+    && (resource.data.toEmailKey   == request.auth.token.email.lower().replace('[.@#$/\\[\\]]', '_')
+     || resource.data.fromEmailKey == request.auth.token.email.lower().replace('[.@#$/\\[\\]]', '_'));
+  allow update: if false;
+}
 ```
 
 **ポイント**
