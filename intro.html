@@ -196,6 +196,23 @@
 
   /* ========== FEATURES ========== */
   .features{background:var(--bg2)}
+  /* カテゴリ区切り（Features 内のサブセクション見出し） */
+  .feature-cat{
+    text-align:center;padding:72px 0 20px;margin-top:24px;
+    border-top:1px solid var(--border);
+  }
+  .feature-cat:first-of-type{border-top:none;padding-top:16px;margin-top:0}
+  .feature-cat + .feature-row{border-top:none}
+  .feature-cat .cat-tag{
+    display:inline-block;font-size:11px;font-weight:800;letter-spacing:.18em;
+    color:var(--blue);text-transform:uppercase;margin-bottom:14px;
+    padding:4px 12px;background:rgba(90,155,255,.12);border-radius:20px;
+  }
+  .feature-cat h3{
+    font-size:clamp(22px,3vw,30px);font-weight:900;letter-spacing:-.01em;
+    line-height:1.3;margin-bottom:8px;
+  }
+  .feature-cat p{color:var(--text2);font-size:14px;max-width:560px;margin:0 auto}
   .feature-row{
     display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;
     padding:64px 0;border-bottom:1px solid var(--border);
@@ -424,20 +441,21 @@
 <aside class="toc-nav" id="tocNav" aria-label="ページ目次">
   <div class="toc-title">目次 / TOC</div>
   <ul>
-    <li class="toc-group">機能</li>
+    <li class="toc-group">A. レビュー</li>
     <li><a href="#task-page">タスクページ</a></li>
     <li><a href="#annotation">アノテーション</a></li>
     <li><a href="#time-remap">タイムリマップ</a></li>
     <li><a href="#face-guide">顔の向きガイド</a></li>
-    <li><a href="#mannequin-feat">3D マネキン</a></li>
     <li><a href="#shots-view">ショット一覧</a></li>
+    <li class="toc-group">B. 資料集約</li>
     <li><a href="#reference-tab">資料タブ</a></li>
-    <li><a href="#progress">進捗管理</a></li>
+    <li class="toc-group">C. 進捗管理</li>
+    <li><a href="#progress">進捗グラフ</a></li>
     <li><a href="#pmboard-schedule">PMBoard スケジュール</a></li>
     <li><a href="#pmboard-hours">PMBoard 工数集計</a></li>
-    <li><a href="#folder-usage">フォルダ運用</a></li>
     <li><a href="#review-queue">チェック待ち</a></li>
-    <li><a href="#reel-feat">REEL</a></li>
+    <li class="toc-group">D. 共有・運用</li>
+    <li><a href="#folder-usage">フォルダ運用</a></li>
     <li><a href="#export">動画書き出し</a></li>
     <li><a href="#cloud">クラウド保存</a></li>
     <li class="toc-group">独自機能</li>
@@ -517,8 +535,13 @@
 <!-- ============ FEATURES ============ -->
 <section class="features" id="features">
   <div class="container">
-    <span class="label">できること（詳しく）</span>
-    <h2 class="section-title">機能</h2>
+
+    <!-- カテゴリ A: レビュー -->
+    <div class="feature-cat">
+      <span class="cat-tag">A · Review</span>
+      <h3>レビュー</h3>
+      <p>動画・画像をチェックして OK ／ リテイクを返すまでを 1 画面で完結。</p>
+    </div>
 
     <div class="feature-row" id="task-page">
       <div class="feature-text">
@@ -657,28 +680,7 @@
       </div>
     </div>
 
-    <div class="feature-row reverse" id="mannequin-feat">
-      <div class="feature-text">
-        <span class="label-sm">3D Mannequin</span>
-        <h3>ポーズは、3D マネキンで指示。</h3>
-        <p>
-          レビュアーが絵で描きづらいポーズも、3D キャラを直接動かしてそのままアノテに貼り付け。
-          Maya 準拠のカメラ操作と IK（逆運動学）で、手足を掴んで引っ張るだけで自然なポーズが作れます。
-        </p>
-        <ul>
-          <li>Alt+ドラッグで回転／パン／ズーム、W=移動 E=回転 F=フォーカス</li>
-          <li>腕・脚に IK：手首／足首を引くと肩・肘・股・膝が自動追従</li>
-          <li>腰を動かしても足は接地したまま、姿勢もキープ</li>
-          <li>指ボーン 30 本（親・人差・中・薬・小 × 3 関節 × 左右）で手の表情まで指示可</li>
-          <li>アノテ窓ではフィギュアのようにキャラを回転して見せる（カメラは正面固定）</li>
-        </ul>
-      </div>
-      <div class="feature-media">
-        <img src="slides_assets/mann_intro_ik.png" alt="3D マネキン（IK ハンドルでポーズ調整）">
-      </div>
-    </div>
-
-    <div class="feature-row" id="shots-view">
+    <div class="feature-row reverse" id="shots-view">
       <div class="feature-text">
         <span class="label-sm">Shots View</span>
         <h3>ショットを一覧で表示。</h3>
@@ -696,6 +698,13 @@
       <div class="feature-media">
         <img src="slides_assets/pre_shots_drawer.png" alt="ショット右スライド ─ 工程タイルと作業画面">
       </div>
+    </div>
+
+    <!-- カテゴリ B: 資料集約 -->
+    <div class="feature-cat">
+      <span class="cat-tag">B · Reference</span>
+      <h3>資料集約</h3>
+      <p>参考画像・動画・URL・メモを 1 枚のキャンバスにまとめ、レビュー中にその場で引ける。</p>
     </div>
 
     <div class="feature-row" id="reference-tab">
@@ -908,6 +917,13 @@
           </g>
         </svg>
       </div>
+    </div>
+
+    <!-- カテゴリ C: 進捗管理 -->
+    <div class="feature-cat">
+      <span class="cat-tag">C · Progress</span>
+      <h3>進捗管理</h3>
+      <p>プロジェクト全体の進み具合・工数・チェック残を、入力ゼロで見える化。</p>
     </div>
 
     <div class="feature-row reverse" id="progress">
@@ -1176,6 +1192,31 @@
       </div>
     </div>
 
+    <div class="feature-row" id="review-queue">
+      <div class="feature-text">
+        <span class="label-sm">Review Queue</span>
+        <h3>チェック担当者ごとに一覧表示</h3>
+        <p>
+          チェック担当者ごとにタブが分かれ、自分の担当分だけを表示できます。
+          残り件数はバッジで見えて、見落としを防止。
+        </p>
+        <ul>
+          <li>担当者タブで自分のチェック分だけ表示</li>
+          <li>一覧のままステータスを変更可能</li>
+        </ul>
+      </div>
+      <div class="feature-media">
+        <img src="slides_assets/check.png" alt="チェック待ち一覧">
+      </div>
+    </div>
+
+    <!-- カテゴリ D: 共有・運用 -->
+    <div class="feature-cat">
+      <span class="cat-tag">D · Share</span>
+      <h3>共有・運用</h3>
+      <p>フォルダ運用・動画書き出し・クラウド共有。インフラ要らずでチームに展開。</p>
+    </div>
+
     <div class="feature-row" id="folder-usage">
       <div class="feature-text">
         <span class="label-sm">Folder</span>
@@ -1205,41 +1246,6 @@
             <div style="padding-left:20px">└── 📁 submits/</div>
           </div>
         </div>
-      </div>
-    </div>
-
-    <div class="feature-row reverse" id="review-queue">
-      <div class="feature-text">
-        <span class="label-sm">Review Queue</span>
-        <h3>チェック担当者ごとに一覧表示</h3>
-        <p>
-          チェック担当者ごとにタブが分かれ、自分の担当分だけを表示できます。
-          残り件数はバッジで見えて、見落としを防止。
-        </p>
-        <ul>
-          <li>担当者タブで自分のチェック分だけ表示</li>
-          <li>一覧のままステータスを変更可能</li>
-        </ul>
-      </div>
-      <div class="feature-media">
-        <img src="slides_assets/check.png" alt="チェック待ち一覧">
-      </div>
-    </div>
-
-    <div class="feature-row" id="reel-feat">
-      <div class="feature-text">
-        <span class="label-sm">Reel</span>
-        <h3>カットをつなげてまとめてチェック</h3>
-        <p>
-          複数のカットを並べて連続再生。並び替えて通しのテンポを確認したり、REEL 上で書いたコメントは各カットのタスクページに反映されます。
-        </p>
-        <ul>
-          <li>試写や繋ぎ確認にそのまま使える</li>
-          <li>REEL 内でもアノテーション・ステータス切替可能</li>
-        </ul>
-      </div>
-      <div class="feature-media">
-        <img src="slides_assets/pre_reel.png" alt="REEL 連続再生">
       </div>
     </div>
 
@@ -1328,10 +1334,14 @@
     <div class="diff-block blue reverse" id="reel-sync">
       <div class="diff-inner">
         <div class="diff-text">
-          <span class="label blue">🎞 まとめ再生</span>
-          <h3><span style="display:inline-block">通しで見ながら書いた指摘が、</span><span style="display:inline-block">各カットページにそのまま残る。</span></h3>
+          <span class="label blue">🎞 REEL（まとめ再生）</span>
+          <h3><span style="display:inline-block">カットをつないで通し再生、</span><span style="display:inline-block">書いた指摘は各カットに自動反映。</span></h3>
           <p>
-            複数カットをつなげて再生している最中に画面へ書き込んだ描き込みやコメントは、
+            複数のカットを並べて連続再生し、通しのテンポ確認や試写がそのままできます。
+            並び替えも REEL 上でワンタッチ。アノテーションやステータス切替も REEL のまま可能。
+          </p>
+          <p>
+            さらに、連続再生中に画面へ書き込んだ描き込み・コメントは
             <b>それぞれのカットのレビュー履歴にも自動で残ります</b>。
             「試写のあとに 1 カットずつ開き直して書き写す」という二度手間が発生しません。
             逆に、<b>各カットの画面からも「そのカットが含まれる連続再生」にワンクリックで戻れる</b>ので、
@@ -1368,6 +1378,8 @@
             <li>Alt+ドラッグの Maya 準拠カメラ、<kbd>W</kbd>=移動 <kbd>E</kbd>=回転 <kbd>F</kbd>=選択に寄る</li>
             <li>両腕・両脚に IK（別々に ON/OFF 可）＋ ポールベクターで肘・膝の向き制御</li>
             <li>腰を動かしても足は接地したまま、姿勢もキープ</li>
+            <li>指ボーン 30 本（親・人差・中・薬・小 × 3 関節 × 左右）で手の表情まで指示可</li>
+            <li>アノテ窓ではフィギュアのようにキャラを回転して見せられる（カメラは正面固定）</li>
             <li>他のツールでは 3D ソフトでポーズを作って画像を貼るしかなかった一手間を、ブラウザ内で完結</li>
           </ul>
         </div>
