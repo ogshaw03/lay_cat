@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.141';
+const APP_VERSION='2026.10.08.142';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14120,10 +14120,33 @@ function openMembersWindow(root){
         if(okRev){
           row.remove();
           if(!pendList.children.length){ const em=ce('div','muted','（未受理の招待はありません）');pendList.appendChild(em); }
+          /* v.142：メンバー表からも対象を自動除去＋ root.members に同期して persist（即時反映）。 */
+          let memberRemoved=false;
           try{
-            if(okRevo===true)       toast('✓ 招待を取消＋削除指示送信（相手側は次回ログイン or 🔄 更新で反映）');
-            else if(okRevo===false) toast('⚠ 招待は取消できましたが、相手側削除指示の送信に失敗（Firestore ルール laycatFolderRevocations 要確認）');
-            else                    toast('✓ 招待を取消しました（相手側はまだ取り込んでいないので一覧には出ません）');
+            const _escK=(em)=>String(em||'').toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+            const _tgtKey=String(inv.toEmailKey||'');
+            const idx=work.findIndex(m=>_escK(m.id)===_tgtKey);
+            if(idx>=0){
+              work.splice(idx,1);
+              redraw();
+              root.members = work.map(m=>({
+                id: String(m.id||'').trim().toLowerCase(),
+                name:(m.name||'').trim() || String(m.id||'').split('@')[0],
+                roles: Array.isArray(m.roles)
+                  ? m.roles.filter(Boolean)
+                  : String(m.roles||'').split(',').map(s=>s.trim()).filter(Boolean),
+                color: m.color||'#4da6ff',
+                active: m.active!==false
+              }));
+              await persist();
+              memberRemoved=true;
+            }
+          }catch(e){ try{ console.warn('revoke → member list sync failed', e); }catch(_){} }
+          try{
+            const _mnote = memberRemoved ? '＋メンバー表から除去' : '';
+            if(okRevo===true)       toast('✓ 招待を取消＋削除指示送信'+_mnote+'（相手側は次回ログイン or 🔄 更新で反映）');
+            else if(okRevo===false) toast('⚠ 招待は取消できましたが、相手側削除指示の送信に失敗（Firestore ルール laycatFolderRevocations 要確認）'+_mnote);
+            else                    toast('✓ 招待を取消しました'+_mnote+'（相手側はまだ取り込んでいないので一覧には出ません）');
           }catch(_){}
         }else{
           rev.disabled=false;rev.textContent='取消';w.alert('取消に失敗しました（コンソール参照）');

@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.142) **取消ボタン：メンバー表からも対象を自動除去＋ root.members に同期 persist（LayCAT）**：
+  - 従来：取消すると招待レコードは消すが上の「メンバー名簿」には残り、ユーザーが別途「削除→保存」する必要があった。
+  - 修正：取消時に `work` から該当メンバー（toEmailKey 一致）を除去 → `redraw()` → `root.members` 再構築 → `persist()`。
+  - toast に「＋メンバー表から除去」追記、既存の 3 系統（両方成功／削除指示失敗／相手未取込み）各々に反映。
+  - 書き込み系：`persist()` を通して `laycat.project.json` の `members` を更新。他プロジェクトは触らない。
+  - APP_VERSION：2026.10.08.141 → 2026.10.08.142
+
 - (dev v2026.10.08.141) **取消ボタン：成否を細かく toast＋コンソールログで切り分けやすく（LayCAT）**：
   - 取消結果が「✓ 両方成功」「⚠ 削除指示のみ失敗」「✓ 相手未取込み」の 3 系統で明示的に出るように。
   - `console.log` で `revokeFolderInvite` と `createFolderRevocation` の戻り値を記録（DevTools で切り分け用）。
