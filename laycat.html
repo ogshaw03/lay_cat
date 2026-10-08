@@ -239,6 +239,105 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .mention-opt .mo-sub{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 20px 28px}
 .home-main{padding-top:14px}
+/* v.086：資料タブ（PureRef 風 無限キャンバス）
+   キャンバス座標系（canvas space）とスクリーン座標系（screen space）を transform(scale/translate) で接続。
+   アイテムは view.scale・view.tx/ty で変換して描画。viewport virtualization で画面外アイテムは DOM 省略。 */
+.ref-root{display:flex;height:calc(100vh - 170px);min-height:420px;margin:0 -20px 0 -20px;background:var(--bg);border-top:1px solid var(--border)}
+.ref-side{width:240px;flex-shrink:0;border-right:1px solid var(--border);background:var(--bg2);display:flex;flex-direction:column;overflow:hidden}
+.ref-side .ref-side-hd{padding:10px 14px 6px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.4px;text-transform:uppercase;border-bottom:1px solid var(--border)}
+.ref-side .ref-toc{flex:1;overflow-y:auto;padding:6px 4px}
+.ref-side .ref-toc-item{padding:7px 12px;border-radius:6px;cursor:pointer;color:var(--text2);font-size:12px;display:flex;align-items:center;gap:7px;line-height:1.4}
+.ref-side .ref-toc-item:hover{background:var(--bg3);color:var(--text)}
+.ref-side .ref-toc-item.active{background:var(--bg3);color:var(--text);font-weight:600}
+.ref-side .ref-toc-item .ref-toc-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.ref-main{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+.ref-canvas{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;cursor:grab;user-select:none}
+.ref-main.panning .ref-canvas{cursor:grabbing}
+.ref-item{position:absolute;left:0;top:0;box-sizing:border-box}
+.ref-item.ref-title{font-family:var(--font-head);font-weight:700;color:var(--text);letter-spacing:0.5px;line-height:1.1;pointer-events:none;white-space:nowrap}
+.ref-item.ref-image{background:var(--bg3);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--text3);font-size:11px;text-align:center;padding:8px}
+.ref-item.ref-image .ref-image-ph{display:flex;flex-direction:column;align-items:center;gap:4px}
+.ref-item.ref-image .ref-image-ph .ic{font-size:28px;opacity:0.5}
+.ref-item.ref-group{border:1.5px dashed;border-radius:12px;background:transparent;pointer-events:none}
+.ref-item.ref-group .ref-group-lbl{position:absolute;top:-14px;left:12px;background:var(--bg);padding:1px 8px;font-size:11px;font-family:var(--font-head);font-weight:700;letter-spacing:0.5px;border-radius:4px}
+.ref-hud{position:absolute;left:12px;bottom:22px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);font-family:var(--font-code);background:rgba(10,10,14,0.72);border:1px solid var(--border);border-radius:7px;padding:4px 10px;z-index:3;pointer-events:none}
+.ref-ctrls{position:absolute;right:12px;bottom:22px;display:flex;gap:4px;z-index:3}
+.ref-ctrls button{background:rgba(10,10,14,0.72);border:1px solid var(--border);color:var(--text2);font-family:var(--font-code);font-size:12px;padding:4px 10px;border-radius:7px;cursor:pointer}
+.ref-ctrls button:hover{color:var(--text);border-color:var(--border2)}
+.ref-grid-bg{position:absolute;inset:0;pointer-events:none;background-image:
+  linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+  linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size:100px 100px;background-position:0 0}
+/* v.091：資料タブ 編集モード関連
+   - .ref-main.edit-mode：編集中はカーソルを default（grab ではなく矢印）
+   - .ref-item.selected：青いアウトライン＋タイトル文字色反転
+   - .ref-rubber：範囲選択の矩形
+   - .ref-edit-badge：編集モード中であることのバッジ（右下 HUD の左）
+   - .ref-edit-btn.on：編集 ON のときのボタン装飾 */
+.ref-main.edit-mode .ref-canvas{cursor:default}
+.ref-main.edit-mode.panning .ref-canvas{cursor:grabbing}
+.ref-item.selected{outline:2px solid #4a9eff;outline-offset:2px;box-shadow:0 0 0 2px rgba(74,158,255,0.3);z-index:5}
+.ref-item.ref-group.selected{outline-color:#4a9eff;outline-style:solid;z-index:1}
+.ref-rubber{position:absolute;border:1px dashed #4a9eff;background:rgba(74,158,255,0.08);pointer-events:none;z-index:10}
+.ref-edit-badge{display:inline-block;padding:2px 8px;border-radius:5px;background:rgba(74,158,255,0.22);color:#9ac4ff;border:1px solid rgba(74,158,255,0.44);font-family:var(--font-head);font-weight:700;font-size:10px;letter-spacing:0.5px;margin-right:8px}
+/* v.097：編集ボタンをより目立たせる＋編集中キャンバスに青枠 */
+.ref-ctrls button.ref-edit-btn{padding:6px 13px;font-size:12px;font-weight:700;min-width:84px;background:var(--bg2);border-color:var(--border2);color:var(--text)}
+.ref-ctrls button.ref-edit-btn:hover{background:var(--bg3);border-color:#4a9eff}
+.ref-ctrls button.ref-edit-btn.on{background:#4a9eff;border-color:#4a9eff;color:#0a0a0e}
+.ref-main.edit-mode{box-shadow:inset 0 0 0 3px rgba(74,158,255,0.45)}
+/* v.097：タイトル／テキストのインライン編集中スタイル */
+/* v.104：editing 時に white-space:normal を全体に強制していたため、固定幅のない
+   タイトルが min-width:40px の狭い箱で日本語を 1 文字ずつ折り返して縦書き風になっていた。
+   title は nowrap 維持、text だけ pre-wrap を許可。min-width は小さめで維持。 */
+.ref-item.editing{outline:2px solid #ffd36a!important;outline-offset:2px;box-shadow:0 0 0 2px rgba(255,211,106,0.3);cursor:text;background:rgba(255,211,106,0.08);z-index:7;pointer-events:auto!important;min-width:24px}
+.ref-item.ref-title.editing{white-space:nowrap!important}
+.ref-item.ref-text.editing{white-space:pre-wrap!important;word-break:break-word}
+.ref-item.editing:focus{outline:2px solid #ffd36a!important}
+/* v.092：資料タブ 編集ツールバー（画面上部に浮かせる） */
+.ref-toolbar{position:absolute;top:10px;left:12px;right:12px;display:none;z-index:4;background:rgba(10,10,14,0.86);border:1px solid var(--border);border-radius:9px;padding:5px 8px;align-items:center;gap:4px;flex-wrap:wrap;backdrop-filter:blur(6px)}
+.ref-main.edit-mode .ref-toolbar{display:flex}
+.ref-toolbar .tb-grp{display:flex;align-items:center;gap:2px;padding:0 6px;border-right:1px solid var(--border);height:28px}
+.ref-toolbar .tb-grp:last-child{border-right:0}
+.ref-toolbar button{background:transparent;border:1px solid transparent;color:var(--text2);font-family:inherit;font-size:11px;padding:4px 9px;border-radius:5px;cursor:pointer;height:26px;display:inline-flex;align-items:center;justify-content:center;min-width:28px}
+.ref-toolbar button:hover{background:var(--bg3);color:var(--text);border-color:var(--border2)}
+.ref-toolbar button.on{background:#4a9eff;border-color:#4a9eff;color:#0a0a0e;font-weight:700}
+/* v.105：ショットページの .status-sel / .ss-sel と同じ書式で select を描画。
+   以前は background:transparent にしていたため OS 既定（白）が時々透けていた。 */
+.ref-toolbar select{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:4px 22px 4px 9px;border-radius:7px;cursor:pointer;height:26px;min-width:76px;appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'><path fill='none' stroke='%239a9aaa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5l4 4 4-4'/></svg>");background-repeat:no-repeat;background-position:right 7px center}
+.ref-toolbar select:hover{background-color:var(--bg2);border-color:var(--border2);color:var(--text)}
+.ref-toolbar select:focus{outline:none;border-color:var(--accent)}
+.ref-toolbar select option{background:var(--bg2);color:var(--text)}
+.ref-toolbar input[type=number]{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:3px 5px;border-radius:5px;width:48px;height:26px;box-sizing:border-box}
+.ref-toolbar input[type=range]{height:26px;width:80px}
+.ref-toolbar input[type=color]{background:transparent;border:1px solid var(--border);border-radius:5px;width:30px;height:26px;padding:1px;cursor:pointer}
+.ref-toolbar .tb-sep{width:1px;align-self:stretch;background:var(--border);margin:0 2px}
+.ref-toolbar .tb-lbl{font-size:10px;color:var(--text3);font-family:var(--font-head);letter-spacing:0.5px;margin-right:3px}
+/* v.092：編集中の新規テキスト／タイトル／shape のデフォルト見栄え */
+.ref-item.ref-text{font-family:var(--font-body);color:var(--text);line-height:1.3;pointer-events:none;white-space:pre-wrap;word-break:break-word}
+.ref-item.ref-shape{box-sizing:border-box;border:2px solid;pointer-events:none}
+.ref-item.ref-shape.shape-circle{border-radius:50%}
+.ref-main.edit-mode .ref-item{pointer-events:auto}
+/* v.093：リサイズハンドル（選択中アイテム 1 件のみ表示）。
+   位置：キャンバスオーバーレイで vp に貼る（canvas の transform を通さない）。 */
+.ref-handles{position:absolute;pointer-events:none;z-index:6}
+.ref-handles .rh{position:absolute;width:11px;height:11px;background:#4a9eff;border:1.5px solid #0a0a0e;border-radius:50%;pointer-events:auto;transform:translate(-50%,-50%);box-shadow:0 0 0 1px rgba(255,255,255,0.3)}
+.ref-handles .rh.nw{cursor:nw-resize;left:0;top:0}
+.ref-handles .rh.ne{cursor:ne-resize;left:100%;top:0}
+.ref-handles .rh.sw{cursor:sw-resize;left:0;top:100%}
+.ref-handles .rh.se{cursor:se-resize;left:100%;top:100%}
+/* v.093：右クリックメニュー */
+.ref-ctx{position:absolute;z-index:20;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:5px 0;min-width:170px;box-shadow:0 8px 24px rgba(0,0,0,0.4);font-family:inherit;font-size:12px}
+.ref-ctx .cx-item{padding:7px 14px;cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:8px}
+.ref-ctx .cx-item:hover{background:var(--bg3);color:var(--text)}
+.ref-ctx .cx-item.disabled{opacity:0.4;pointer-events:none}
+.ref-ctx .cx-sep{height:1px;background:var(--border);margin:4px 0}
+.ref-ctx .cx-hint{font-size:10px;color:var(--text3);margin-left:auto}
+/* v.101：整列サブメニュー（マウスホバーで右側に縦並び表示） */
+.ref-ctx .cx-has-sub{position:relative}
+.ref-ctx .cx-has-sub .cx-arrow{margin-left:auto;color:var(--text3);font-size:10px;padding-left:10px}
+.ref-ctx .cx-has-sub .cx-sub{display:none;position:absolute;left:100%;top:-6px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:5px 0;min-width:140px;box-shadow:0 8px 24px rgba(0,0,0,0.4);margin-left:2px;z-index:21}
+.ref-ctx .cx-has-sub:hover .cx-sub{display:block}
+.ref-ctx .cx-has-sub.disabled .cx-sub{display:none!important}
 /* 単色ラインアイコン */
 .ico{width:1.05em;height:1.05em;vertical-align:-0.16em;flex-shrink:0}
 button .ico,.tree-row .ico,.hs-item .ico,.tl-title .ico,.breadcrumb .ico,.type-chip .ico{margin-right:.4em}
@@ -1173,7 +1272,6 @@ textarea.form-input{height:70px;resize:vertical}
     <button class="hd-bell" id="calBtn" title="カレンダー（祝日・会社休日）"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="12" rx="1.5"/><path d="M3 8h14M7 2.5v3M13 2.5v3"/></svg></button>
     <button class="hd-bell" id="notifBtn" title="通知"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a4 4 0 0 1 8 0c0 4 1.5 5 1.5 5h-11S6 12 6 8z"/><path d="M8.5 16a1.7 1.7 0 0 0 3 0"/></svg><span class="nb-badge hidden" id="notifBadge">0</span></button>
     <label class="user-field" id="nameField"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="3"/><path d="M4.5 16.5a5.5 5.5 0 0 1 11 0"/></svg><input id="currentUser" type="text" placeholder="名前" /></label>
-    <a class="btn btn-ghost" id="guideBtn" href="guide.html" target="_blank" rel="noopener" title="はじめ方ガイド（新しいタブで開きます）" style="display:none">📖 はじめ方ガイド</a>
     <div class="hd-user hidden" id="authUserBox"></div>
   </div>
 </header>
@@ -2205,11 +2303,13 @@ const _v5StatusShots=new Set();
 const storage={
   /* DB（layna_db.json 相当）は常にブラウザ内保存(IndexedDB)。
      動画・画像はプロジェクトごとに指定したフォルダへ、未指定ならブラウザ内保存へ格納。 */
-  mode:'idb',rootHandle:null,urlCache:new Map(),_urlCacheLimit:250,
+  mode:'idb',rootHandle:null,urlCache:new Map(),_urlCacheLimit:800,
   supportsFolder(){return typeof window.showDirectoryPicker==='function'},
   useIdb(){this.mode='idb';try{localStorage.setItem('layna_mode','idb')}catch(_){}},
   /* ヘッダー表示：プロジェクトを開いていて専用フォルダ指定があればその名前、なければブラウザ内保存 */
-  folderLabel(){const cur=(DB&&state&&state.currentId)?getNode(state.currentId):null;const root=cur?rootOf(cur):null;if(root){if(root.storageBackend==='r2')return '☁ R2';if(root.folderName)return root.folderName}return '⚠ フォルダ未設定';},
+  /* v.112：右上のチップ表示をフォルダ名ではなくプロジェクト名に。
+     バックエンド判別が必要な警告（未設定・再接続要）は updateFolderStatus 側の .warn クラス／再接続テキストで表示される。 */
+  folderLabel(){const cur=(DB&&state&&state.currentId)?getNode(state.currentId):null;const root=cur?rootOf(cur):null;if(root&&root.name)return root.name;if(root&&root.storageBackend==='r2')return '☁ R2';if(root&&root.folderName)return root.folderName;return '⚠ フォルダ未設定';},
   /* ---- R2 バックエンド ----
      プロジェクトデータ（laycat.project.json）と動画・画像・reels.json を Cloudflare R2 に
      置く。ブラウザから直接 R2 は叩かず、Cloudflare Workers のプロキシ API を経由する
@@ -2237,6 +2337,9 @@ const storage={
     async getBlob(key){try{const r=await this._fetch('GET','/api/r2/'+key);if(!r.ok)return null;return await r.blob()}catch(_){return null}},
     async getJson(key){try{const r=await this._fetch('GET','/api/r2/'+key);if(!r.ok)return null;return await r.json()}catch(_){return null}},
     async putJson(key,obj){return this.put(key,JSON.stringify(obj,null,2),'application/json')},
+    /* v.090：prefix 配下のオブジェクト列挙（Worker 側 /api/r2/list/<prefix>）。
+       資料タブで reference/items/*.json を列挙する用途。 */
+    async listByPrefix(prefix){try{const r=await this._fetch('GET','/api/r2/list/'+prefix);if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}},
     async purge(pid){try{const r=await this._fetch('DELETE','/api/r2/purge/projects/'+pid+'/');return r.ok}catch(_){return false}},
     async ping(){try{const ep=this.endpoint();if(!ep)return false;const tok=await this._token();if(!tok)return false;/* 存在しないダミー key を GET し、404 が返ることで到達＋認証を確認 */const r=await fetch(ep+'/api/r2/projects/__ping__/nothing.json',{method:'GET',headers:{authorization:'Bearer '+tok}});return r.status===404||r.status===200}catch(_){return false}},
     /* _access.json 管理：Worker 側で owner/members 判定に使う小さな JSON。
@@ -2556,7 +2659,8 @@ const storage={
   },
   /* backend は削除前に外から明示的に渡すのが望ましい（DB/REG から node/entry が消えた後だと _backend が folder に戻ってしまい R2 purge が呼ばれない）。
      省略時は _backend で判定するが、フォールバック扱い。 */
-  async delProject(id,backend){try{localStorage.removeItem('layna_proj_'+id)}catch(_){}try{localStorage.removeItem('layna_reels_'+id)}catch(_){}try{await idbDel('kv','proj_'+id)}catch(_){}try{const ph=await this.projRoot(id);if(ph){try{await ph.removeEntry(this._projFileName)}catch(_){}try{await ph.removeEntry(this._projFileNameOld)}catch(_){}/* Phase 1/2: 個別サブミット / ショット JSON も掃除（残しても実害は無いが混乱防止） */try{await ph.removeEntry('submits',{recursive:true})}catch(_){}try{await ph.removeEntry('shots',{recursive:true})}catch(_){}/* リールも共有フォルダから削除（reels/reels.json） */try{await ph.removeEntry('reels',{recursive:true})}catch(_){}}}catch(_){}const be=backend||this._backend(id);if(be==='r2'){try{await this._r2.purge(id)}catch(_){}}/* 変更検知キャッシュも破棄 */try{delete _saveCache.submit[id];delete _saveCache.shot[id];delete _saveCache.proj[id];delete _saveCache.reels[id]}catch(_){}},
+  async delProject(id,backend){try{localStorage.removeItem('layna_proj_'+id)}catch(_){}try{localStorage.removeItem('layna_reels_'+id)}catch(_){}try{await idbDel('kv','proj_'+id)}catch(_){}try{const ph=await this.projRoot(id);if(ph){try{await ph.removeEntry(this._projFileName)}catch(_){}try{await ph.removeEntry(this._projFileNameOld)}catch(_){}/* Phase 1/2: 個別サブミット / ショット JSON も掃除（残しても実害は無いが混乱防止） */try{await ph.removeEntry('submits',{recursive:true})}catch(_){}try{await ph.removeEntry('shots',{recursive:true})}catch(_){}try{await ph.removeEntry('status',{recursive:true})}catch(_){}try{await ph.removeEntry('schedule',{recursive:true})}catch(_){}try{await ph.removeEntry('notes',{recursive:true})}catch(_){}/* リールも共有フォルダから削除（reels/reels.json） */try{await ph.removeEntry('reels',{recursive:true})}catch(_){}/* v.090：資料タブのサブフォルダ reference/ も掃除 */try{await ph.removeEntry('reference',{recursive:true})}catch(_){}/* v.146：サムネイル／メディア本体の格納フォルダも掃除。
+     残っていたサムネ orphan のせいでフォルダ削除が引っかかる事象を解消。 */try{await ph.removeEntry('thumbnails',{recursive:true})}catch(_){}try{await ph.removeEntry('media',{recursive:true})}catch(_){}try{await ph.removeEntry('publish',{recursive:true})}catch(_){}try{await ph.removeEntry('_audit',{recursive:true})}catch(_){}}}catch(_){}const be=backend||this._backend(id);if(be==='r2'){try{await this._r2.purge(id)}catch(_){}}/* 変更検知キャッシュも破棄 */try{delete _saveCache.submit[id];delete _saveCache.shot[id];delete _saveCache.proj[id];delete _saveCache.reels[id]}catch(_){}},
   /* リール：プロジェクトフォルダ内 reels/reels.json に格納（共有可能）。フォルダ未設定なら localStorage */
   async loadReels(id){
     if(this._backend(id)==='r2'){
@@ -2587,6 +2691,81 @@ const storage={
     /* フォルダ設定済みだがアクセス権無し：古い内容で上書きしない（プロジェクトデータと同方針） */
     if(await this.hasFolderConfigured(id))return false;
     this._lsSet('layna_reels_'+id,out);return true;
+  },
+  /* v.090：資料タブ 実データ層。細粒度 JSON（1 アイテム = 1 ファイル）で競合回避。
+     レイアウト：
+       <project folder>/reference/
+         ├── items/<itemId>.json   アイテム 1 件分の情報（type, x, y, w, h, text, color, 画像 ref, 等）
+         └── Media/<uuid>.<ext>    画像・動画の実データ（putReferenceMedia 経由）
+     - LayCAT 本体・pmboard の両方から同じ `<pid>/reference/` を読み書きする。
+     - 複数人同時編集：各自が別アイテムを編集する限り競合しない。
+       同一アイテムの同時編集は last-write-wins（通常の運用では事故にはならない前提）。
+     - 書き込み境界：reference/ 配下のみ。shots/, status/, submits/, reels.json, laycat.project.json
+       等への副作用は一切なし。persist() 不発火。 */
+  async loadReferenceItems(id){
+    const items=[];
+    if(this._backend(id)==='r2'){
+      const prefix='projects/'+id+'/reference/items/';
+      const keys=await this._r2.listByPrefix(prefix);
+      if(!keys.length)return [];
+      const results=await Promise.all(keys.filter(k=>k.endsWith('.json')).map(async k=>{
+        try{return await this._r2.getJson(k)}catch(_){return null}
+      }));
+      for(const r of results){if(r&&r.id)items.push(r)}
+      return items;
+    }
+    const ph=await this.projRoot(id);if(!ph)return [];
+    try{
+      const refDir=await ph.getDirectoryHandle('reference');
+      const itemsDir=await refDir.getDirectoryHandle('items');
+      if(typeof itemsDir.entries!=='function'&&typeof itemsDir.keys!=='function')return [];
+      const names=[];
+      if(typeof itemsDir.entries==='function'){
+        for await(const [name,handle] of itemsDir.entries()){
+          if(!name.endsWith('.json'))continue;
+          if(handle&&handle.kind&&handle.kind!=='file')continue;
+          names.push(name);
+        }
+      }else{
+        for await(const name of itemsDir.keys()){if(name.endsWith('.json'))names.push(name)}
+      }
+      const files=await Promise.all(names.map(async name=>{
+        try{const fh=await itemsDir.getFileHandle(name);return JSON.parse(await (await fh.getFile()).text());}
+        catch(_){return null}
+      }));
+      for(const r of files){if(r&&r.id)items.push(r)}
+      return items;
+    }catch(_){return []}
+  },
+  async saveReferenceItem(id,item){
+    if(!item||!item.id)return false;
+    const key='reference/items/'+item.id+'.json';
+    if(this._backend(id)==='r2'){
+      if(!this._r2.endpoint())return false;
+      return await this._r2.putJson('projects/'+id+'/'+key,item);
+    }
+    const ph=await this.projRoot(id);if(!ph)return false;
+    try{
+      await this._write(()=>this._subdir('reference/items',ph,true),item.id+'.json',JSON.stringify(item,null,2));
+      return true;
+    }catch(_){return false}
+  },
+  async deleteReferenceItem(id,itemId){
+    if(!itemId)return false;
+    if(this._backend(id)==='r2'){
+      return await this._r2.del('projects/'+id+'/reference/items/'+itemId+'.json');
+    }
+    const ph=await this.projRoot(id);if(!ph)return false;
+    try{
+      const refDir=await ph.getDirectoryHandle('reference');
+      const itemsDir=await refDir.getDirectoryHandle('items');
+      await itemsDir.removeEntry(itemId+'.json');
+      return true;
+    }catch(_){return false}
+  },
+  async putReferenceMedia(id,filename,blob){
+    /* reference/Media/<filename> に書き込み。既存 putMedia 経由。戻り値：ref（p: or r2: 形式） */
+    return await this.putMedia('reference/Media',filename,blob,{projectId:id});
   },
   /* v.018：マイルストーン。プロジェクト直下 milestones.json に別ファイルで保存。
      shot.json / laycat.project.json は一切触らない（ユーザー要望：書込境界を分離）。
@@ -4002,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='beta v0.3.1';
+const APP_VERSION='beta v0.4.0';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4214,7 +4393,7 @@ async function boot(){
     let restored=false;
     if(_loc&&_loc.id&&getNode(_loc.id)){
       state.currentId=_loc.id;
-      if(['timeline','progress','shots','assets','submit','check','browse'].includes(_loc.tab))state.projTab=_loc.tab;
+      if(['timeline','progress','shots','assets','submit','check','browse','reference'].includes(_loc.tab))state.projTab=_loc.tab;
       for(const n of pathOf(_loc.id))state.expanded.add(n.id);
       render();syncHash();resolveThumbs();restored=true;
     }
@@ -5268,7 +5447,7 @@ function go(id,opts){state.currentId=id;state.search='';state.pmPick=null;state.
    #/n/<nodeId>/<tab>     プロジェクト/セクション/レビューページ（tab: timeline|progress|shots|browse）
    #/r/<nodeId>/<verId>   レビュー（動画FB）画面
    ============================================================ */
-const VALID_TABS=['timeline','progress','shots','assets','submit','check','browse'];
+const VALID_TABS=['timeline','progress','shots','assets','submit','check','browse','reference'];
 function hashOf(){
   if(state.reviewOpen&&getNode(state.reviewOpen.nodeId))return '#/r/'+state.reviewOpen.nodeId+'/'+state.reviewOpen.versionId;
   if(!state.currentId)return '#/';
@@ -5379,6 +5558,18 @@ async function connectProjectFlow(){
     const sroot=getNode(data.id);if(sroot)sroot.folderName=handle.name;
     if(!REG.some(e=>e.id===data.id))REG.push({id:data.id,name:data.name||'project',folderName:handle.name});
     normalizeNodes();updateFolderStatus();
+    /* v.126：暗号化プロジェクトも Firestore 参加履歴に同期（名前は data.name=封筒名のみ・中身は暗号化のまま）
+       v.130：root.pathHint があれば一緒に同期
+       v.137：招待の削除も実参加タイミング */
+    try{
+      if(authUser && authUser.email && window.__laynaFB && window.__laynaFB.putFolderProject){
+        const _er=getNode(data.id); const _ph=(_er&&_er.pathHint)||'';
+        window.__laynaFB.putFolderProject(authUser.email, data.id, data.name||'project', handle.name||'', _ph, {asConnected:true}).catch(()=>{});
+      }
+      if(authUser && authUser.email && window.__laynaFB && window.__laynaFB.clearFolderInvite){
+        window.__laynaFB.clearFolderInvite(authUser.email, data.id).catch(()=>{});
+      }
+    }catch(_){}
     toast('保護されたプロジェクト「'+(data.name||'project')+'」を接続しました（開くときにパスワードが必要です）');
     go(data.id);return;
   }
@@ -5398,6 +5589,25 @@ async function connectProjectFlow(){
   normalizeNodes();
   if(!REG.some(e=>e.id===data.id))REG.push({id:data.id,name:data.name||(root&&root.name)||'project',folderName:handle.name});
   await persist();
+  /* v.126：Firestore に NAS 参加履歴を暗号化同期（他端末からも「参加可能プロジェクト」として見える）。
+     laycatUserPrivate/{emailKey}.folderProjects に書き込み。失敗時は静かに無視（接続自体は成立）。
+     v.130：root.pathHint があれば一緒に同期（オーナー手入力の NAS パス道案内メモ）。
+     v.137：実参加のタイミングで自分宛の該当 pid 招待を削除（オーナーの「未受理」から外す）。 */
+  try{
+    if(authUser && authUser.email && window.__laynaFB && window.__laynaFB.putFolderProject){
+      window.__laynaFB.putFolderProject(
+        authUser.email,
+        data.id,
+        (root&&root.name)||data.name||'project',
+        handle.name||'',
+        (root&&root.pathHint)||'',
+        {asConnected:true} /* v.139：実参加の証として connectedAt を書き込む */
+      ).catch(()=>{});
+    }
+    if(authUser && authUser.email && window.__laynaFB && window.__laynaFB.clearFolderInvite){
+      window.__laynaFB.clearFolderInvite(authUser.email, data.id).catch(()=>{});
+    }
+  }catch(_){}
   toast('プロジェクト「'+((root&&root.name)||data.name)+'」を接続しました'+(_abs.merged?'（競合コピー'+_abs.count+'件を統合して復旧）':''));
   go(data.id);
 }
@@ -5420,7 +5630,7 @@ async function disconnectProject(id){
 function updateHeaderForContext(){
   const home=!state.currentId;
   const setD=(sel,show)=>{const e=$(sel);if(e)e.style.display=show?'':'none'};
-  setD('#homeBtn',!home);setD('#reelBtn',!home);setD('#submitBtn',!home);setD('#guideBtn',home); /* ヘッダ検索は撤去（サイドバー検索に一本化）。ガイドはホーム時のみ表示 */
+  setD('#homeBtn',!home);setD('#reelBtn',!home);setD('#submitBtn',!home); /* v.145：古い内容になった「はじめ方ガイド」ボタンは撤去 */
   setD('#notifBtn',!home);                       /* 通知ベルはプロジェクト内でのみ表示（プロジェクト選択画面では隠す） */
   if(home){const np=$('#notifPanel');if(np)np.classList.add('hidden')} /* 選択画面へ戻ったら通知パネルを閉じる */
   setD('#mainHead',!home);setD('#breadcrumb',!home);
@@ -5758,12 +5968,12 @@ function shotOf(node){if(!node||!node.parentId)return '';const p=getNode(node.pa
 /* プロジェクトの上部タブ（常に表示）。タブクリックでプロジェクトのトップ＋該当タブへ */
 /* ヘッダ内のプロジェクトタブ（タイムライン / 進捗 / ショット） */
 function buildProjectTabsHead(root){
-  if(!['timeline','progress','shots','assets','submit','check','browse'].includes(state.projTab))state.projTab='timeline';
+  if(!['timeline','progress','shots','assets','submit','check','browse','reference'].includes(state.projTab))state.projTab='timeline';
   const onRoot=state.currentId===root.id&&!state.search.trim();
   const nav=el('div','head-tabs');
   /* タブ帯そのものクリックでもショット選択を解除（余白クリック用の受け皿） */
   nav.addEventListener('mousedown',()=>{if(state.shotSel){state.shotSel=null;renderBody();resolveThumbs()}});
-  [['timeline','タイムライン'],['progress','進捗'],['shots','ショット'],['assets','アセット'],['submit','サブミット'],['check','チェック待ち']].forEach(([id,lab],i)=>{
+  [['timeline','タイムライン'],['progress','進捗'],['shots','ショット'],['assets','アセット'],['reference','資料'],['submit','サブミット'],['check','チェック待ち']].forEach(([id,lab],i)=>{
     if(i)nav.appendChild(el('span','vdiv')); /* タブ間の縦区切り線 */
     const active=onRoot&&state.projTab===id;
     const b=el('button','ptab'+(active?' on':''),lab);
@@ -6083,6 +6293,7 @@ function renderBodyMain(){
     if(state.projTab==='progress')renderProjProgress(main,root);
     else if(state.projTab==='shots')renderProjShots(main,root);
     else if(state.projTab==='assets')renderProjAssets(main,root);
+    else if(state.projTab==='reference')renderProjReference(main,root);
     else if(state.projTab==='submit')renderProjSubmits(main,root);
     else if(state.projTab==='check')renderProjCheck(main,root);
     else if(state.projTab==='browse'){state.lastPageId=root.id;renderSectionBody(main,root)}
@@ -6234,10 +6445,1422 @@ function tlSubmitItem(e,cur){
   grp.appendChild(row);
   return grp;
 }
+/* v.086：資料タブ（PureRef 風 無限キャンバス UI）
+   - 左サイドバー：目次（title アイテムをクリックで該当位置へパン）
+   - 右メイン：pan/zoom 可能な無限キャンバス
+   - アイテム：title（見出し）／image（モック：画像プレースホルダ）／group（枠図形）
+   - 書き込み系なし：モックデータは関数内 const、state 側に view（tx/ty/scale）のみ保持
+   - viewport virtualization：画面外（+バッファ）アイテムは DOM 省略
+   実データ連携・編集 UI は後続タスク（今回は UI のみ）。 */
+const REF_MOCK_ITEMS = []; /* v.095 (laycat) / v.047 (pmboard)：デモ用モック資料は撤去。空プロジェクトは本当に空の状態で表示する */
+function renderProjReference(main, root){
+  main.innerHTML='';
+  if(!state.refView) state.refView = { tx: 60, ty: 60, scale: 0.5 };
+  if(!state.refItemsByPid) state.refItemsByPid = {};
+  if(!state.refSelection) state.refSelection = new Set();
+  if(state.refEditMode == null) state.refEditMode = false;
+  if(!state.refEditingId) state.refEditingId = null;
+  /* v.099：renderProjReference は render() 毎に呼ばれるため、window / document に
+     attachedしたリスナーが累積していた（keydown / mousemove / mouseup / paste / copy）。
+     古い keydown リスナーが最も古い `canvas` / `vp` 参照を保持しており、Delete キーが
+     来ると「古い（detached な）canvas 側で選択解除・splice・applyTransform」を実行して
+     消費し、現在の DOM に反映されない現象を引き起こしていた。
+     レンダ冒頭で前回のリスナー群を全部外してから新しく張り直す。 */
+  if(state._refCleanup){
+    for(const fn of state._refCleanup){ try{ fn(); }catch(_){} }
+  }
+  state._refCleanup = [];
+  const view = state.refView;
+  /* v.090：実データロード。state.refItemsByPid[pid] は編集対象の実配列（永続化対象）。 */
+  let workingItems = state.refItemsByPid[root.id];
+  if(!workingItems){
+    workingItems = [];
+    state.refItemsByPid[root.id] = workingItems;
+    (async()=>{
+      try{
+        const loaded = await storage.loadReferenceItems(root.id);
+        if(Array.isArray(loaded) && loaded.length){
+          state.refItemsByPid[root.id] = loaded;
+          if(state.projTab==='reference' && state.currentId===root.id){
+            try{ render(); }catch(_){}
+          }
+        }
+      }catch(_){}
+    })();
+  }
+  /* v.091：表示用アイテム。編集 OFF ＋ 実配列が空 → mock をデモ表示。
+     編集 ON またはアイテムが 1 件でもある → 実配列（workingItems）を使う。 */
+  let items = (!state.refEditMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+  /* v.098：titleItems は rebuildToc 内で毎回動的計算（追加・削除・編集で変化するため、
+     ここでのスナップショットは廃止） */
+  const root_=el('div','ref-root');
+  /* 左サイドバー：目次 */
+  const side=el('div','ref-side');
+  const sideHd=el('div','ref-side-hd','目次');side.appendChild(sideHd);
+  const toc=el('div','ref-toc');
+  side.appendChild(toc);
+  /* 右メイン：キャンバスビューポート */
+  const vp=el('div','ref-main');
+  if(state.refEditMode) vp.classList.add('edit-mode');
+  const grid=el('div','ref-grid-bg');vp.appendChild(grid);
+  const canvas=el('div','ref-canvas');vp.appendChild(canvas);
+  /* v.092：編集ツールバー（画面上部） */
+  const tb = el('div','ref-toolbar');
+  const _tbGrp = (parent)=>{const g=el('div','tb-grp');parent.appendChild(g);return g};
+  const _tbBtn = (parent, label, title) => {const b=el('button',null,label);if(title)b.title=title;parent.appendChild(b);return b};
+  /* タイトル・テキスト追加 */
+  const grpAdd = _tbGrp(tb);
+  const btnH1 = _tbBtn(grpAdd, '大', '大タイトル（48px）追加');
+  const btnH2 = _tbBtn(grpAdd, '中', '中タイトル（32px）追加');
+  const btnH3 = _tbBtn(grpAdd, '小', '小タイトル（22px）追加');
+  const btnTxt= _tbBtn(grpAdd, 'T', 'テキスト追加');
+  /* 図形 */
+  const grpShape = _tbGrp(tb);
+  const selShape = document.createElement('select');
+  const _opt=(v,t)=>{const o=document.createElement('option');o.value=v;o.textContent=t;selShape.appendChild(o)};
+  _opt('rect','◼ 四角形');_opt('circle','● 円');
+  grpShape.appendChild(selShape);
+  const btnShape = _tbBtn(grpShape, '＋図形', '選択中の図形タイプを追加');
+  /* 画像／動画アップロード */
+  const grpMedia = _tbGrp(tb);
+  const btnUpload = _tbBtn(grpMedia, '🖼 画像/動画', '画像・動画をアップロード');
+  const inpFile = document.createElement('input');
+  inpFile.type='file'; inpFile.multiple=true; inpFile.accept='image/*,video/*'; inpFile.style.display='none';
+  grpMedia.appendChild(inpFile);
+  /* 書式（テキスト／タイトル向け） */
+  const grpText = _tbGrp(tb);
+  const btnBold = _tbBtn(grpText, 'B', '太字（選択中テキストに適用）');
+  btnBold.style.fontWeight='700';
+  const btnUline= _tbBtn(grpText, 'U', 'アンダーライン');
+  btnUline.style.textDecoration='underline';
+  grpText.appendChild(el('span','tb-lbl','px'));
+  const inpSize = document.createElement('input'); inpSize.type='number'; inpSize.min='8'; inpSize.max='120'; inpSize.step='1'; inpSize.placeholder='--';
+  grpText.appendChild(inpSize);
+  grpText.appendChild(el('span','tb-lbl','文字'));
+  const inpTxtCol = document.createElement('input'); inpTxtCol.type='color'; inpTxtCol.value='#e8e8ec';
+  grpText.appendChild(inpTxtCol);
+  /* 書式（図形向け） */
+  const grpShapeFmt = _tbGrp(tb);
+  grpShapeFmt.appendChild(el('span','tb-lbl','図形色'));
+  const inpShapeCol = document.createElement('input'); inpShapeCol.type='color'; inpShapeCol.value='#4a9eff';
+  grpShapeFmt.appendChild(inpShapeCol);
+  grpShapeFmt.appendChild(el('span','tb-lbl','透明度'));
+  const inpOpacity = document.createElement('input'); inpOpacity.type='range'; inpOpacity.min='0'; inpOpacity.max='100'; inpOpacity.value='15';
+  grpShapeFmt.appendChild(inpOpacity);
+  vp.appendChild(tb);
+  const hud=el('div','ref-hud');vp.appendChild(hud);
+  const ctrls=el('div','ref-ctrls');
+  /* v.091 / v.097：編集モード ON/OFF トグル。ON のとき青ハイライト＋キャンバスに青枠。 */
+  const editBtn=el('button','ref-edit-btn'+(state.refEditMode?' on':''),state.refEditMode?'📝 編集中':'📝 編集モード');
+  editBtn.title='編集モードを切替（ON：アイテムの選択・移動・追加・削除／Alt+ドラッグで画面移動／タイトルはダブルクリックで文字編集）';
+  const zIn=el('button',null,'＋');zIn.title='拡大';
+  const zOut=el('button',null,'−');zOut.title='縮小';
+  const zFit=el('button',null,'100%');zFit.title='等倍';
+  const zAll=el('button',null,'⊡');zAll.title='全体表示';
+  ctrls.appendChild(editBtn);
+  ctrls.appendChild(zOut);ctrls.appendChild(zFit);ctrls.appendChild(zIn);ctrls.appendChild(zAll);
+  vp.appendChild(ctrls);
+  root_.appendChild(side);root_.appendChild(vp);
+  main.appendChild(root_);
+  /* ---------- 描画・virtualization ---------- */
+  const BUFFER = 400; /* canvas 座標系で画面外にこの px だけ余分に描画 */
+  const applyTransform = ()=>{
+    canvas.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+    /* HUD の表示を更新 */
+    hud.textContent = `pan: ${Math.round(view.tx)}, ${Math.round(view.ty)}   zoom: ${(view.scale*100).toFixed(0)}%`;
+    /* グリッド背景も scale に追従（視覚的な方眼） */
+    const g = 100 * view.scale;
+    grid.style.backgroundSize = `${g}px ${g}px`;
+    grid.style.backgroundPosition = `${view.tx}px ${view.ty}px`;
+    renderVisible();
+  };
+  /* v.094：let に変更（Phase 4 の updateHandles を末尾で呼ぶためのラッパ再代入を可能に）。
+     const のままだと再代入時に TypeError で落ち、以降の wheel/right-click/paste ハンドラが
+     登録されなくなり「中ボタンのホイールでズームできない」症状が出ていた。
+     v.118：DOM ノードキャッシュを導入。pan/zoom の都度 remove→build する従来実装では
+     画像数十枚でブラウザが毎回 img を復号し直して重かった。キャッシュで既存ノードを再利用し、
+     ビジビリティ変化（＝ virtualization 入退場）だけ add/remove する。
+     データ変更時は呼び出し側で `_refInvalidate(id)` を呼んでノードを破棄→次回ビルドで反映。 */
+  const _refNodeCache = new Map(); /* id -> node */
+  const _refInvalidate = (id)=>{
+    if(!id) return;
+    const n = _refNodeCache.get(id);
+    if(n){ try{ n.remove(); }catch(_){} _refNodeCache.delete(id); }
+  };
+  let renderVisible = ()=>{
+    const rect = vp.getBoundingClientRect();
+    const vw = rect.width, vh = rect.height;
+    const vLeft   = -view.tx / view.scale - BUFFER;
+    const vTop    = -view.ty / view.scale - BUFFER;
+    const vRight  = vLeft + vw / view.scale + BUFFER * 2;
+    const vBottom = vTop  + vh / view.scale + BUFFER * 2;
+    /* v.114：レイヤー順（it.z）でソートして描画。z 未設定のアイテムは配列順位を使う。
+       同じ z のときは配列順位でタイブレーク（新規は末尾＝上に来る）。 */
+    const _sorted = items.map((it,i)=>({it, z:(it.z==null?i:it.z), i}))
+                         .sort((a,b)=> (a.z - b.z) || (a.i - b.i))
+                         .map(x=>x.it);
+    const visibleIds = new Set();
+    const existingIds = new Set(items.map(it=>it.id));
+    for(const it of _sorted){
+      const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
+      if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom) continue;
+      visibleIds.add(it.id);
+      let node = _refNodeCache.get(it.id);
+      if(!node){
+        node = _refBuildItem(it);
+        node.dataset.refId = it.id || '';
+        _refNodeCache.set(it.id, node);
+      }
+      /* 位置・サイズは毎回更新（ドラッグ移動／リサイズをノード破棄せず反映） */
+      node.style.left = it.x + 'px';
+      node.style.top  = it.y + 'px';
+      if(it.w != null) node.style.width  = it.w + 'px';
+      if(it.h != null) node.style.height = it.h + 'px';
+      /* 選択状態の反映 */
+      if(state.refEditMode && it.id && state.refSelection.has(it.id)) node.classList.add('selected');
+      else node.classList.remove('selected');
+      /* 編集モードでは個別アイテムの pointer-events を有効化。
+         v.122：非編集モードでも text/title はホバーだけで文字選択できるように
+         pointer-events:auto + user-select:text + cursor:text を付与。 */
+      if(state.refEditMode){
+        node.style.pointerEvents = 'auto';
+        node.style.userSelect = '';
+        if(!node.classList.contains('text-selectable')) node.style.cursor = '';
+      }else if(it.type === 'text' || it.type === 'title'){
+        node.style.pointerEvents = 'auto';
+        /* v.125：href 付きリンクは文字選択を無効化してクリックで必ず飛べるようにする。
+           user-select:text だと小さいドラッグが selection 開始扱いになり click が発火しなかった。 */
+        if(it.href){
+          node.style.userSelect = 'none';
+          node.style.cursor = 'pointer';
+        }else{
+          node.style.userSelect = 'text';
+          node.style.cursor = 'text';
+        }
+      }else{
+        node.style.pointerEvents = '';
+        node.style.userSelect = '';
+        node.style.cursor = '';
+      }
+      /* append で再配置（既にある場合は末尾へ移動＝ z 順の反映）。
+         編集中ノードは appendChild で動かすと contenteditable のフォーカスが外れるので除外。 */
+      if(state.refEditingId !== it.id) canvas.appendChild(node);
+    }
+    /* ビジビリティ外・既に消えたアイテムのノードをキャッシュから削除。
+       編集中ノードは virtualization 外に出ても保持する（contenteditable を壊さない）。 */
+    for(const [id, node] of _refNodeCache){
+      if(id === state.refEditingId) continue;
+      if(!visibleIds.has(id) || !existingIds.has(id)){
+        try{ node.remove(); }catch(_){}
+        _refNodeCache.delete(id);
+      }
+    }
+    _syncToolbarFromSelection();
+  };
+  /* v.124：選択中アイテムの属性をツールバーに反映。
+     - text / title：fontSize → inpSize、color → inpTxtCol
+     - shape       ：color → inpShapeCol、opacity → inpOpacity
+     - フォーカス中の入力は上書きしない（ユーザー入力中の値を潰さない）。
+     - renderVisible 末尾からだけでなく、クリック選択の DOM 差分パスからも呼ぶ。 */
+  const _isHex6 = (s)=> typeof s==='string' && /^#[0-9a-fA-F]{6}$/.test(s);
+  function _syncToolbarFromSelection(){
+    try{
+      const selIds = Array.from(state.refSelection);
+      if(selIds.length !== 1) return;
+      const it = workingItems.find(x=>x.id===selIds[0]);
+      if(!it) return;
+      const af = document.activeElement;
+      if(it.type==='text' || it.type==='title'){
+        if(af !== inpSize && typeof it.fontSize === 'number') inpSize.value = String(it.fontSize);
+        if(af !== inpTxtCol && _isHex6(it.color)) inpTxtCol.value = it.color;
+      }else if(it.type==='shape'){
+        if(af !== inpShapeCol && _isHex6(it.color)) inpShapeCol.value = it.color;
+        if(af !== inpOpacity && typeof it.opacity === 'number'){
+          inpOpacity.value = String(Math.round(it.opacity * 100));
+        }
+      }
+    }catch(_){}
+  }
+  /* ---------- イージング付き view アニメーション ----------
+     v.087：目次クリックで一瞬で切り替わると「どこに移動したか」が分かりにくいため、
+     easeInOutQuad で ~250ms かけてスッと移動する。
+     v.089：pan に加えて scale も同時にアニメーション（目次クリックで資料範囲へズーム）。
+     ドラッグやホイールで割り込まれたら即キャンセル。 */
+  let _refAnimRaf = 0;
+  const easeInOutQuad = t => t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t;
+  const cancelAnim = ()=>{ if(_refAnimRaf){ cancelAnimationFrame(_refAnimRaf); _refAnimRaf=0; } };
+  const animateViewTo = (targetTx, targetTy, targetScale, duration)=>{
+    duration = duration || 250;
+    cancelAnim();
+    const startTx = view.tx, startTy = view.ty, startSc = view.scale;
+    const dx = targetTx - startTx, dy = targetTy - startTy, ds = targetScale - startSc;
+    if(Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(ds) < 0.001){
+      view.tx = targetTx; view.ty = targetTy; view.scale = targetScale; applyTransform(); return;
+    }
+    const t0 = performance.now();
+    const step = (now)=>{
+      const t = Math.min(1, (now - t0) / duration);
+      const k = easeInOutQuad(t);
+      view.tx = startTx + dx * k;
+      view.ty = startTy + dy * k;
+      view.scale = startSc + ds * k;
+      applyTransform();
+      if(t < 1) _refAnimRaf = requestAnimationFrame(step);
+      else _refAnimRaf = 0;
+    };
+    _refAnimRaf = requestAnimationFrame(step);
+  };
+  /* ---------- 目次ビルド ---------- */
+  /* v.098：titleItems を毎回動的に計算（追加・削除・編集で変化するため） */
+  const rebuildToc = ()=>{
+    toc.innerHTML='';
+    const titleItems = items.filter(x=>x.type==='title');
+    for(const t of titleItems){
+      const row=el('div','ref-toc-item');
+      const dot=el('span','ref-toc-dot');dot.style.background=t.color||'var(--accent)';
+      row.appendChild(dot);
+      row.appendChild(document.createTextNode(t.text||''));
+      row.onclick=()=>{
+        /* v.089：タイトルを含む group（枠図形）のバウンディングボックスにフィット。
+           v.106：group が無い場合は Voronoi 風クラスタリング。
+           v.107：ユーザーが描いた shape（四角／円）がタイトルを含んでいれば group と同等に扱う
+           → 「ここが 1 トピック」とユーザーが明示的にスコープ指定できる。
+           旧 group タイプ（レガシーデータ）も引き続き尊重する。 */
+        let b;
+        const g = items.find(x =>
+          (x.type==='group' || x.type==='shape')
+          && t.x >= x.x && t.x <= x.x + (x.w||0)
+          && t.y >= x.y && t.y <= x.y + (x.h||0)
+          && x.w && x.h);
+        if(g){
+          b = { x:g.x, y:g.y, w:g.w, h:g.h };
+        }else{
+          const titles = items.filter(x=>x.type==='title');
+          const cx = x=> x.x + (x.w||100)/2;
+          const cy = x=> x.y + (x.h||40)/2;
+          /* タイトル自身を起点に bbox を広げる */
+          let minX = t.x, minY = t.y, maxX = t.x + (t.w||300), maxY = t.y + (t.h||80);
+          for(const it of items){
+            if(it.type === 'title' || it.type === 'group') continue;
+            /* 最寄りタイトルを求める */
+            let nearest = null, nd = Infinity;
+            const ix = cx(it), iy = cy(it);
+            for(const tt of titles){
+              const dx = ix - cx(tt), dy = iy - cy(tt);
+              const d = dx*dx + dy*dy;
+              if(d < nd){ nd = d; nearest = tt; }
+            }
+            if(nearest === t){
+              const ix2 = it.x + (it.w||100), iy2 = it.y + (it.h||40);
+              if(it.x < minX) minX = it.x;
+              if(it.y < minY) minY = it.y;
+              if(ix2 > maxX) maxX = ix2;
+              if(iy2 > maxY) maxY = iy2;
+            }
+          }
+          const pad2 = 80;
+          b = { x: minX - pad2, y: minY - pad2, w: (maxX - minX) + pad2*2, h: (maxY - minY) + pad2*2 };
+        }
+        const rect = vp.getBoundingClientRect();
+        const pad = 40;
+        const sx = (rect.width  - pad*2) / b.w;
+        const sy = (rect.height - pad*2) / b.h;
+        const targetScale = Math.max(0.08, Math.min(sx, sy, 2)); /* 2x でキャップ */
+        const targetTx = -b.x * targetScale + (rect.width  - b.w * targetScale) / 2;
+        const targetTy = -b.y * targetScale + (rect.height - b.h * targetScale) / 2;
+        animateViewTo(targetTx, targetTy, targetScale);
+        toc.querySelectorAll('.ref-toc-item').forEach(x=>x.classList.remove('active'));
+        row.classList.add('active');
+      };
+      toc.appendChild(row);
+    }
+  };
+  rebuildToc();
+  /* ---------- 保存スケジューラ（アイテム単位でデバウンス） ---------- */
+  const _refSaveTimers = {};
+  const scheduleItemSave = (it) => {
+    if(!it || !it.id) return;
+    clearTimeout(_refSaveTimers[it.id]);
+    _refSaveTimers[it.id] = setTimeout(()=>{
+      storage.saveReferenceItem(root.id, it).catch(()=>{});
+      delete _refSaveTimers[it.id];
+    }, 350);
+  };
+  /* ---------- v.092：新規アイテム追加 ----------
+     v.096：追加系ボタンをクリックしても即配置せず、キャンバスをクリックした位置に配置する
+     ようにした。図形は click+drag で範囲選択枠と同じ要領でサイズを決める。
+     - _pendingInsert: null | { def, drag:boolean, tbBtn?: HTMLElement }
+       - def: 追加するアイテム定義（type, color, 等）
+       - drag: true なら click+drag で w/h を決める（shape 用）、false なら単発クリックで配置
+       - tbBtn: 現在ハイライト中のツールバーボタン（Esc キャンセル時に外す）
+     - mousedown ハンドラが _pendingInsert を見てクリック/ドラッグ挿入を処理する */
+  let _pendingInsert = null;
+  const _nextId = ()=> 'r_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,7);
+  const _viewportCenterWorld = ()=>{
+    const r = vp.getBoundingClientRect();
+    return { x: (r.width/2 - view.tx) / view.scale, y: (r.height/2 - view.ty) / view.scale };
+  };
+  const _commitItem = (def) => {
+    workingItems.push(def);
+    state.refSelection.clear(); state.refSelection.add(def.id);
+    scheduleItemSave(def);
+    items = (!state.refEditMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    renderVisible();
+    try{ rebuildToc(); }catch(_){} /* v.098：目次を即更新 */
+    return def;
+  };
+  /* 中央配置（画像/動画アップロード用。元の insertItem と同じ振る舞い）。 */
+  const insertItem = (partial) => {
+    const c = _viewportCenterWorld();
+    const def = Object.assign({ id: _nextId(), x: Math.round(c.x - (partial.w||200)/2), y: Math.round(c.y - (partial.h||40)/2) }, partial);
+    return _commitItem(def);
+  };
+  /* 指定座標配置。クリック配置用（title/text）または drag 配置の最終コミット用（shape）。 */
+  const insertItemAt = (partial, x, y, w, h) => {
+    const def = Object.assign({ id: _nextId(), x: Math.round(x), y: Math.round(y) }, partial);
+    if(w != null) def.w = Math.round(w);
+    if(h != null) def.h = Math.round(h);
+    return _commitItem(def);
+  };
+  /* 追加モード開始／キャンセル */
+  const _startInsert = (def, drag, tbBtn) => {
+    _pendingInsert = { def: def, drag: !!drag, tbBtn: tbBtn || null };
+    vp.style.cursor = 'crosshair';
+    if(tbBtn) tbBtn.classList.add('on');
+  };
+  const _cancelInsert = () => {
+    if(!_pendingInsert) return;
+    if(_pendingInsert.tbBtn) _pendingInsert.tbBtn.classList.remove('on');
+    _pendingInsert = null;
+    vp.style.cursor = '';
+  };
+  /* 選択中アイテムをフォーマット書き換え（コールバックで変更）→ 保存 */
+  const applyToSelected = (fn) => {
+    for(const id of state.refSelection){
+      const it = workingItems.find(x=>x.id===id);
+      if(it){ fn(it); _refInvalidate(id); scheduleItemSave(it); }
+    }
+    renderVisible();
+  };
+  /* ---------- 編集モードトグル ---------- */
+  const setEditMode = (on) => {
+    state.refEditMode = !!on;
+    vp.classList.toggle('edit-mode', state.refEditMode);
+    editBtn.classList.toggle('on', state.refEditMode);
+    editBtn.textContent = state.refEditMode ? '📝 編集中' : '📝 編集モード';
+    if(!state.refEditMode){ state.refSelection.clear(); state.refEditingId = null; }
+    /* 編集 ON で mock→実データ切替が起きるのでアイテム表示を切り替えて再描画 */
+    items = (!state.refEditMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    applyTransform();
+  };
+  editBtn.onclick = () => setEditMode(!state.refEditMode);
+  /* ---------- ツールバー 配線 ---------- */
+  /* v.096：ボタンクリックは「追加モード」の開始のみ。実際の配置はキャンバスクリック時。
+     - title/text はクリック配置（drag=false）
+     - shape は click+drag でサイズ指定（drag=true）。drag せず単クリックした場合はデフォルトサイズで配置。 */
+  btnH1.onclick = ()=> _startInsert({type:'title', text:'大タイトル', fontSize:48, color:'#e8e8ec'}, false, btnH1);
+  btnH2.onclick = ()=> _startInsert({type:'title', text:'中タイトル', fontSize:32, color:'#e8e8ec'}, false, btnH2);
+  btnH3.onclick = ()=> _startInsert({type:'title', text:'小タイトル', fontSize:22, color:'#e8e8ec'}, false, btnH3);
+  btnTxt.onclick= ()=> _startInsert({type:'text',  text:'テキスト',   fontSize:16, color:'#e8e8ec', w:260}, false, btnTxt);
+  btnShape.onclick = ()=> _startInsert({type:'shape', shape:selShape.value||'rect', color:inpShapeCol.value, opacity:(parseInt(inpOpacity.value,10)||15)/100}, true, btnShape);
+  btnUpload.onclick = ()=> inpFile.click();
+  inpFile.onchange = async (e)=>{
+    const files = Array.from(e.target.files||[]);
+    if(!files.length) return;
+    inpFile.value = ''; /* 同じファイルを再度選べるようにクリア */
+    const c0 = _viewportCenterWorld();
+    /* v.118：まとめアップロード最適化。
+       - 画像の寸法計測を並列化（I/O 待ちの間に他ファイルも処理）。
+       - 書き込み（File System Access）は並列度 4 で逐次に近い実行（folder handle の
+         同時書き込み衝突を避けつつスループットを上げる）。
+       - 作業は defs 配列に貯めて最後に一括で workingItems へ push ＋ renderVisible / rebuildToc は 1 回だけ呼ぶ。 */
+    const CONCURRENCY = 4;
+    const defs = new Array(files.length);
+    const _measureDim = (f)=>new Promise((res)=>{
+      if(f.type.startsWith('image/')){
+        const url = URL.createObjectURL(f);
+        const img = new Image();
+        img.onload = ()=>{ const w=img.naturalWidth||320, h=img.naturalHeight||240; URL.revokeObjectURL(url); const s=Math.min(1, 480/Math.max(w,h)); res({w:Math.round(w*s), h:Math.round(h*s), poster:null}); };
+        img.onerror = ()=>{ URL.revokeObjectURL(url); res({w:320,h:240,poster:null}); };
+        img.src = url;
+        return;
+      }
+      if(f.type.startsWith('video/')){
+        /* v.120：動画の最初のフレーム（またはその付近）をキャンバスに描画して data URL のポスターを生成。
+           JSON に data URL として格納するため、320x240 以内・JPEG q=0.7 でサイズを抑える。 */
+        const url = URL.createObjectURL(f);
+        const video = document.createElement('video');
+        video.muted = true; video.playsInline = true; video.preload = 'auto';
+        const done = (ret)=>{ try{URL.revokeObjectURL(url)}catch(_){} res(ret); };
+        const to = setTimeout(()=>done({w:320,h:240,poster:null}), 6000);
+        video.addEventListener('loadeddata', ()=>{
+          try{ video.currentTime = Math.min(0.5, (video.duration||1)*0.1); }
+          catch(_){ clearTimeout(to); done({w:320,h:240,poster:null}); }
+        });
+        video.addEventListener('seeked', ()=>{
+          clearTimeout(to);
+          try{
+            const vw = video.videoWidth||320, vh = video.videoHeight||240;
+            const s = Math.min(1, 480/Math.max(vw,vh));
+            const tw = Math.round(vw*s), th = Math.round(vh*s);
+            const can = document.createElement('canvas');
+            can.width = tw; can.height = th;
+            can.getContext('2d').drawImage(video, 0, 0, tw, th);
+            const poster = can.toDataURL('image/jpeg', 0.7);
+            done({w: tw, h: th, poster});
+          }catch(e){ done({w:320, h:240, poster:null}); }
+        });
+        video.addEventListener('error', ()=>{ clearTimeout(to); done({w:320,h:240,poster:null}); });
+        video.src = url;
+        return;
+      }
+      res({w:320,h:240,poster:null});
+    });
+    let next = 0;
+    const workers = Array.from({length: Math.min(CONCURRENCY, files.length)}, async ()=>{
+      while(true){
+        const i = next++;
+        if(i >= files.length) return;
+        const f = files[i];
+        try{
+          const ext = (f.name.match(/(\.[A-Za-z0-9]+)$/)||[])[1] || (f.type.startsWith('video/')?'.mp4':'.jpg');
+          const uid = _nextId();
+          const fn = uid + ext;
+          /* 寸法計測と書き込みを同時並行で（寸法は f から取れるので書き込みを待たない） */
+          const [ref, dim] = await Promise.all([
+            storage.putReferenceMedia(root.id, fn, f),
+            _measureDim(f),
+          ]);
+          if(!ref){ toast('ファイル保存に失敗しました: '+f.name); continue; }
+          defs[i] = {
+            id: _nextId(),
+            type:'image',
+            mediaRef: ref,
+            mediaType: f.type.startsWith('video/')?'video':'image',
+            label: f.name,
+            w: dim.w, h: dim.h,
+            x: Math.round(c0.x + i*30 - dim.w/2),
+            y: Math.round(c0.y - dim.h/2),
+            ...(dim.poster ? { thumbDataUrl: dim.poster } : {}),
+          };
+        }catch(err){ toast('アップロード失敗: '+(err&&err.message||'')); }
+      }
+    });
+    await Promise.all(workers);
+    /* 一括追加＋単発レンダ。_commitItem を回すと N 回 renderVisible/rebuildToc で重くなる */
+    const added = defs.filter(Boolean);
+    if(!added.length) return;
+    workingItems.push(...added);
+    state.refSelection.clear();
+    for(const d of added){ state.refSelection.add(d.id); scheduleItemSave(d); }
+    items = (!state.refEditMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    renderVisible();
+    try{ rebuildToc(); }catch(_){}
+  };
+  /* 書式ボタン：選択中のテキスト／タイトルに適用 */
+  btnBold.onclick  = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.bold = !it.bold; });
+  btnUline.onclick = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.underline = !it.underline; });
+  inpSize.oninput  = ()=>{ const v = parseInt(inpSize.value,10); if(!isNaN(v) && v>=4 && v<=200) applyToSelected(it => { if(it.type==='text'||it.type==='title') it.fontSize = v; }); };
+  /* v.098：input と change 両方を拾う（Firefox の input[type=color] は input イベントを吐かないケースあり） */
+  const _applyTxtColor = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.color = inpTxtCol.value; });
+  inpTxtCol.oninput = _applyTxtColor; inpTxtCol.onchange = _applyTxtColor;
+  const _applyShapeColor = ()=> applyToSelected(it => { if(it.type==='shape') it.color = inpShapeCol.value; });
+  inpShapeCol.oninput = _applyShapeColor; inpShapeCol.onchange = _applyShapeColor;
+  const _applyOpacity  = ()=> applyToSelected(it => { if(it.type==='shape') it.opacity = (parseInt(inpOpacity.value,10)||0)/100; });
+  inpOpacity.oninput = _applyOpacity; inpOpacity.onchange = _applyOpacity;
+  /* ---------- アイテム座標ヘルパ ---------- */
+  const screenToWorld = (sx, sy) => {
+    const r = vp.getBoundingClientRect();
+    return { x: (sx - r.left - view.tx) / view.scale, y: (sy - r.top - view.ty) / view.scale };
+  };
+  /* v.116：非編集モードの文字選択モードを解除。 */
+  const _clearTextSelectable = (n)=>{
+    if(!n) return;
+    n.classList.remove('text-selectable');
+    n.style.userSelect = '';
+    n.style.pointerEvents = '';
+    n.style.cursor = '';
+    if(n._stopDown){
+      n.removeEventListener('mousedown', n._stopDown);
+      n._stopDown = null;
+    }
+    try{ const s=window.getSelection(); if(s) s.removeAllRanges(); }catch(_){}
+  };
+  const hitTestItem = (sx, sy) => {
+    /* world 座標でアイテムとの当たり判定。
+       v.116：group と shape はクリック貫通優先。
+         - group は常に非ヒット（枠図形）
+         - shape は「非 shape のアイテムがその位置に無ければ」ヒット対象（＝通常は中のアイテムが選ばれる、
+           何も無い所でだけ shape が選ばれる）
+       レイヤー順（it.z）を尊重し、最前面から当たり判定する（v.114 と整合）。 */
+    const w = screenToWorld(sx, sy);
+    const inBounds = (it)=>{
+      const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
+      return (w.x >= x1 && w.x <= x2 && w.y >= y1 && w.y <= y2);
+    };
+    const _effZ = (it, i) => (it.z == null ? i : it.z);
+    const sorted = items.map((it,i)=>({it, z:_effZ(it,i), i}))
+                        .sort((a,b)=> (b.z - a.z) || (b.i - a.i))
+                        .map(x=>x.it);
+    for(const it of sorted){
+      if(it.type === 'group' || it.type === 'shape') continue;
+      if(inBounds(it)) return it;
+    }
+    for(const it of sorted){
+      if(it.type !== 'shape') continue;
+      if(inBounds(it)) return it;
+    }
+    return null;
+  };
+  /* ---------- Pan + 選択 + 移動 + 範囲選択（統合ハンドラ） ---------- */
+  let mode = null; /* 'pan' | 'move' | 'rubber' | null */
+  let dragX=0, dragY=0;
+  let startTx=0, startTy=0;
+  let moveOrigin = {}; /* 選択中アイテムの初期座標 {itemId: {x,y}} */
+  let rubberEl = null;
+  let rubberStart = {x:0, y:0}; /* world 座標 */
+  vp.addEventListener('mousedown',(e)=>{
+    /* v.100：マウス中ボタン（button===1）はいつでも pan に割り当て。
+       編集モード中は Alt+ドラッグが pan、中ボタン押し込みドラッグも pan。
+       ブラウザのオートスクロール（中ボタンクリックの既定動作）は preventDefault でキャンセル。 */
+    if(e.button === 1){
+      if(e.target.closest('.ref-toolbar, .ref-ctrls, .ref-handles, .ref-ctx')) return;
+      cancelAnim();
+      mode = 'pan';
+      dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+      vp.classList.add('panning');
+      e.preventDefault();
+      return;
+    }
+    if(e.button!==0) return;
+    /* v.098：ツールバー・コントロール類・リサイズハンドル・コンテキストメニューへのクリックは
+       pan / 選択 / rubber band などのキャンバス操作に横取りされないように、ここで早期 return。
+       これを入れていないと、ツールバーのカラーピッカーを押しても mousedown が vp に
+       バブリングして hitTest が null → 「空白クリック」として選択がクリアされ、
+       applyToSelected が対象ゼロになって文字色が変わらない現象、
+       また Delete 前にツールバーを触ると選択が消えて Delete が no-op になる現象の両方を解消。 */
+    if(e.target.closest('.ref-toolbar, .ref-ctrls, .ref-handles, .ref-ctx')) return;
+    /* v.122：非編集モードで text/title の上をクリックしたときは pan を開始しない
+       （ブラウザの文字選択ドラッグに任せる）。中ボタン・編集モードは従来通り。 */
+    if(!state.refEditMode && e.target.closest('.ref-item.ref-text, .ref-item.ref-title')) return;
+    cancelAnim();
+    const editMode = state.refEditMode;
+    /* v.096：追加モード中なら、他のアクションより優先してアイテム配置を処理 */
+    if(editMode && _pendingInsert){
+      const w0 = screenToWorld(e.clientX, e.clientY);
+      if(_pendingInsert.drag){
+        /* click+drag でサイズ決め（shape）。rubber-band を再利用。 */
+        mode = 'insert-drag';
+        rubberStart = w0;
+        rubberEl = document.createElement('div');
+        rubberEl.className = 'ref-rubber';
+        vp.appendChild(rubberEl);
+      }else{
+        /* 単発クリック配置（title/text）。幅・高さは def に含まれるものを使う。 */
+        const def = _pendingInsert.def;
+        /* クリック位置を左上とする（title/text は右方向・下方向に広がる感覚） */
+        insertItemAt(def, w0.x, w0.y);
+        _cancelInsert();
+      }
+      e.preventDefault();
+      return;
+    }
+    /* 編集 OFF：従来通り pan。 */
+    if(!editMode){
+      mode = 'pan';
+      dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+      vp.classList.add('panning');
+      e.preventDefault();
+      return;
+    }
+    /* 編集 ON ＋ Alt → pan */
+    if(e.altKey){
+      mode = 'pan';
+      dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+      vp.classList.add('panning');
+      e.preventDefault();
+      return;
+    }
+    /* v.097：インライン編集中のアイテム上は何もしない（contenteditable に委ねる） */
+    if(state.refEditingId){
+      /* ただし別のアイテムをクリックしたら編集完了して通常の選択に戻す */
+      const hitProbe = hitTestItem(e.clientX, e.clientY);
+      if(hitProbe && hitProbe.id === state.refEditingId){ return; }
+      /* 他をクリックしたら blur 経由で編集終了 */
+    }
+    /* 編集 ON：アイテムをヒットしたか？ */
+    const hit = hitTestItem(e.clientX, e.clientY);
+    if(hit){
+      /* v.103：選択変化を DOM 再構築ではなくクラス差分で反映する。
+         renderVisible は全アイテムを remove→append するため、クリックのたびに DOM が
+         置き換わり、ブラウザが dblclick を発火できなくなっていた。 */
+      if(e.shiftKey){
+        if(state.refSelection.has(hit.id)) state.refSelection.delete(hit.id);
+        else state.refSelection.add(hit.id);
+      }else{
+        if(!state.refSelection.has(hit.id)){
+          state.refSelection.clear();
+          state.refSelection.add(hit.id);
+        }
+      }
+      /* 選択されたアイテム群の初期座標を記録して move モードへ */
+      mode = 'move';
+      dragX=e.clientX; dragY=e.clientY;
+      moveOrigin = {};
+      for(const id of state.refSelection){
+        const it = workingItems.find(x=>x.id===id);
+        if(it) moveOrigin[id] = {x: it.x, y: it.y};
+      }
+      /* DOM の再構築はせず、.selected クラスだけ差分更新する */
+      const _esc = (s)=> (window.CSS&&CSS.escape?CSS.escape(s):s);
+      for(const el of canvas.querySelectorAll('.ref-item.selected')){
+        if(!state.refSelection.has(el.dataset.refId)) el.classList.remove('selected');
+      }
+      for(const id of state.refSelection){
+        const el = canvas.querySelector('.ref-item[data-ref-id="'+_esc(id)+'"]');
+        if(el) el.classList.add('selected');
+      }
+      updateHandles();
+      _syncToolbarFromSelection();
+      e.preventDefault();
+      return;
+    }
+    /* 空白クリック：範囲選択 */
+    if(!e.shiftKey) state.refSelection.clear();
+    mode = 'rubber';
+    rubberStart = screenToWorld(e.clientX, e.clientY);
+    rubberEl = document.createElement('div');
+    rubberEl.className = 'ref-rubber';
+    vp.appendChild(rubberEl);
+    renderVisible();
+    e.preventDefault();
+  });
+  const onRefMouseMove = (e)=>{
+    if(!mode) return;
+    if(mode === 'pan'){
+      view.tx = startTx + (e.clientX - dragX);
+      view.ty = startTy + (e.clientY - dragY);
+      applyTransform();
+    }else if(mode === 'move'){
+      const dx = (e.clientX - dragX) / view.scale;
+      const dy = (e.clientY - dragY) / view.scale;
+      for(const id of state.refSelection){
+        const it = workingItems.find(x=>x.id===id);
+        const org = moveOrigin[id];
+        if(it && org){
+          it.x = Math.round(org.x + dx);
+          it.y = Math.round(org.y + dy);
+        }
+      }
+      renderVisible();
+    }else if((mode === 'rubber' || mode === 'insert-drag') && rubberEl){
+      const w = screenToWorld(e.clientX, e.clientY);
+      const x1 = Math.min(rubberStart.x, w.x), y1 = Math.min(rubberStart.y, w.y);
+      const x2 = Math.max(rubberStart.x, w.x), y2 = Math.max(rubberStart.y, w.y);
+      /* world→screen で overlay 位置に変換 */
+      const sx = x1 * view.scale + view.tx;
+      const sy = y1 * view.scale + view.ty;
+      rubberEl.style.left   = sx + 'px';
+      rubberEl.style.top    = sy + 'px';
+      rubberEl.style.width  = ((x2-x1) * view.scale) + 'px';
+      rubberEl.style.height = ((y2-y1) * view.scale) + 'px';
+    }
+  };
+  const onRefMouseUp = (e)=>{
+    if(!mode) return;
+    if(mode === 'pan'){
+      vp.classList.remove('panning');
+    }else if(mode === 'move'){
+      /* 移動したアイテムを保存（選択中すべてデバウンス保存） */
+      for(const id of state.refSelection){
+        const it = workingItems.find(x=>x.id===id);
+        if(it) scheduleItemSave(it);
+      }
+    }else if(mode === 'insert-drag' && rubberEl){
+      /* v.096：click+drag でサイズ指定した shape を確定。
+         ほぼ動かさず単クリックで離した（10px 未満）場合はデフォルトサイズ 240x160 で配置。 */
+      const w = screenToWorld(e.clientX, e.clientY);
+      const x1 = Math.min(rubberStart.x, w.x), y1 = Math.min(rubberStart.y, w.y);
+      const x2 = Math.max(rubberStart.x, w.x), y2 = Math.max(rubberStart.y, w.y);
+      try{ rubberEl.remove(); }catch(_){}
+      rubberEl = null;
+      const dw = (x2 - x1), dh = (y2 - y1);
+      const def = _pendingInsert && _pendingInsert.def;
+      if(def){
+        if(dw < 10 || dh < 10){
+          /* 単クリック扱い：中サイズでクリック位置に配置 */
+          insertItemAt(def, rubberStart.x - 120, rubberStart.y - 80, 240, 160);
+        }else{
+          insertItemAt(def, x1, y1, dw, dh);
+        }
+      }
+      _cancelInsert();
+    }else if(mode === 'rubber' && rubberEl){
+      const w = screenToWorld(e.clientX, e.clientY);
+      const x1 = Math.min(rubberStart.x, w.x), y1 = Math.min(rubberStart.y, w.y);
+      const x2 = Math.max(rubberStart.x, w.x), y2 = Math.max(rubberStart.y, w.y);
+      /* 矩形と重なるアイテムを選択に追加 */
+      for(const it of workingItems){
+        if(it.type === 'group') continue;
+        const ix1=it.x, iy1=it.y, ix2=it.x+(it.w||400), iy2=it.y+(it.h||100);
+        if(ix2 < x1 || ix1 > x2 || iy2 < y1 || iy1 > y2) continue;
+        state.refSelection.add(it.id);
+      }
+      try{ rubberEl.remove(); }catch(_){}
+      rubberEl = null;
+      renderVisible();
+    }
+    mode = null;
+  };
+  window.addEventListener('mousemove', onRefMouseMove);
+  window.addEventListener('mouseup',   onRefMouseUp);
+  state._refCleanup.push(()=>window.removeEventListener('mousemove', onRefMouseMove));
+  state._refCleanup.push(()=>window.removeEventListener('mouseup',   onRefMouseUp));
+  /* ---------- キーボード：Delete / Backspace で削除、Esc で選択解除 ---------- */
+  const onRefKey = (e) => {
+    if(state.projTab !== 'reference') return;
+    /* input/textarea/contenteditable にフォーカスがあるときは無視（インライン編集中の文字入力を妨げない） */
+    const tag = (e.target && e.target.tagName) || '';
+    if(tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+    if(!state.refEditMode) return;
+    if((e.key === 'Delete' || e.key === 'Backspace') && state.refSelection.size){
+      e.preventDefault();
+      const ids = Array.from(state.refSelection);
+      state.refSelection.clear(); /* 先にクリア（renderVisible の selection 判定を即反映） */
+      state.refEditingId = null;
+      for(const id of ids){
+        const idx = workingItems.findIndex(x=>x.id===id);
+        if(idx >= 0){
+          workingItems.splice(idx, 1);
+          storage.deleteReferenceItem(root.id, id).catch(()=>{});
+        }
+      }
+      /* v.097：フォーカスがツールバーボタン等にあると keydown→renderVisible のあと
+         視覚更新が遅延することがあるため、active element を blur させてから applyTransform。
+         これで Delete 1 回で確実に消える。 */
+      try{ if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }catch(_){}
+      applyTransform();
+      try{ rebuildToc(); }catch(_){} /* v.098：タイトル削除時に目次も更新 */
+    }else if(e.key === 'Escape'){
+      /* v.096：追加モード中の Esc は追加キャンセルを優先 */
+      if(_pendingInsert){ _cancelInsert(); return; }
+      if(state.refEditingId){ state.refEditingId = null; renderVisible(); return; }
+      state.refSelection.clear();
+      renderVisible();
+    }
+  };
+  window.addEventListener('keydown', onRefKey);
+  state._refCleanup.push(()=>window.removeEventListener('keydown', onRefKey));
+  /* v.097／v.102：タイトル／テキストをダブルクリックでインライン編集。
+     既存 DOM ノードをその場で contenteditable 化（破棄・再生成しない）→ フォーカス維持。
+     v.117：listener を canvas から vp に移動。canvas は幅 0x0 なので非編集モードで text が
+     pointer-events:none のとき dblclick は vp に落ち、canvas までは bubble しない（canvas は vp の子）。 */
+  vp.addEventListener('dblclick', (e)=>{
+    /* v.116：編集モード OFF でもダブルクリックで「文字選択モード」に入れるようにする。
+       編集はできないが、ディレクトリパスなどのテキストを選択してコピーできる。
+       hitTestItem で座標から対象を特定（text/title は pointer-events:none なので DOM target では拾えない）。 */
+    if(!state.refEditMode){
+      const hit = hitTestItem(e.clientX, e.clientY);
+      if(!hit || (hit.type !== 'title' && hit.type !== 'text')) return;
+      const n = canvas.querySelector('.ref-item[data-ref-id="'+(window.CSS&&CSS.escape?CSS.escape(hit.id):hit.id)+'"]');
+      if(!n) return;
+      if(n.classList.contains('text-selectable')) return;
+      /* 他に選択モードのノードがあれば解除 */
+      canvas.querySelectorAll('.ref-item.text-selectable').forEach(_clearTextSelectable);
+      const stopDown = (ev)=>{ ev.stopPropagation(); }; /* 内部クリックで vp.mousedown→pan を抑止 */
+      n._stopDown = stopDown;
+      n.addEventListener('mousedown', stopDown);
+      n.classList.add('text-selectable');
+      n.style.userSelect = 'text';
+      n.style.pointerEvents = 'auto';
+      n.style.cursor = 'text';
+      try{
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        const sel = window.getSelection();
+        sel.removeAllRanges(); sel.addRange(range);
+      }catch(_){}
+      const exit = (ev)=>{
+        if(!n.contains(ev.target)){
+          _clearTextSelectable(n);
+          window.removeEventListener('mousedown', exit, true);
+        }
+      };
+      setTimeout(()=>window.addEventListener('mousedown', exit, true), 0);
+      return;
+    }
+    const node = e.target.closest('.ref-item');
+    if(!node) return;
+    const id = node.dataset.refId;
+    const it = workingItems.find(x=>x.id===id);
+    if(!it || (it.type !== 'title' && it.type !== 'text')) return;
+    state.refEditingId = id;
+    state.refSelection.clear(); state.refSelection.add(id);
+    node.contentEditable = 'true';
+    node.classList.add('editing');
+    node.classList.remove('selected');
+    /* contenteditable 時のサイズ指定を解除（text は自動幅、title は内容次第） */
+    if(it.type === 'text' && it.w) node.style.width = it.w + 'px';
+    /* 選択してフォーカス */
+    try{
+      node.focus();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(range);
+    }catch(_){}
+    const finishEdit = ()=>{
+      /* v.115：複数の空行を保持できるよう `\n{2,}` の collapse を廃止。前後の空白のみトリム。 */
+      const newText = (node.innerText || node.textContent || '').replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, '');
+      const textChanged = (newText && newText !== it.text);
+      if(textChanged){ it.text = newText; scheduleItemSave(it); }
+      state.refEditingId = null;
+      node.contentEditable = 'false';
+      node.classList.remove('editing');
+      /* v.118：contenteditable の残骸（<div> / <br>）をクリアするためノードを破棄し、
+         _refBuildItem で textContent から再構築する。 */
+      _refInvalidate(it.id);
+      renderVisible();
+      if(textChanged && it.type === 'title'){ try{ rebuildToc(); }catch(_){} }
+    };
+    node.addEventListener('blur', finishEdit, { once:true });
+    node.addEventListener('keydown', (ev)=>{
+      ev.stopPropagation(); /* onRefKey の Delete/Escape を抑止 */
+      /* v.113：Enter で確定（title / text 両方）。改行は Shift+Enter。 */
+      if(ev.key === 'Escape' || (ev.key === 'Enter' && !ev.shiftKey)){
+        ev.preventDefault();
+        node.blur();
+      }
+    });
+  });
+  /* ---------- v.093：リサイズハンドル（単一選択時のみ表示） ----------
+     v.113：text/title は w/h 未設定でも DOM 実寸でハンドルを出せるようにする。
+     resize 開始時に origin.w/h を DOM 実寸で補完し、以降は通常の resize ロジックで動く。 */
+  let handlesEl = null;
+  const updateHandles = ()=>{
+    if(handlesEl){ try{ handlesEl.remove(); }catch(_){} handlesEl = null; }
+    if(!state.refEditMode || state.refSelection.size !== 1) return;
+    const id = Array.from(state.refSelection)[0];
+    const it = workingItems.find(x=>x.id===id);
+    if(!it) return;
+    let effW = it.w, effH = it.h;
+    if((it.type === 'text' || it.type === 'title') && (!effW || !effH)){
+      const node = canvas.querySelector('.ref-item[data-ref-id="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
+      if(node){
+        if(!effW) effW = node.offsetWidth  || 120;
+        if(!effH) effH = node.offsetHeight || 32;
+      }
+    }
+    if(!effW || !effH) return;
+    const r = vp.getBoundingClientRect();
+    const sx = it.x * view.scale + view.tx;
+    const sy = it.y * view.scale + view.ty;
+    const sw = effW * view.scale;
+    const sh = effH * view.scale;
+    handlesEl = el('div','ref-handles');
+    handlesEl.style.left = sx + 'px';
+    handlesEl.style.top  = sy + 'px';
+    handlesEl.style.width  = sw + 'px';
+    handlesEl.style.height = sh + 'px';
+    for(const c of ['nw','ne','sw','se']){
+      const h = el('div','rh '+c);
+      h.dataset.corner = c;
+      h.addEventListener('mousedown',(e)=>{
+        if(e.button!==0) return;
+        e.stopPropagation(); e.preventDefault();
+        const startX = e.clientX, startY = e.clientY;
+        /* v.113：text/title が w/h 未設定の場合は effW/effH で補完して resize 開始。
+           resize 完了後は it.w / it.h が確定するので以降は通常ロジック。 */
+        const origin = {x:it.x, y:it.y, w: it.w || effW, h: it.h || effH};
+        /* v.108：画像は比率ロック（アスペクト維持）、Shift で解除可。 */
+        const lockAspect = (it.type === 'image') && origin.w>0 && origin.h>0;
+        const aspect = origin.w / origin.h;
+        const onMv = (ev)=>{
+          const dx = (ev.clientX - startX) / view.scale;
+          const dy = (ev.clientY - startY) / view.scale;
+          let nx=origin.x, ny=origin.y, nw=origin.w, nh=origin.h;
+          let dw, dh;
+          if(c==='se'){ dw=dx;  dh=dy;  }
+          else if(c==='sw'){ dw=-dx; dh=dy;  }
+          else if(c==='ne'){ dw=dx;  dh=-dy; }
+          else if(c==='nw'){ dw=-dx; dh=-dy; }
+          if(lockAspect && !ev.shiftKey){
+            /* 幅・高さの変化率のうち大きい方で統一し、比率を維持 */
+            const sW = (origin.w + dw) / origin.w;
+            const sH = (origin.h + dh) / origin.h;
+            const s = (Math.abs(sW-1) > Math.abs(sH-1)) ? sW : sH;
+            nw = Math.max(20, origin.w * s);
+            nh = Math.max(20, origin.h * s);
+            if(nw === 20) nh = Math.max(20, 20 / aspect);
+            if(nh === 20) nw = Math.max(20, 20 * aspect);
+          }else{
+            nw = Math.max(20, origin.w + dw);
+            nh = Math.max(20, origin.h + dh);
+          }
+          if(c==='sw'){ nx = origin.x + origin.w - nw; }
+          else if(c==='ne'){ ny = origin.y + origin.h - nh; }
+          else if(c==='nw'){ nx = origin.x + origin.w - nw; ny = origin.y + origin.h - nh; }
+          it.x = Math.round(nx); it.y = Math.round(ny);
+          it.w = Math.round(nw); it.h = Math.round(nh);
+          renderVisible();
+          updateHandles();
+        };
+        const onUp = ()=>{
+          window.removeEventListener('mousemove', onMv);
+          window.removeEventListener('mouseup', onUp);
+          scheduleItemSave(it);
+        };
+        window.addEventListener('mousemove', onMv);
+        window.addEventListener('mouseup', onUp);
+      });
+      handlesEl.appendChild(h);
+    }
+    vp.appendChild(handlesEl);
+  };
+  /* applyTransform ＆ renderVisible 直後にハンドルも更新。既存の applyTransform をラップする代わりに、
+     renderVisible の末尾でハンドル更新を呼ぶように変更する。 */
+  const _origRenderVisible = renderVisible;
+  const renderVisible2 = ()=>{ _origRenderVisible(); updateHandles(); };
+  renderVisible = renderVisible2;
+  /* ---------- v.093：右クリックメニュー ---------- */
+  let ctxEl = null;
+  const closeCtx = ()=>{ if(ctxEl){ try{ ctxEl.remove(); }catch(_){} ctxEl = null; } };
+  let _refClipboard = []; /* in-memory クリップボード（コピー・貼付用、deep clone） */
+  const alignSelected = (axis) => {
+    /* axis: 'left'|'right'|'top'|'bottom'|'cx'|'cy' */
+    const sels = Array.from(state.refSelection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean);
+    if(sels.length < 2) return;
+    if(axis==='left'){ const m=Math.min(...sels.map(s=>s.x)); for(const s of sels){ s.x = m; scheduleItemSave(s); } }
+    else if(axis==='right'){ const m=Math.max(...sels.map(s=>s.x+(s.w||0))); for(const s of sels){ s.x = m - (s.w||0); scheduleItemSave(s); } }
+    else if(axis==='top'){ const m=Math.min(...sels.map(s=>s.y)); for(const s of sels){ s.y = m; scheduleItemSave(s); } }
+    else if(axis==='bottom'){ const m=Math.max(...sels.map(s=>s.y+(s.h||0))); for(const s of sels){ s.y = m - (s.h||0); scheduleItemSave(s); } }
+    else if(axis==='cx'){ const m=sels.reduce((a,s)=>a + s.x + (s.w||0)/2, 0)/sels.length; for(const s of sels){ s.x = Math.round(m - (s.w||0)/2); scheduleItemSave(s); } }
+    else if(axis==='cy'){ const m=sels.reduce((a,s)=>a + s.y + (s.h||0)/2, 0)/sels.length; for(const s of sels){ s.y = Math.round(m - (s.h||0)/2); scheduleItemSave(s); } }
+    renderVisible();
+  };
+  const copySelected = ()=>{
+    _refClipboard = Array.from(state.refSelection).map(id=>{
+      const it = workingItems.find(x=>x.id===id);
+      return it ? JSON.parse(JSON.stringify(it)) : null;
+    }).filter(Boolean);
+    toast(`${_refClipboard.length} 件をコピーしました`);
+  };
+  const pasteClipboard = (atX, atY)=>{
+    if(!_refClipboard.length) return;
+    const c = (atX!=null && atY!=null) ? {x:atX, y:atY} : _viewportCenterWorld();
+    /* クリップボード群のバウンディング（左上）を基準に貼付位置を揃える */
+    const minX = Math.min(..._refClipboard.map(x=>x.x));
+    const minY = Math.min(..._refClipboard.map(x=>x.y));
+    state.refSelection.clear();
+    for(const src of _refClipboard){
+      const copy = JSON.parse(JSON.stringify(src));
+      copy.id = _nextId();
+      copy.x = Math.round(c.x + (src.x - minX));
+      copy.y = Math.round(c.y + (src.y - minY));
+      workingItems.push(copy);
+      state.refSelection.add(copy.id);
+      scheduleItemSave(copy);
+    }
+    renderVisible();
+  };
+  /* v.114：レイヤー順変更（選択アイテムの it.z を更新）。 */
+  const _effZ = (it, i) => (it.z == null ? i : it.z);
+  const _allEffZ = () => workingItems.map((it,i)=>_effZ(it,i));
+  const bringSelectedToFront = ()=>{
+    const sels = Array.from(state.refSelection)
+      .map(id => workingItems.find(x=>x.id===id)).filter(Boolean);
+    if(!sels.length) return;
+    /* 選択アイテムの元の表示順（＝現在の effective z で昇順）を保ったまま最前面に積む */
+    const idxOf = new Map(workingItems.map((it,i)=>[it, i]));
+    sels.sort((a,b)=> _effZ(a, idxOf.get(a)) - _effZ(b, idxOf.get(b)));
+    let z = Math.max(0, ...workingItems.map((it,i)=>_effZ(it,i))) + 1;
+    for(const s of sels){ s.z = z++; scheduleItemSave(s); }
+    renderVisible();
+  };
+  const sendSelectedToBack = ()=>{
+    const sels = Array.from(state.refSelection)
+      .map(id => workingItems.find(x=>x.id===id)).filter(Boolean);
+    if(!sels.length) return;
+    const idxOf = new Map(workingItems.map((it,i)=>[it, i]));
+    sels.sort((a,b)=> _effZ(a, idxOf.get(a)) - _effZ(b, idxOf.get(b)));
+    let z = Math.min(0, ...workingItems.map((it,i)=>_effZ(it,i))) - sels.length;
+    for(const s of sels){ s.z = z++; scheduleItemSave(s); }
+    renderVisible();
+  };
+  const matchThumbSize = ()=>{
+    /* 選択中の画像／動画の w/h を、選択内「最初の画像」の w/h に揃える */
+    const sels = Array.from(state.refSelection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean).filter(x=>x.type==='image');
+    if(sels.length < 2){ toast('画像/動画を 2 件以上選択してください'); return; }
+    const ref = sels[0];
+    for(const s of sels){ s.w = ref.w; s.h = ref.h; scheduleItemSave(s); }
+    renderVisible();
+    toast(`${sels.length} 件のサイズを統一しました`);
+  };
+  vp.addEventListener('contextmenu',(e)=>{
+    if(!state.refEditMode) return;
+    e.preventDefault();
+    closeCtx();
+    const hit = hitTestItem(e.clientX, e.clientY);
+    if(hit && !state.refSelection.has(hit.id)){
+      state.refSelection.clear(); state.refSelection.add(hit.id);
+      renderVisible();
+    }
+    const hasSel = state.refSelection.size > 0;
+    const multiSel = state.refSelection.size >= 2;
+    const w = screenToWorld(e.clientX, e.clientY);
+    ctxEl = el('div','ref-ctx');
+    const r = vp.getBoundingClientRect();
+    ctxEl.style.left = (e.clientX - r.left + 4) + 'px';
+    ctxEl.style.top  = (e.clientY - r.top  + 4) + 'px';
+    const mk = (label, fn, disabled, hint)=>{
+      const it = el('div','cx-item'+(disabled?' disabled':''));
+      it.appendChild(document.createTextNode(label));
+      if(hint){ const h=el('span','cx-hint',hint); it.appendChild(h); }
+      if(!disabled) it.onclick = ()=>{ closeCtx(); try{ fn(); }catch(err){ console.warn(err); } };
+      ctxEl.appendChild(it);
+    };
+    /* v.101：整列はサブメニュー化（ホバーで右側に縦並び） */
+    const alignParent = el('div','cx-item cx-has-sub' + (multiSel?'':' disabled'));
+    alignParent.appendChild(document.createTextNode('整列'));
+    const alignArrow = el('span','cx-arrow','▶');
+    alignParent.appendChild(alignArrow);
+    const alignSub = el('div','cx-sub');
+    const mkSub = (label, axis)=>{
+      const si = el('div','cx-item');
+      si.appendChild(document.createTextNode(label));
+      si.onclick = (ev)=>{ ev.stopPropagation(); closeCtx(); try{ alignSelected(axis); }catch(err){ console.warn(err); } };
+      alignSub.appendChild(si);
+    };
+    mkSub('左揃え',  'left');
+    mkSub('右揃え',  'right');
+    mkSub('上揃え',  'top');
+    mkSub('下揃え',  'bottom');
+    mkSub('横中央',  'cx');
+    mkSub('縦中央',  'cy');
+    alignParent.appendChild(alignSub);
+    ctxEl.appendChild(alignParent);
+    ctxEl.appendChild(el('div','cx-sep'));
+    /* v.114：レイヤー順変更 */
+    mk('最前面へ', bringSelectedToFront, !hasSel);
+    mk('最背面へ', sendSelectedToBack,   !hasSel);
+    ctxEl.appendChild(el('div','cx-sep'));
+    mk('コピー',    copySelected,                  !hasSel, 'Ctrl+C');
+    mk('貼付',      ()=>pasteClipboard(w.x, w.y),  !_refClipboard.length, 'Ctrl+V');
+    ctxEl.appendChild(el('div','cx-sep'));
+    mk('サイズ統一（画像/動画）', matchThumbSize, !multiSel);
+    vp.appendChild(ctxEl);
+    /* 外クリックで閉じる */
+    setTimeout(()=>{
+      const closer = (ev)=>{ if(!ctxEl || !ctxEl.contains(ev.target)){ closeCtx(); window.removeEventListener('mousedown', closer, true); } };
+      window.addEventListener('mousedown', closer, true);
+    }, 0);
+  });
+  /* ---------- v.093：クリップボードペースト（Ctrl+V で画像貼付 or copySelected） ---------- */
+  const onRefPaste = async (e)=>{
+    if(state.projTab !== 'reference') return;
+    if(!state.refEditMode) return;
+    const cd = e.clipboardData;
+    if(!cd) return;
+    /* 画像を探す */
+    const files = [];
+    for(const it of (cd.items||[])){
+      if(it.kind === 'file' && String(it.type||'').startsWith('image/')){
+        const f = it.getAsFile();
+        if(f) files.push(f);
+      }
+    }
+    if(files.length){
+      e.preventDefault();
+      const c0 = _viewportCenterWorld();
+      let dx=0;
+      for(const f of files){
+        try{
+          const ext = (f.type==='image/png'?'.png':f.type==='image/webp'?'.webp':'.jpg');
+          const uid = _nextId();
+          const ref = await storage.putReferenceMedia(root.id, uid+ext, f);
+          if(!ref) continue;
+          let w=320,h=240;
+          try{
+            const url = URL.createObjectURL(f);
+            await new Promise((res)=>{ const img=new Image(); img.onload=()=>{ w=img.naturalWidth; h=img.naturalHeight; URL.revokeObjectURL(url); res(); }; img.onerror=()=>{ URL.revokeObjectURL(url); res(); }; img.src=url; });
+            const scale = Math.min(1, 480 / Math.max(w,h));
+            w = Math.round(w*scale); h = Math.round(h*scale);
+          }catch(_){}
+          insertItem({ type:'image', mediaRef:ref, mediaType:'image', label:'paste', w, h,
+            x: Math.round(c0.x + dx - w/2), y: Math.round(c0.y - h/2) });
+          dx += 30;
+        }catch(_){}
+      }
+      return;
+    }
+    /* v.108：クリップボードに URL（http:// or https:// で始まるテキスト）があれば
+       リンクアイテム（type:'text' + href）として挿入。編集 OFF 時にクリックで新タブで開く。 */
+    const text = cd.getData && cd.getData('text/plain');
+    if(text){
+      const trimmed = text.trim();
+      if(/^https?:\/\/[^\s]+$/i.test(trimmed)){
+        e.preventDefault();
+        const c = _viewportCenterWorld();
+        insertItemAt({
+          type:'text',
+          text: trimmed,
+          href: trimmed,
+          color: '#6fa8dc',
+          underline: true,
+          fontSize: 14,
+          w: Math.min(460, Math.max(240, trimmed.length * 8)),
+        }, c.x - 180, c.y - 10);
+        return;
+      }
+      /* v.113／v.119：URL ではない単純なテキストもクリップボードから貼付可能に。
+         v.120：外部クリップボードのテキストは内部クリップボードより優先する
+         （外で何かをコピーしたのに内部クリップボードが貼られる混乱を回避）。 */
+      e.preventDefault();
+      const c = _viewportCenterWorld();
+      const longest = trimmed.split(/\r?\n/).reduce((m,s)=>Math.max(m, s.length), 0);
+      const w = Math.min(560, Math.max(240, longest * 8));
+      insertItemAt({
+        type:'text',
+        text: trimmed,
+        fontSize: 16,
+        color: '#e8e8ec',
+        w,
+      }, c.x - w/2, c.y - 10);
+      return;
+    }
+    /* 画像・URL・平文テキストが無ければ内部クリップボードを貼付 */
+    if(_refClipboard.length){
+      e.preventDefault();
+      pasteClipboard();
+    }
+  };
+  const onRefCopy = (e)=>{
+    if(state.projTab !== 'reference') return;
+    if(!state.refEditMode) return;
+    if(!state.refSelection.size) return;
+    e.preventDefault();
+    copySelected();
+  };
+  document.addEventListener('paste', onRefPaste);
+  document.addEventListener('copy', onRefCopy);
+  state._refCleanup.push(()=>document.removeEventListener('paste', onRefPaste));
+  state._refCleanup.push(()=>document.removeEventListener('copy',  onRefCopy));
+  /* ---------- Zoom（ホイール） ---------- */
+  vp.addEventListener('wheel',(e)=>{
+    e.preventDefault();
+    cancelAnim(); /* アニメ中にホイールしたら即キャンセル */
+    const rect = vp.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    /* カーソル位置をワールド座標で保存 → scale 後にその点に戻るように tx/ty 調整 */
+    const worldX = (mx - view.tx) / view.scale;
+    const worldY = (my - view.ty) / view.scale;
+    const factor = e.deltaY < 0 ? 1.12 : (1/1.12);
+    const nextScale = Math.min(4, Math.max(0.05, view.scale * factor));
+    view.scale = nextScale;
+    view.tx = mx - worldX * nextScale;
+    view.ty = my - worldY * nextScale;
+    applyTransform();
+  }, { passive:false });
+  /* ---------- Ctrls ---------- */
+  const zoomAt = (factor) => {
+    cancelAnim();
+    const rect = vp.getBoundingClientRect();
+    const mx = rect.width/2, my = rect.height/2;
+    const worldX = (mx - view.tx) / view.scale;
+    const worldY = (my - view.ty) / view.scale;
+    view.scale = Math.min(4, Math.max(0.05, view.scale * factor));
+    view.tx = mx - worldX * view.scale;
+    view.ty = my - worldY * view.scale;
+    applyTransform();
+  };
+  zIn.onclick  = ()=>zoomAt(1.25);
+  zOut.onclick = ()=>zoomAt(1/1.25);
+  zFit.onclick = ()=>{cancelAnim();view.scale=1;applyTransform();};
+  zAll.onclick = ()=>{
+    cancelAnim();
+    /* 全アイテムのバウンディングボックスを計算して vp に収まる scale を決める */
+    if(!items.length) return;
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    for(const it of items){const x1=it.x,y1=it.y,x2=it.x+(it.w||400),y2=it.y+(it.h||100);if(x1<minX)minX=x1;if(y1<minY)minY=y1;if(x2>maxX)maxX=x2;if(y2>maxY)maxY=y2;}
+    const rect=vp.getBoundingClientRect();
+    const pad=60;
+    const sx=(rect.width - pad*2)/(maxX-minX);
+    const sy=(rect.height - pad*2)/(maxY-minY);
+    const s=Math.min(sx,sy,1);
+    view.scale=s;
+    view.tx = pad - minX*s;
+    view.ty = pad - minY*s;
+    applyTransform();
+  };
+  /* 初期描画（レイアウト確定後にサイズを拾って描画するため 1 tick ずらす） */
+  requestAnimationFrame(()=>applyTransform());
+  /* リサイズ時に再描画 */
+  const onResize = ()=>applyTransform();
+  window.addEventListener('resize', onResize);
+  state._refCleanup.push(()=>window.removeEventListener('resize', onResize));
+}
+/* 資料タブ：画像／動画の拡大モーダル（v.111）。
+   クリックで開く。ESC・背景クリック・× で閉じる。URL 解決は storage.getURLRetry。 */
+function openRefMediaModal(mediaRef, mediaType, label){
+  if(!mediaRef) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'ref-media-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;backdrop-filter:blur(6px)';
+  overlay.onclick = ()=>closeModal();
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = '×';
+  close.style.cssText = 'position:absolute;top:14px;right:20px;background:rgba(10,10,14,0.6);border:1px solid rgba(255,255,255,0.15);color:#fff;font-size:28px;line-height:1;cursor:pointer;padding:2px 14px;border-radius:8px;z-index:1';
+  close.onclick = (e)=>{ e.stopPropagation(); closeModal(); };
+  const media = (mediaType === 'video') ? document.createElement('video') : document.createElement('img');
+  media.style.cssText = 'max-width:92vw;max-height:92vh;object-fit:contain;box-shadow:0 20px 60px rgba(0,0,0,0.6);border-radius:6px;background:#0a0a0e';
+  if(mediaType === 'video'){ media.controls = true; media.autoplay = true; media.playsInline = true; }
+  else{ media.alt = label || ''; }
+  media.onclick = (e)=>e.stopPropagation();
+  /* v.121：動画はダブルクリックでフルスクリーン再生に。ESC で解除は browser 既定。 */
+  if(mediaType === 'video'){
+    media.addEventListener('dblclick',(e)=>{
+      e.stopPropagation();
+      try{
+        const r = media.requestFullscreen || media.webkitRequestFullscreen || media.msRequestFullscreen;
+        if(r) r.call(media);
+      }catch(_){}
+    });
+  }
+  overlay.appendChild(media);
+  overlay.appendChild(close);
+  document.body.appendChild(overlay);
+  const esc = (e)=>{ if(e.key === 'Escape'){ e.stopPropagation(); closeModal(); } };
+  window.addEventListener('keydown', esc, true);
+  function closeModal(){
+    /* フルスクリーン中なら先に抜けてからモーダルを閉じる */
+    try{ if(document.fullscreenElement){ document.exitFullscreen(); } }catch(_){}
+    try{ overlay.remove(); }catch(_){}
+    window.removeEventListener('keydown', esc, true);
+  }
+  storage.getURLRetry(mediaRef, 3).then(u=>{ if(u) media.src = u; }).catch(()=>{});
+}
+/* 資料タブ：アイテム 1 件分の DOM を生成するヘルパ */
+function _refBuildItem(it){
+  const n = el('div','ref-item ref-'+it.type);
+  n.style.left   = it.x + 'px';
+  n.style.top    = it.y + 'px';
+  if(it.w) n.style.width  = it.w + 'px';
+  if(it.h) n.style.height = it.h + 'px';
+  if(it.type === 'title'){
+    n.textContent = it.text || '';
+    if(it.fontSize) n.style.fontSize = it.fontSize + 'px';
+    if(it.color)    n.style.color    = it.color;
+    if(it.bold)      n.style.fontWeight = '700';
+    if(it.underline) n.style.textDecoration = 'underline';
+  }else if(it.type === 'text'){
+    /* v.092：フリーテキスト。改行対応・word-break あり */
+    n.textContent = it.text || '';
+    n.style.fontSize = (it.fontSize || 16) + 'px';
+    if(it.color)     n.style.color = it.color;
+    if(it.bold)      n.style.fontWeight = '700';
+    if(it.underline) n.style.textDecoration = 'underline';
+    /* v.108：href 付きなら編集 OFF 時にクリックで別タブで開く（リンクアイテム）。
+       v.125：ノードキャッシュ対応のため、ハンドラは常に設置し、クリック時に editMode を見て分岐。
+       ビルド時だけ `!editMode` で設置する従来実装だと、edit→非 edit 切替時にハンドラが無く不発になることがあった。 */
+    if(it.href){
+      n.title = it.href;
+      n.onclick = (ev)=>{
+        if(state.refEditMode) return; /* 編集中はクリック＝選択・移動を優先 */
+        ev.stopPropagation();
+        try{ window.open(it.href, '_blank', 'noopener,noreferrer'); }catch(_){}
+      };
+    }
+  }else if(it.type === 'image'){
+    /* v.092：実データがあれば img タグで表示。無ければ従来の placeholder。
+       video タイプも同枠で扱う（mediaType:'video' + mediaRef）。 */
+    if(it.mediaRef){
+      const inner = (it.mediaType === 'video')
+        ? el('video') : el('img');
+      inner.setAttribute(it.mediaType === 'video' ? 'muted':'alt', it.mediaType === 'video' ? 'muted' : (it.label||''));
+      if(it.mediaType !== 'video'){ inner.decoding = 'async'; inner.loading = 'lazy'; }
+      inner.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:7px;display:block';
+      if(it.mediaType === 'video'){
+        /* v.121：キャンバス上の動画は「静止サムネ」として扱い、クリックでモーダルで再生する。
+           controls は付けない（タイル上で誤って再生されるのを防ぐ）。 */
+        inner.muted = true; inner.playsInline = true;
+        if(it.thumbDataUrl) inner.poster = it.thumbDataUrl;
+        inner.preload = 'metadata';
+      }
+      /* v.144：onerror フォールバックで blob URL 失効時に再取得（urlCache の LRU 上限 250 で
+         evict → URL.revokeObjectURL された URL を参照していると画像が切れるため）。
+         再試行は 2 回までで無限ループを防ぐ。 */
+      let _mediaRetry = 0;
+      const _reloadMedia = ()=>{
+        storage.getURLRetry(it.mediaRef, 3).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
+      };
+      inner.onerror = ()=>{ if(++_mediaRetry > 2) return; _reloadMedia(); };
+      _reloadMedia();
+      n.appendChild(inner);
+      /* v.121：動画も画像と同じ扱いに統一。編集 OFF＝シングルクリックでモーダル再生／編集 ON＝ダブルクリック。 */
+      let _down=null, _moved=false;
+      inner.addEventListener('mousedown',(ev)=>{ _down={x:ev.clientX,y:ev.clientY}; _moved=false; });
+      inner.addEventListener('mousemove',(ev)=>{ if(_down && (Math.abs(ev.clientX-_down.x)>3 || Math.abs(ev.clientY-_down.y)>3)) _moved=true; });
+      inner.addEventListener('click',(ev)=>{
+        if(state.refEditMode) return;
+        if(_moved){ _down=null; return; }
+        ev.stopPropagation();
+        openRefMediaModal(it.mediaRef, it.mediaType, it.label);
+        _down=null;
+      });
+      inner.style.cursor = state.refEditMode ? '' : 'zoom-in';
+      n.addEventListener('dblclick',(ev)=>{
+        ev.stopPropagation();
+        openRefMediaModal(it.mediaRef, it.mediaType, it.label);
+      });
+      /* v.121：動画タイルに ▶ 再生アイコン・オーバーレイを重ねる */
+      if(it.mediaType === 'video'){
+        const ov = el('div','ref-video-play-overlay');
+        ov.innerHTML = '<svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true"><circle cx="24" cy="24" r="22" fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.6)" stroke-width="1.5"/><path d="M19 15 L35 24 L19 33 Z" fill="#fff"/></svg>';
+        ov.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;border-radius:7px';
+        n.appendChild(ov);
+      }
+    }else{
+      const ph = el('div','ref-image-ph');
+      ph.appendChild(el('div','ic','🖼'));
+      ph.appendChild(el('div','lb',it.label||''));
+      n.appendChild(ph);
+    }
+  }else if(it.type === 'shape'){
+    /* v.092：図形（rect / circle）。border 色・background（透明度は inline で bg alpha に反映） */
+    n.classList.add('shape-'+(it.shape||'rect'));
+    const col = it.color || '#4a9eff';
+    n.style.borderColor = col;
+    const alpha = (typeof it.opacity === 'number') ? Math.max(0, Math.min(1, it.opacity)) : 0.15;
+    const hex = String(col).replace('#','');
+    const r = parseInt(hex.slice(0,2),16)||74, g = parseInt(hex.slice(2,4),16)||158, b = parseInt(hex.slice(4,6),16)||255;
+    n.style.background = `rgba(${r},${g},${b},${alpha})`;
+  }else if(it.type === 'group'){
+    if(it.color){
+      n.style.borderColor = it.color;
+      n.style.background = (function(hex,a){const m=/^#?([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})/.exec(hex||'')||[];return 'rgba('+parseInt(m[1]||'7a',16)+','+parseInt(m[2]||'7a',16)+','+parseInt(m[3]||'90',16)+','+a+')'})(it.color, 0.04);
+    }
+    if(it.label){
+      const lbl=el('div','ref-group-lbl',it.label);
+      lbl.style.color = it.color||'var(--accent)';
+      lbl.style.borderColor = it.color||'var(--border)';
+      lbl.style.border = '1px solid '+(it.color||'var(--border)');
+      n.appendChild(lbl);
+    }
+  }
+  return n;
+}
 /* サブミットタブ：作成済みサブミットの一覧（クリックで右側スライドに表示） */
 function renderProjSubmits(main,root){
   const lab=el('div','section-label');lab.appendChild(el('span',null,'サブミット'));
   const acts=el('div','acts');
+  /* v.084：パブリッシュボタン（＋サブミット作成の左）。
+     OK ショットの最新動画を publish/YYYY-MM-DD/ に一括コピー（フォルダ運用）または
+     1 件ずつダウンロード（R2 運用）する。先方提出用。 */
+  const pubBtn=el('button','btn btn-ghost btn-sm','📤 パブリッシュ');
+  pubBtn.title='OK ショットの最新動画を一括で publish/YYYY-MM-DD/ にコピー（フォルダ運用）／順次ダウンロード（R2 運用）';
+  pubBtn.onclick=()=>openPublishModal(root);
+  acts.appendChild(pubBtn);
   const add=el('button','btn btn-ghost btn-sm','＋ サブミット作成');add.onclick=()=>openSubmitCreate();acts.appendChild(add);
   lab.appendChild(acts);main.appendChild(lab);
   const list=(DB.submits||[]).filter(s=>s.projectId===root.id).slice().reverse();
@@ -6279,6 +7902,210 @@ function renderProjSubmits(main,root){
     w.appendChild(it);
   }
   main.appendChild(w);
+}
+/* v.084／v.085：パブリッシュ機能。指定したステータスのショットの最新動画をチェックボックス選択で
+   publish/YYYY-MM-DD/ に一括コピー（フォルダ運用）／順次ダウンロード（R2 運用）。
+   ファイル名は元の v.name（＋拡張子を補完）。元ファイル名そのまま。先方提出用。
+   v.085：ステータスを固定（OK のみ）せずプルダウンで選択。既定は「最初の完了系ステータス」
+   （通常は社内OK）を選択。例外（例：クライアントOK待ちだけ出す等）にも対応する。
+   書き込み境界：
+     - フォルダ運用：プロジェクトフォルダ配下の publish/YYYY-MM-DD/ に新規ファイルを書き込む（新規サブディレクトリ）
+     - R2 運用：R2 には書き込まない（ブラウザからクライアントダウンロードのみ）
+     - 既存の shots/, status/, submits/ 等への副作用なし。persist() は呼ばない。 */
+function openPublishModal(root){
+  if(!root){toast('プロジェクトが選択されていません');return}
+  const backend=storage._backend(root.id); /* 'folder' | 'r2' */
+  const today=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  const dateStr=`${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+  const subDir='publish/'+dateStr;
+  /* プロジェクトの全ステータス（表示順）。 */
+  const allStatuses=projStatuses(root)||[];
+  /* 初期選択：最初の「完了系」ステータス（isDoneStatus 真）。見つからなければ先頭を使う。 */
+  let pickedStatusId=null;
+  for(const s of allStatuses){ if(s && s.id && isDoneStatus(root, s.id)){ pickedStatusId=s.id; break; } }
+  if(!pickedStatusId && allStatuses.length){ pickedStatusId=allStatuses[0].id; }
+  /* 対象ショット一覧を構築（ステータスでフィルタ、ショット順＝shotsOf、動画のあるショットのみ） */
+  const shots=shotsOf(root);
+  const buildRows=(statusId)=>{
+    const rs=[];
+    const matched=shots.filter(sh => nodeStatus(sh) === statusId);
+    for(const sh of matched){
+      const lv=latestVideoVersionUnder(sh.id);
+      if(!lv || lv.v.type!=='video' || !lv.v.file) continue;
+      rs.push({shotId:sh.id, shotName:sh.name, stageNode:lv.node, v:lv.v});
+    }
+    return rs;
+  };
+  openModal(body=>{
+    const inner=mHead(body,'📤 カットをパブリッシュ',root.name||'');
+    /* 運用モード・出力先の表示 */
+    const info=el('div');info.style.cssText='display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);font-size:12px;color:var(--text2);margin-bottom:12px';
+    const modeChip=el('span');modeChip.style.cssText='padding:3px 10px;border-radius:10px;font-weight:700;font-size:11px;letter-spacing:.5px';
+    if(backend==='r2'){
+      modeChip.textContent='R2 運用';modeChip.style.background='rgba(140,180,240,.14)';modeChip.style.color='#8cb4f0';modeChip.style.border='1px solid rgba(140,180,240,.34)';
+      info.appendChild(modeChip);
+      const desc=el('span');desc.innerHTML='選択したカットを<b>ブラウザから 1 ファイルずつダウンロード</b>します（元ファイル名そのまま）。';info.appendChild(desc);
+    }else{
+      modeChip.textContent='フォルダ運用';modeChip.style.background='rgba(127,191,154,.14)';modeChip.style.color='#7fbf9a';modeChip.style.border='1px solid rgba(127,191,154,.34)';
+      info.appendChild(modeChip);
+      const desc=el('span');desc.innerHTML='プロジェクトフォルダ配下の <code>'+subDir+'/</code> に一括コピーします（元ファイル名そのまま）。';info.appendChild(desc);
+    }
+    inner.appendChild(info);
+    /* ステータス選択プルダウン */
+    const stRow=el('div');stRow.style.cssText='display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px';
+    const stLbl=el('span');stLbl.textContent='抽出ステータス：';stLbl.style.cssText='font-size:12px;color:var(--text2);font-weight:600';
+    stRow.appendChild(stLbl);
+    const stSel=document.createElement('select');
+    stSel.className='form-input';
+    stSel.style.cssText='padding:6px 10px;font-size:12px;min-width:180px';
+    for(const s of allStatuses){
+      if(!s||!s.id) continue;
+      const o=document.createElement('option');o.value=s.id;o.textContent=s.label||s.id;
+      if(s.id===pickedStatusId) o.selected=true;
+      stSel.appendChild(o);
+    }
+    stRow.appendChild(stSel);
+    const stHint=el('span');stHint.style.cssText='font-size:11px;color:var(--text3)';
+    stHint.textContent='（既定は最初の完了系ステータス）';
+    stRow.appendChild(stHint);
+    inner.appendChild(stRow);
+    /* 全選択・全解除・件数 */
+    const topBar=el('div');topBar.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap';
+    const selAll=el('button','btn btn-ghost btn-sm','☑ 全選択');
+    const selNone=el('button','btn btn-ghost btn-sm','☐ 全解除');
+    const counter=el('span');counter.style.cssText='font-size:11px;color:var(--text3);margin-left:auto';
+    topBar.appendChild(selAll);topBar.appendChild(selNone);topBar.appendChild(counter);
+    inner.appendChild(topBar);
+    /* ショット一覧テーブル（ステータス変更で再描画） */
+    const listWrap=el('div');listWrap.style.cssText='max-height:46vh;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius2);background:var(--bg2);min-height:40px';
+    inner.appendChild(listWrap);
+    /* 進捗表示エリア（実行中に展開） */
+    const progWrap=el('div');progWrap.style.cssText='display:none;margin-top:12px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);font-size:12px;color:var(--text2)';
+    inner.appendChild(progWrap);
+    /* フッターボタン */
+    const cancel=el('button','btn btn-ghost','閉じる');cancel.onclick=closeModal;
+    const run=el('button','btn btn-primary','パブリッシュ実行');
+    mFoot(body,[cancel,run]);
+    const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    let checks=[]; /* [{row, cb, data}] — 一覧再描画のたびに作り直し */
+    let currentRows=[];
+    const updateCounter=()=>{
+      const n=checks.filter(x=>x.cb.checked).length;
+      counter.textContent=`選択 ${n} / ${currentRows.length} 件`;
+    };
+    const renderList=()=>{
+      currentRows=buildRows(pickedStatusId);
+      checks=[];
+      listWrap.innerHTML='';
+      if(!currentRows.length){
+        const empty=el('div','empty','選択ステータスに該当する動画つきショットがありません。');
+        empty.style.cssText='padding:14px 12px;color:var(--text3);text-align:center;font-size:12px';
+        listWrap.appendChild(empty);
+        run.disabled=true;
+        selAll.disabled=true;selNone.disabled=true;
+        updateCounter();
+        return;
+      }
+      run.disabled=false;
+      selAll.disabled=false;selNone.disabled=false;
+      const list=el('div');list.style.cssText='display:flex;flex-direction:column';
+      currentRows.forEach((r, idx)=>{
+        const row=el('div');row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)';
+        if(idx===currentRows.length-1) row.style.borderBottom='0';
+        const cb=document.createElement('input');cb.type='checkbox';cb.checked=true;
+        cb.style.cssText='width:16px;height:16px;flex-shrink:0;cursor:pointer';
+        cb.onchange=updateCounter;
+        row.appendChild(cb);
+        const info2=el('div');info2.style.cssText='flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;overflow:hidden';
+        const nameRow=el('div');nameRow.style.cssText='font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        nameRow.textContent=r.shotName;
+        info2.appendChild(nameRow);
+        const metaRow=el('div');metaRow.style.cssText='font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        metaRow.textContent=(r.stageNode.name||'')+'  ·  '+(r.v.name||'(無名)');
+        info2.appendChild(metaRow);
+        row.appendChild(info2);
+        /* ステータス色付きバッジ */
+        const stBadge=el('span');
+        const sInfo=stInfo(r.stageNode);
+        stBadge.textContent=sInfo.label||'—';
+        stBadge.style.cssText=`font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;background:${hexA(sInfo.color,.18)};color:${sInfo.color};border:1px solid ${sInfo.color}55;flex-shrink:0`;
+        row.appendChild(stBadge);
+        list.appendChild(row);
+        checks.push({row, cb, data:r});
+      });
+      listWrap.appendChild(list);
+      updateCounter();
+    };
+    renderList();
+    stSel.onchange=()=>{pickedStatusId=stSel.value; renderList();};
+    selAll.onclick=()=>{for(const x of checks){x.cb.checked=true}updateCounter()};
+    selNone.onclick=()=>{for(const x of checks){x.cb.checked=false}updateCounter()};
+    run.onclick=async ()=>{
+      const picks=checks.filter(x=>x.cb.checked).map(x=>x.data);
+      if(!picks.length){toast('チェックされているショットがありません');return}
+      run.disabled=true;cancel.disabled=true;selAll.disabled=true;selNone.disabled=true;stSel.disabled=true;
+      for(const c of checks){c.cb.disabled=true}
+      progWrap.style.display='';
+      progWrap.innerHTML='';
+      const line=el('div');line.textContent='準備中…';progWrap.appendChild(line);
+      const result=await _publishExecute(root, picks, subDir, backend, (msg)=>{line.textContent=msg});
+      line.textContent=`完了：成功 ${result.ok} 件 / 失敗 ${result.fail} 件`;
+      if(backend==='folder' && result.ok>0){
+        const hint=el('div');hint.style.cssText='margin-top:6px;color:var(--text3);font-size:11px';
+        hint.innerHTML='出力先：<code>'+esc(subDir)+'/</code>（プロジェクトフォルダ配下）';
+        progWrap.appendChild(hint);
+      }
+      cancel.disabled=false;
+      cancel.textContent='閉じる';
+    };
+  }, true);
+}
+/* パブリッシュ実行本体。選択されたショットを順次処理する。
+   - backend='folder'：storage.putMedia('publish/YYYY-MM-DD', fn, blob, {projectId}) で書き込み
+   - backend='r2'：Blob を取ってブラウザからダウンロード（a[download]）、R2 への書き込みはしない
+   onProgress(msg) で進捗を UI に反映。戻り値：{ok, fail}。 */
+async function _publishExecute(root, picks, subDir, backend, onProgress){
+  let ok=0, fail=0;
+  const total=picks.length;
+  let i=0;
+  for(const r of picks){
+    i++;
+    const label=`[${i}/${total}] ${r.shotName}（${r.v.name||'(無名)'}）`;
+    if(typeof onProgress==='function') onProgress('コピー中：'+label);
+    try{
+      const url=await storage.getURLRetry(r.v.file,3);
+      if(!url){ fail++; if(typeof onProgress==='function') onProgress('ファイル取得失敗：'+label); continue; }
+      const blob=await (await fetch(url)).blob();
+      /* 元ファイル名そのまま。v.name にユーザーが登録した名前を優先、拡張子は ref か MIME から補完。 */
+      let base=String(r.v.name||'').replace(/[\\/:*?"<>|\n\r\t]+/g,'_').replace(/\s+/g,' ').trim()||('shot_'+r.shotId.slice(0,8));
+      let ext='';
+      const m=String(r.v.file).match(/(\.[A-Za-z0-9]+)$/);
+      if(m) ext=m[1];
+      else{
+        const MT={'video/mp4':'.mp4','video/quicktime':'.mov','video/webm':'.webm','image/jpeg':'.jpg','image/png':'.png'};
+        ext=MT[((blob&&blob.type)||'').toLowerCase()] || '.mp4';
+      }
+      if(ext && base.toLowerCase().endsWith(ext.toLowerCase())) ext='';
+      const filename=base+ext;
+      if(backend==='r2'){
+        /* クライアントダウンロード（1 ファイルずつ） */
+        const dlurl=URL.createObjectURL(blob);
+        const a=document.createElement('a');a.href=dlurl;a.download=filename;a.rel='noopener';
+        document.body.appendChild(a);a.click();a.remove();
+        setTimeout(()=>{try{URL.revokeObjectURL(dlurl)}catch(_){}}, 60000);
+        ok++;
+      }else{
+        /* フォルダ運用：publish/YYYY-MM-DD/ に書き込み */
+        const ref=await storage.putMedia(subDir, filename, blob, {projectId: root.id});
+        if(ref) ok++; else fail++;
+      }
+    }catch(e){
+      fail++;
+      if(typeof onProgress==='function') onProgress('エラー：'+label+' / '+(e&&e.message||''));
+    }
+  }
+  return {ok, fail};
 }
 /* チェック待ちタブ：チェック担当者ごと＋未割り当てで、チェック待ち（未完了）の工程（ショット）をタブ切替表示 */
 const CHK_NONE='__none__';
@@ -6597,8 +8424,9 @@ function renderProjShots(main,cur){
       if(lv.v.thumb){const img=el('img');img.dataset.ref=lv.v.thumb;th.appendChild(img)} /* ポスター（ホバー前・停止時） */
       if(lv.v.file&&!isOmit){const vid=el('video','tvid');vid.dataset.vref=lv.v.file;vid.muted=true;vid.loop=true;vid.playsInline=true;vid.setAttribute('muted','');vid.preload='none';vid.disablePictureInPicture=true;th.appendChild(vid)} /* ホバーで元解像度再生（オミットは重ねるので不要） */
     }else th.appendChild(thumbPh());
-    /* オミット：サムネはそのまま（グレーアウトはCSS）、オミット猫をオーバーレイ */
-    if(isOmit){const ov=el('div','omit-ov');const cat=el('img','omit-cat');cat.src=OMIT_CAT_IMG;cat.alt='オミット';ov.appendChild(cat);th.appendChild(ov);}
+    /* v.005：オミット猫のオーバーレイは撤去（インライン base64 画像が粗く見た目が悪いため）。
+       オミットの視認性は CSS 側（`.pm-tile.omit .th>img { grayscale(1) brightness(.42) }` ＋ `.bd{opacity:.72}`）
+       のグレーアウトのみで担保する。 */
     /* 動画・サムネ部分（th）のクリック：縦並び行と同じで、ショットページ（タブ）追加＝go に振る。
        選択モード中／Ctrl・Meta クリックは通常のタイル onclick（下）と同じ選択トグルを通す。
        これによりタイル枠クリック＝右スライド、動画部クリック＝タブ追加、の 2 挙動が両立する。 */
@@ -10522,6 +12350,71 @@ function openConnectModal(){
       }
       r2Host.appendChild(grid);
     })();
+    /* v.126：Firestore 同期済み NAS プロジェクト一覧（Lv.3 暗号化）
+       v.134：🔄 更新ボタンでログインし直さず新規招待を取り込める。 */
+    inner.appendChild(el('div','divider'));
+    /* v.139：2 セクション構成に分割。
+       - 招待されたプロジェクト（未参加）：connectedAt 無し
+       - 過去に参加していたプロジェクト   ：connectedAt あり（REG に無いもの）
+       既に REG にあるものは両方から除外。 */
+    const nasHd=el('div');nasHd.style.cssText='display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:6px';
+    const nasRe=el('button','btn btn-ghost btn-sm','🔄 更新');nasRe.title='新規招待・削除指示を再取得して一覧を更新';
+    nasRe.style.cssText='padding:2px 10px;font-size:11px';
+    nasHd.appendChild(nasRe);
+    inner.appendChild(nasHd);
+    const _folderSvg='<svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M2 6a1 1 0 0 1 1-1h4l2 2h8a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6z"/></svg>';
+    const _mkSection=(title)=>{
+      const lbl=el('div','form-label');lbl.style.cssText='margin:4px 0 4px;display:flex;align-items:center;gap:6px';
+      lbl.innerHTML=_folderSvg+'<span>'+title+'</span>';
+      inner.appendChild(lbl);
+      const host=el('div');host.style.cssText='margin-bottom:14px;min-height:40px';
+      inner.appendChild(host);
+      return host;
+    };
+    const inviteHost = _mkSection('招待されたプロジェクト（未参加）');
+    const pastHost   = _mkSection('過去に参加していたプロジェクト');
+    async function _reloadNasList(){
+      inviteHost.innerHTML=''; pastHost.innerHTML='';
+      if(!authUser || !authUser.email || !window.__laynaFB || !window.__laynaFB.listFolderProjects){
+        const em=el('div','form-label','（Google ログイン後に利用可能）');em.style.color='var(--text3)';
+        inviteHost.appendChild(em);return;
+      }
+      const l1=el('div','form-label','読み込み中...');l1.style.color='var(--text3)';inviteHost.appendChild(l1);
+      const list=await window.__laynaFB.listFolderProjects(authUser.email);
+      l1.remove();
+      /* REG にあるもの（＝ホーム表示中）は両セクションから除外 */
+      const remaining = list.filter(p => !REG.some(e=>e.id===p.pid));
+      const invited = remaining.filter(p => !p.connectedAt);
+      const past    = remaining.filter(p =>  p.connectedAt);
+      const mkGrid=(items, host, emptyMsg)=>{
+        if(!items.length){
+          const em=el('div','form-label',emptyMsg);em.style.color='var(--text3)';host.appendChild(em);return;
+        }
+        const grid=el('div','proj-grid');
+        grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:4px';
+        for(const p of items) grid.appendChild(_nasTile(p));
+        host.appendChild(grid);
+      };
+      mkGrid(invited, inviteHost, '（新規招待はありません）');
+      mkGrid(past,    pastHost,   '（過去に参加したプロジェクトはありません。下の「フォルダを選択」から新規接続すると、他端末やキャッシュ消失後の再参加時にここに表示されます）');
+    }
+    _reloadNasList();
+    nasRe.onclick=async()=>{
+      nasRe.disabled=true;nasRe.textContent='更新中…';
+      try{
+        if(window.__laynaFB && window.__laynaFB.redeemAllFolderInvites && authUser && authUser.email){
+          const r=await window.__laynaFB.redeemAllFolderInvites(authUser.email);
+          const n=(r && r.redeemed)||0;
+          if(n>0) try{ toast('NAS プロジェクト招待を '+n+' 件受理しました'); }catch(_){}
+        }
+        if(window.__laynaFB && window.__laynaFB.redeemAllFolderRevocations && authUser && authUser.email){
+          const n2=await window.__laynaFB.redeemAllFolderRevocations(authUser.email);
+          if(n2>0) try{ toast('NAS プロジェクト参加解除を '+n2+' 件適用しました'); }catch(_){}
+        }
+      }catch(_){}
+      await _reloadNasList();
+      nasRe.disabled=false;nasRe.textContent='🔄 更新';
+    };
     /* 区切り＋ローカルフォルダ */
     inner.appendChild(el('div','divider'));
     const lfLabel=el('div','form-label');lfLabel.style.cssText='display:flex;align-items:center;gap:6px';
@@ -10598,6 +12491,85 @@ async function _r2Tile(p){
     const ok=await connectR2ProjectById(pid);
     if(ok){closeModal();render();resolveThumbs()}
     else{card.style.pointerEvents='';card.style.opacity=''}
+  };
+  return card;
+}
+/* v.126：Firestore 同期済み NAS プロジェクトのタイル（Lv.3 暗号化）
+   クリックすると「このフォルダ名で選択してください」と案内 → ピッカーを起動。
+   ブラウザは NAS パスを自動展開できないため、最終的にユーザー側のピッカー操作で確定する。
+   REG に既にあれば「接続済み」バッジ。長押し／右クリックで削除は Phase 2 で検討。 */
+function _nasTile(p){
+  /* v.129：媒体エリア（.proj-media の大アイコン枠）は無し。テキストのみのコンパクトカード。 */
+  const card=el('div','proj-card nas-tile'); card.style.cssText='cursor:pointer;position:relative;padding:12px 14px;min-height:0';
+  const foot=el('div','proj-foot');
+  const nameLine=el('div','proj-name', p.name||p.pid);
+  foot.appendChild(nameLine);
+  const meta=el('div','proj-meta');
+  const isConnected=REG.some(e=>e.id===p.pid);
+  if(isConnected){
+    meta.appendChild(el('span','mp-badge active','接続済み'));
+  }else{
+    /* v.143：NAS 専用ではなくローカル／社内共有フォルダ全般なので「ローカル」バッジに */
+    const b=el('span','mp-badge'); b.textContent='ローカル';
+    meta.appendChild(b);
+  }
+  foot.appendChild(meta);
+  /* v.131：フルパス（pathHint）があればそれを 1 行で表示（折返し可）。
+     無ければフォルダ名（folderHint）を控えめに表示。両方無ければ何も出さない。
+     v.132：行をクリックするとパスをクリップボードにコピー（card の onclick＝ピッカー起動は呼ばれない）。 */
+  const _display = p.pathHint || p.folderHint;
+  if(_display){
+    const pa=el('div','proj-pathhint');
+    pa.style.cssText='margin-top:6px;font-family:var(--font-code);font-size:11px;color:var(--text2);word-break:break-all;line-height:1.4;display:flex;align-items:flex-start;gap:6px';
+    /* v.135：無彩色フォルダ SVG（currentColor でテーマに追従） */
+    const ico=el('span');ico.style.cssText='flex:0 0 auto;display:inline-flex;align-items:center;margin-top:1px';
+    ico.innerHTML='<svg viewBox="0 0 20 20" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6a1 1 0 0 1 1-1h4l2 2h8a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6z"/></svg>';
+    const txt=el('span',null,_display);txt.style.flex='1 1 auto';
+    const cp=el('button',null,'コピー');
+    cp.title='パスをクリップボードにコピー';
+    cp.style.cssText='flex:0 0 auto;background:rgba(10,10,14,0.6);border:1px solid var(--border);color:var(--text2);font-size:10px;padding:2px 7px;border-radius:5px;cursor:pointer;font-family:inherit;transition:background .12s ease, border-color .12s ease, color .12s ease';
+    /* v.133：ホバーハイライト（インラインスタイル用に mouseenter/leave で切替） */
+    cp.addEventListener('mouseenter',()=>{ cp.style.background='var(--bg3)'; cp.style.borderColor='var(--accent)'; cp.style.color='var(--text)'; });
+    cp.addEventListener('mouseleave',()=>{ cp.style.background='rgba(10,10,14,0.6)'; cp.style.borderColor='var(--border)'; cp.style.color='var(--text2)'; });
+    cp.onclick=async(ev)=>{
+      ev.stopPropagation();
+      try{
+        await navigator.clipboard.writeText(_display);
+        const _orig=cp.textContent; cp.textContent='✓ コピーしました';
+        setTimeout(()=>{try{cp.textContent=_orig}catch(_){}},1200);
+      }catch(_){
+        /* execCommand フォールバック */
+        try{
+          const ta=document.createElement('textarea');ta.value=_display;
+          ta.style.cssText='position:fixed;left:-9999px;top:0';
+          document.body.appendChild(ta);ta.select();document.execCommand('copy');
+          document.body.removeChild(ta);
+          cp.textContent='✓ コピーしました';setTimeout(()=>{try{cp.textContent='コピー'}catch(_){}},1200);
+        }catch(e){ toast('コピーに失敗しました'); }
+      }
+    };
+    pa.appendChild(ico);pa.appendChild(txt);pa.appendChild(cp);
+    pa.title=_display+'（クリックでパスをコピー）';
+    foot.appendChild(pa);
+  }
+  card.appendChild(foot);
+  /* 削除ボタン（右上） */
+  const del=el('button','proj-del','×');
+  del.title='この端末 Firestore 履歴から削除（他端末からも消える）';
+  del.style.cssText='position:absolute;top:4px;right:4px;background:rgba(10,10,14,0.72);border:1px solid var(--border);color:var(--text2);width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;padding:0;z-index:2';
+  del.onclick=async(e)=>{
+    e.stopPropagation();
+    if(!confirm('「'+(p.name||p.pid)+'」を Firestore 参加履歴から削除しますか？\nローカルの接続（REG）は影響を受けません。'))return;
+    const ok=await window.__laynaFB.delFolderProject(authUser.email, p.pid);
+    if(ok){ card.remove(); toast('履歴から削除しました'); }
+    else{ toast('削除に失敗しました'); }
+  };
+  card.appendChild(del);
+  card.onclick=async()=>{
+    if(isConnected){ toast('既に接続されています。ホームから開いてください'); return; }
+    toast('フォルダピッカーで「'+(p.folderHint||p.name)+'」を選んでください');
+    closeModal();
+    connectProjectFlow();
   };
   return card;
 }
@@ -12091,7 +14063,110 @@ function openMembersWindow(root){
   d.body.appendChild(hd);
   const wrap=ce('div','wrap');d.body.appendChild(wrap);
   wrap.appendChild(ce('div','muted','担当割り当て・メンション・ロールに使うプロジェクトのメンバー名簿です。共有フォルダの laycat.project.json に保存され、フォルダを共有する全員に反映されます。ID にはメールアドレス（認証と一致する安定ID）を推奨します。ロールはカンマ区切り（例: director, animator）。'));
+  /* v.130：NAS パスヒント入力（任意）。参加側メンバーが NAS フォルダを探すときの道案内メモ。
+     ここに入力した文字列は暗号化されてメンバーの laycatUserPrivate.folderProjects にも乗る。
+     ブラウザ API 上はフルパスを自動入手できないので、手入力で UNC パス等を書く形。 */
+  const phBox=ce('div');phBox.style.cssText='margin:10px 0 14px;padding:10px 12px;background:#15151a;border:1px solid #2a2a2f;border-radius:8px';
+  phBox.appendChild(ce('div',null,'NAS パスヒント（任意・メンバーへの道案内）'));
+  const phBoxLabel=phBox.firstChild;phBoxLabel.style.cssText='font-size:11px;color:#8a8a99;letter-spacing:.3px;margin-bottom:6px';
+  const phIn=d.createElement('input');phIn.type='text';phIn.value=String(root.pathHint||'');
+  phIn.placeholder='例：\\\\nas01\\projects\\KaraokeMV_Ep3';
+  phIn.style.cssText='width:100%;box-sizing:border-box;background:#1c1c1f;border:1px solid #2a2a2f;border-radius:6px;color:#e8e8ec;padding:6px 8px;font-size:12px;font-family:ui-monospace,"SF Mono",Menlo,monospace';
+  phBox.appendChild(phIn);
+  phBox.appendChild(ce('div','muted','参加側はピッカーで自分で選び直す必要がありますが、このメモが「どこを探せばいいか」の目印になります。ブラウザ API の制約でフルパスは自動取得できないため手入力です。'));
+  wrap.appendChild(phBox);
   const tbl=ce('table');wrap.appendChild(tbl);
+
+  /* v.134：未受理招待の可視化（Phase 3 #1）。
+     自分が発行した招待のうち、相手がまだログインしていないもの一覧。失効も表示。
+     「取消」ボタンで Firestore レコードを削除。 */
+  const pendWrap=ce('div');pendWrap.style.cssText='margin-top:20px;padding-top:16px;border-top:1px solid #23232a';
+  const pendH=ce('div',null,'📨 未受理の招待');pendH.style.cssText='font-size:13px;font-weight:700;color:#e8e8ec;margin-bottom:6px';
+  pendWrap.appendChild(pendH);
+  const pendMuted=ce('div','muted','このプロジェクトの NAS 招待のうち、相手がまだログインしていない or 削除指示待ちのレコードを一覧表示します。「取消」で招待レコードを消せます。');
+  pendWrap.appendChild(pendMuted);
+  const pendList=ce('div');pendList.style.cssText='display:flex;flex-direction:column;gap:6px';
+  pendWrap.appendChild(pendList);
+  wrap.appendChild(pendWrap);
+
+  async function _refreshPendingInvites(){
+    pendList.innerHTML='';
+    if(!window.__laynaFB || !window.__laynaFB.listPendingFolderInvites || !authUser || !authUser.email){
+      const em=ce('div','muted','（Google ログイン後に利用可能）');pendList.appendChild(em);return;
+    }
+    const loading=ce('div','muted','読み込み中…');pendList.appendChild(loading);
+    const invites=await window.__laynaFB.listPendingFolderInvites(authUser.email, {pid:root.id});
+    loading.remove();
+    if(!invites.length){
+      const em=ce('div','muted','（未受理の招待はありません）');pendList.appendChild(em);return;
+    }
+    for(const inv of invites){
+      const row=ce('div');row.style.cssText='display:flex;align-items:center;gap:10px;padding:7px 10px;background:#15151a;border:1px solid #2a2a2f;border-radius:7px';
+      const em=ce('div',null,(inv.byEmail ? '→ ' : '')+String(inv.toEmailKey||'').replace(/_/g,'.'));em.style.cssText='flex:1 1 auto;font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12px;color:#e8e8ec;word-break:break-all';
+      row.appendChild(em);
+      const badges=ce('div');badges.style.cssText='display:flex;gap:4px;flex-wrap:wrap;align-items:center';
+      if(inv.expired){
+        const b=ce('span',null,'失効');b.style.cssText='padding:2px 8px;background:rgba(242,120,80,.15);border:1px solid rgba(242,120,80,.4);color:#f27850;border-radius:999px;font-size:10px';badges.appendChild(b);
+      }else{
+        const b=ce('span',null,'未受理');b.style.cssText='padding:2px 8px;background:rgba(242,200,107,.12);border:1px solid rgba(242,200,107,.4);color:#f2c86b;border-radius:999px;font-size:10px';badges.appendChild(b);
+      }
+      if(inv.createdAt){
+        const d=ce('span',null,String(inv.createdAt).slice(0,10));d.style.cssText='font-size:10px;color:#8a8a99;font-family:var(--font-code)';badges.appendChild(d);
+      }
+      row.appendChild(badges);
+      const rev=ce('button','btn','取消');rev.style.cssText='flex:0 0 auto;background:#1c1c1f;border:1px solid #2a2a2f;color:#ff9999;padding:4px 10px;font-size:11px;border-radius:5px;cursor:pointer';
+      rev.onclick=async()=>{
+        if(!w.confirm('この招待を取消しますか？\n・招待レコードを削除\n・相手が既にログイン済みで一覧に表示されている場合も、次回ログイン or 🔄 更新ボタンでその人の「招待されたプロジェクト」から消えます\n・メンバー名簿（上のリスト）はそのまま残ります（別途「削除」で外せます）'))return;
+        rev.disabled=true;rev.textContent='…';
+        /* v.141：取消結果を詳細に出す（どこで失敗したか切り分けやすく）。 */
+        try{ console.log('[LayCAT invite revoke] start', { inviteId: inv.id, toEmailKey: inv.toEmailKey, pid: root.id, by: authUser && authUser.email }); }catch(_){}
+        const okRev=await window.__laynaFB.revokeFolderInvite(inv.id);
+        try{ console.log('[LayCAT invite revoke] revokeFolderInvite →', okRev); }catch(_){}
+        let okRevo=null;
+        if(okRev && window.__laynaFB.createFolderRevocation && authUser && authUser.email && inv.toEmailKey){
+          okRevo=await window.__laynaFB.createFolderRevocation(authUser.email, inv.toEmailKey, root.id);
+          try{ console.log('[LayCAT invite revoke] createFolderRevocation →', okRevo); }catch(_){}
+        }
+        if(okRev){
+          row.remove();
+          if(!pendList.children.length){ const em=ce('div','muted','（未受理の招待はありません）');pendList.appendChild(em); }
+          /* v.142：メンバー表からも対象を自動除去＋ root.members に同期して persist（即時反映）。 */
+          let memberRemoved=false;
+          try{
+            const _escK=(em)=>String(em||'').toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+            const _tgtKey=String(inv.toEmailKey||'');
+            const idx=work.findIndex(m=>_escK(m.id)===_tgtKey);
+            if(idx>=0){
+              work.splice(idx,1);
+              redraw();
+              root.members = work.map(m=>({
+                id: String(m.id||'').trim().toLowerCase(),
+                name:(m.name||'').trim() || String(m.id||'').split('@')[0],
+                roles: Array.isArray(m.roles)
+                  ? m.roles.filter(Boolean)
+                  : String(m.roles||'').split(',').map(s=>s.trim()).filter(Boolean),
+                color: m.color||'#4da6ff',
+                active: m.active!==false
+              }));
+              await persist();
+              memberRemoved=true;
+            }
+          }catch(e){ try{ console.warn('revoke → member list sync failed', e); }catch(_){} }
+          try{
+            const _mnote = memberRemoved ? '＋メンバー表から除去' : '';
+            if(okRevo===true)       toast('✓ 招待を取消＋削除指示送信'+_mnote+'（相手側は次回ログイン or 🔄 更新で反映）');
+            else if(okRevo===false) toast('⚠ 招待は取消できましたが、相手側削除指示の送信に失敗（Firestore ルール laycatFolderRevocations 要確認）'+_mnote);
+            else                    toast('✓ 招待を取消しました'+_mnote+'（相手側はまだ取り込んでいないので一覧には出ません）');
+          }catch(_){}
+        }else{
+          rev.disabled=false;rev.textContent='取消';w.alert('取消に失敗しました（コンソール参照）');
+        }
+      };
+      row.appendChild(rev);
+      pendList.appendChild(row);
+    }
+  }
+  _refreshPendingInvites();
 
   function redraw(){
     tbl.innerHTML='';
@@ -12121,10 +14196,38 @@ function openMembersWindow(root){
       seen.add(id);
       out.push({id,name:(m.name||'').trim()||id.split('@')[0],roles:String(m.roles||'').split(',').map(s=>s.trim()).filter(Boolean),color:m.color||'#4da6ff',active:m.active!==false});
     }
+    /* v.127：新規追加メンバー（既存 root.members に無いメール）に対して NAS 招待を発行。
+       v.130：pathHint も招待と自分の folderProjects に乗せる。
+       v.134：旧メンバーから消えたメールには削除指示（revocation）を発行。 */
+    const _oldMembers=(Array.isArray(root.members)?root.members:[]);
+    const _oldIds=new Set(_oldMembers.map(m=>String(m&&m.id||'').toLowerCase()).filter(Boolean));
+    const _newIds=new Set(out.map(m=>String(m.id||'').toLowerCase()).filter(Boolean));
+    const _myEmail=String((authUser&&authUser.email)||'').toLowerCase();
+    const _isFolder=(storage._backend && storage._backend(root.id))==='folder';
+    const _newEmails=out.map(m=>String(m.id||'').toLowerCase()).filter(e=>e && e!==_myEmail && !_oldIds.has(e));
+    const _removedEmails=[..._oldIds].filter(e=>e && e!==_myEmail && !_newIds.has(e));
     root.members=out;
+    const _ph=String(phIn.value||'').trim();
+    if(_ph) root.pathHint=_ph; else delete root.pathHint;
     await persist();
     if(typeof render==='function')render();
     saveB.textContent='保存しました ✓';setTimeout(()=>{saveB.textContent='保存'},1200);
+    if(_isFolder && _newEmails.length && window.__laynaFB && window.__laynaFB.createFolderInvite && _myEmail){
+      const _hint=root.folderName||'';
+      const _name=root.name||'';
+      for(const _em of _newEmails){
+        window.__laynaFB.createFolderInvite(_myEmail, _em, root.id, _name, _hint, _ph).catch(()=>{});
+      }
+      try{ toast('NAS プロジェクト招待を '+_newEmails.length+' 名に送信しました'); }catch(_){}
+    }
+    if(_isFolder && _removedEmails.length && window.__laynaFB && window.__laynaFB.createFolderRevocation && _myEmail){
+      for(const _em of _removedEmails){
+        window.__laynaFB.createFolderRevocation(_myEmail, _em, root.id).catch(()=>{});
+      }
+      try{ toast('NAS プロジェクト参加解除を '+_removedEmails.length+' 名に送信しました'); }catch(_){}
+    }
+    /* 未受理招待リストを再描画（削除指示とは別） */
+    try{ _refreshPendingInvites && _refreshPendingInvites(); }catch(_){}
   };
 }
 
@@ -12554,6 +14657,9 @@ function openReview(nodeId,versionId,opts){
     alive=false;
     /* 動画埋め込みの最終同期＋確実な persist（外部クローズや再オープンでも pending を失わない） */
     try{annoSyncEmbedAll()}catch(_){}
+    /* v.004：pointerup で自動 flush しなくなった分、cleanup でも保険として flush（close() 経由でなく
+       外部からインスタンスを強制終了するパス対策。close() 側でも呼ばれるが committedDirty=false 後は no-op）。 */
+    try{if(typeof flushCommitted==='function')flushCommitted()}catch(_){}
     if(_annoPersistTimer){clearTimeout(_annoPersistTimer);_annoPersistTimer=null;try{persist()}catch(_){}}
     try{document.removeEventListener('keydown',onKey)}catch(_){}
     try{document.removeEventListener('keydown',fbKeyDownSpin);document.removeEventListener('keyup',fbKeyUpSpin)}catch(_){}
@@ -14432,7 +16538,25 @@ function openReview(nodeId,versionId,opts){
   rebuildSizeSel();
   /* 消しゴム：ブラシのようになぞった部分だけ消す（選択中レイヤーのみ・線は分割） */
   let committedDirty=false; /* 送信済み描画をその場編集したら true → pointerup/close で保存 */
-  function flushCommitted(){if(committedDirty){committedDirty=false;persist();try{renderBody();resolveThumbs()}catch(_){}}}
+  function flushCommitted(){
+    if(!committedDirty)return;
+    committedDirty=false;
+    /* v.003：編集済み note のサムネキャッシュを無効化（erase・lasso 削除・undo・inline-edit・merge 共通）。
+       annotShotInto のキャッシュキーは `fileRef|time|frame` で drawing を含まないため、
+       drawing を書き換えても古いサムネが返り続けて UI 上「反映されない」ように見える。 */
+    try{
+      if(typeof shotCache!=='undefined'){
+        for(const n of (v.review.notes||[])){
+          if(!n||!n.edited)continue;
+          shotCache.delete(v.file+'|'+(n.time||'')+'|'+(n.frame||0));
+        }
+      }
+    }catch(_){}
+    persist();
+    /* コメント欄の note ブロックを再描画してサムネも焼き直し（キャッシュミス → 新 drawing で生成） */
+    try{renderNotes()}catch(_){}
+    try{renderBody();resolveThumbs()}catch(_){}
+  }
   function eraseAt(e){
     const [x,y]=pt(e);
     const r=eraseW/2/canvas.width;const aspect=canvas.height/canvas.width;
@@ -14529,7 +16653,11 @@ function openReview(nodeId,versionId,opts){
     if(tool==='lasso'&&(lassoPath||lassoRect||lassoDrag||lassoStart)){lassoPointerUp();drawTimeline();updSubmit();}
     if(tool==='shape'&&shapeDraft){shapePointerUp();}
     if(changed)_pushHist(); /* 描画・消しゴム・顔ガイド 1操作ごとに履歴に追加 */
-    flushCommitted();
+    /* v.004：pointerup 時の自動 flushCommitted は廃止。
+       消しゴム等で送信済み drawing を編集した結果は「送信ボタン押下時」(sendCurrent/submit) または
+       窓を閉じるタイミング(cleanup) で初めて persist + UI 反映する。
+       これで「消しゴムで消すたびに毎回コメント欄が再描画される」挙動が止まり、ユーザー期待どおり
+       送信ボタンで初めて反映される。canvas 自体は drawAll で即描画されるので視覚的な違和感はない。 */
   };
   /* Alt+右ドラッグでブラシ/消しゴムサイズ調整（サイズプレビュー円付き） */
   sizeSel.onchange=()=>{const v=parseInt(sizeSel.value)||0;if(!v)return;if(tool==='erase')eraseW=v;else brushW=v;};
@@ -14693,6 +16821,8 @@ function openReview(nodeId,versionId,opts){
      まとめて（＝フレームを問わず全部）レビューページ(v.review.notes)へ反映する。
      ※「送信」は現在フレームのみ、「保存」は全フレーム一括、という2段構え。 */
   async function submit(){
+    /* v.004：消しゴム等で送信済み drawing を編集した committedDirty をここで flush（送信ボタンと統一）。 */
+    try{flushCommitted()}catch(_){}
     if(pending.length||ta.value.trim()||fbAttach.attached()){ /* v.042：添付画像だけでも submit を通す */
       const notes=buildFrameNotes(pending,{text:ta.value,curFrame:isVideo?dispFrame():null,dur:parseInt(durSel.value)||1,isVideo,mentions:ta._mentions,root:rootOf(node),attachImg:fbAttach.attached()});
       for(const n of notes){n._draft=true;if(n.drawing&&n.drawing.length&&!(n.text&&String(n.text).trim()))n.noShot=true;}
@@ -14720,9 +16850,63 @@ function openReview(nodeId,versionId,opts){
      保存 = 全フレームまとめて反映（従来 submit）。他フレームの未送信 pending が残ってる時のみ表示。
      UI は先に更新して見た目上の遅延をゼロにし、persist は _persistChain 経由でバックグラウンド直列化。 */
   async function sendCurrent(){
+    /* v.004：消しゴム等で送信済み drawing を編集した commitedDirty をここで flush。
+       pointerup では自動反映しなくなったので、送信ボタン押下で初めて UI にも反映される。 */
+    try{flushCommitted()}catch(_){}
     await record(false, true); /* silent：途中の updSubmit を抑制 */
     if(!drafts.length)return;
-    for(const n of drafts){delete n._draft;v.review.notes.push(n)}
+    /* v.149：書き足し送信の merge。
+       同じフレームに既に送信済みの drawing 付き note がある場合、
+       新しい draft の drawing をその既存 note に append する（新 note は作らない）。
+       text があれば連結（既存 \n 新）、mentions は concat、attachImg は差し替え。
+       画像モードは imgShot を再焼き込み。これで「書き足した部分だけ送信される」症状を解消し、
+       書き足し後に送信した時点のキャンバス状態（元 + 追記）を 1 ノートで保つ。 */
+    const remaining=[];
+    for(const nd of drafts){
+      delete nd._draft;
+      let merged=false;
+      if(nd.drawing&&nd.drawing.length){
+        const frame=nd.frame;
+        for(const n of (v.review.notes||[])){
+          if(!n||noteEmbedOnly(n))continue;
+          if(!n.drawing||!n.drawing.length)continue;
+          /* 動画モード：frame が一致すること。画像モード：両方 null が同じビュー扱い。
+             片方だけ null は別もの扱いで skip。 */
+          if(frame==null&&n.frame!=null)continue;
+          if(frame!=null&&n.frame==null)continue;
+          if(frame!=null&&n.frame!==frame)continue;
+          /* 既存送信済み note にマージ */
+          n.drawing=n.drawing.concat(nd.drawing);
+          if(nd.text&&nd.text!=='（描画のみ）'){
+            const oldT=String(n.text||'').trim();
+            const newT=String(nd.text||'').trim();
+            if(oldT&&newT)n.text=oldT+'\n'+newT;
+            else if(newT)n.text=newT;
+          }
+          if(nd.mentions&&nd.mentions.length){
+            n.mentions=(n.mentions||[]).concat(nd.mentions);
+          }
+          if(nd.attachImg)n.attachImg=nd.attachImg;
+          /* 画像モード：imgShot を再焼き込み */
+          if(!isVideo){
+            try{
+              const shotDU=await annotImageShotFromImg(media,n.drawing);
+              if(shotDU)n.imgShot=shotDU;
+            }catch(_){}
+          }
+          /* 動画モード：annotShotInto のサムネキャッシュ（fileRef|time|frame キー）を無効化しないと
+             コメント欄に古い drawing のサムネが表示され続ける → 見た目「反映されない」ことに。
+             edited フラグも立てて「編集済」ラベルを出す（n.text を変えない場合でも視認性を担保）。 */
+          n.edited=true;
+          try{if(typeof shotCache!=='undefined')shotCache.delete(v.file+'|'+(n.time||'')+'|'+(n.frame||0))}catch(_){}
+          try{committedDirty=true}catch(_){}
+          merged=true;
+          break;
+        }
+      }
+      if(!merged)remaining.push(nd);
+    }
+    for(const n of remaining)v.review.notes.push(n);
     drafts=[];
     /* 送信で pending 由来の描画がコメント付きノートに昇格。対応フレームの embed ノート（重複）を掃除 */
     try{annoSyncEmbedAll()}catch(_){}
@@ -18342,7 +20526,38 @@ function openReel(){
        スライダーを描画済フレームに合わせて送信ボタンを押した意図＝「サムネ付きで送信したい」
        と解釈する方が自然。noShot は付けず、通常のコメントとして扱いサムネ生成させる。
        （自動同期の reel_emb_ ノートは別経路で常に noShot=true のまま埋め込み専用） */
-    vv.review.notes.push(newN);
+    /* v.149：書き足し送信の merge（アノテ窓と統一）。
+       同じフレーム cf に既に送信済みの drawing 付き note (reel_emb_ でない) があれば、
+       新しい drawings/text/mentions/attachImg をそれに追記する（新 note は作らない）。
+       「書き足した部分だけが別 note になる」症状を解消。 */
+    let mergedN=null;
+    if(newN.drawing&&newN.drawing.length){
+      const isReelEmbN=n=>n&&n.id&&n.id.indexOf('reel_emb_')===0;
+      for(const n of (vv.review.notes||[])){
+        if(!n||isReelEmbN(n))continue;
+        if(!n.drawing||!n.drawing.length)continue;
+        if(n.frame==null)continue;
+        if(n.frame!==cf)continue;
+        n.drawing=n.drawing.concat(newN.drawing);
+        if(newN.text){
+          const oldT=String(n.text||'').trim();
+          const newT=String(newN.text||'').trim();
+          if(oldT&&newT)n.text=oldT+'\n'+newT;
+          else if(newT)n.text=newT;
+        }
+        if(newN.mentions&&newN.mentions.length){
+          n.mentions=(n.mentions||[]).concat(newN.mentions);
+        }
+        if(newN.attachImg)n.attachImg=newN.attachImg;
+        /* annotShotInto のサムネキャッシュを無効化（fileRef|time|frame キー）。
+           無効化しないとコメント欄に merge 前 drawing のサムネが残って「反映されない」ように見える。 */
+        n.edited=true;
+        try{if(typeof shotCache!=='undefined')shotCache.delete(vv.file+'|'+(n.time||'')+'|'+(n.frame||0))}catch(_){}
+        mergedN=n;
+        break;
+      }
+    }
+    if(!mergedN)vv.review.notes.push(newN);
     /* 現在フレーム分の pending を除去 → reelAfterEdit で該当フレームの embed ノートも同期削除。
        **重要**：c.pending は RV.pending と同一参照（loadCur で RV.pending = c.pending にバインド済み）。
        filter で新配列を返して代入すると参照が剥がれ、以降 RV.pending は stale な古い配列を指すことになる：
@@ -18931,6 +21146,12 @@ function openReel(){
     if(!rt){try{toast('リールがプロジェクトに束縛されていません')}catch(_){};return}
     reelAddAllShots(rt);
   });
+  /* v.147：旧「OK カットだけ並べる」を一般化。任意のステータスを複数選択して並べられる。 */
+  shotItem('🧰 ステータスごとに並べる',()=>{
+    const rt=reelUI.projectId?getNode(reelUI.projectId):null;
+    if(!rt){try{toast('リールがプロジェクトに束縛されていません')}catch(_){};return}
+    _openReelStatusPickerModal(rt,(statusIds)=>{ reelAddByStatuses(rt, statusIds); });
+  });
   shotDD.appendChild(ce(d,'div','sep'));
   shotItem('リストを閉じる',()=>{rside.style.display='none'});
   shotMi.onclick=e=>{e.stopPropagation();const willOpen=!shotDD.classList.contains('show');closeMenu();if(willOpen){shotMi.classList.add('open');shotDD.classList.add('show')}};
@@ -19209,6 +21430,95 @@ async function reelAddAllShots(root){
     await reelAddClip(lv.node,lv.v);added++;
   }
   toast('REEL に '+added+' 件追加（全体確認）'+(skipped?'／動画なし '+skipped+' 件はスキップ':''));
+}
+/* v.083：OK（isDoneStatus 真）のショットだけの最新動画をショット順に REEL に並べる。
+   v.147：reelAddByStatuses に一般化（下記）。レガシー互換のため関数は残置。 */
+async function reelAddOkShots(root){
+  if(!root)return;
+  const shots=shotsOf(root);
+  if(!shots.length){toast('ショットがありません');return}
+  const okShots=shots.filter(sh => isDoneStatus(root, nodeStatus(sh)));
+  if(!okShots.length){toast('OK ステータスのショットがありません');return}
+  openReel();if(!reelAlive())return;
+  let added=0,skipped=0;
+  for(const sh of okShots){
+    const lv=latestVideoVersionUnder(sh.id);
+    if(!lv||lv.v.type!=='video'){skipped++;continue}
+    await reelAddClip(lv.node,lv.v);added++;
+  }
+  toast('REEL に '+added+' 件追加（OK カット通し確認）'+(skipped?'／動画なし '+skipped+' 件はスキップ':''));
+}
+/* v.147：指定ステータス（複数）に該当するショットの最新動画を REEL に並べる。
+   shotsOf(root) 順を保つ。動画のないショットはスキップ。
+   v.148：判定はショット（section）レベルの明示 status プルダウンのみを使う（工程別の集約は見ない）。
+   ショットに明示 status が無ければ対象外。 */
+async function reelAddByStatuses(root, statusIds){
+  if(!root || !Array.isArray(statusIds) || !statusIds.length) return;
+  const shots=shotsOf(root);
+  if(!shots.length){toast('ショットがありません');return}
+  const set=new Set(statusIds.map(String));
+  const matched=shots.filter(sh => { const s=sh && sh.status; return s && set.has(String(s)); });
+  if(!matched.length){toast('選択したステータスに該当するショットがありません（ショットの status プルダウンの値で判定しています）');return}
+  openReel(); if(!reelAlive()) return;
+  let added=0, skipped=0;
+  for(const sh of matched){
+    const lv=latestVideoVersionUnder(sh.id);
+    if(!lv || lv.v.type !== 'video'){ skipped++; continue; }
+    await reelAddClip(lv.node, lv.v); added++;
+  }
+  toast('REEL に '+added+' 件追加（ステータス指定通し確認）'+(skipped?'／動画なし '+skipped+' 件はスキップ':''));
+}
+/* v.147：REEL ポップアップ内でステータス複数選択モーダルを開く。
+   reelWin の document に直接描画し、本体 LayCAT ウィンドウにフォーカスを奪わない。
+   選択されたステータス ID 配列を callback に渡す。 */
+function _openReelStatusPickerModal(root, callback){
+  if(!reelAlive() || !reelWin) return;
+  const d = reelWin.document;
+  const statuses = projStatuses(root)||[];
+  const ov = d.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);font-family:system-ui,"Segoe UI",sans-serif';
+  const m = d.createElement('div');
+  m.style.cssText='background:#141418;border:1px solid #2a2a2f;border-radius:12px;min-width:320px;max-width:440px;padding:18px 20px;color:#e8e8ec;font-size:13px;box-shadow:0 20px 60px rgba(0,0,0,.6)';
+  const title=d.createElement('div');title.textContent='並べたいステータスを選択';
+  title.style.cssText='font-weight:700;font-size:15px;margin-bottom:6px';m.appendChild(title);
+  const sub=d.createElement('div');sub.textContent='チェックを入れたステータス（複数可）に該当するショットの最新動画を REEL に並べます。ショット順を保ちます。';
+  sub.style.cssText='font-size:11px;color:#8a8a99;margin-bottom:12px;line-height:1.6';m.appendChild(sub);
+  const list=d.createElement('div');
+  list.style.cssText='display:flex;flex-direction:column;gap:4px;max-height:320px;overflow-y:auto;margin-bottom:14px;padding-right:4px';m.appendChild(list);
+  const checked=new Set();
+  if(!statuses.length){
+    const em=d.createElement('div');em.textContent='このプロジェクトにステータス定義がありません';
+    em.style.cssText='color:#8a8a99;padding:12px;text-align:center';list.appendChild(em);
+  }else{
+    for(const s of statuses){
+      const row=d.createElement('label');
+      row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 10px;background:#1c1c1f;border:1px solid #2a2a2f;border-radius:6px;cursor:pointer';
+      const cb=d.createElement('input');cb.type='checkbox';cb.style.cssText='margin:0;cursor:pointer';
+      cb.onchange=()=>{ if(cb.checked) checked.add(s.id); else checked.delete(s.id); };
+      row.appendChild(cb);
+      const dot=d.createElement('span');dot.style.cssText='width:10px;height:10px;border-radius:50%;flex:0 0 auto;background:'+(s.color||'#5a5a6a');
+      row.appendChild(dot);
+      const txt=d.createElement('span');txt.textContent=s.label;txt.style.cssText='flex:1 1 auto';
+      row.appendChild(txt);
+      list.appendChild(row);
+    }
+  }
+  const foot=d.createElement('div');foot.style.cssText='display:flex;justify-content:flex-end;gap:8px';
+  const cancel=d.createElement('button');cancel.textContent='キャンセル';
+  cancel.style.cssText='padding:7px 14px;background:transparent;border:1px solid #2a2a2f;border-radius:6px;color:#c8c8d0;cursor:pointer;font:inherit';
+  cancel.onclick=()=>{ try{ ov.remove(); }catch(_){} };
+  foot.appendChild(cancel);
+  const ok=d.createElement('button');ok.textContent='実行';
+  ok.style.cssText='padding:7px 16px;background:#4a9eff;border:none;border-radius:6px;color:#111;font-weight:700;cursor:pointer;font:inherit';
+  ok.onclick=()=>{
+    if(checked.size===0){ try{ reelWin.alert('ステータスを 1 つ以上選択してください'); }catch(_){} return; }
+    try{ ov.remove(); }catch(_){}
+    try{ callback(Array.from(checked)); }catch(e){ try{ console.warn(e); }catch(_){} }
+  };
+  foot.appendChild(ok);
+  m.appendChild(foot);
+  ov.appendChild(m);
+  d.body.appendChild(ov);
 }
 /* 保存済みリールを開く（動画タイルの 🎞 リール名 ボタンから） */
 async function openReelFromSaved(reelId){
@@ -20282,6 +22592,20 @@ async function onAuthChanged(u){
   clearAuthScreen();showAuthedHeader();startAppFlow();try{_wireSignals()}catch(_){}
   /* マルチテナント化 Phase M2a-3：テナント管理ボタンの可視判定（認証完了後） */
   try{await refreshTenantAdminButton();}catch(_){}
+  /* v.127／v.134：ログイン直後に自分宛の NAS プロジェクト招待を受理し、同時に削除指示も適用（fire-and-forget）。 */
+  try{
+    if(window.__laynaFB && window.__laynaFB.redeemAllFolderInvites && authUser && authUser.email){
+      window.__laynaFB.redeemAllFolderInvites(authUser.email).then(r=>{
+        const n=(r && r.redeemed)||0;
+        if(n>0){ try{ toast('NAS プロジェクト招待を '+n+' 件受理しました'); }catch(_){} }
+      }).catch(()=>{});
+    }
+    if(window.__laynaFB && window.__laynaFB.redeemAllFolderRevocations && authUser && authUser.email){
+      window.__laynaFB.redeemAllFolderRevocations(authUser.email).then(n=>{
+        if(n>0){ try{ toast('NAS プロジェクト '+n+' 件の参加解除が適用されました'); }catch(_){} }
+      }).catch(()=>{});
+    }
+  }catch(_){}
 }
 /* マルチテナント化 Phase M3a：指定ユーザーの指定テナントにおける役職を算出。
    owner / admin / member / null（所属なし）を返す。 */
@@ -20663,6 +22987,275 @@ initApp();
         await m.setDoc(ref,{dates,updatedAt:new Date().toISOString()},{merge:true});
         return true;
       }catch(e){console.error('deleteCompanyHoliday failed',e);return false}},
+      /* ========== v.126：NAS プロジェクト参加履歴の暗号化同期（Lv.3） ==========
+         保存先：laycatUserPrivate/{emailKey}（本人以外は読めない Firestore ルール必須）
+         暗号化：AES-GCM 256bit、鍵は laycatUserPrivate/{emailKey}.encKeyB64
+         name も folderHint も両方暗号化（UI 側で復号して表示）
+         Firestore ルール例：
+           match /laycatUserPrivate/{emailKey} {
+             allow read, write: if request.auth != null
+               && request.auth.token.email.lower().replace('[.@#$/\\[\\]]', '_') == emailKey;
+           }
+      */
+      ensureUserPrivateKey:async(email)=>{try{
+        if(!email) return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const ref=m.doc(fs,'laycatUserPrivate',key);
+        const snap=await m.getDoc(ref);
+        let keyB64 = snap.exists() ? (snap.data()||{}).encKeyB64 : null;
+        if(!keyB64){
+          const buf=new Uint8Array(32); crypto.getRandomValues(buf);
+          keyB64=btoa(String.fromCharCode(...buf));
+          await m.setDoc(ref,{encKeyB64:keyB64,createdAt:new Date().toISOString()},{merge:true});
+        }
+        const raw=Uint8Array.from(atob(keyB64),c=>c.charCodeAt(0));
+        return await crypto.subtle.importKey('raw',raw,{name:'AES-GCM'},false,['encrypt','decrypt']);
+      }catch(e){return null}},
+      _fpEncrypt:async(ckey, text)=>{
+        const iv=crypto.getRandomValues(new Uint8Array(12));
+        const pt=new TextEncoder().encode(String(text||''));
+        const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},ckey,pt));
+        return { enc: btoa(String.fromCharCode(...ct)), iv: btoa(String.fromCharCode(...iv)) };
+      },
+      _fpDecrypt:async(ckey, encB64, ivB64)=>{try{
+        if(!encB64||!ivB64) return null;
+        const ct=Uint8Array.from(atob(encB64),c=>c.charCodeAt(0));
+        const iv=Uint8Array.from(atob(ivB64),c=>c.charCodeAt(0));
+        const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv},ckey,ct);
+        return new TextDecoder().decode(pt);
+      }catch(_){return null}},
+      /* 参加プロジェクトを追加（既存同 pid は上書き）。
+         v.130：pathHint 暗号化保存。
+         v.139：opts.asConnected=true で connectedAt を書く（実参加した証）。
+         setDoc merge:true は深いマージなので、省略フィールドは既存値を温存する。 */
+      putFolderProject:async(email, pid, name, folderHint, pathHint, opts)=>{try{
+        if(!email||!pid) return false;
+        const ckey=await window.__laynaFB.ensureUserPrivateKey(email);
+        if(!ckey) return false;
+        const nameEnc=await window.__laynaFB._fpEncrypt(ckey, name||'');
+        const hintEnc=await window.__laynaFB._fpEncrypt(ckey, folderHint||'');
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const row={
+          nameEnc:nameEnc.enc, nameIv:nameEnc.iv,
+          hintEnc:hintEnc.enc, hintIv:hintEnc.iv,
+          addedAt:new Date().toISOString()
+        };
+        if(pathHint != null && String(pathHint).trim().length){
+          const pathEnc=await window.__laynaFB._fpEncrypt(ckey, String(pathHint));
+          row.pathEnc=pathEnc.enc; row.pathIv=pathEnc.iv;
+        }
+        if(opts && opts.asConnected){
+          row.connectedAt=new Date().toISOString();
+        }
+        await m.setDoc(m.doc(fs,'laycatUserPrivate',key),{
+          folderProjects:{[pid]:row}
+        },{merge:true});
+        return true;
+      }catch(e){console.warn('putFolderProject failed',e);return false}},
+      /* 参加プロジェクトを削除。 */
+      delFolderProject:async(email, pid)=>{try{
+        if(!email||!pid) return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        await m.updateDoc(m.doc(fs,'laycatUserPrivate',key),{['folderProjects.'+pid]:m.deleteField()});
+        return true;
+      }catch(e){return false}},
+      /* 参加プロジェクト一覧を取得。復号して [{pid, name, folderHint, addedAt}] を返す。 */
+      listFolderProjects:async(email)=>{try{
+        if(!email) return [];
+        const ckey=await window.__laynaFB.ensureUserPrivateKey(email);
+        if(!ckey) return [];
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const snap=await m.getDoc(m.doc(fs,'laycatUserPrivate',key));
+        if(!snap.exists()) return [];
+        const d=snap.data()||{};
+        const fp=d.folderProjects||{};
+        const out=[];
+        for(const pid of Object.keys(fp)){
+          const row=fp[pid]||{};
+          const name=await window.__laynaFB._fpDecrypt(ckey, row.nameEnc, row.nameIv);
+          const hint=await window.__laynaFB._fpDecrypt(ckey, row.hintEnc, row.hintIv);
+          const path=(row.pathEnc && row.pathIv) ? await window.__laynaFB._fpDecrypt(ckey, row.pathEnc, row.pathIv) : '';
+          out.push({ pid, name:name||'', folderHint:hint||'', pathHint:path||'', addedAt:row.addedAt||'', connectedAt:row.connectedAt||'' });
+        }
+        out.sort((a,b)=>(b.addedAt||'').localeCompare(a.addedAt||''));
+        return out;
+      }catch(e){console.warn('listFolderProjects failed',e);return []}},
+
+      /* ========== v.127：NAS プロジェクト招待（Phase 2・オーナー → 新規メンバー） ==========
+         オーナーがメンバー管理 UI でメールを追加すると、`laycatFolderInvites/{autoId}` に
+         一時的な招待レコードを作成する。対象ユーザーが次回ログイン時に自分の
+         `laycatUserPrivate.folderProjects` に復号して取り込み、招待は削除される。
+         Firestore ルール：
+           match /laycatFolderInvites/{token} {
+             allow create: if signedIn() && request.resource.data.fromEmailKey == myKey();
+             allow read, delete: if signedIn()
+               && (resource.data.toEmailKey == myKey() || resource.data.fromEmailKey == myKey());
+             allow update: if false;
+           }
+         招待レコード中の name/folderHint は平文（短命）。ルールで本人以外からの read を遮断。 */
+      createFolderInvite:async(fromEmail, toEmail, pid, name, folderHint, pathHint)=>{try{
+        if(!fromEmail||!toEmail||!pid) return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const toKey=String(toEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const fromKey=String(fromEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        /* v.136：複合インデックス回避のため fromEmailKey 単一フィルタ＋クライアント側で絞込。 */
+        try{
+          const q=m.query(m.collection(fs,'laycatFolderInvites'),
+            m.where('fromEmailKey','==',fromKey));
+          const existing=await m.getDocs(q);
+          for(const d of existing.docs){
+            const dt=d.data()||{};
+            if(dt.toEmailKey===toKey && String(dt.pid)===String(pid)) return true;
+          }
+        }catch(_){}
+        /* v.130：pathHint はオーナーが手入力した NAS パス道案内メモ（任意）。
+           v.134：expiresAt を 30 日後に設定（Phase 3 の TTL）。クライアント側で期限切れを判定・パージ。 */
+        const _now=Date.now();
+        const payload={
+          toEmailKey:toKey, fromEmailKey:fromKey,
+          pid:String(pid), name:String(name||''), folderHint:String(folderHint||''),
+          byEmail:fromEmail,
+          createdAt:new Date(_now).toISOString(),
+          expiresAt:new Date(_now + 30*24*3600*1000).toISOString()
+        };
+        if(pathHint != null && String(pathHint).trim().length) payload.pathHint = String(pathHint);
+        await m.addDoc(m.collection(fs,'laycatFolderInvites'),payload);
+        return true;
+      }catch(e){console.warn('createFolderInvite failed',e);return false}},
+      /* ログイン直後に自分宛の招待を一覧→自分の folderProjects に取り込む。
+         v.137：招待は削除しない（タイルは出すが「未受理」状態を維持）。
+         実際にフォルダピッカーで接続完了したときに connectProjectFlow から clearFolderInvite が呼ばれて削除される。
+         期限切れ（expiresAt 超過）は受理せず削除のみ。
+         戻り値：{ redeemed, expired } */
+      redeemAllFolderInvites:async(email)=>{try{
+        if(!email) return { redeemed:0, expired:0 };
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const toKey=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const q=m.query(m.collection(fs,'laycatFolderInvites'), m.where('toEmailKey','==',toKey));
+        const snap=await m.getDocs(q);
+        const nowIso=new Date().toISOString();
+        let redeemed=0, expired=0;
+        for(const d of snap.docs){
+          const data=d.data()||{};
+          if(data.expiresAt && String(data.expiresAt) < nowIso){
+            try{ await m.deleteDoc(d.ref); expired++; }catch(_){}
+            continue;
+          }
+          const ok=await window.__laynaFB.putFolderProject(email, data.pid, data.name||'', data.folderHint||'', data.pathHint||'');
+          if(ok) redeemed++;
+          /* 招待レコードは残す（connectProjectFlow 実行時に clearFolderInvite で削除） */
+        }
+        return { redeemed, expired };
+      }catch(e){console.warn('redeemAllFolderInvites failed',e);return { redeemed:0, expired:0 }}},
+      /* v.137：実際にフォルダピッカーで接続した時に自分宛の該当 pid 招待を削除。
+         これで「未受理」= 実参加していない、「表示なし」= 実参加済み、を区別できる。 */
+      clearFolderInvite:async(email, pid)=>{try{
+        if(!email||!pid) return 0;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const toKey=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const q=m.query(m.collection(fs,'laycatFolderInvites'), m.where('toEmailKey','==',toKey));
+        const snap=await m.getDocs(q);
+        let n=0;
+        for(const d of snap.docs){
+          const data=d.data()||{};
+          if(String(data.pid)!==String(pid)) continue;
+          try{ await m.deleteDoc(d.ref); n++; }catch(_){}
+        }
+        return n;
+      }catch(e){console.warn('clearFolderInvite failed',e);return 0}},
+      /* v.134：オーナー視点で、自分が発行した未受理招待の一覧を取得。
+         v.136：複合インデックス回避のため、Firestore 側は fromEmailKey 単一フィルタのみに。
+         pid 絞込みはクライアント側。失敗時は空配列。 */
+      listPendingFolderInvites:async(email, opts)=>{try{
+        if(!email) return [];
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const myKey=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const pidFilter=(opts && opts.pid) ? String(opts.pid) : null;
+        const q=m.query(m.collection(fs,'laycatFolderInvites'), m.where('fromEmailKey','==',myKey));
+        const snap=await m.getDocs(q);
+        const out=[];
+        const nowIso=new Date().toISOString();
+        for(const d of snap.docs){
+          const data=d.data()||{};
+          if(pidFilter && String(data.pid)!==pidFilter) continue;
+          const expired = data.expiresAt && String(data.expiresAt) < nowIso;
+          out.push({ id:d.id, ...data, expired:!!expired });
+        }
+        out.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+        return out;
+      }catch(e){console.warn('listPendingFolderInvites failed',e);return []}},
+      /* v.134：招待を取消（オーナー側）。失効 or 誤発行の掃除にも使う。 */
+      revokeFolderInvite:async(inviteId)=>{try{
+        if(!inviteId) return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        await m.deleteDoc(m.doc(fs,'laycatFolderInvites',inviteId));
+        return true;
+      }catch(e){console.warn('revokeFolderInvite failed',e);return false}},
+
+      /* ========== v.134：NAS プロジェクト削除伝播（Phase 3 #2） ==========
+         オーナーがメンバーを `root.members` から外した時に、Firestore 経由で相手側の
+         `laycatUserPrivate.folderProjects.{pid}` を自動削除するためのレコード。
+         保存先：laycatFolderRevocations/{autoId}
+            {toEmailKey, fromEmailKey, pid, byEmail, createdAt, expiresAt}
+         Firestore ルール：招待と同じ構造（本人のみ read/delete, 自分発のみ create）。 */
+      /* v.140：toEmail がメール形式でなく既にキー化されている（例：取消ボタンから）場合も受理。 */
+      createFolderRevocation:async(fromEmail, toEmailOrKey, pid)=>{try{
+        if(!fromEmail||!toEmailOrKey||!pid) return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const _rawTo=String(toEmailOrKey);
+        const toKey = _rawTo.includes('@') ? _rawTo.toLowerCase().replace(/[.@#$/\[\]]/g,'_') : _rawTo.toLowerCase();
+        const fromKey=String(fromEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        /* 既存重複は無視（複数作っても害は無いが節約） */
+        try{
+          const q=m.query(m.collection(fs,'laycatFolderRevocations'),
+            m.where('fromEmailKey','==',fromKey),
+            m.where('toEmailKey','==',toKey),
+            m.where('pid','==',String(pid)));
+          const ex=await m.getDocs(q);
+          if(!ex.empty) return true;
+        }catch(_){}
+        const _now=Date.now();
+        await m.addDoc(m.collection(fs,'laycatFolderRevocations'),{
+          toEmailKey:toKey, fromEmailKey:fromKey, pid:String(pid), byEmail:fromEmail,
+          createdAt:new Date(_now).toISOString(),
+          expiresAt:new Date(_now + 90*24*3600*1000).toISOString()
+        });
+        return true;
+      }catch(e){console.warn('createFolderRevocation failed',e);return false}},
+      /* ログイン直後に自分宛の削除指示を適用し、該当 pid を folderProjects から外す。
+         戻り値：適用件数（期限切れは単に捨てる）。 */
+      redeemAllFolderRevocations:async(email)=>{try{
+        if(!email) return 0;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const toKey=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const q=m.query(m.collection(fs,'laycatFolderRevocations'), m.where('toEmailKey','==',toKey));
+        const snap=await m.getDocs(q);
+        const nowIso=new Date().toISOString();
+        let n=0;
+        for(const d of snap.docs){
+          const data=d.data()||{};
+          if(!data.pid){ try{ await m.deleteDoc(d.ref); }catch(_){}; continue; }
+          if(data.expiresAt && String(data.expiresAt) < nowIso){ try{ await m.deleteDoc(d.ref); }catch(_){}; continue; }
+          const ok=await window.__laynaFB.delFolderProject(email, data.pid);
+          if(ok){ try{ await m.deleteDoc(d.ref); n++; }catch(_){} }
+        }
+        return n;
+      }catch(e){console.warn('redeemAllFolderRevocations failed',e);return 0}},
       /* 招待トークンを照合し、有効なら自分を invited に登録（承認なしでメンバー化）。成否を返す。 */
       redeemInvite:async(tok,u)=>{try{
         if(!tok||!u||!u.email)return false;
