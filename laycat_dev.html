@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.09.002';
+const APP_VERSION='2026.10.09.003';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -16534,7 +16534,25 @@ function openReview(nodeId,versionId,opts){
   rebuildSizeSel();
   /* 消しゴム：ブラシのようになぞった部分だけ消す（選択中レイヤーのみ・線は分割） */
   let committedDirty=false; /* 送信済み描画をその場編集したら true → pointerup/close で保存 */
-  function flushCommitted(){if(committedDirty){committedDirty=false;persist();try{renderBody();resolveThumbs()}catch(_){}}}
+  function flushCommitted(){
+    if(!committedDirty)return;
+    committedDirty=false;
+    /* v.003：編集済み note のサムネキャッシュを無効化（erase・lasso 削除・undo・inline-edit・merge 共通）。
+       annotShotInto のキャッシュキーは `fileRef|time|frame` で drawing を含まないため、
+       drawing を書き換えても古いサムネが返り続けて UI 上「反映されない」ように見える。 */
+    try{
+      if(typeof shotCache!=='undefined'){
+        for(const n of (v.review.notes||[])){
+          if(!n||!n.edited)continue;
+          shotCache.delete(v.file+'|'+(n.time||'')+'|'+(n.frame||0));
+        }
+      }
+    }catch(_){}
+    persist();
+    /* コメント欄の note ブロックを再描画してサムネも焼き直し（キャッシュミス → 新 drawing で生成） */
+    try{renderNotes()}catch(_){}
+    try{renderBody();resolveThumbs()}catch(_){}
+  }
   function eraseAt(e){
     const [x,y]=pt(e);
     const r=eraseW/2/canvas.width;const aspect=canvas.height/canvas.width;

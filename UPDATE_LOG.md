@@ -18,6 +18,18 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.09.003) **アノテ窓：消しゴム等の送信済み drawing 編集後に UI 反映されない問題を解消（LayCAT）**：
+  - 事象：アノテ窓の消しゴムで送信済みアノテの一部を消しても、コメント欄のサムネが古い drawing のまま更新されず、再送信を押しても反映されない。
+  - 原因：消しゴム（`eraseAt`）・lasso 削除・undo／redo（`_restore`）・inline-edit は `n.drawing` を書き換え `committedDirty=true` を立てるが、pointerup で呼ばれる `flushCommitted` が **shotCache 無効化と renderNotes 再描画を行っていなかった**。
+    - `annotShotInto` のキャッシュキーが `fileRef|time|frame` で drawing を含まないため、drawing を書き換えてもキャッシュヒットで古いサムネが返り続ける。
+    - コメント欄の DOM も再構築されないので、canvas.note-shot が古いサムネを保持したまま。
+  - 修正：`flushCommitted` に以下を追加：
+    - `shotCache.delete(fileRef+'|'+time+'|'+frame)` を `v.review.notes` 内の `n.edited` note について実行
+    - `renderNotes()` を呼んでコメント欄 DOM を再構築（canvas が作り直され、キャッシュミス状態で `annotShotInto` が再焼き込み）
+  - 書き込み境界：shotCache は in-memory の Map のみ（永続化データには触らない）。shot.json 側の変更範囲は従来通り（erase/lasso/undo 等の既存経路と同じ）。
+  - REEL 側の消しゴムは「送信済み drawing は保護」設計（`eraseR` のコメント参照）のため、本修正の対象外。
+  - APP_VERSION：2026.10.09.002 → 2026.10.09.003
+
 - (dev v2026.10.09.002) **アノテ書き足し送信：merge 後にサムネキャッシュを無効化して UI に反映（アノテ窓・REEL／LayCAT）**：
   - 事象：v.001 で導入した「書き足し送信の merge」は in-memory では既存 note.drawing を concat していたが、**コメント欄のサムネに古い drawing の画像が残り続け、見た目「書き足し送信だけが反映されない」ように見えていた**。
   - 原因：`annotShotInto`（コメント欄のサムネ生成）が `shotCache` を `fileRef|n.time|n.frame` キーでキャッシュしており、merge で drawing を書き換えても time/frame が変わらないため **キャッシュヒットで古いサムネが返る**。
