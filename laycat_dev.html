@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.142';
+const APP_VERSION='2026.10.08.143';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12500,7 +12500,8 @@ function _nasTile(p){
   if(isConnected){
     meta.appendChild(el('span','mp-badge active','接続済み'));
   }else{
-    const b=el('span','mp-badge'); b.textContent='NAS';
+    /* v.143：NAS 専用ではなくローカル／社内共有フォルダ全般なので「ローカル」バッジに */
+    const b=el('span','mp-badge'); b.textContent='ローカル';
     meta.appendChild(b);
   }
   foot.appendChild(meta);
