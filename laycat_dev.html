@@ -1272,7 +1272,6 @@ textarea.form-input{height:70px;resize:vertical}
     <button class="hd-bell" id="calBtn" title="カレンダー（祝日・会社休日）"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="12" rx="1.5"/><path d="M3 8h14M7 2.5v3M13 2.5v3"/></svg></button>
     <button class="hd-bell" id="notifBtn" title="通知"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a4 4 0 0 1 8 0c0 4 1.5 5 1.5 5h-11S6 12 6 8z"/><path d="M8.5 16a1.7 1.7 0 0 0 3 0"/></svg><span class="nb-badge hidden" id="notifBadge">0</span></button>
     <label class="user-field" id="nameField"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="3"/><path d="M4.5 16.5a5.5 5.5 0 0 1 11 0"/></svg><input id="currentUser" type="text" placeholder="名前" /></label>
-    <a class="btn btn-ghost" id="guideBtn" href="guide.html" target="_blank" rel="noopener" title="はじめ方ガイド（新しいタブで開きます）" style="display:none">📖 はじめ方ガイド</a>
     <div class="hd-user hidden" id="authUserBox"></div>
   </div>
 </header>
@@ -4181,7 +4180,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.144';
+const APP_VERSION='2026.10.08.145';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5630,7 +5629,7 @@ async function disconnectProject(id){
 function updateHeaderForContext(){
   const home=!state.currentId;
   const setD=(sel,show)=>{const e=$(sel);if(e)e.style.display=show?'':'none'};
-  setD('#homeBtn',!home);setD('#reelBtn',!home);setD('#submitBtn',!home);setD('#guideBtn',home); /* ヘッダ検索は撤去（サイドバー検索に一本化）。ガイドはホーム時のみ表示 */
+  setD('#homeBtn',!home);setD('#reelBtn',!home);setD('#submitBtn',!home); /* v.145：古い内容になった「はじめ方ガイド」ボタンは撤去 */
   setD('#notifBtn',!home);                       /* 通知ベルはプロジェクト内でのみ表示（プロジェクト選択画面では隠す） */
   if(home){const np=$('#notifPanel');if(np)np.classList.add('hidden')} /* 選択画面へ戻ったら通知パネルを閉じる */
   setD('#mainHead',!home);setD('#breadcrumb',!home);
