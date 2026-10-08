@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.09.003';
+const APP_VERSION='2026.10.09.004';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14656,6 +14656,9 @@ function openReview(nodeId,versionId,opts){
     alive=false;
     /* 動画埋め込みの最終同期＋確実な persist（外部クローズや再オープンでも pending を失わない） */
     try{annoSyncEmbedAll()}catch(_){}
+    /* v.004：pointerup で自動 flush しなくなった分、cleanup でも保険として flush（close() 経由でなく
+       外部からインスタンスを強制終了するパス対策。close() 側でも呼ばれるが committedDirty=false 後は no-op）。 */
+    try{if(typeof flushCommitted==='function')flushCommitted()}catch(_){}
     if(_annoPersistTimer){clearTimeout(_annoPersistTimer);_annoPersistTimer=null;try{persist()}catch(_){}}
     try{document.removeEventListener('keydown',onKey)}catch(_){}
     try{document.removeEventListener('keydown',fbKeyDownSpin);document.removeEventListener('keyup',fbKeyUpSpin)}catch(_){}
@@ -16649,7 +16652,11 @@ function openReview(nodeId,versionId,opts){
     if(tool==='lasso'&&(lassoPath||lassoRect||lassoDrag||lassoStart)){lassoPointerUp();drawTimeline();updSubmit();}
     if(tool==='shape'&&shapeDraft){shapePointerUp();}
     if(changed)_pushHist(); /* 描画・消しゴム・顔ガイド 1操作ごとに履歴に追加 */
-    flushCommitted();
+    /* v.004：pointerup 時の自動 flushCommitted は廃止。
+       消しゴム等で送信済み drawing を編集した結果は「送信ボタン押下時」(sendCurrent/submit) または
+       窓を閉じるタイミング(cleanup) で初めて persist + UI 反映する。
+       これで「消しゴムで消すたびに毎回コメント欄が再描画される」挙動が止まり、ユーザー期待どおり
+       送信ボタンで初めて反映される。canvas 自体は drawAll で即描画されるので視覚的な違和感はない。 */
   };
   /* Alt+右ドラッグでブラシ/消しゴムサイズ調整（サイズプレビュー円付き） */
   sizeSel.onchange=()=>{const v=parseInt(sizeSel.value)||0;if(!v)return;if(tool==='erase')eraseW=v;else brushW=v;};
@@ -16813,6 +16820,8 @@ function openReview(nodeId,versionId,opts){
      まとめて（＝フレームを問わず全部）レビューページ(v.review.notes)へ反映する。
      ※「送信」は現在フレームのみ、「保存」は全フレーム一括、という2段構え。 */
   async function submit(){
+    /* v.004：消しゴム等で送信済み drawing を編集した committedDirty をここで flush（送信ボタンと統一）。 */
+    try{flushCommitted()}catch(_){}
     if(pending.length||ta.value.trim()||fbAttach.attached()){ /* v.042：添付画像だけでも submit を通す */
       const notes=buildFrameNotes(pending,{text:ta.value,curFrame:isVideo?dispFrame():null,dur:parseInt(durSel.value)||1,isVideo,mentions:ta._mentions,root:rootOf(node),attachImg:fbAttach.attached()});
       for(const n of notes){n._draft=true;if(n.drawing&&n.drawing.length&&!(n.text&&String(n.text).trim()))n.noShot=true;}
@@ -16840,6 +16849,9 @@ function openReview(nodeId,versionId,opts){
      保存 = 全フレームまとめて反映（従来 submit）。他フレームの未送信 pending が残ってる時のみ表示。
      UI は先に更新して見た目上の遅延をゼロにし、persist は _persistChain 経由でバックグラウンド直列化。 */
   async function sendCurrent(){
+    /* v.004：消しゴム等で送信済み drawing を編集した commitedDirty をここで flush。
+       pointerup では自動反映しなくなったので、送信ボタン押下で初めて UI にも反映される。 */
+    try{flushCommitted()}catch(_){}
     await record(false, true); /* silent：途中の updSubmit を抑制 */
     if(!drafts.length)return;
     /* v.149：書き足し送信の merge。

@@ -18,6 +18,15 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.09.004) **アノテ窓：消しゴム等の送信済み drawing 編集の反映タイミングを「送信ボタン押下時」に（LayCAT）**：
+  - 事象：v.003 で `flushCommitted` を pointerup から呼ぶようにしたら、消しゴムで消すたびに毎回コメント欄が再描画される挙動になり、重い／煩わしい。
+  - 修正：pointerup での自動 `flushCommitted` 呼び出しを廃止。「送信」(`sendCurrent`) ／「保存」(`submit`) ボタン押下時に明示的に `flushCommitted` を呼ぶ形に変更。
+    - canvas は従来通り `drawAll` で即描画されるので、視覚的な違和感はない（消した結果は見える）。
+    - コメント欄のサムネ・persist・renderBody／resolveThumbs は送信ボタンまで遅延される。
+    - 窓を閉じる経路 (`close`／`cleanup`) では従来通り `flushCommitted` を呼ぶ（データロス防止）。
+  - 書き込み境界：persist の呼び出し点が「pointerup ごと」→「送信ボタン／close ごと」に減るのみ。shot.json への書き込み内容自体は変化なし。
+  - APP_VERSION：2026.10.09.003 → 2026.10.09.004
+
 - (dev v2026.10.09.003) **アノテ窓：消しゴム等の送信済み drawing 編集後に UI 反映されない問題を解消（LayCAT）**：
   - 事象：アノテ窓の消しゴムで送信済みアノテの一部を消しても、コメント欄のサムネが古い drawing のまま更新されず、再送信を押しても反映されない。
   - 原因：消しゴム（`eraseAt`）・lasso 削除・undo／redo（`_restore`）・inline-edit は `n.drawing` を書き換え `committedDirty=true` を立てるが、pointerup で呼ばれる `flushCommitted` が **shotCache 無効化と renderNotes 再描画を行っていなかった**。
