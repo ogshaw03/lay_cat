@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.147';
+const APP_VERSION='2026.10.08.148';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -21336,14 +21336,16 @@ async function reelAddOkShots(root){
   toast('REEL に '+added+' 件追加（OK カット通し確認）'+(skipped?'／動画なし '+skipped+' 件はスキップ':''));
 }
 /* v.147：指定ステータス（複数）に該当するショットの最新動画を REEL に並べる。
-   shotsOf(root) 順を保つ。動画のないショットはスキップ。 */
+   shotsOf(root) 順を保つ。動画のないショットはスキップ。
+   v.148：判定はショット（section）レベルの明示 status プルダウンのみを使う（工程別の集約は見ない）。
+   ショットに明示 status が無ければ対象外。 */
 async function reelAddByStatuses(root, statusIds){
   if(!root || !Array.isArray(statusIds) || !statusIds.length) return;
   const shots=shotsOf(root);
   if(!shots.length){toast('ショットがありません');return}
   const set=new Set(statusIds.map(String));
-  const matched=shots.filter(sh => set.has(String(nodeStatus(sh))));
-  if(!matched.length){toast('選択したステータスに該当するショットがありません');return}
+  const matched=shots.filter(sh => { const s=sh && sh.status; return s && set.has(String(s)); });
+  if(!matched.length){toast('選択したステータスに該当するショットがありません（ショットの status プルダウンの値で判定しています）');return}
   openReel(); if(!reelAlive()) return;
   let added=0, skipped=0;
   for(const sh of matched){
