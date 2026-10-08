@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.140';
+const APP_VERSION='2026.10.08.141';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14106,21 +14106,27 @@ function openMembersWindow(root){
       row.appendChild(badges);
       const rev=ce('button','btn','取消');rev.style.cssText='flex:0 0 auto;background:#1c1c1f;border:1px solid #2a2a2f;color:#ff9999;padding:4px 10px;font-size:11px;border-radius:5px;cursor:pointer';
       rev.onclick=async()=>{
-        if(!w.confirm('この招待を取消しますか？\n・招待レコードを削除\n・相手が既にログイン済みで一覧に表示されている場合も、次回ログイン時にその人の「招待されたプロジェクト」から消えます\n・メンバー名簿（上のリスト）はそのまま残ります（別途「削除」で外せます）'))return;
+        if(!w.confirm('この招待を取消しますか？\n・招待レコードを削除\n・相手が既にログイン済みで一覧に表示されている場合も、次回ログイン or 🔄 更新ボタンでその人の「招待されたプロジェクト」から消えます\n・メンバー名簿（上のリスト）はそのまま残ります（別途「削除」で外せます）'))return;
         rev.disabled=true;rev.textContent='…';
+        /* v.141：取消結果を詳細に出す（どこで失敗したか切り分けやすく）。 */
+        try{ console.log('[LayCAT invite revoke] start', { inviteId: inv.id, toEmailKey: inv.toEmailKey, pid: root.id, by: authUser && authUser.email }); }catch(_){}
         const okRev=await window.__laynaFB.revokeFolderInvite(inv.id);
-        /* v.140：既取込みの folderProjects からも消すため Revocation を発行。
-           toEmailKey（既に _ 置換済み）を直接渡す（@ 無しの文字列は createFolderRevocation 側でキー扱い）。 */
-        let okRevo=true;
+        try{ console.log('[LayCAT invite revoke] revokeFolderInvite →', okRev); }catch(_){}
+        let okRevo=null;
         if(okRev && window.__laynaFB.createFolderRevocation && authUser && authUser.email && inv.toEmailKey){
           okRevo=await window.__laynaFB.createFolderRevocation(authUser.email, inv.toEmailKey, root.id);
+          try{ console.log('[LayCAT invite revoke] createFolderRevocation →', okRevo); }catch(_){}
         }
         if(okRev){
           row.remove();
           if(!pendList.children.length){ const em=ce('div','muted','（未受理の招待はありません）');pendList.appendChild(em); }
-          try{ toast('招待を取消しました'+(okRevo?'（相手側は次回ログイン時に反映）':'（相手側 folderProjects の削除指示は失敗）')); }catch(_){}
+          try{
+            if(okRevo===true)       toast('✓ 招待を取消＋削除指示送信（相手側は次回ログイン or 🔄 更新で反映）');
+            else if(okRevo===false) toast('⚠ 招待は取消できましたが、相手側削除指示の送信に失敗（Firestore ルール laycatFolderRevocations 要確認）');
+            else                    toast('✓ 招待を取消しました（相手側はまだ取り込んでいないので一覧には出ません）');
+          }catch(_){}
         }else{
-          rev.disabled=false;rev.textContent='取消';w.alert('取消に失敗しました');
+          rev.disabled=false;rev.textContent='取消';w.alert('取消に失敗しました（コンソール参照）');
         }
       };
       row.appendChild(rev);
