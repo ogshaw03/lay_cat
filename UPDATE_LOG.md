@@ -18,6 +18,16 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.09.002) **アノテ書き足し送信：merge 後にサムネキャッシュを無効化して UI に反映（アノテ窓・REEL／LayCAT）**：
+  - 事象：v.001 で導入した「書き足し送信の merge」は in-memory では既存 note.drawing を concat していたが、**コメント欄のサムネに古い drawing の画像が残り続け、見た目「書き足し送信だけが反映されない」ように見えていた**。
+  - 原因：`annotShotInto`（コメント欄のサムネ生成）が `shotCache` を `fileRef|n.time|n.frame` キーでキャッシュしており、merge で drawing を書き換えても time/frame が変わらないため **キャッシュヒットで古いサムネが返る**。
+  - 修正：merge 時に以下を実行：
+    - `n.edited = true`（「編集済」ラベル表示）
+    - `shotCache.delete(fileRef+'|'+time+'|'+frame)`（当該ノートのサムネキャッシュを無効化し再生成を強制）
+    - アノテ窓は `committedDirty=true` も立てる（既存の flush 系との整合）
+  - 書き込み境界：shotCache は in-memory の Map のみ（永続化データには触らない）。shot.json 側の変更は v.001 と同じ範囲。
+  - APP_VERSION：2026.10.09.001 → 2026.10.09.002
+
 - (dev v2026.10.09.001) **アノテ送信：書き足し後の送信で「既存アノテに drawing を追記」する（アノテ窓・REEL 共通／LayCAT）**：
   - 事象：一度送信したアノテに新しい線を書き足して再度「送信」を押すと、**書き足した部分だけが別 note として追加され、画面に見えていた「元 + 追記」の全体が記録に残らない**（サムネや動画埋め込みも書き足し分だけになる）。
   - 修正方針（案 A）：**同じフレームに既に送信済みの drawing 付き note がある場合、新しい draft/pending の drawing をその既存 note に append**（新 note は作らない）。

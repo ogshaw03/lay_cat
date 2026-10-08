@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.09.001';
+const APP_VERSION='2026.10.09.002';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -16863,6 +16863,12 @@ function openReview(nodeId,versionId,opts){
               if(shotDU)n.imgShot=shotDU;
             }catch(_){}
           }
+          /* 動画モード：annotShotInto のサムネキャッシュ（fileRef|time|frame キー）を無効化しないと
+             コメント欄に古い drawing のサムネが表示され続ける → 見た目「反映されない」ことに。
+             edited フラグも立てて「編集済」ラベルを出す（n.text を変えない場合でも視認性を担保）。 */
+          n.edited=true;
+          try{if(typeof shotCache!=='undefined')shotCache.delete(v.file+'|'+(n.time||'')+'|'+(n.frame||0))}catch(_){}
+          try{committedDirty=true}catch(_){}
           merged=true;
           break;
         }
@@ -20512,6 +20518,10 @@ function openReel(){
           n.mentions=(n.mentions||[]).concat(newN.mentions);
         }
         if(newN.attachImg)n.attachImg=newN.attachImg;
+        /* annotShotInto のサムネキャッシュを無効化（fileRef|time|frame キー）。
+           無効化しないとコメント欄に merge 前 drawing のサムネが残って「反映されない」ように見える。 */
+        n.edited=true;
+        try{if(typeof shotCache!=='undefined')shotCache.delete(vv.file+'|'+(n.time||'')+'|'+(n.frame||0))}catch(_){}
         mergedN=n;
         break;
       }
