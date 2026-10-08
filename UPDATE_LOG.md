@@ -18,6 +18,19 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.09.001) **アノテ送信：書き足し後の送信で「既存アノテに drawing を追記」する（アノテ窓・REEL 共通／LayCAT）**：
+  - 事象：一度送信したアノテに新しい線を書き足して再度「送信」を押すと、**書き足した部分だけが別 note として追加され、画面に見えていた「元 + 追記」の全体が記録に残らない**（サムネや動画埋め込みも書き足し分だけになる）。
+  - 修正方針（案 A）：**同じフレームに既に送信済みの drawing 付き note がある場合、新しい draft/pending の drawing をその既存 note に append**（新 note は作らない）。
+    - アノテ窓 `sendCurrent`（L16824 周辺）：`drafts` を `v.review.notes` に push する直前に merge 判定を挟む。既存 note が見つかれば `drawing` を concat、text は連結（既存 \n 新）、mentions は concat、attachImg は差し替え、画像モードは `imgShot` を `annotImageShotFromImg` で再焼き込み。
+    - REEL `reelSendCur`（L20404 周辺）：`vv.review.notes.push(newN)` の直前に同じ merge 判定（`reel_emb_` prefix の embed note は除外）。見つかれば `newN` は push せず既存に追記、見つからなければ従来通り新 note として push。
+  - 書き込み境界（影響範囲）：
+    - 対象 shot.json の `review.notes[]` 内の **当該フレームに合致する drawing 付き既存 note** のみを更新（`drawing` / `text` / `mentions` / `attachImg` / `imgShot`）。他フレーム・他ショット・他プロジェクトの shot.json は触らない。
+    - 新規作成 note は merge できないケース（既存 note が無い・frame なし・embed-only のみ・drawing 空）だけ従来通り push。
+    - persist 経路は従来通り `persist()` → `_persistChain` のバックグラウンド保存。新規の persist 呼び出しは追加していない。
+    - REG 全体を触る `persist()` のポリシーは変更なし（既存の呼び出し点のみ）。
+  - 既存ポリシーとの関係：`clearBtn` の「送信済みは触らない」制約は維持（clear は従来通り送信済み drawing を触らない）。merge は「送信ボタンの明示的操作」でのみ発火する。
+  - APP_VERSION：2026.10.08.148 → 2026.10.09.001（日付変更で末尾リセット）
+
 - (dev v2026.10.08.148) **REEL「ステータスごとに並べる」：判定をショット（section）レベルの明示 status プルダウンのみに（LayCAT）**：
   - 事象：v.147 は `nodeStatus(sh)` を使っていたため、ショットに明示 status が無い場合は工程別 status の集約で判定していた。
   - 修正：`sh.status`（ショット section の明示プルダウン値）だけで判定。明示値が無いショットは対象外（toast にも「ショットの status プルダウンで判定」と明示）。

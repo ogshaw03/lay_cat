@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.148';
+const APP_VERSION='2026.10.09.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -16824,7 +16824,52 @@ function openReview(nodeId,versionId,opts){
   async function sendCurrent(){
     await record(false, true); /* silent：途中の updSubmit を抑制 */
     if(!drafts.length)return;
-    for(const n of drafts){delete n._draft;v.review.notes.push(n)}
+    /* v.149：書き足し送信の merge。
+       同じフレームに既に送信済みの drawing 付き note がある場合、
+       新しい draft の drawing をその既存 note に append する（新 note は作らない）。
+       text があれば連結（既存 \n 新）、mentions は concat、attachImg は差し替え。
+       画像モードは imgShot を再焼き込み。これで「書き足した部分だけ送信される」症状を解消し、
+       書き足し後に送信した時点のキャンバス状態（元 + 追記）を 1 ノートで保つ。 */
+    const remaining=[];
+    for(const nd of drafts){
+      delete nd._draft;
+      let merged=false;
+      if(nd.drawing&&nd.drawing.length){
+        const frame=nd.frame;
+        for(const n of (v.review.notes||[])){
+          if(!n||noteEmbedOnly(n))continue;
+          if(!n.drawing||!n.drawing.length)continue;
+          /* 動画モード：frame が一致すること。画像モード：両方 null が同じビュー扱い。
+             片方だけ null は別もの扱いで skip。 */
+          if(frame==null&&n.frame!=null)continue;
+          if(frame!=null&&n.frame==null)continue;
+          if(frame!=null&&n.frame!==frame)continue;
+          /* 既存送信済み note にマージ */
+          n.drawing=n.drawing.concat(nd.drawing);
+          if(nd.text&&nd.text!=='（描画のみ）'){
+            const oldT=String(n.text||'').trim();
+            const newT=String(nd.text||'').trim();
+            if(oldT&&newT)n.text=oldT+'\n'+newT;
+            else if(newT)n.text=newT;
+          }
+          if(nd.mentions&&nd.mentions.length){
+            n.mentions=(n.mentions||[]).concat(nd.mentions);
+          }
+          if(nd.attachImg)n.attachImg=nd.attachImg;
+          /* 画像モード：imgShot を再焼き込み */
+          if(!isVideo){
+            try{
+              const shotDU=await annotImageShotFromImg(media,n.drawing);
+              if(shotDU)n.imgShot=shotDU;
+            }catch(_){}
+          }
+          merged=true;
+          break;
+        }
+      }
+      if(!merged)remaining.push(nd);
+    }
+    for(const n of remaining)v.review.notes.push(n);
     drafts=[];
     /* 送信で pending 由来の描画がコメント付きノートに昇格。対応フレームの embed ノート（重複）を掃除 */
     try{annoSyncEmbedAll()}catch(_){}
@@ -20444,7 +20489,34 @@ function openReel(){
        スライダーを描画済フレームに合わせて送信ボタンを押した意図＝「サムネ付きで送信したい」
        と解釈する方が自然。noShot は付けず、通常のコメントとして扱いサムネ生成させる。
        （自動同期の reel_emb_ ノートは別経路で常に noShot=true のまま埋め込み専用） */
-    vv.review.notes.push(newN);
+    /* v.149：書き足し送信の merge（アノテ窓と統一）。
+       同じフレーム cf に既に送信済みの drawing 付き note (reel_emb_ でない) があれば、
+       新しい drawings/text/mentions/attachImg をそれに追記する（新 note は作らない）。
+       「書き足した部分だけが別 note になる」症状を解消。 */
+    let mergedN=null;
+    if(newN.drawing&&newN.drawing.length){
+      const isReelEmbN=n=>n&&n.id&&n.id.indexOf('reel_emb_')===0;
+      for(const n of (vv.review.notes||[])){
+        if(!n||isReelEmbN(n))continue;
+        if(!n.drawing||!n.drawing.length)continue;
+        if(n.frame==null)continue;
+        if(n.frame!==cf)continue;
+        n.drawing=n.drawing.concat(newN.drawing);
+        if(newN.text){
+          const oldT=String(n.text||'').trim();
+          const newT=String(newN.text||'').trim();
+          if(oldT&&newT)n.text=oldT+'\n'+newT;
+          else if(newT)n.text=newT;
+        }
+        if(newN.mentions&&newN.mentions.length){
+          n.mentions=(n.mentions||[]).concat(newN.mentions);
+        }
+        if(newN.attachImg)n.attachImg=newN.attachImg;
+        mergedN=n;
+        break;
+      }
+    }
+    if(!mergedN)vv.review.notes.push(newN);
     /* 現在フレーム分の pending を除去 → reelAfterEdit で該当フレームの embed ノートも同期削除。
        **重要**：c.pending は RV.pending と同一参照（loadCur で RV.pending = c.pending にバインド済み）。
        filter で新配列を返して代入すると参照が剥がれ、以降 RV.pending は stale な古い配列を指すことになる：
