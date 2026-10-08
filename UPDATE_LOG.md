@@ -18,6 +18,13 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.09.005) **オミットショット：オーバーレイのオミット猫画像を撤去（LayCAT）**：
+  - 事象：オミットカットのサムネに重ねて表示していた「オミット猫」（インライン base64）が、拡大時にガビガビで見た目が悪い。
+  - 修正：`th.appendChild(ov)` を無効化。`.omit-ov` オーバーレイ生成を停止。オミット視認性は CSS 側（`.pm-tile.omit .th>img:not(.omit-cat){filter:grayscale(1) brightness(.42)}` ＋ `.bd{opacity:.72}`）のグレーアウトで引き続き担保する。
+  - 書き込み境界：UI 描画のみ（データ・状態の変更なし）。
+  - `OMIT_CAT_IMG` 定数・`.omit-ov` / `.omit-cat` CSS 定義は残置（将来戻す場合用、デッドコード扱い）。
+  - APP_VERSION：2026.10.09.004 → 2026.10.09.005
+
 - (dev v2026.10.09.004) **アノテ窓：消しゴム等の送信済み drawing 編集の反映タイミングを「送信ボタン押下時」に（LayCAT）**：
   - 事象：v.003 で `flushCommitted` を pointerup から呼ぶようにしたら、消しゴムで消すたびに毎回コメント欄が再描画される挙動になり、重い／煩わしい。
   - 修正：pointerup での自動 `flushCommitted` 呼び出しを廃止。「送信」(`sendCurrent`) ／「保存」(`submit`) ボタン押下時に明示的に `flushCommitted` を呼ぶ形に変更。

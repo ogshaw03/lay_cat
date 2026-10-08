@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.09.004';
+const APP_VERSION='2026.10.09.005';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8424,8 +8424,9 @@ function renderProjShots(main,cur){
       if(lv.v.thumb){const img=el('img');img.dataset.ref=lv.v.thumb;th.appendChild(img)} /* ポスター（ホバー前・停止時） */
       if(lv.v.file&&!isOmit){const vid=el('video','tvid');vid.dataset.vref=lv.v.file;vid.muted=true;vid.loop=true;vid.playsInline=true;vid.setAttribute('muted','');vid.preload='none';vid.disablePictureInPicture=true;th.appendChild(vid)} /* ホバーで元解像度再生（オミットは重ねるので不要） */
     }else th.appendChild(thumbPh());
-    /* オミット：サムネはそのまま（グレーアウトはCSS）、オミット猫をオーバーレイ */
-    if(isOmit){const ov=el('div','omit-ov');const cat=el('img','omit-cat');cat.src=OMIT_CAT_IMG;cat.alt='オミット';ov.appendChild(cat);th.appendChild(ov);}
+    /* v.005：オミット猫のオーバーレイは撤去（インライン base64 画像が粗く見た目が悪いため）。
+       オミットの視認性は CSS 側（`.pm-tile.omit .th>img { grayscale(1) brightness(.42) }` ＋ `.bd{opacity:.72}`）
+       のグレーアウトのみで担保する。 */
     /* 動画・サムネ部分（th）のクリック：縦並び行と同じで、ショットページ（タブ）追加＝go に振る。
        選択モード中／Ctrl・Meta クリックは通常のタイル onclick（下）と同じ選択トグルを通す。
        これによりタイル枠クリック＝右スライド、動画部クリック＝タブ追加、の 2 挙動が両立する。 */
