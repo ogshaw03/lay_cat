@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.08.078';
+const APP_VERSION='2026.10.08.079';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -4174,7 +4174,13 @@ function _refBuildItem(it){
         inner.preload = 'metadata';
       }
       else { inner.alt = it.label||''; inner.decoding = 'async'; inner.loading = 'lazy'; }
-      storage.resolveMediaUrl(it.mediaRef).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
+      /* v.079：onerror フォールバックで blob URL 失効時に再取得（LayCAT v.144 と同仕様）。 */
+      let _mediaRetry = 0;
+      const _reloadMedia = ()=>{
+        storage.resolveMediaUrl(it.mediaRef).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
+      };
+      inner.onerror = ()=>{ if(++_mediaRetry > 2) return; _reloadMedia(); };
+      _reloadMedia();
       n.appendChild(inner);
       /* v.074：動画も画像と同じ扱いに統一。編集 OFF＝シングルクリックでモーダル再生／編集 ON＝ダブルクリック。 */
       let _down=null, _moved=false;

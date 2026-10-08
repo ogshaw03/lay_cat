@@ -18,6 +18,14 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.08.144) **資料タブ：画像／動画サムネが切れる問題を修正（LayCAT）**：
+  - 事象：資料タブで画像や動画のサムネがたまに切れる（白抜き or 壊れた画像アイコン）。
+  - 原因：`storage.urlCache` の LRU 上限 250 を超えると古い URL が `URL.revokeObjectURL` で失効し、既に DOM に表示している `<img>.src` が死ぬ。
+  - 修正：
+    - `inner.onerror` で `storage.getURLRetry` を呼び直す再取得フォールバック（無限ループ防止で最大 2 回）。
+    - `_urlCacheLimit` を 250 → 800 に拡大（資料タブで数十〜百枚規模の画像を扱える余裕）。
+  - APP_VERSION：2026.10.08.143 → 2026.10.08.144
+
 - (dev v2026.10.08.143) **NAS タイルのバッジ「NAS」→「ローカル」に（LayCAT）**：
   - ローカルの Desktop フォルダ等も対象なので「NAS」は語弊があった。
   - APP_VERSION：2026.10.08.142 → 2026.10.08.143
@@ -3696,6 +3704,10 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.08.079) **資料タブ：画像／動画サムネが切れる場合の再取得フォールバック（PMB、LayCAT v.144 連動）**：
+  - `inner.onerror` で `storage.resolveMediaUrl` を呼び直す（最大 2 回）。
+  - APP_VERSION：2026.10.08.078 → 2026.10.08.079
 
 - (dev v2026.10.08.078) **資料タブ：URL リンクのクリック安定化＋ホバー時に pointer カーソル（PMB、LayCAT v.125 連動）**：
   - href 付きテキストは `user-select:none` + `cursor:pointer`、onclick ハンドラは常時設置＋クリック時 editMode 分岐。

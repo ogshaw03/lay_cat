@@ -2304,7 +2304,7 @@ const _v5StatusShots=new Set();
 const storage={
   /* DB（layna_db.json 相当）は常にブラウザ内保存(IndexedDB)。
      動画・画像はプロジェクトごとに指定したフォルダへ、未指定ならブラウザ内保存へ格納。 */
-  mode:'idb',rootHandle:null,urlCache:new Map(),_urlCacheLimit:250,
+  mode:'idb',rootHandle:null,urlCache:new Map(),_urlCacheLimit:800,
   supportsFolder(){return typeof window.showDirectoryPicker==='function'},
   useIdb(){this.mode='idb';try{localStorage.setItem('layna_mode','idb')}catch(_){}},
   /* ヘッダー表示：プロジェクトを開いていて専用フォルダ指定があればその名前、なければブラウザ内保存 */
@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.143';
+const APP_VERSION='2026.10.08.144';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -7787,7 +7787,15 @@ function _refBuildItem(it){
         if(it.thumbDataUrl) inner.poster = it.thumbDataUrl;
         inner.preload = 'metadata';
       }
-      storage.getURLRetry(it.mediaRef, 3).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
+      /* v.144：onerror フォールバックで blob URL 失効時に再取得（urlCache の LRU 上限 250 で
+         evict → URL.revokeObjectURL された URL を参照していると画像が切れるため）。
+         再試行は 2 回までで無限ループを防ぐ。 */
+      let _mediaRetry = 0;
+      const _reloadMedia = ()=>{
+        storage.getURLRetry(it.mediaRef, 3).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
+      };
+      inner.onerror = ()=>{ if(++_mediaRetry > 2) return; _reloadMedia(); };
+      _reloadMedia();
       n.appendChild(inner);
       /* v.121：動画も画像と同じ扱いに統一。編集 OFF＝シングルクリックでモーダル再生／編集 ON＝ダブルクリック。 */
       let _down=null, _moved=false;
