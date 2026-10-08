@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.146';
+const APP_VERSION='2026.10.08.147';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -21033,11 +21033,11 @@ function openReel(){
     if(!rt){try{toast('リールがプロジェクトに束縛されていません')}catch(_){};return}
     reelAddAllShots(rt);
   });
-  /* v.083：OK（isDoneStatus 真）のショットだけショット順に通し確認（先方提出前チェック用） */
-  shotItem('✅ OK カットだけ並べる（先方提出前チェック）',()=>{
+  /* v.147：旧「OK カットだけ並べる」を一般化。任意のステータスを複数選択して並べられる。 */
+  shotItem('🧰 ステータスごとに並べる',()=>{
     const rt=reelUI.projectId?getNode(reelUI.projectId):null;
     if(!rt){try{toast('リールがプロジェクトに束縛されていません')}catch(_){};return}
-    reelAddOkShots(rt);
+    _openReelStatusPickerModal(rt,(statusIds)=>{ reelAddByStatuses(rt, statusIds); });
   });
   shotDD.appendChild(ce(d,'div','sep'));
   shotItem('リストを閉じる',()=>{rside.style.display='none'});
@@ -21319,8 +21319,7 @@ async function reelAddAllShots(root){
   toast('REEL に '+added+' 件追加（全体確認）'+(skipped?'／動画なし '+skipped+' 件はスキップ':''));
 }
 /* v.083：OK（isDoneStatus 真）のショットだけの最新動画をショット順に REEL に並べる。
-   先方への提出前チェック（通し確認）用。shotsOf(root) 順を保ち、OK かつ動画のある
-   ショットのみクリップ化する。動画のないショットや OK 以外は静かにスキップ。 */
+   v.147：reelAddByStatuses に一般化（下記）。レガシー互換のため関数は残置。 */
 async function reelAddOkShots(root){
   if(!root)return;
   const shots=shotsOf(root);
@@ -21335,6 +21334,76 @@ async function reelAddOkShots(root){
     await reelAddClip(lv.node,lv.v);added++;
   }
   toast('REEL に '+added+' 件追加（OK カット通し確認）'+(skipped?'／動画なし '+skipped+' 件はスキップ':''));
+}
+/* v.147：指定ステータス（複数）に該当するショットの最新動画を REEL に並べる。
+   shotsOf(root) 順を保つ。動画のないショットはスキップ。 */
+async function reelAddByStatuses(root, statusIds){
+  if(!root || !Array.isArray(statusIds) || !statusIds.length) return;
+  const shots=shotsOf(root);
+  if(!shots.length){toast('ショットがありません');return}
+  const set=new Set(statusIds.map(String));
+  const matched=shots.filter(sh => set.has(String(nodeStatus(sh))));
+  if(!matched.length){toast('選択したステータスに該当するショットがありません');return}
+  openReel(); if(!reelAlive()) return;
+  let added=0, skipped=0;
+  for(const sh of matched){
+    const lv=latestVideoVersionUnder(sh.id);
+    if(!lv || lv.v.type !== 'video'){ skipped++; continue; }
+    await reelAddClip(lv.node, lv.v); added++;
+  }
+  toast('REEL に '+added+' 件追加（ステータス指定通し確認）'+(skipped?'／動画なし '+skipped+' 件はスキップ':''));
+}
+/* v.147：REEL ポップアップ内でステータス複数選択モーダルを開く。
+   reelWin の document に直接描画し、本体 LayCAT ウィンドウにフォーカスを奪わない。
+   選択されたステータス ID 配列を callback に渡す。 */
+function _openReelStatusPickerModal(root, callback){
+  if(!reelAlive() || !reelWin) return;
+  const d = reelWin.document;
+  const statuses = projStatuses(root)||[];
+  const ov = d.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);font-family:system-ui,"Segoe UI",sans-serif';
+  const m = d.createElement('div');
+  m.style.cssText='background:#141418;border:1px solid #2a2a2f;border-radius:12px;min-width:320px;max-width:440px;padding:18px 20px;color:#e8e8ec;font-size:13px;box-shadow:0 20px 60px rgba(0,0,0,.6)';
+  const title=d.createElement('div');title.textContent='並べたいステータスを選択';
+  title.style.cssText='font-weight:700;font-size:15px;margin-bottom:6px';m.appendChild(title);
+  const sub=d.createElement('div');sub.textContent='チェックを入れたステータス（複数可）に該当するショットの最新動画を REEL に並べます。ショット順を保ちます。';
+  sub.style.cssText='font-size:11px;color:#8a8a99;margin-bottom:12px;line-height:1.6';m.appendChild(sub);
+  const list=d.createElement('div');
+  list.style.cssText='display:flex;flex-direction:column;gap:4px;max-height:320px;overflow-y:auto;margin-bottom:14px;padding-right:4px';m.appendChild(list);
+  const checked=new Set();
+  if(!statuses.length){
+    const em=d.createElement('div');em.textContent='このプロジェクトにステータス定義がありません';
+    em.style.cssText='color:#8a8a99;padding:12px;text-align:center';list.appendChild(em);
+  }else{
+    for(const s of statuses){
+      const row=d.createElement('label');
+      row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 10px;background:#1c1c1f;border:1px solid #2a2a2f;border-radius:6px;cursor:pointer';
+      const cb=d.createElement('input');cb.type='checkbox';cb.style.cssText='margin:0;cursor:pointer';
+      cb.onchange=()=>{ if(cb.checked) checked.add(s.id); else checked.delete(s.id); };
+      row.appendChild(cb);
+      const dot=d.createElement('span');dot.style.cssText='width:10px;height:10px;border-radius:50%;flex:0 0 auto;background:'+(s.color||'#5a5a6a');
+      row.appendChild(dot);
+      const txt=d.createElement('span');txt.textContent=s.label;txt.style.cssText='flex:1 1 auto';
+      row.appendChild(txt);
+      list.appendChild(row);
+    }
+  }
+  const foot=d.createElement('div');foot.style.cssText='display:flex;justify-content:flex-end;gap:8px';
+  const cancel=d.createElement('button');cancel.textContent='キャンセル';
+  cancel.style.cssText='padding:7px 14px;background:transparent;border:1px solid #2a2a2f;border-radius:6px;color:#c8c8d0;cursor:pointer;font:inherit';
+  cancel.onclick=()=>{ try{ ov.remove(); }catch(_){} };
+  foot.appendChild(cancel);
+  const ok=d.createElement('button');ok.textContent='実行';
+  ok.style.cssText='padding:7px 16px;background:#4a9eff;border:none;border-radius:6px;color:#111;font-weight:700;cursor:pointer;font:inherit';
+  ok.onclick=()=>{
+    if(checked.size===0){ try{ reelWin.alert('ステータスを 1 つ以上選択してください'); }catch(_){} return; }
+    try{ ov.remove(); }catch(_){}
+    try{ callback(Array.from(checked)); }catch(e){ try{ console.warn(e); }catch(_){} }
+  };
+  foot.appendChild(ok);
+  m.appendChild(foot);
+  ov.appendChild(m);
+  d.body.appendChild(ov);
 }
 /* 保存済みリールを開く（動画タイルの 🎞 リール名 ボタンから） */
 async function openReelFromSaved(reelId){
