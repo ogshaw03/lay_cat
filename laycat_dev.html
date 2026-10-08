@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.08.139';
+const APP_VERSION='2026.10.08.140';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14106,11 +14106,22 @@ function openMembersWindow(root){
       row.appendChild(badges);
       const rev=ce('button','btn','取消');rev.style.cssText='flex:0 0 auto;background:#1c1c1f;border:1px solid #2a2a2f;color:#ff9999;padding:4px 10px;font-size:11px;border-radius:5px;cursor:pointer';
       rev.onclick=async()=>{
-        if(!w.confirm('この招待を取消しますか？\n（受理前ならそのまま消え、相手の一覧には出なくなります）')) return;
+        if(!w.confirm('この招待を取消しますか？\n・招待レコードを削除\n・相手が既にログイン済みで一覧に表示されている場合も、次回ログイン時にその人の「招待されたプロジェクト」から消えます\n・メンバー名簿（上のリスト）はそのまま残ります（別途「削除」で外せます）'))return;
         rev.disabled=true;rev.textContent='…';
-        const ok=await window.__laynaFB.revokeFolderInvite(inv.id);
-        if(ok){ row.remove(); if(!pendList.children.length){ const em=ce('div','muted','（未受理の招待はありません）');pendList.appendChild(em); } }
-        else{ rev.disabled=false;rev.textContent='取消';w.alert('取消に失敗しました'); }
+        const okRev=await window.__laynaFB.revokeFolderInvite(inv.id);
+        /* v.140：既取込みの folderProjects からも消すため Revocation を発行。
+           toEmailKey（既に _ 置換済み）を直接渡す（@ 無しの文字列は createFolderRevocation 側でキー扱い）。 */
+        let okRevo=true;
+        if(okRev && window.__laynaFB.createFolderRevocation && authUser && authUser.email && inv.toEmailKey){
+          okRevo=await window.__laynaFB.createFolderRevocation(authUser.email, inv.toEmailKey, root.id);
+        }
+        if(okRev){
+          row.remove();
+          if(!pendList.children.length){ const em=ce('div','muted','（未受理の招待はありません）');pendList.appendChild(em); }
+          try{ toast('招待を取消しました'+(okRevo?'（相手側は次回ログイン時に反映）':'（相手側 folderProjects の削除指示は失敗）')); }catch(_){}
+        }else{
+          rev.disabled=false;rev.textContent='取消';w.alert('取消に失敗しました');
+        }
       };
       row.appendChild(rev);
       pendList.appendChild(row);
@@ -22978,11 +22989,13 @@ initApp();
          保存先：laycatFolderRevocations/{autoId}
             {toEmailKey, fromEmailKey, pid, byEmail, createdAt, expiresAt}
          Firestore ルール：招待と同じ構造（本人のみ read/delete, 自分発のみ create）。 */
-      createFolderRevocation:async(fromEmail, toEmail, pid)=>{try{
-        if(!fromEmail||!toEmail||!pid) return false;
+      /* v.140：toEmail がメール形式でなく既にキー化されている（例：取消ボタンから）場合も受理。 */
+      createFolderRevocation:async(fromEmail, toEmailOrKey, pid)=>{try{
+        if(!fromEmail||!toEmailOrKey||!pid) return false;
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);
-        const toKey=String(toEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const _rawTo=String(toEmailOrKey);
+        const toKey = _rawTo.includes('@') ? _rawTo.toLowerCase().replace(/[.@#$/\[\]]/g,'_') : _rawTo.toLowerCase();
         const fromKey=String(fromEmail).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         /* 既存重複は無視（複数作っても害は無いが節約） */
         try{
