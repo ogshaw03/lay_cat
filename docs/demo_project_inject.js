@@ -28,14 +28,17 @@
   const rootId = 'nd_demo_root';
 
   // ===== Root（プロジェクト） =====
+  // 注意：root.stages は **文字列配列** が正。openAddModal の工程編集 UI は
+  //       `inp.value = nm` で表示するため、オブジェクト配列を入れると [object Object] と表示される。
+  //       色は root.stageColors（{name: color}）に別途保存される。
   DB.nodes.push({
     id: rootId, parentId: null, name: 'DEMO_プロジェクト', type: 'section',
     description: '取説用のサンプルプロジェクト', thumbnail: null, createdAt: now, versions: [],
-    stages: [
-      { id:'lay', label:'レイアウト', color:'#5A9BFF' },
-      { id:'anm', label:'動画',       color:'#5CB878' },
-      { id:'col', label:'仕上げ',     color:'#F2986B' },
+    stages: ['レイアウト', '動画', '仕上げ'],
+    stageTemplates: [
+      { id:'tpl_default', name:'テンプレートA', stages:['レイアウト','動画','仕上げ'] },
     ],
+    stageColors: { 'レイアウト':'#5A9BFF', '動画':'#5CB878', '仕上げ':'#F2986B' },
     members: [
       { email:'director@example.com', name:'山田監督', role:'director' },
       { email:'pm@example.com',       name:'佐藤制作', role:'pm' },
@@ -45,35 +48,37 @@
   });
 
   // ===== エピソード × シーケンス =====
+  // 注意：shot.currentStage は stage の **label**（名前）を入れること。
+  //       進捗タブは review 子ノードの name と currentStage の文字列一致で現工程を特定する。
   const structure = [
     { ep:'EP01', sqs:[
       { sq:'A-pt', shots:[
-        { nm:'sh001', stage:'anm', status:'pending',  worker:'鈴木作画' },
-        { nm:'sh002', stage:'lay', status:'approved', worker:'山田監督' },
-        { nm:'sh003', stage:'col', status:'retake',   worker:'田中仕上' },
-        { nm:'sh004', stage:'anm', status:'pending',  worker:'鈴木作画' },
-        { nm:'sh005', stage:'col', status:'approved', worker:'田中仕上' },
+        { nm:'sh001', stage:'動画',       status:'pending',  worker:'鈴木作画' },
+        { nm:'sh002', stage:'レイアウト', status:'approved', worker:'山田監督' },
+        { nm:'sh003', stage:'仕上げ',     status:'retake',   worker:'田中仕上' },
+        { nm:'sh004', stage:'動画',       status:'pending',  worker:'鈴木作画' },
+        { nm:'sh005', stage:'仕上げ',     status:'approved', worker:'田中仕上' },
       ]},
       { sq:'B-pt', shots:[
-        { nm:'sh006', stage:'lay', status:'pending',  worker:'山田監督' },
-        { nm:'sh007', stage:'anm', status:'retake',   worker:'鈴木作画' },
-        { nm:'sh008', stage:'col', status:'approved', worker:'田中仕上' },
-        { nm:'sh009', stage:'lay', status:'omit',     worker:'-' },
+        { nm:'sh006', stage:'レイアウト', status:'pending',  worker:'山田監督' },
+        { nm:'sh007', stage:'動画',       status:'retake',   worker:'鈴木作画' },
+        { nm:'sh008', stage:'仕上げ',     status:'approved', worker:'田中仕上' },
+        { nm:'sh009', stage:'レイアウト', status:'omit',     worker:'-' },
       ]},
     ]},
     { ep:'EP02', sqs:[
       { sq:'A-pt', shots:[
-        { nm:'sh010', stage:'anm', status:'pending',  worker:'鈴木作画' },
-        { nm:'sh011', stage:'lay', status:'approved', worker:'山田監督' },
-        { nm:'sh012', stage:'col', status:'pending',  worker:'田中仕上' },
-        { nm:'sh013', stage:'anm', status:'retake',   worker:'鈴木作画' },
-        { nm:'sh014', stage:'anm', status:'pending',  worker:'鈴木作画' },
+        { nm:'sh010', stage:'動画',       status:'pending',  worker:'鈴木作画' },
+        { nm:'sh011', stage:'レイアウト', status:'approved', worker:'山田監督' },
+        { nm:'sh012', stage:'仕上げ',     status:'pending',  worker:'田中仕上' },
+        { nm:'sh013', stage:'動画',       status:'retake',   worker:'鈴木作画' },
+        { nm:'sh014', stage:'動画',       status:'pending',  worker:'鈴木作画' },
       ]},
       { sq:'B-pt', shots:[
-        { nm:'sh015', stage:'lay', status:'pending',  worker:'山田監督' },
-        { nm:'sh016', stage:'col', status:'approved', worker:'田中仕上' },
-        { nm:'sh017', stage:'lay', status:'omit',     worker:'-' },
-        { nm:'sh018', stage:'anm', status:'approved', worker:'鈴木作画' },
+        { nm:'sh015', stage:'レイアウト', status:'pending',  worker:'山田監督' },
+        { nm:'sh016', stage:'仕上げ',     status:'approved', worker:'田中仕上' },
+        { nm:'sh017', stage:'レイアウト', status:'omit',     worker:'-' },
+        { nm:'sh018', stage:'動画',       status:'approved', worker:'鈴木作画' },
       ]},
     ]},
   ];
@@ -102,11 +107,15 @@
           currentStage: sh.stage, status: sh.status, createdAt: now, versions: [],
           assignedWorker: sh.worker, assignedChecker: '山田監督',
         });
-        // _isShotLikeNode 判定を通すため review 子ノードを追加（stage 分）
+        // _isShotLikeNode 判定を通すため review 子ノードを追加（stage 分）。
+        // 進捗タブは「現工程 review ノードの status」を見るので、現工程の review ノードに
+        // ショットの status を伝搬しておく。他工程 review の status は未着手扱いになる。
         for (const st of reviewStages) {
+          const isCurrent = (st.label === sh.stage);
           DB.nodes.push({
             id: shId + '_r_' + st.id, parentId: shId, name: st.label,
             type: 'review', createdAt: now, versions: [],
+            status: isCurrent ? sh.status : undefined,
           });
         }
         shotCount++;

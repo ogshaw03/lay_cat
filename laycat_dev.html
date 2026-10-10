@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.09.005';
+const APP_VERSION='2026.10.11.006';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -8312,6 +8312,16 @@ function renderProjShots(main,cur){
   const mkBtn=(mode,svg,title)=>{const b=el('button','sv-sw-btn'+(state.shotsView===mode?' on':''));b.type='button';b.innerHTML=svg;b.title=title;b.onclick=()=>{if(state.shotsView!==mode){state.shotsView=mode;try{localStorage.setItem('layna_shotsView',mode)}catch(_){}renderBody();resolveThumbs()}};return b;};
   seg.appendChild(mkBtn('grid',ICON_GRID,'グリッド表示'));seg.appendChild(mkBtn('list',ICON_LIST,'縦並び表示'));
   head.appendChild(seg);
+  /* v.006：ショットタブ右上「＋ 追加」ボタン。
+     押下で openAddModal を開き、モーダル内のプルダウンで追加先フォルダを選べる。
+     初期の親候補は shotsParentsOf(cur)[0]（なければ cur.id）。初期種別はショットページ。 */
+  const addBtn=el('button','btn btn-ghost btn-sm','＋ 追加');
+  addBtn.title='ショットページまたはフォルダを追加（親フォルダはモーダル内で選択）';
+  addBtn.onclick=()=>{
+    const _defParent=(parents&&parents.length)?parents[0]:cur.id;
+    openAddModal(_defParent,'review');
+  };
+  head.appendChild(addBtn);
   /* v.017：全ショットの最新動画をショット順に REEL に並べる（全体確認用） */
   const reelAllBtn=el('button','btn btn-primary btn-sm','▶ 全ショットを REEL で通し確認');
   reelAllBtn.title='プロジェクト内の全ショットの最新動画をショット順で REEL に並べます（全体確認用）';
@@ -12651,7 +12661,29 @@ function openAddModal(parentId,initialType,role){
        initialType が明示されればそれを初期選択に、無ければ 'section'（フォルダ）を既定。 */
     const _initT=(initialType==='review')?'review':'section';
     const roleTitle=(_initT==='review'?'ショットページを追加':'フォルダを追加');
-    const inner=mHead(body,roleTitle,cur?('親: '+cur.name):'新規アイテム');
+    const inner=mHead(body,roleTitle,'');
+    /* v.006：親フォルダ プルダウン。
+       旧 subtitle「親: xxx」の代わりに、プロジェクト直下＋section 型フォルダをモーダル内で選べる。
+       追加先はこのプルダウンで決定。レガシー shot container（section 直下が全て review のもの）
+       はフォルダとみなさず除外。 */
+    const _rootForDrop=cur?rootOf(cur):null;
+    let parentSel=null;
+    if(_rootForDrop){
+      const parRow=frow('親フォルダ','select');
+      const _isShotSec=(n)=>{const kids=childrenOf(n.id);return kids.length>=1&&kids.every(k=>k.type==='review')&&!kids.some(k=>k.currentStage!=null||k.kind==='shot')};
+      const opts=[{id:_rootForDrop.id,label:'（プロジェクト直下）'+(_rootForDrop.name?' — '+_rootForDrop.name:'')}];
+      (function walk(pid,depth){
+        const kids=childrenOf(pid).filter(n=>n.type==='section'&&!_isShotSec(n));
+        for(const k of kids){
+          opts.push({id:k.id,label:'　'.repeat(depth+1)+'└ '+k.name});
+          walk(k.id,depth+1);
+        }
+      })(_rootForDrop.id,0);
+      for(const o of opts){const op=el('option',null,o.label);op.value=o.id;parRow.f.appendChild(op)}
+      parRow.f.value=parentId||_rootForDrop.id;
+      inner.appendChild(parRow.r);
+      parentSel=parRow.f;
+    }
     const nameRow=frow('名前 / ベース名（例: sh010 / EP01）','input');
     inner.appendChild(nameRow.r);
     const nameLab=nameRow.r.querySelector('label');
@@ -12726,6 +12758,9 @@ function openAddModal(parentId,initialType,role){
     save.onclick=async()=>{
       const base=nameRow.f.value.trim();if(!base)return toast('名前を入力してください');
       const type=ts.get();
+      /* v.006：親フォルダはプルダウンで選ばれた値（未設定なら旧 parentId） */
+      const targetParentId=parentSel?parentSel.value:parentId;
+      if(!targetParentId||!getNode(targetParentId))return toast('親フォルダが選択されていません');
       let names=[base];
       if(seqCb.checked){
         const cnt=Math.max(1,Math.min(200,parseInt(cntI.value)||1));
@@ -12748,7 +12783,7 @@ function openAddModal(parentId,initialType,role){
       const _initStage=(function(){const c=stagesEdit.map(x=>String(x||'').trim()).filter(Boolean);return c.length?c[0]:''})();
       const createdIds=[];
       for(const nm of names){
-        const id=addNode(parentId,nm,names.length===1?descRow.f.value.trim():'',type);
+        const id=addNode(targetParentId,nm,names.length===1?descRow.f.value.trim():'',type);
         createdIds.push(id);
         const nd=getNode(id);
         /* v.038：ショットページ（review）は Simple B の 1 ショット＝ 1 ページ。
@@ -12759,7 +12794,7 @@ function openAddModal(parentId,initialType,role){
           if(_initStage)nd.currentStage=_initStage;
         }
       }
-      await persist();closeModal();if(parentId)state.expanded.add(parentId);render();resolveThumbs();
+      await persist();closeModal();if(targetParentId)state.expanded.add(targetParentId);render();resolveThumbs();
       if(names.length>1)toast(names.length+'件を作成しました');
     };
     mFoot(body,[cancel,save]);
@@ -12807,15 +12842,22 @@ function openRename(node){
        ・カテゴリ（サブセクション）：プロジェクトのテンプレートから選んで適用＋直接編集 */
     let stagesArr=null;         /* カテゴリの場合の node.stages 編集用 */
     let stageTemplatesArr=null; /* プロジェクトルートの場合の stageTemplates 編集用 */
+    let stageColorsLocal=null;  /* v.006：工程色マップのローカル編集（工程テンプレ UI 内のピッカー）用 */
     let secN=2;
     if(node.type==='section'){
       if(isProjectRoot){
-        sec(secN++,'🧩','工程テンプレート','このプロジェクトで使う工程のセットをテンプレートとして管理します。ショット設定で「このテンプレートを適用」を選ぶと、その工程が自動で展開されます。エピソード用／PV 用など、複数のテンプレートを持てます。');
+        sec(secN++,'🧩','工程テンプレート','このプロジェクトで使う工程のセットをテンプレートとして管理します。ショット設定で「このテンプレートを適用」を選ぶと、その工程が自動で展開されます。エピソード用／PV 用など、複数のテンプレートを持てます。各工程の **色** も左のピッカーから設定でき、ショットカード・進捗グラフ・PM Board のバッジに反映されます。');
         stageTemplatesArr=projectStageTemplates(node).map(t=>({
           id:t.id||newId('tpl'),
           name:t.name||'テンプレート',
           stages:(Array.isArray(t.stages)?t.stages:[]).slice(),
         }));
+        /* v.006：工程バッジの色セクションを撤去し、ここに統合。
+           node.stageColors をローカルコピーして編集、保存時にまとめて反映。
+           工程名変更時はキーも引越し（下記 inp.oninput）。 */
+        stageColorsLocal=Object.assign({},node.stageColors||{});
+        const _autoColor=(nm)=>{try{return stageColorFor(node,nm)}catch(_){return '#5a5a6a'}};
+        const _pickColorFor=(nm)=>{const v=stageColorsLocal[nm];return (v&&/^#[0-9a-fA-F]{6}$/.test(v))?v:_autoColor(nm)};
         const tplHost=el('div');inner.appendChild(tplHost);
         const redrawAll=()=>{
           tplHost.innerHTML='';
@@ -12833,10 +12875,29 @@ function openRename(node){
               stgWrap.innerHTML='';
               tpl.stages.forEach((nm,i)=>{
                 const row=el('div','step-row');
-                const sc=el('span');sc.style.cssText='width:13px;height:13px;border-radius:3px;flex-shrink:0;align-self:center;background:'+stageColor(nm);
-                const inp=el('input','form-input');inp.value=nm;inp.oninput=()=>{tpl.stages[i]=inp.value;sc.style.background=stageColor(inp.value)};
-                const del=el('button','btn btn-danger btn-sm','削除');del.onclick=()=>{tpl.stages.splice(i,1);redrawStg()};
-                row.appendChild(sc);row.appendChild(inp);row.appendChild(del);stgWrap.appendChild(row);
+                /* v.006：横並びレイアウト。.step-row に CSS 無いので inline flex で確実に。 */
+                row.style.cssText='display:flex;gap:6px;align-items:center;margin-bottom:4px';
+                /* v.006：工程色ピッカー（旧「工程バッジの色」セクションを統合）。
+                   クリックすると node.stageColors[name] に書き込まれる（保存時に確定）。 */
+                const pk=el('input');pk.type='color';pk.value=_pickColorFor(nm);
+                pk.style.cssText='width:36px;height:30px;background:none;border:none;flex-shrink:0;cursor:pointer;padding:0';
+                pk.title='工程バッジの色（クリックで変更）';
+                pk.oninput=()=>{const cur=(inp.value||'').trim();if(cur)stageColorsLocal[cur]=pk.value};
+                const inp=el('input','form-input');inp.value=nm;inp.style.flex='1';inp.style.minWidth='120px';
+                inp.oninput=()=>{
+                  const oldName=tpl.stages[i];
+                  tpl.stages[i]=inp.value;
+                  /* 名前変更時に色マップのキーも引越し */
+                  if(oldName&&oldName!==inp.value&&stageColorsLocal[oldName]!==undefined){
+                    stageColorsLocal[inp.value]=stageColorsLocal[oldName];
+                    delete stageColorsLocal[oldName];
+                  }
+                  pk.value=_pickColorFor(inp.value);
+                };
+                const reset=el('button','btn btn-ghost btn-sm','自');reset.type='button';reset.title='自動配色に戻す';
+                reset.onclick=()=>{delete stageColorsLocal[(inp.value||'').trim()];pk.value=_autoColor((inp.value||'').trim())};
+                const del=el('button','btn btn-danger btn-sm','削除');del.onclick=()=>{const removed=tpl.stages[i];tpl.stages.splice(i,1);if(removed)delete stageColorsLocal[removed];redrawStg()};
+                row.appendChild(pk);row.appendChild(inp);row.appendChild(reset);row.appendChild(del);stgWrap.appendChild(row);
               });
             };
             redrawStg();box.appendChild(stgWrap);
@@ -12885,7 +12946,7 @@ function openRename(node){
     /* タスク（工程）：作業担当・チェック担当（メンバーから選択。ショット単位ではなく工程ごとに設定） */
     /* 作業者/チェック者の設定はショットページ上部バー（設定ボタンの左）に移設 */
     /* プロジェクト（ルート）ならステータス／進捗のショット親フォルダを編集できる */
-    let stArr=null,spSel=null,projThumbFile=null,projThumbUrlTmp=null,projCropWidget=null,scArr=null,ovSel=null,splitChk=null;
+    let stArr=null,spSel=null,projThumbFile=null,projThumbUrlTmp=null,projCropWidget=null,ovSel=null,splitChk=null;
     let pwNew=null,pwConf=null,pwRemove=null;
     if(!node.parentId){
       /* プロジェクトサムネイル（元画像はそのまま・トリミングのみ調整可能） */
@@ -12952,26 +13013,8 @@ function openRename(node){
       const addSt=el('button','btn btn-ghost btn-sm','＋ ステータスを追加');addSt.style.marginBottom='12px';
       addSt.onclick=()=>{stArr.push({id:newId('st'),label:'新ステータス',color:'#60a5ff',checkWait:false});redrawSt()};
       inner.appendChild(addSt);
-      /* 工程バッジの色（工程名ごと・全ショット共通）。実在する工程名を列挙し、一度選べば同名の全工程に反映される。 */
-      sec(secN++,'🎨','工程バッジの色','工程名（LAY / ANIM / COMP など）ごとに固有色を割り当てられます。1 回設定すれば、全ショットの同じ工程バッジに反映されます。「自動」ボタンで自動配色に戻せます。');
-      const scWrap=el('div','step-grid');
-      const scNames=[...projStageColorMap(node).keys()];
-      scArr=scNames.map(nm=>({name:nm,color:(node.stageColors&&node.stageColors[nm])||''}));
-      const drawSC=()=>{
-        scWrap.innerHTML='';
-        if(!scArr.length){scWrap.appendChild(el('div','form-label','（工程がまだありません）'));return}
-        scArr.forEach(st2=>{
-          const row=el('div','step-row');
-          const auto=stageColorFor(node,st2.name);
-          const pk=el('input');pk.type='color';pk.value=/^#[0-9a-fA-F]{6}$/.test(st2.color)?st2.color:auto;pk.style.cssText='width:36px;height:30px;background:none;border:none;flex-shrink:0';pk.oninput=()=>{st2.color=pk.value};
-          const nm=el('input','form-input');nm.value=st2.name;nm.readOnly=true;nm.style.opacity='.75';
-          const ab=el('button','btn btn-ghost btn-sm','自動');ab.type='button';ab.title='自動配色に戻す';ab.onclick=()=>{st2.color='';drawSC()};
-          row.appendChild(pk);row.appendChild(nm);row.appendChild(ab);scWrap.appendChild(row);
-        });
-      };
-      drawSC();
-      inner.appendChild(scWrap);
-      const scNote=el('div','form-label','※「自動」は工程名から自動で割り当てた色（重複しないよう配分）に戻します。');scNote.style.marginBottom='12px';inner.appendChild(scNote);
+      /* v.006：工程バッジの色セクションは撤去（工程テンプレ内の各工程行の左ピッカーに統合）。
+         互換のため node.stageColors の読み出し・書き込み経路は変更していない。 */
       /* 進捗（工程/ステータスグラフ）のショット親フォルダ（複数選択可） */
       sec(secN++,'📂','進捗表示の起点フォルダ','進捗タブ・ショットタブが「どのフォルダの直下をショットとして数えるか」を指定します。エピソードが複数のフォルダに分かれている場合は複数選択できます。未選択なら自動検出。');
       const spWrap=el('div','sp-parents');spWrap.style.cssText='display:flex;flex-direction:column;gap:2px;max-height:190px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px';
@@ -13130,7 +13173,17 @@ function openRename(node){
         else{delete node.stageTemplates}
       }
       /* 工程バッジの手動色（工程名→色）をプロジェクトルートに保存。空（自動）は削除。 */
-      if(scArr!=null){const cmap=Object.assign({},node.stageColors||{});for(const st2 of scArr){const nm=st2.name;if(!nm)continue;if(st2.color&&/^#[0-9a-fA-F]{6}$/.test(st2.color))cmap[nm]=st2.color;else delete cmap[nm]}if(Object.keys(cmap).length)node.stageColors=cmap;else delete node.stageColors}
+      /* v.006：工程色の保存。stageColorsLocal（工程テンプレ UI の各ピッカー）を node.stageColors に反映。
+         空値・不正な形式はキーを削除。全て空になったら stageColors フィールド自体を削除。 */
+      if(stageColorsLocal!=null){
+        const cmap={};
+        for(const k in stageColorsLocal){
+          const v=stageColorsLocal[k];
+          if(v&&/^#[0-9a-fA-F]{6}$/.test(v))cmap[k]=v;
+        }
+        if(Object.keys(cmap).length)node.stageColors=cmap;
+        else delete node.stageColors;
+      }
       /* 進行状況バッジの手動オーバーライド（auto=削除して自動判定に戻す） */
       if(ovSel){const v=ovSel.get();if(v==='active'||v==='done')node.statusOverride=v;else delete node.statusOverride}
       /* v.062：工数集計の設定（manhours.splitParallelByAssignee） */

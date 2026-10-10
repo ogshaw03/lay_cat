@@ -18,6 +18,27 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.11.006) **工程色統合＋ショットタブに「＋ 追加」ボタン＋追加モーダルに親フォルダプルダウン（LayCAT）**：
+  - **① 工程バッジの色セクションを撤去し、工程テンプレ UI 内に色ピッカーを統合**：
+    - 事象：工程バッジの色セクションは `projStageColorMap(root)`（ショットの review 子ノードから工程名を集める）に依存。shot/review が無い状態では「工程がありません」になる構造バグ。
+    - 修正：openRename のプロジェクト設定モーダル内「② 工程テンプレ」の各工程行に色ピッカー＋「自」ボタンを追加。1 箇所で工程名・色・順序を編集可能に。
+    - 工程名を書き換えると `stageColorsLocal` の対応キーも引越し。
+    - 保存時に `node.stageColors` へ反映（有効 hex のみ）。空になれば `stageColors` キー自体を削除。
+    - `scArr` 変数は `stageColorsLocal` に rename。L12946 の combined 宣言から除外し、L12845 に単独 `let` 宣言（TDZ 回避）。
+    - 読み出し側 `stageBadgeColor` / `stageColorFor` / `projStageColorMap` の優先順位は変更なし。
+    - `.step-row` に CSS が無いため、各行に inline `display:flex;gap:6px;align-items:center` を付与して横並びに。
+  - **② ショットタブ右上に「＋ 追加」ボタン**：
+    - `renderProjShots` に `addBtn` を追加。初期親候補は `shotsParentsOf(cur)[0]`、初期種別は `'review'`（ショットページ）。
+  - **③ `openAddModal` に親フォルダプルダウン**：
+    - 旧 subtitle「親: xxx」を廃止し、ダイアログ内に `frow('親フォルダ','select')` を追加。
+    - プロジェクト直下＋section 型フォルダ（レガシー shot container でないもの）を階層インデント付きで列挙。
+    - save 時に選択された `targetParentId` を使用（`parentId` 引数は初期選択値のみ）。
+  - 書き込み境界：既存の persist 経路のみ。shot.json / status/*.json は触らない。
+    - 工程色の変更は `node.stageColors`（root ノードのプロパティ）のみ ＝ `laycat.project.json`。
+    - ショット・フォルダ追加は従来通り `addNode` + `persist`。
+  - APP_VERSION：2026.10.09.005 → 2026.10.11.006
+  - `docs/demo_project_inject.js` も `root.stages` を文字列配列（Simple B 準拠）に修正。
+
 ## 反映済み beta v0.4.0（2026-10-09）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
