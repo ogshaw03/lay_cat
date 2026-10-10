@@ -114,6 +114,22 @@ Beta 反映のみ→2 に移動、パッチノート記載→3 に移動。「�
 - ユーザーが「反映しないで」「保留」「main には出さないで」と明示した場合のみ push を止める。
 - Beta 反映はユーザーの明示指示のみ（LayCAT 本体・pmboard それぞれ独立）。
 
+## 修正後の動作確認（必須）
+
+**LayCAT 本体（`laycat_dev.html` / `pmboard_dev.html`）のコード変更後は、必ずデモデータでブラウザ動作確認してから「完了」と報告する。** 2026-10-11 の工程色統合実装で TDZ エラー・レイアウト崩れ・`[object Object]` 表示などコードレビューだけでは拾えないバグが複数発覚した教訓。
+
+手順：
+1. `py -m http.server 8765 --bind 127.0.0.1` でローカルサーバを起動（既に立っていたら再利用）
+2. ブラウザペインを `http://127.0.0.1:8765/laycat_dev.html?ver=<新バージョン>` へ navigate（キャッシュバスト）
+3. ビューポートを 1440x900 以上に（タブが縦書きにならない最小幅）
+4. `fetch('/docs/demo_project_inject.js').then(r=>r.text()).then(c=>new Function(c)())` でデモ注入
+5. 修正対象の UI へ遷移してスクショ、コンソールエラーの有無を確認
+6. 期待通りに動くまで修正を続け、動いた状態を確認してから報告
+
+**例外**：UI 動作に一切影響しない変更（コメント／UPDATE_LOG／PATCH_NOTES のみ）はスキップ可。但し「UI 影響なしのためスキップ」と明示する。
+
+**デモデータの一貫性**：`docs/demo_project_inject.js` のデータ構造が本物の LayCAT と違ってバグが見えた場合は、デモ側も実データ構造に合わせて修正する（デモの価値は「本物と同じ挙動を再現できる」こと）。
+
 ## pmboard 個別事項
 - **LayCAT 本体のデザインを継承**：モノクロ基調（`--bg` / `--text` / `--accent` 系）。紫/シアン等のブランドカラーは使わない。
 - **CSS 変数を LayCAT からそのままコピー**：`--bg/bg2/bg3/bg4`・`--text/text2/text3`・`--accent/accent2`・`--red/green/amber`・`--radius/radius2`・`--font-head/body/code`。
