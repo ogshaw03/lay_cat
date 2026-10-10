@@ -5,6 +5,11 @@
 ## 言語
 - ユーザーへの応答・思考・コミットメッセージ・PR は**すべて日本語**（関数名やファイルパスなど固有名詞はそのまま引用可）。
 
+## スコープ・提案方針
+- **指示された対象だけに絞る**。範囲外で気づいた改善案は勝手にやらず、必ず先にユーザーに提案して承認を取る。
+- 関連する類似バグ（例：同じ関数のバグが別の UI にもある）を見つけても、**報告のみ** で実装は別タスクとして聞く。
+- 一度に多くの変更を混ぜない。1 コミット＝ 1 目的が原則。
+
 ## 🚨 データ書き込み系の絶対ルール（v.029/v.030 データ損失事故の教訓・2026-09-19）
 
 **この事故の記録**：v.029/v.030「参加する」ボタンの実装で `persist()` を呼んだところ、`persist()` が REG 全プロジェクトを走査して shot.json を書き換える設計だったため、既存プロジェクトの **shot.json の versions[] 全消失**（動画版データ・FB・アノテ・コメント履歴の永続ロスト）が発生した。以下は再発防止の絶対ルール：
@@ -84,6 +89,20 @@
   - `--font-ui: system-ui,-apple-system,...,'Noto Sans JP',sans-serif` … 可読性優先の特定箇所のみ
 - `--font-ui` は現状 `.fb-title`（アノテ窓の動画タイトル）のみ。**全体を OS フォントに寄せない**（「可愛い雰囲気が消えた」というフィードバック実績あり）。
 
+## 設計方針（API・データ型）
+
+### 工程色の API 使い分け
+- UI で工程色を表示するときは **必ず `stageColorFor(root, name)`** を使う（手動色 → 既定マップ → 自動パレット の優先順位で解決）。
+- `stageColor(name)` は名前ハッシュのみで **ユーザーが保存した `root.stageColors[name]` を見ない**。UI では使わない（内部フォールバック用）。
+- 新しく「工程名→色チップ」を描く UI を実装する時は必ず `stageColorFor` を使う。v.007 で `openAddModal` の工程編集 UI が `stageColor` だったため「プロジェクト設定で変えた色が追加モーダルに反映されない」バグになった教訓。
+
+### 工程名・ステージの型（Simple B）
+- `shot.currentStage` と `root.stages[]` は **文字列**（例：`'レイアウト'`, `['レイアウト','動画','仕上げ']`）。
+- オブジェクト配列（`{id, label, color}` のような形）は **使わない**。`openAddModal` 等の工程編集 UI は `inp.value = nm` で表示するので、オブジェクトを入れると `[object Object]` と表示される。
+- 色は別フィールド `root.stageColors = {name: hex}` に保存。
+- 工程テンプレは `root.stageTemplates = [{id, name, stages:[文字列,文字列,...]}, ...]`。
+- 新しい demo / test データを作るときも同じ構造に合わせる（`docs/demo_project_inject.js` 参照）。
+
 ## UPDATE_LOG.md の構造
 LayCAT 本体と pmboard で **セクション分割**：
 - `# LayCAT 本体アップデートログ` セクション：`laycat_dev.html` / `laycat.html` の変更を記録
@@ -121,14 +140,23 @@ Beta 反映のみ→2 に移動、パッチノート記載→3 に移動。「�
 手順：
 1. `py -m http.server 8765 --bind 127.0.0.1` でローカルサーバを起動（既に立っていたら再利用）
 2. ブラウザペインを `http://127.0.0.1:8765/laycat_dev.html?ver=<新バージョン>` へ navigate（キャッシュバスト）
-3. ビューポートを 1440x900 以上に（タブが縦書きにならない最小幅）
+3. **ビューポートを 1440x900 以上に** `mcp__Claude_Browser__resize_window({width:1440,height:900})` で設定（デフォルトの 800x600 だと上部タブが縦書きになるなどレイアウトが崩れて判定不能）
 4. `fetch('/docs/demo_project_inject.js').then(r=>r.text()).then(c=>new Function(c)())` でデモ注入
 5. 修正対象の UI へ遷移してスクショ、コンソールエラーの有無を確認
 6. 期待通りに動くまで修正を続け、動いた状態を確認してから報告
 
+**なぜ `py -m http.server` 経由か**：`laycat_dev.html` / `laycat.html` は **500KB 超**で、browser pane が `file://` 直読みを拒否する（「the file may be missing...」エラー）＋ FSA や fetch も file:// では動かない。ローカル HTTP サーバ経由にすれば両方解決する。Windows では `python` だと Microsoft Store の shim で詰まるので **`py` を使う**。
+
 **例外**：UI 動作に一切影響しない変更（コメント／UPDATE_LOG／PATCH_NOTES のみ）はスキップ可。但し「UI 影響なしのためスキップ」と明示する。
 
 **デモデータの一貫性**：`docs/demo_project_inject.js` のデータ構造が本物の LayCAT と違ってバグが見えた場合は、デモ側も実データ構造に合わせて修正する（デモの価値は「本物と同じ挙動を再現できる」こと）。
+
+## 成果物（docx / pptx / 画像など）の配置
+- ユーザー向け成果物（取説・プレゼン・設計資料など）は **`deliverables/`** に置く。
+- Google Docs に配布するなら **`.docx` のまま** 送る（Google Drive にアップ → 右クリック →「Google ドキュメントで開く」で自動変換される。別途 Google 形式に変換不要）。
+- Word で開かれているとファイル書き込みが失敗する（`EBUSY: resource busy or locked` ＋ `~$xxx.docx` ロックファイルが残る）→ 一時的に **`_v2.docx`** のような別名で生成して回避。ユーザーが Word 閉じたら本名に戻す。
+- 取説用スクショは **`deliverables/manual_images/`** に `NN_<name>.jpg` の形式で（NN は順序）。
+- 生成スクリプトは scratchpad に置く（例：`make_laycat_manual.js`）、再生成可能にしておく。
 
 ## pmboard 個別事項
 - **LayCAT 本体のデザインを継承**：モノクロ基調（`--bg` / `--text` / `--accent` 系）。紫/シアン等のブランドカラーは使わない。
