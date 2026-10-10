@@ -4181,7 +4181,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.11.006';
+const APP_VERSION='2026.10.11.007';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12742,9 +12742,12 @@ function openAddModal(parentId,initialType,role){
       }
       stagesEdit.forEach((nm,i)=>{
         const row=el('div');row.style.cssText='display:flex;align-items:center;gap:6px';
-        const sc=el('span');sc.style.cssText='width:12px;height:12px;border-radius:3px;flex-shrink:0;background:'+(function(){try{return stageColor(nm)}catch(_){return 'var(--text3)'}})();
+        /* v.007：色チップは stageColor(ハッシュ) ではなく stageColorFor(root, nm) を使う。
+           プロジェクト設定で保存した `root.stageColors[name]` を優先するので、
+           ユーザーが設定した色が追加モーダルの工程色チップにも反映される。 */
+        const sc=el('span');sc.style.cssText='width:12px;height:12px;border-radius:3px;flex-shrink:0;background:'+(function(){try{return stageColorFor(_rootForStages,nm)}catch(_){return 'var(--text3)'}})();
         const inp=el('input','form-input');inp.value=nm;inp.style.cssText='flex:1;min-width:100px;max-width:220px';
-        inp.oninput=()=>{stagesEdit[i]=inp.value;try{sc.style.background=stageColor(inp.value)}catch(_){}};
+        inp.oninput=()=>{stagesEdit[i]=inp.value;try{sc.style.background=stageColorFor(_rootForStages,inp.value)}catch(_){}};
         const del=el('button','btn btn-danger btn-sm','削除');del.type='button';
         del.onclick=()=>{stagesEdit.splice(i,1);redrawStages()};
         row.appendChild(sc);row.appendChild(inp);row.appendChild(del);stageListWrap.appendChild(row);
