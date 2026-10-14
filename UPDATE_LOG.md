@@ -18,6 +18,33 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.14.013) **顧客自前 R2 対応（LayCAT 本体／テナント単位で R2 Worker 切替）**：
+  - **目的**：顧客（テナント）が自分の Cloudflare アカウント＋ R2 バケット＋ Worker を用意して、LayCAT のストレージを独立運用できるようにする。運営 R2 への依存を無くせる。
+  - **設計**（事前合意済み）：
+    - 設定単位：**テナント単位**（Firestore `tenants/<tid>.r2Endpoint`）
+    - Worker 認証：**LayCAT 本体と同じ Firebase（laycat-54ee4）で JWT 検証**（Service Account 不要）
+    - ACL：**`_access.json` のみ**（グローバル allowlist 無し）
+    - キー構造：**`projects/<pid>/<path>` 直書き**（`tenants/<tid>/` プレフィックス無し、1 バケット＝1 テナント前提）
+  - **Worker 側（別ファイル追加）**：
+    - `worker/laycat-r2-api-customer.js`：運営版から Firestore／SA／laynaAccess を全て外した軽量版（約 300 行）
+    - `worker/wrangler.customer.toml.example`：顧客セットアップ用テンプレート
+  - **LayCAT 本体の変更**：
+    - `storage._r2` に `_endpointForTid(tid)` を追加：Firestore `tenants/<tid>.r2Endpoint` を見て `{ep, mode: 'operator'|'customer'}` を返す。5 分 TTL キャッシュ
+    - `_urlFor(op, key, opts)` を追加：mode に応じて URL を組み立て（operator=`tenants/<tid>/` 付き、customer=無し）
+    - put/del/get/getBlob/putJson/getJson/listByPrefix/purge/getAccess/putAccess を `_urlFor` 経由に書き換え
+    - `_fetch` を `_fetchUrl` に名称変更（絶対 URL を受け取る）
+    - `listMyProjects` を拡張：運営 Worker ＋自分の所属テナントの顧客 Worker（あれば）を両方叩いてマージ、pid 重複を除去
+    - `__laynaFB.getTenantR2Endpoint(tid)` ／ `updateTenantR2Endpoint(tid, url, who)` を追加
+    - テナント管理モーダルに「R2 ストレージ」セクション追加（URL 入力＋疎通確認ボタン＋保存ボタン）
+  - **書き込み境界**：
+    - Firestore：`tenants/<tid>.r2Endpoint` に `string | null` を書く
+    - R2：既存プロジェクトは tenants/<tid>/ プレフィックス下に書く（変更なし）。顧客モードは `projects/<pid>/` 直下（別バケットなので運営 R2 とは完全分離）
+    - 既存の運営 R2 プロジェクトは完全無影響（r2Endpoint 未設定なら従来通り）
+  - **検証**：
+    - URL 組み立てが両モードで正しいことをブラウザで確認済（operator/customer 両方の object/list/purge URL を目視検証）
+    - 実機の顧客 Worker デプロイ＆動作確認は別途（docs/CUSTOMER_R2_SETUP.md 参照）
+  - APP_VERSION：2026.10.14.012 → 2026.10.14.013
+
 - (dev v2026.10.14.012) **R2 タイルのテナント種別バッジを削除**：
   - v.008 で追加した「運営／個人／テナントID」の小バッジ（タイルの「メンバー」バッジの隣）が、テナント ID のランダム文字列をそのまま表示して悪目立ちしていたため削除。
   - 書き込み境界：UI 描画のみ、データ無変更。
@@ -3897,6 +3924,14 @@ version.timeRemap = {
 ## 未反映（次のパッチノート候補）
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
+
+- (dev v2026.10.14.081) **顧客自前 R2 対応（PMB／LayCAT 本体 v.013 連動）**：
+  - `storage._r2` に `_endpointForTid` / `_urlFor` を追加（LayCAT 本体と同じ実装を移植）
+  - put/del/get/getBlob/listByPrefix/getJson/putJson を `_urlFor` 経由に書き換え
+  - `_fetch` → `_fetchUrl` 改名（絶対 URL 対応）
+  - `ping` を tid 対応化（接続中プロジェクトの tid に対応した endpoint を叩く）
+  - LayCAT 本体のテナント管理モーダルで r2Endpoint を設定すれば PMB 側も自動で顧客 Worker 経由になる（Firestore 共有）
+  - APP_VERSION：2026.10.14.080 → 2026.10.14.081
 
 - (dev v2026.10.14.080) **R2 バックエンド対応（PMB／マルチテナント統合）**：
   - **背景**：LayCAT 本体が v.008-012 で R2 マルチテナント化したが、PMB は FSA (File System Access API) ベースのまま＝ホーム画面に R2 プロジェクトの chip は出るが、クリックすると「フォルダハンドルが保存されていません」で接続失敗する状態だった。

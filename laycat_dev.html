@@ -2358,11 +2358,50 @@ const storage={
       return null;
     },
     _pidFromKey(key){const m=String(key||'').match(/^projects\/([^/]+)\//);return m?m[1]:null;},
-    _tenantPath(key,opts){
-      const pid=this._pidFromKey(key);
-      const tid=this._resolveTid(pid,opts&&opts.tid);
-      if(!tid)throw new Error('tid-unresolved pid='+pid);
-      return 'tenants/'+tid+'/'+key;
+
+    /* v.013：顧客自前 R2 対応。endpoint は tid ごとに Firestore `tenants/<tid>.r2Endpoint` で切替可能。
+       - mode='customer' の場合は URL に tenants/<tid>/ プレフィックス無し（1 バケット = 1 テナント前提）
+       - mode='operator' の場合は従来通り URL に tenants/<tid>/ 付き
+       - キャッシュは _endpointCache（tid ごと 5 分 TTL） */
+    _endpointCache: new Map(), /* tid -> {ep, mode, at} */
+    _endpointCacheTtlMs: 5 * 60 * 1000,
+    async _endpointForTid(tid){
+      if(!tid) return {ep:this.endpoint(), mode:'operator'};
+      const cached = this._endpointCache.get(tid);
+      if(cached && (Date.now() - cached.at) < this._endpointCacheTtlMs) return cached;
+      let custom = null;
+      try{
+        if(window.__laynaFB && typeof window.__laynaFB.getTenantR2Endpoint === 'function'){
+          custom = await window.__laynaFB.getTenantR2Endpoint(tid).catch(()=>null);
+        }
+      }catch(_){}
+      const normalized = custom ? this._norm(custom) : null;
+      const resolved = {
+        ep: normalized || this.endpoint(),
+        mode: normalized ? 'customer' : 'operator',
+        at: Date.now(),
+      };
+      this._endpointCache.set(tid, resolved);
+      return resolved;
+    },
+
+    /* v.013：op kind に応じて URL を組み立てる（operator / customer で形が違う）。
+       key 例：'projects/<pid>/laycat.project.json' / 'projects/<pid>/reference/items/' */
+    async _urlFor(op, key, opts){
+      const pid = (opts&&opts.pid) || this._pidFromKey(key);
+      const tid = this._resolveTid(pid, opts&&opts.tid);
+      if(!tid) throw new Error('tid-unresolved pid='+pid);
+      const {ep, mode} = await this._endpointForTid(tid);
+      if(mode === 'customer'){
+        if(op === 'object') return ep + '/api/r2/' + key;
+        if(op === 'list')   return ep + '/api/r2/list/' + key;
+        if(op === 'purge')  return ep + '/api/r2/purge/' + key;
+      }else{
+        if(op === 'object') return ep + '/api/r2/tenants/' + tid + '/' + key;
+        if(op === 'list')   return ep + '/api/r2/list/tenants/' + tid + '/' + key;
+        if(op === 'purge')  return ep + '/api/r2/purge/tenants/' + tid + '/' + key;
+      }
+      throw new Error('_urlFor: unknown op='+op);
     },
     /* v.008：プロジェクト作成時の tid 解決ヘルパ。
        優先順位：
@@ -2378,47 +2417,93 @@ const storage={
       return 'personal__'+myKey;
     },
 
-    async _fetch(method,path,body,contentType){
-      const ep=this.endpoint();if(!ep)throw new Error('R2 endpoint 未設定');
+    /* v.013：url は呼び出し元で _urlFor() で解決済みの絶対 URL を渡す。 */
+    async _fetchUrl(method,url,body,contentType){
       const tok=await this._token();if(!tok)throw new Error('未ログイン（R2 認証に必要）');
       const headers={authorization:'Bearer '+tok};
       if(body!=null&&contentType)headers['x-laycat-content-type']=contentType;
-      return await fetch(ep+path,{method,headers,body});
+      return await fetch(url,{method,headers,body});
     },
-    async put(key,body,contentType,opts){try{const r=await this._fetch('PUT','/api/r2/'+this._tenantPath(key,opts),body,contentType||'application/octet-stream');return r.ok}catch(_){return false}},
-    async del(key,opts){try{const r=await this._fetch('DELETE','/api/r2/'+this._tenantPath(key,opts));return r.ok||r.status===404}catch(_){return false}},
-    async getBlob(key,opts){try{const r=await this._fetch('GET','/api/r2/'+this._tenantPath(key,opts));if(!r.ok)return null;return await r.blob()}catch(_){return null}},
-    async getJson(key,opts){try{const r=await this._fetch('GET','/api/r2/'+this._tenantPath(key,opts));if(!r.ok)return null;return await r.json()}catch(_){return null}},
+    async put(key,body,contentType,opts){
+      try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('PUT',url,body,contentType||'application/octet-stream');return r.ok}catch(_){return false}
+    },
+    async del(key,opts){
+      try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('DELETE',url);return r.ok||r.status===404}catch(_){return false}
+    },
+    async getBlob(key,opts){
+      try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return null;return await r.blob()}catch(_){return null}
+    },
+    async getJson(key,opts){
+      try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return null;return await r.json()}catch(_){return null}
+    },
     async putJson(key,obj,opts){return this.put(key,JSON.stringify(obj,null,2),'application/json',opts)},
-    /* v.090：prefix 配下のオブジェクト列挙（Worker 側 /api/r2/list/tenants/<tid>/<prefix>）。
-       資料タブで reference/items/*.json を列挙する用途。 */
-    async listByPrefix(prefix,opts){try{const r=await this._fetch('GET','/api/r2/list/'+this._tenantPath(prefix,opts));if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}},
-    async purge(pid,opts){try{const tid=this._resolveTid(pid,opts&&opts.tid);if(!tid)return false;const r=await this._fetch('DELETE','/api/r2/purge/tenants/'+tid+'/projects/'+pid+'/');return r.ok}catch(_){return false}},
+    async listByPrefix(prefix,opts){
+      try{const url=await this._urlFor('list',prefix,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}
+    },
+    async purge(pid,opts){
+      try{const url=await this._urlFor('purge','projects/'+pid+'/',{pid,...(opts||{})});const r=await this._fetchUrl('DELETE',url);return r.ok}catch(_){return false}
+    },
     /* ping：v.008 で /api/r2/mine に変更（旧 ping は tid 不要なダミー pid を叩いていたが、新ルートでは tid が必要になるため廃止）。 */
     async ping(){try{const ep=this.endpoint();if(!ep)return false;const tok=await this._token();if(!tok)return false;const r=await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});return r.ok}catch(_){return false}},
     /* _access.json 管理：Worker 側で owner/members 判定に使う小さな JSON。
        プロジェクト暗号化とは独立に平文で置く（Worker が復号鍵を持たないため）。 */
-    async getAccess(pid,opts){try{return await this.getJson('projects/'+pid+'/_access.json',opts)}catch(_){return null}},
+    async getAccess(pid,opts){try{return await this.getJson('projects/'+pid+'/_access.json',{pid,...(opts||{})})}catch(_){return null}},
     async putAccess(pid,owner,members,opts){
       const obj={owner:String(owner||'').toLowerCase(),members:(members||[]).map(x=>String(x||'').toLowerCase()).filter(Boolean),updatedAt:nowIso()};
       /* 重複除去 */
       obj.members=Array.from(new Set(obj.members));
-      return await this.putJson('projects/'+pid+'/_access.json',obj,opts);
+      return await this.putJson('projects/'+pid+'/_access.json',obj,{pid,...(opts||{})});
     },
-    /* 自分がメンバーとして参加できる R2 プロジェクト一覧を Worker から取得。
-       v.008：返却形式 [{tid, pid, name, owner, members, role}]。
+    /* 自分がメンバーとして参加できる R2 プロジェクト一覧を取得。
+       v.013：運営 Worker ＋ 自分の所属テナントの顧客 Worker（あれば）を両方叩いてマージ。
        副作用：取得した pid → tid を _tidMap に自動キャッシュ。 */
     async listMyProjects(){
+      const seen = new Set();
+      const results = [];
+      const tok = await this._token();
+      if(!tok) return [];
+      /* (1) 運営 Worker */
       try{
-        const ep=this.endpoint();if(!ep)return [];
-        const tok=await this._token();if(!tok)return [];
-        const r=await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});
-        if(!r.ok)return [];
-        const j=await r.json();
-        const projects=Array.isArray(j&&j.projects)?j.projects:[];
-        for(const p of projects){if(p&&p.pid&&p.tid)this.rememberTid(p.pid,p.tid)}
-        return projects;
-      }catch(_){return []}
+        const ep = this.endpoint();
+        if(ep){
+          const r = await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});
+          if(r.ok){
+            const j = await r.json();
+            const list = Array.isArray(j&&j.projects)?j.projects:[];
+            for(const p of list){
+              if(!p||!p.pid||seen.has(p.pid))continue;
+              seen.add(p.pid);
+              if(p.tid) this.rememberTid(p.pid, p.tid);
+              results.push(p);
+            }
+          }
+        }
+      }catch(_){}
+      /* (2) 自分の所属テナントが顧客 R2 を使っていればそれも叩く（顧客 Worker は tid を返さないので自前で付与） */
+      try{
+        const myEmail = (window.__laynaFBUser&&window.__laynaFBUser.email) || null;
+        if(myEmail && window.__laynaFB && window.__laynaFB.getUserTenantId){
+          const myTid = await window.__laynaFB.getUserTenantId(myEmail).catch(()=>null);
+          if(myTid){
+            const {ep, mode} = await this._endpointForTid(myTid);
+            if(mode === 'customer' && ep){
+              const r = await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});
+              if(r.ok){
+                const j = await r.json();
+                const list = Array.isArray(j&&j.projects)?j.projects:[];
+                for(const p of list){
+                  if(!p||!p.pid||seen.has(p.pid))continue;
+                  seen.add(p.pid);
+                  const augmented = {...p, tid: myTid};
+                  this.rememberTid(p.pid, myTid);
+                  results.push(augmented);
+                }
+              }
+            }
+          }
+        }
+      }catch(_){}
+      return results;
     },
   },
   /* プロジェクトのバックエンドを返す：'r2' | 'folder'。既存プロジェクトは常に 'folder'。 */
@@ -4241,7 +4326,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.14.012';
+const APP_VERSION='2026.10.14.013';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -22332,6 +22417,16 @@ async function _tnRender(state){
       </div>
       <div class="tn-domain-list" style="margin-top:4px">テナント既定の定時。PM Board の工数集計で「個人のマイページ未設定」のユーザーに適用されます。<br>※ 変更後は PM Board の工数タブをリロードしてください。</div>
     </div>
+    <h4 class="tn-section-title">R2 ストレージ</h4>
+    <div class="tn-domain-box">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+        <span style="font-size:12px;color:var(--text2);min-width:68px">エンドポイント</span>
+        <input type="text" id="tnR2Endpoint" value="${esc(tenant.r2Endpoint||'')}" placeholder="空欄＝運営 R2 を使用／https://自前-worker.workers.dev" ${canToggleDomain?'':'disabled'} style="flex:1;min-width:280px;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:12px;font-family:var(--font-code)">
+        <button class="btn btn-ghost" id="tnR2TestBtn" ${canToggleDomain?'':'disabled'} style="padding:5px 10px;font-size:12px" title="入力した URL で /api/r2/health を叩いて疎通確認">疎通確認</button>
+        <button class="btn btn-primary" id="tnR2SaveBtn" ${canToggleDomain?'':'disabled'} style="padding:5px 12px;font-size:12px">保存</button>
+      </div>
+      <div class="tn-domain-list">未設定なら運営の R2 を使います。自前の Cloudflare Worker をデプロイして URL を入れると、このテナントの全プロジェクトがその Worker 経由で自前 R2 に保存されます。<br>※ 変更後は LayCAT をリロードしてください（切替タイミングで既存接続が切れることがあります）。</div>
+    </div>
     <h4 class="tn-section-title">メンバー（${members.length}）</h4>
     <div style="padding:4px 0">
       <button class="btn btn-primary" id="tnOpenMemberModal">👥 メンバー管理（追加・権限変更・削除）</button>
@@ -22357,6 +22452,45 @@ async function _tnRender(state){
       tnCoreSaveBtn.disabled = false;
       if(!ok){ toast('保存に失敗しました（権限不足？）'); return; }
       toast(`テナント既定の定時を ${s}〜${e} に設定しました`);
+    };
+  }
+  /* v.013：R2 エンドポイント設定（顧客自前 R2 対応） */
+  const tnR2TestBtn = bodyEl.querySelector('#tnR2TestBtn');
+  const tnR2SaveBtn = bodyEl.querySelector('#tnR2SaveBtn');
+  const tnR2EndpointEl = bodyEl.querySelector('#tnR2Endpoint');
+  function _normalizeR2Url(u){
+    u=String(u||'').trim().replace(/\/$/,'');
+    if(!u)return '';
+    if(!/^https?:\/\//i.test(u))u='https://'+u;
+    return u;
+  }
+  if(tnR2TestBtn && canToggleDomain){
+    tnR2TestBtn.onclick = async ()=>{
+      const url = _normalizeR2Url(tnR2EndpointEl.value||'');
+      if(!url){ toast('URL を入力してください'); return; }
+      tnR2TestBtn.disabled = true; tnR2TestBtn.textContent = '確認中…';
+      try{
+        const r = await fetch(url+'/api/r2/health', {method:'GET'});
+        if(r.ok){ const j=await r.json().catch(()=>null); toast('疎通 OK ('+(j&&j.edition||'unknown')+')'); }
+        else{ toast('疎通失敗：HTTP '+r.status); }
+      }catch(e){ toast('疎通失敗：'+String(e&&e.message||e)); }
+      tnR2TestBtn.disabled = false; tnR2TestBtn.textContent = '疎通確認';
+    };
+  }
+  if(tnR2SaveBtn && canToggleDomain){
+    tnR2SaveBtn.onclick = async ()=>{
+      const url = _normalizeR2Url(tnR2EndpointEl.value||'');
+      /* 空文字＝運営 R2 に戻す（確認プロンプト） */
+      if(!url){
+        if(!confirm('R2 エンドポイントを空にすると、このテナントのプロジェクトは運営 R2 に保存されます（既存の自前 R2 データは参照できなくなります）。続行しますか？')) return;
+      }
+      tnR2SaveBtn.disabled = true;
+      const ok = await window.__laynaFB.updateTenantR2Endpoint(tid, url, authUser.email);
+      tnR2SaveBtn.disabled = false;
+      if(!ok){ toast('保存に失敗しました（権限不足？）'); return; }
+      toast(url ? ('R2 エンドポイントを保存しました：'+url) : 'R2 エンドポイントを空にしました（運営 R2 に戻しました）');
+      /* クライアント側キャッシュを無効化 */
+      try{ if(storage._r2._endpointCache) storage._r2._endpointCache.delete(tid); }catch(_){}
     };
   }
   /* ドメイン自動許可トグル */
@@ -22922,6 +23056,32 @@ initApp();
         },{merge:true});
         return true;
       }catch(e){console.error('updateTenantCoreHours failed',e);return false}},
+      /* v.013：顧客自前 R2 対応。tenants/{tid}.r2Endpoint を読む／書く。
+         未設定（null）＝運営 R2 Worker を使う。URL が入っていたら顧客自前 R2 Worker を使う。
+         Worker 検証は updateTenantR2Endpoint 時に /api/r2/health を叩いて疎通確認する想定（UI 側で実装）。 */
+      getTenantR2Endpoint:async(tenantId)=>{try{
+        if(!tenantId)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const snap=await m.getDoc(m.doc(fs,'tenants',String(tenantId)));
+        if(!snap.exists())return null;
+        const d=snap.data()||{};
+        return (typeof d.r2Endpoint==='string'&&d.r2Endpoint)?d.r2Endpoint:null;
+      }catch(e){return null}},
+      updateTenantR2Endpoint:async(tenantId, endpoint, who)=>{try{
+        if(!tenantId)return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        /* endpoint は空文字 → null（＝運営 R2 に戻す）、文字列 → そのまま保存。
+           URL 正規化はクライアント側で済ませてから呼ぶ想定。 */
+        const value = (typeof endpoint==='string' && endpoint.length>0) ? endpoint : null;
+        await m.setDoc(m.doc(fs,'tenants',String(tenantId)),{
+          r2Endpoint: value,
+          updatedBy: String(who||''),
+          updatedAt: new Date().toISOString(),
+        },{merge:true});
+        return true;
+      }catch(e){console.error('updateTenantR2Endpoint failed',e);return false}},
       /* マルチテナント化 Phase M3b：テナントの allowDomainAutoJoin を切替。
          owner / admin が LayCAT 側のテナント管理モーダルからチェックボックス操作で呼ぶ。
          Firestore ルールが「このフィールドだけ変更」を強制する。 */

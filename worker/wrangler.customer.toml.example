@@ -1,0 +1,52 @@
+# 顧客自前 R2 Worker の wrangler 設定テンプレート。
+# 顧客（テナント）が自分の Cloudflare アカウントに Worker をデプロイする際に使う。
+#
+# 使い方（顧客側で実行）：
+#   1. このファイルを wrangler.toml にリネーム
+#   2. name を自分の Worker 名に変更（他のユーザーと被らない名前）
+#   3. bucket_name を自分で作った R2 バケット名に変更
+#   4. ALLOW_ORIGIN を LayCAT 本体の URL に変更（通常 https://ogshaw03.github.io）
+#   5. npx wrangler login で Cloudflare アカウントにログイン
+#   6. npx wrangler deploy
+#   7. デプロイで表示される URL を LayCAT のテナント管理画面「R2 エンドポイント」に設定
+
+name = "laycat-customer-r2"   # 顧客の Worker 名（固有）
+main = "laycat-r2-api-customer.js"
+compatibility_date = "2025-01-01"
+
+# R2 バケットのバインディング。顧客が自分の Cloudflare ダッシュボードで作った bucket 名。
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "my-laycat-storage"  # 顧客が作ったバケット名に変更
+
+[vars]
+# LayCAT 本体の Firebase projectId。これは全顧客共通で "laycat-54ee4"。
+# ※ LayCAT 本体のユーザーが Google ログインして得る ID トークンの aud フィールド検証に使う。
+#   変更不要（LayCAT 本体を自前で改造しない限り）。
+FIREBASE_PROJECT_ID = "laycat-54ee4"
+
+# CORS 許可オリジン（カンマ区切り）。LayCAT 本体の URL を列挙。
+ALLOW_ORIGIN = "https://ogshaw03.github.io,http://127.0.0.1:8765,http://localhost:8765"
+
+# ファイルサイズ上限（省略時のデフォルト: JSON=10MB, MEDIA=500MB, ANY=2GB）
+# MAX_JSON_BYTES = "10485760"
+# MAX_MEDIA_BYTES = "524288000"
+# MAX_ANY_BYTES = "2147483648"
+
+# 【secret 登録は不要】
+# 顧客版は Firestore も Service Account も使わない「軽量版」。
+# wrangler secret put は何も必要ない。
+#
+# 【URL 一覧（デプロイ後の呼び出し例）】
+#   GET     /api/r2/health                           → ヘルスチェック（認証不要）
+#   GET     /api/r2/mine                             → 自分がアクセスできるプロジェクト一覧
+#   GET     /api/r2/projects/<pid>/<path>            → ファイル取得
+#   PUT     /api/r2/projects/<pid>/<path>            → ファイル保存
+#   DELETE  /api/r2/projects/<pid>/<path>            → ファイル削除
+#   GET     /api/r2/list/projects/<pid>/<prefix>     → prefix 配下の一覧
+#   DELETE  /api/r2/purge/projects/<pid>/            → プロジェクト全削除
+#
+# 【運営版との違い】
+#   運営版は URL が /api/r2/tenants/<tid>/projects/<pid>/... でキーに tenants/<tid>/ が付く。
+#   顧客版は 1 バケット = 1 テナント前提なので tenants/<tid>/ を省略し、
+#   /api/r2/projects/<pid>/... で projects/<pid>/ をキーとする（階層を 1 段減らす）。

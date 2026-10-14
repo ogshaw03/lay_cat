@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.14.080';
+const APP_VERSION='2026.10.14.081';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1008,28 +1008,79 @@ const storage = {
       if(m[pid])return m[pid];
       return null;
     },
-    _tenantPath(key,opts){
-      const pid=opts&&opts.pid;
-      const tid=this._resolveTid(pid,opts&&opts.tid);
-      if(!tid)throw new Error('tid-unresolved pid='+pid);
-      return 'tenants/'+tid+'/'+key;
+    /* v.081：顧客自前 R2 対応（LayCAT 本体 v.013 と同じ実装）。
+       endpoint は tid ごとに Firestore `tenants/<tid>.r2Endpoint` で切替可能。
+       - mode='customer' の場合は URL に tenants/<tid>/ プレフィックス無し
+       - mode='operator' の場合は従来通り URL に tenants/<tid>/ 付き
+       - キャッシュは _endpointCache（tid ごと 5 分 TTL） */
+    _endpointCache: new Map(),
+    _endpointCacheTtlMs: 5 * 60 * 1000,
+    async _endpointForTid(tid){
+      if(!tid) return {ep:this.endpoint(), mode:'operator'};
+      const cached = this._endpointCache.get(tid);
+      if(cached && (Date.now() - cached.at) < this._endpointCacheTtlMs) return cached;
+      let custom = null;
+      try{
+        if(window.__laynaFB && typeof window.__laynaFB.getTenantR2Endpoint === 'function'){
+          custom = await window.__laynaFB.getTenantR2Endpoint(tid).catch(()=>null);
+        }
+      }catch(_){}
+      const normalized = custom ? this._norm(custom) : null;
+      const resolved = {
+        ep: normalized || this.endpoint(),
+        mode: normalized ? 'customer' : 'operator',
+        at: Date.now(),
+      };
+      this._endpointCache.set(tid, resolved);
+      return resolved;
     },
-    async _fetch(method,path,body,contentType){
-      const ep=this.endpoint();if(!ep)throw new Error('R2 endpoint 未設定');
+    async _urlFor(op, key, opts){
+      const pid = opts && opts.pid;
+      const tid = this._resolveTid(pid, opts&&opts.tid);
+      if(!tid) throw new Error('tid-unresolved pid='+pid);
+      const {ep, mode} = await this._endpointForTid(tid);
+      if(mode === 'customer'){
+        if(op === 'object') return ep + '/api/r2/' + key;
+        if(op === 'list')   return ep + '/api/r2/list/' + key;
+        if(op === 'purge')  return ep + '/api/r2/purge/' + key;
+      }else{
+        if(op === 'object') return ep + '/api/r2/tenants/' + tid + '/' + key;
+        if(op === 'list')   return ep + '/api/r2/list/tenants/' + tid + '/' + key;
+        if(op === 'purge')  return ep + '/api/r2/purge/tenants/' + tid + '/' + key;
+      }
+      throw new Error('_urlFor: unknown op='+op);
+    },
+    async _fetchUrl(method,url,body,contentType){
       const tok=await this._token();if(!tok)throw new Error('未ログイン（R2 認証に必要）');
       const headers={authorization:'Bearer '+tok};
       if(body!=null&&contentType)headers['x-laycat-content-type']=contentType;
-      return await fetch(ep+path,{method,headers,body});
+      return await fetch(url,{method,headers,body});
     },
-    async getJson(key,opts){try{const r=await this._fetch('GET','/api/r2/'+this._tenantPath(key,opts));if(!r.ok)return null;return await r.json()}catch(_){return null}},
+    async getJson(key,opts){try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return null;return await r.json()}catch(_){return null}},
     async putJson(key,obj,opts){return this.put(key,JSON.stringify(obj,null,2),'application/json',opts)},
-    async put(key,body,contentType,opts){try{const r=await this._fetch('PUT','/api/r2/'+this._tenantPath(key,opts),body,contentType||'application/octet-stream');return r.ok}catch(_){return false}},
-    async del(key,opts){try{const r=await this._fetch('DELETE','/api/r2/'+this._tenantPath(key,opts));return r.ok||r.status===404}catch(_){return false}},
-    async getBlob(key,opts){try{const r=await this._fetch('GET','/api/r2/'+this._tenantPath(key,opts));if(!r.ok)return null;return await r.blob()}catch(_){return null}},
+    async put(key,body,contentType,opts){try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('PUT',url,body,contentType||'application/octet-stream');return r.ok}catch(_){return false}},
+    async del(key,opts){try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('DELETE',url);return r.ok||r.status===404}catch(_){return false}},
+    async getBlob(key,opts){try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return null;return await r.blob()}catch(_){return null}},
     /* prefix 配下の key 一覧を返す。資料タブで reference/items/ 下を列挙する用途。 */
-    async listByPrefix(prefix,opts){try{const r=await this._fetch('GET','/api/r2/list/'+this._tenantPath(prefix,opts));if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}},
-    /* ping：/api/r2/mine が 200 を返せば認可通過（グローバル allowlist 判定もここで通る）。 */
-    async ping(){try{const ep=this.endpoint();if(!ep)return false;const tok=await this._token();if(!tok)return false;const r=await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});return r.ok}catch(_){return false}},
+    async listByPrefix(prefix,opts){try{const url=await this._urlFor('list',prefix,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}},
+    /* ping：接続中のプロジェクトの tid に対応した endpoint の /api/r2/mine が 200 を返せば OK。
+       v.081：顧客 Worker 対応のため、tid 解決してから endpoint を決める。 */
+    async ping(){try{
+      const tok=await this._token();if(!tok)return false;
+      /* storage.pid があればそのテナントの endpoint、無ければ default（運営） */
+      const pid = (typeof storage!=='undefined'&&storage.pid) || null;
+      let ep = this.endpoint();
+      if(pid){
+        const tid = this._resolveTid(pid);
+        if(tid){
+          const resolved = await this._endpointForTid(tid);
+          ep = resolved.ep;
+        }
+      }
+      if(!ep) return false;
+      const r=await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});
+      return r.ok;
+    }catch(_){return false}},
   },
 
   async connectProject(pid){
