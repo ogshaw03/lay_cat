@@ -4241,7 +4241,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.14.008';
+const APP_VERSION='2026.10.14.009';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -22798,6 +22798,29 @@ initApp();
         await m.setDoc(m.doc(fs,'laycatUsers',key),payload,{merge:true});
         return true;
       }catch(e){return false}},
+      /* v.008：マルチテナント R2 Phase 1 — resolveTidForNewProject 用のヘルパ 2 つ。
+         - isOperator(email)：laynaAccess/config.operatorEmails に入っていれば true
+         - getUserTenantId(email)：laycatUsers/{emailKey}.tenantId を返す（無ければ null）
+         Worker 側の _isTenantAffiliated と同じ Firestore ドキュメントを見るので、
+         addTenantMember 書き込み後は即座にクライアント・Worker 双方に反映される。 */
+      isOperator:async(email)=>{try{
+        if(!email)return false;
+        const cfg=await window.__laynaFB.loadAccess();
+        if(!cfg)return false;
+        const ops=Array.isArray(cfg.operatorEmails)?cfg.operatorEmails:[];
+        const lower=String(email).toLowerCase();
+        return ops.some(e=>String(e||'').toLowerCase()===lower);
+      }catch(e){return false}},
+      getUserTenantId:async(email)=>{try{
+        if(!email)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const snap=await m.getDoc(m.doc(fs,'laycatUsers',key));
+        if(!snap.exists())return null;
+        const d=snap.data()||{};
+        return (typeof d.tenantId==='string'&&d.tenantId)?d.tenantId:null;
+      }catch(e){return null}},
       /* マルチテナント化 Phase M2：テナントのメンバー一覧を取得。
          tenants/{tid}/members サブコレクションを列挙。戻り値：[{emailKey, email, role, assignedBy, assignedAt}, ...] / 失敗時 null。 */
       /* v.076：laynaAccess/loggedUsers から全ユーザーの display name 索引を取得。

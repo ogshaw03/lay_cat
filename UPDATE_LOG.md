@@ -18,6 +18,24 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.14.009) **R2 認可：テナント所属アカウントを自動許可（マルチテナント対応強化）**：
+  - **背景**：v.008 のマルチテナント化後も、Worker 側のグローバル許可 `laynaAccess` が旧設計のままで、テナントに所属しているアカウントでも手動で `allowedEmails` に追加しないと R2 を使えない状態だった。マルチテナント運用の意図（テナント管理者が招待したメンバーは即座に SaaS を使える）と噛み合わないため、認可層を拡張。
+  - **Worker 側（v2.0.1）**：
+    - `isAllowed()` に `_isTenantAffiliated(email)` を追加。`laycatUsers/<emailKey>.tenantId` が入っていれば自動 allow。
+    - キャッシュ：`_tenantAffiliationCache`（email ごと 60 秒 TTL）。
+    - 既存の admin/allowed/invited/domain 判定は維持。グローバル許可の役割は変わらず、「テナント所属」が追加されただけ。
+    - 書き込み境界：Worker コード変更のみ。既存の `_access.json` / Firestore データは触らない。
+  - **クライアント側（LayCAT）**：
+    - `window.__laynaFB.isOperator(email)`：`laynaAccess/config.operatorEmails` を参照して true/false。
+    - `window.__laynaFB.getUserTenantId(email)`：`laycatUsers/{emailKey}.tenantId` を返す。
+    - これにより `storage._r2.resolveTidForNewProject(myEmail)` が実在のテナント ID を正しく解決できるようになり、新規プロジェクトが `personal__<emailKey>` ではなく所属テナントの `tid` で作成される。
+  - **運用の意味**：
+    - テナント管理者が `addTenantMember(tid, email, ...)` でメンバーを追加すると、`laycatUsers/{emailKey}.tenantId` に同期書き込みされる（既存機能）。
+    - その結果、Worker・クライアント双方が「このユーザーはこのテナント所属」と即座に判定でき、R2 への書き込み・新規プロジェクト作成の tid 解決がすべて自動化される。
+    - 運営が `laynaAccess` の allowlist に手動追加する必要が無くなる。
+  - **デモ検証**：R2 認証経路の変更のため、Firebase ログイン＋テナント所属データ必須。デモデータ（folder バックエンド）では検証対象外。実機確認は Worker 再デプロイ後に別途実施。
+  - APP_VERSION：2026.10.14.008 → 2026.10.14.009
+
 - (dev v2026.10.14.008) **R2 バックエンドのマルチテナント化（LayCAT／Phase 1）**：
   - **目的**：運営 R2 を `tenants/<tid>/projects/<pid>/...` のテナント分離型キーに移行。将来のバケット分離や顧客自前 Worker 運用への移行コストを下げる。
   - **tid 割当ルール**（新規プロジェクト作成時に自動解決）：

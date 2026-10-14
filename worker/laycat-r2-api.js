@@ -568,7 +568,36 @@ async function isAllowed(email, env) {
   if (invitedList.map(x => (x || '').toLowerCase()).includes(lower)) return true;
   const dom = lower.split('@')[1];
   if (dom && domains.map(x => (x || '').toLowerCase()).includes(dom)) return true;
+
+  // v2.0.1：マルチテナント対応。テナントに所属しているアカウントは自動許可。
+  //   addTenantMember が laycatUsers/<emailKey>.tenantId を同期しているので、
+  //   そのフィールドが入っていれば「どこかのテナントに所属するアカウント」と判定できる。
+  //   これにより運営が laynaAccess の allowlist に手動追加しなくても、
+  //   テナント管理者が招待したメンバーは自動的に SaaS を使えるようになる。
+  //   個別プロジェクトのアクセス権は後続の checkTenantAndProjectAcl が別途判定するので、
+  //   ここで通ってもテナント／プロジェクト境界は壊れない。
+  if (await _isTenantAffiliated(env, email)) return true;
   return false;
+}
+
+// v2.0.1：laycatUsers/<emailKey>.tenantId が入っていれば true。
+//   キャッシュは _tenantAffiliationCache（60 秒 TTL）。
+const _tenantAffiliationCache = new Map(); // email_lower -> { at, ok }
+async function _isTenantAffiliated(env, email) {
+  const lower = String(email || '').toLowerCase();
+  if (!lower) return false;
+  const now = Date.now();
+  const hit = _tenantAffiliationCache.get(lower);
+  if (hit && (now - hit.at) < 60 * 1000) return hit.ok;
+  let ok = false;
+  try {
+    const emailKey = memberKeyFromEmail(lower);
+    const doc = await firestoreGetDoc(env, 'laycatUsers/' + emailKey).catch(() => null);
+    const tid = doc ? fsField(doc, 'tenantId') : null;
+    if (tid && String(tid).length > 0) ok = true;
+  } catch (_) { ok = false; }
+  _tenantAffiliationCache.set(lower, { at: now, ok });
+  return ok;
 }
 
 // ---------- CORS ----------
