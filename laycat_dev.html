@@ -4241,7 +4241,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.14.010';
+const APP_VERSION='2026.10.14.011';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12551,10 +12551,10 @@ async function _r2Tile(p){
     try{
       const data=await storage._r2.getJson('projects/'+pid+'/'+storage._projFileName,{tid});
       if(data){
-        /* v.010：laycat.project.json には data.name が無い。root ノード（id===pid、無ければ parentId なし）
-           の name を優先し、見つからなければ pid にフォールバック。 */
-        const root=Array.isArray(data.nodes)?(data.nodes.find(n=>n.id===pid)||data.nodes.find(n=>!n.parentId)||data.nodes[0]):null;
-        nameLine.textContent=(root&&root.name)||pid;
+        /* v.011：laycat.project.json の top-level data.name を直接使う（projectData が root.name で populate 済み）。
+           root ノード参照はサムネイル取得のみに必要なので別途取得。 */
+        nameLine.textContent=data.name||pid;
+        const root=Array.isArray(data.nodes)?(data.nodes.find(n=>n.id===pid)||data.nodes.find(n=>!n.parentId)):null;
         const thumbRef=root&&root.thumbnail;
         if(thumbRef){
           try{
