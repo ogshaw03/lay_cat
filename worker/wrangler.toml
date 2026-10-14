@@ -1,0 +1,24 @@
+name = "laycat-r2-api"
+main = "laycat-r2-api.js"
+compatibility_date = "2025-01-01"
+
+# R2 バケットのバインディング（既存の運営 R2 バケットを使い回し）。
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "laycat-projects"
+
+[vars]
+# Firebase Auth と Firestore のプロジェクトID（LayCAT 本体の firebaseConfig.projectId と一致させる）
+FIREBASE_PROJECT_ID = "laycat-54ee4"
+
+# CORS 許可オリジン（カンマ区切り）
+# 本番 GitHub Pages ＋ ローカル開発 (http.server) ＋ localhost
+ALLOW_ORIGIN = "https://ogshaw03.github.io,http://127.0.0.1:8765,http://localhost:8765"
+
+# ファイルサイズ上限（省略時のデフォルト: JSON=10MB, MEDIA=500MB, ANY=2GB）
+# MAX_JSON_BYTES = "10485760"
+# MAX_MEDIA_BYTES = "524288000"
+# MAX_ANY_BYTES = "2147483648"
+
+# Secrets（別途 `wrangler secret put FIREBASE_SERVICE_ACCOUNT` で登録）
+#   既にデプロイ済みの Worker を上書きデプロイする場合は、登録済みの secret がそのまま維持される。

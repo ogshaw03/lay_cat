@@ -1,6 +1,6 @@
 # このファイルは wrangler.toml のテンプレート。
-# 実際に使うときは worker/ をそのまま Cloudflare Workers プロジェクトのルートにコピーし、
-# 名前を wrangler.toml にリネームして値を埋める。
+# 実際に使うときは、同じディレクトリに `wrangler.toml` という名前でコピーして値を埋める。
+# （wrangler.toml 本体は commit 済みだが、別環境向けカスタマイズのため example も残す）
 
 name = "laycat-r2-api"
 main = "laycat-r2-api.js"
@@ -13,10 +13,13 @@ bucket_name = "laycat-projects"
 
 [vars]
 # Firebase Auth と Firestore のプロジェクトID
-FIREBASE_PROJECT_ID = "layna-app"
+# ※ LayCAT 本体の firebaseConfig.projectId と一致させる必要がある（Firebase トークンの
+#   aud フィールド検証に使うため）。間違うと "aud mismatch" で全リクエストが 401 になる。
+FIREBASE_PROJECT_ID = "laycat-54ee4"
 
 # CORS 許可オリジン（カンマ区切り。* も可だが本番は避ける）
-ALLOW_ORIGIN = "https://ogshaw03.github.io"
+# ※ 先頭のオリジンは Worker が access.json を取りに行く先にも使われる。GitHub Pages を先頭に。
+ALLOW_ORIGIN = "https://ogshaw03.github.io,http://127.0.0.1:8765,http://localhost:8765"
 
 # ファイルサイズ上限（省略時のデフォルト: JSON=10MB, MEDIA=500MB, ANY=2GB）
 # バイト単位。用途に応じて上げ下げ可能。
@@ -28,3 +31,4 @@ ALLOW_ORIGIN = "https://ogshaw03.github.io"
 #   wrangler secret put FIREBASE_SERVICE_ACCOUNT
 #   （Firebase コンソールの Service accounts > Generate new private key で得た JSON を
 #    そのまま貼り付ける。改行はそのままで OK）
+#   既存の Worker を上書きデプロイする場合は、登録済み secret がそのまま維持されるので再登録不要。

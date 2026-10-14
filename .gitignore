@@ -1,3 +1,6 @@
 node_modules/
 scratchpad/
 package-lock.json
+
+# wrangler のビルド／ログキャッシュ（デプロイ再現には不要）
+worker/.wrangler/
