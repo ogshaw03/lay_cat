@@ -2325,6 +2325,59 @@ const storage={
     endpoint(){try{const u=this._norm(localStorage.getItem('laycat_r2_endpoint')||'');return u||this._default||null}catch(_){return this._default||null}},
     setEndpoint(url){try{const u=this._norm(url);if(u&&u!==this._default)localStorage.setItem('laycat_r2_endpoint',u);else localStorage.removeItem('laycat_r2_endpoint')}catch(_){}},
     async _token(){try{return (window.__laynaFB&&window.__laynaFB.getIdToken)?await window.__laynaFB.getIdToken():null}catch(_){return null}},
+
+    /* v.008：マルチテナント対応。Worker 側 URL が /api/r2/tenants/<tid>/projects/<pid>/... に変わったため、
+       旧 API（key = 'projects/<pid>/...'）呼び出しをそのまま維持しつつ、内部で tid を解決して
+       `tenants/<tid>/` を prepend する。
+       tid 解決の優先順位：
+         1. opts.tid の明示指定
+         2. getNode(pid) → rootOf(n).tid（既にメモリ上にある）
+         3. REG.find(e=>e.id===pid).tid（永続化されたマッピング）
+         4. this._tidMap（localStorage のサイドキャッシュ、listMyProjects で埋める） */
+    _tidMap:null,
+    _TID_LS_KEY:'laycat_r2_tid_map',
+    _loadTidMap(){
+      if(this._tidMap)return this._tidMap;
+      try{const raw=localStorage.getItem(this._TID_LS_KEY);const obj=raw?JSON.parse(raw):{};this._tidMap=obj&&typeof obj==='object'?obj:{};}catch(_){this._tidMap={};}
+      return this._tidMap;
+    },
+    _saveTidMap(){try{localStorage.setItem(this._TID_LS_KEY,JSON.stringify(this._tidMap||{}));}catch(_){}},
+    rememberTid(pid,tid){
+      if(!pid||!tid)return;
+      const m=this._loadTidMap();
+      if(m[pid]===tid)return;
+      m[pid]=tid;this._saveTidMap();
+    },
+    _resolveTid(pid,optsTid){
+      if(optsTid)return optsTid;
+      if(!pid)return null;
+      try{if(typeof getNode==='function'){const n=getNode(pid);if(n){const r=rootOf(n);if(r&&r.tid)return r.tid;}}}catch(_){}
+      try{if(typeof REG!=='undefined'&&Array.isArray(REG)){const e=REG.find(x=>x.id===pid);if(e&&e.tid)return e.tid;}}catch(_){}
+      const m=this._loadTidMap();
+      if(m[pid])return m[pid];
+      return null;
+    },
+    _pidFromKey(key){const m=String(key||'').match(/^projects\/([^/]+)\//);return m?m[1]:null;},
+    _tenantPath(key,opts){
+      const pid=this._pidFromKey(key);
+      const tid=this._resolveTid(pid,opts&&opts.tid);
+      if(!tid)throw new Error('tid-unresolved pid='+pid);
+      return 'tenants/'+tid+'/'+key;
+    },
+    /* v.008：プロジェクト作成時の tid 解決ヘルパ。
+       優先順位：
+         1. operator 判定（window.__laynaFB.isOperator があればそれを信頼）
+         2. laycatUsers/<myKey>.tenantId（window.__laynaFB.getUserTenantId で取得）
+         3. 'personal__<myKey>' */
+    async resolveTidForNewProject(myEmail){
+      const email=String(myEmail||'').toLowerCase();
+      if(!email)return null;
+      const myKey=email.replace(/[.@#$/\[\]]/g,'_');
+      try{if(window.__laynaFB&&typeof window.__laynaFB.isOperator==='function'){const isOp=await window.__laynaFB.isOperator(email).catch(()=>false);if(isOp)return 'operator';}}catch(_){}
+      try{if(window.__laynaFB&&typeof window.__laynaFB.getUserTenantId==='function'){const tid=await window.__laynaFB.getUserTenantId(email).catch(()=>null);if(tid&&typeof tid==='string'&&tid.length)return tid;}}catch(_){}
+      return 'personal__'+myKey;
+    },
+
     async _fetch(method,path,body,contentType){
       const ep=this.endpoint();if(!ep)throw new Error('R2 endpoint 未設定');
       const tok=await this._token();if(!tok)throw new Error('未ログイン（R2 認証に必要）');
@@ -2332,27 +2385,29 @@ const storage={
       if(body!=null&&contentType)headers['x-laycat-content-type']=contentType;
       return await fetch(ep+path,{method,headers,body});
     },
-    async put(key,body,contentType){try{const r=await this._fetch('PUT','/api/r2/'+key,body,contentType||'application/octet-stream');return r.ok}catch(_){return false}},
-    async del(key){try{const r=await this._fetch('DELETE','/api/r2/'+key);return r.ok||r.status===404}catch(_){return false}},
-    async getBlob(key){try{const r=await this._fetch('GET','/api/r2/'+key);if(!r.ok)return null;return await r.blob()}catch(_){return null}},
-    async getJson(key){try{const r=await this._fetch('GET','/api/r2/'+key);if(!r.ok)return null;return await r.json()}catch(_){return null}},
-    async putJson(key,obj){return this.put(key,JSON.stringify(obj,null,2),'application/json')},
-    /* v.090：prefix 配下のオブジェクト列挙（Worker 側 /api/r2/list/<prefix>）。
+    async put(key,body,contentType,opts){try{const r=await this._fetch('PUT','/api/r2/'+this._tenantPath(key,opts),body,contentType||'application/octet-stream');return r.ok}catch(_){return false}},
+    async del(key,opts){try{const r=await this._fetch('DELETE','/api/r2/'+this._tenantPath(key,opts));return r.ok||r.status===404}catch(_){return false}},
+    async getBlob(key,opts){try{const r=await this._fetch('GET','/api/r2/'+this._tenantPath(key,opts));if(!r.ok)return null;return await r.blob()}catch(_){return null}},
+    async getJson(key,opts){try{const r=await this._fetch('GET','/api/r2/'+this._tenantPath(key,opts));if(!r.ok)return null;return await r.json()}catch(_){return null}},
+    async putJson(key,obj,opts){return this.put(key,JSON.stringify(obj,null,2),'application/json',opts)},
+    /* v.090：prefix 配下のオブジェクト列挙（Worker 側 /api/r2/list/tenants/<tid>/<prefix>）。
        資料タブで reference/items/*.json を列挙する用途。 */
-    async listByPrefix(prefix){try{const r=await this._fetch('GET','/api/r2/list/'+prefix);if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}},
-    async purge(pid){try{const r=await this._fetch('DELETE','/api/r2/purge/projects/'+pid+'/');return r.ok}catch(_){return false}},
-    async ping(){try{const ep=this.endpoint();if(!ep)return false;const tok=await this._token();if(!tok)return false;/* 存在しないダミー key を GET し、404 が返ることで到達＋認証を確認 */const r=await fetch(ep+'/api/r2/projects/__ping__/nothing.json',{method:'GET',headers:{authorization:'Bearer '+tok}});return r.status===404||r.status===200}catch(_){return false}},
+    async listByPrefix(prefix,opts){try{const r=await this._fetch('GET','/api/r2/list/'+this._tenantPath(prefix,opts));if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}},
+    async purge(pid,opts){try{const tid=this._resolveTid(pid,opts&&opts.tid);if(!tid)return false;const r=await this._fetch('DELETE','/api/r2/purge/tenants/'+tid+'/projects/'+pid+'/');return r.ok}catch(_){return false}},
+    /* ping：v.008 で /api/r2/mine に変更（旧 ping は tid 不要なダミー pid を叩いていたが、新ルートでは tid が必要になるため廃止）。 */
+    async ping(){try{const ep=this.endpoint();if(!ep)return false;const tok=await this._token();if(!tok)return false;const r=await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});return r.ok}catch(_){return false}},
     /* _access.json 管理：Worker 側で owner/members 判定に使う小さな JSON。
        プロジェクト暗号化とは独立に平文で置く（Worker が復号鍵を持たないため）。 */
-    async getAccess(pid){try{return await this.getJson('projects/'+pid+'/_access.json')}catch(_){return null}},
-    async putAccess(pid,owner,members){
+    async getAccess(pid,opts){try{return await this.getJson('projects/'+pid+'/_access.json',opts)}catch(_){return null}},
+    async putAccess(pid,owner,members,opts){
       const obj={owner:String(owner||'').toLowerCase(),members:(members||[]).map(x=>String(x||'').toLowerCase()).filter(Boolean),updatedAt:nowIso()};
       /* 重複除去 */
       obj.members=Array.from(new Set(obj.members));
-      return await this.putJson('projects/'+pid+'/_access.json',obj);
+      return await this.putJson('projects/'+pid+'/_access.json',obj,opts);
     },
     /* 自分がメンバーとして参加できる R2 プロジェクト一覧を Worker から取得。
-       Worker がバケットをスキャンして _access.json ベースで絞り込む。 */
+       v.008：返却形式 [{tid, pid, name, owner, members, role}]。
+       副作用：取得した pid → tid を _tidMap に自動キャッシュ。 */
     async listMyProjects(){
       try{
         const ep=this.endpoint();if(!ep)return [];
@@ -2360,7 +2415,9 @@ const storage={
         const r=await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});
         if(!r.ok)return [];
         const j=await r.json();
-        return Array.isArray(j&&j.projects)?j.projects:[];
+        const projects=Array.isArray(j&&j.projects)?j.projects:[];
+        for(const p of projects){if(p&&p.pid&&p.tid)this.rememberTid(p.pid,p.tid)}
+        return projects;
       }catch(_){return []}
     },
   },
@@ -2371,10 +2428,13 @@ const storage={
     try{const n=(typeof getNode==='function')?getNode(id):null;if(n){const r=rootOf(n);if(r&&r.storageBackend==='r2')return 'r2'}}catch(_){}
     return 'folder';
   },
-  /* 新規プロジェクトを R2 バックエンドとしてマーク（作成時のみ呼ぶ）。 */
-  setBackendR2(id){
-    try{if(typeof REG!=='undefined'&&Array.isArray(REG)){let e=REG.find(x=>x.id===id);if(!e){e={id,name:'',folderName:null};REG.push(e)}e.backend='r2'}}catch(_){}
-    try{const n=(typeof getNode==='function')?getNode(id):null;if(n){const r=rootOf(n);if(r)r.storageBackend='r2'}}catch(_){}
+  /* 新規プロジェクトを R2 バックエンドとしてマーク（作成時のみ呼ぶ）。
+     v.008：tid を第 2 引数で受け付けて REG と root.tid に保存。
+     tid 省略時は既存の値を維持（既存プロジェクト再マーク時）。 */
+  setBackendR2(id,tid){
+    try{if(typeof REG!=='undefined'&&Array.isArray(REG)){let e=REG.find(x=>x.id===id);if(!e){e={id,name:'',folderName:null};REG.push(e)}e.backend='r2';if(tid)e.tid=tid;}}catch(_){}
+    try{const n=(typeof getNode==='function')?getNode(id):null;if(n){const r=rootOf(n);if(r){r.storageBackend='r2';if(tid)r.tid=tid;}}}catch(_){}
+    if(tid){try{this._r2.rememberTid(id,tid)}catch(_){}}
   },
   /* R2 か folder のどちらかで保存先が用意されているか（ローカル書き込み前の判定に使う）。 */
   async hasStorageConfigured(id){if(this._backend(id)==='r2')return !!this._r2.endpoint();return this.hasFolderConfigured(id)},
@@ -4181,7 +4241,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.11.007';
+const APP_VERSION='2026.10.14.008';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -12242,12 +12302,19 @@ function openProjectModal(){
         }
       }
       if(backend==='r2'){
-        storage.setBackendR2(id);
+        /* v.008：マルチテナント対応。tid を先に解決してから setBackendR2 で REG/root に埋め込む。
+           - 運営ユーザー → 'operator'
+           - テナント所属ユーザー → そのテナント ID
+           - 個人ユーザー → 'personal__<emailKey>' */
+        const _me=(authUser&&authUser.email)||'';
+        let _tid=null;
+        try{ _tid = await storage._r2.resolveTidForNewProject(_me); }catch(_){}
+        if(!_tid){toast('tid を解決できませんでした（Firebase ログインが必要です）');return}
+        storage.setBackendR2(id,_tid);
         /* R2 プロジェクト：_access.json を先に PUT する
            （Worker のブートストラップ判定を通すため、laycat.project.json の PUT より前に実行） */
-        const _me=(authUser&&authUser.email)||'';
         if(_me){
-          try{await storage._r2.putAccess(id,_me,[_me])}catch(e){toast('R2 のアクセス設定に失敗しました：'+String(e&&e.message||e));}
+          try{await storage._r2.putAccess(id,_me,[_me],{tid:_tid})}catch(e){toast('R2 のアクセス設定に失敗しました：'+String(e&&e.message||e));}
         }
       }else if(projFolderHandle){
         await storage.setProjRoot(id,projFolderHandle);getNode(id).folderName=projFolderHandle.name;
@@ -12287,15 +12354,20 @@ function openProjectModal(){
 /* R2 プロジェクトをIDで接続する共通処理。
    openR2ConnectModal（手動ID入力）と openConnectModal（タイル一覧）の両方から呼ばれる。
    成功時 true、失敗時 false を返す（トーストは内部で出す）。 */
-async function connectR2ProjectById(pid){
+async function connectR2ProjectById(pid,tid){
   if(!pid)return false;
   if(REG.some(e=>e.id===pid)){toast('このプロジェクトは既に接続されています');return false}
   if(!(authUser&&authUser.email)){toast('R2 プロジェクトに接続するには Google ログインが必要です');return false}
   const ep=storage._r2.endpoint();if(!ep){toast('R2 endpoint 未設定');return false}
-  /* 暫定 REG エントリ：_backend(pid) を r2 と判定させるため */
-  REG.push({id:pid,name:'(loading)',folderName:null,backend:'r2'});
+  /* v.008：tid 必須。指定が無ければ _tidMap から解決、それも無ければ失敗。
+     接続モーダル側の listMyProjects で既に rememberTid 済みのはずなので通常は解決できる。 */
+  const resolvedTid=tid||storage._r2._resolveTid(pid);
+  if(!resolvedTid){toast('tid を解決できませんでした（プロジェクト一覧の読み込みに失敗？）');return false}
+  /* 暫定 REG エントリ：_backend(pid) を r2 と判定させるため。tid も同時に記録。 */
+  REG.push({id:pid,name:'(loading)',folderName:null,backend:'r2',tid:resolvedTid});
+  storage._r2.rememberTid(pid,resolvedTid);
   try{
-    const access=await storage._r2.getAccess(pid);
+    const access=await storage._r2.getAccess(pid,{tid:resolvedTid});
     if(!access){
       REG=REG.filter(e=>e.id!==pid);
       toast('プロジェクトが見つかりません、または権限がありません（403/404）');
@@ -12304,10 +12376,10 @@ async function connectR2ProjectById(pid){
     const me=String(authUser.email||'').toLowerCase();
     const isOwner=String(access.owner||'').toLowerCase()===me;
     const isMember=(access.members||[]).map(x=>String(x||'').toLowerCase()).includes(me);
+    /* v.008：テナントメンバーなら _access.json 判定をスキップしても OK（Worker 側で判定済み）。
+       ただし UI にメンバーリストを表示するために access.members は尊重する。 */
     if(!isOwner&&!isMember){
-      REG=REG.filter(e=>e.id!==pid);
-      toast('あなたはこのプロジェクトのメンバーではありません。所有者に追加を依頼してください');
-      return false;
+      /* 同テナントメンバー扱いで接続続行（Worker が許可してるはず）。警告は出さない。 */
     }
     const data=await storage.loadProject(pid);
     if(!data||!Array.isArray(data.nodes)){
@@ -12320,7 +12392,7 @@ async function connectR2ProjectById(pid){
     try{const rls=await storage.loadReels(pid);if(Array.isArray(rls))for(const r of rls)if(!DB.reels.some(x=>x.id===r.id))DB.reels.push(r);}catch(_){}
     normalizeNodes();
     const root=getNode(pid);const reg=REG.find(e=>e.id===pid);
-    if(reg&&root){reg.name=root.name||pid;reg.backend='r2';root.storageBackend='r2';}
+    if(reg&&root){reg.name=root.name||pid;reg.backend='r2';reg.tid=resolvedTid;root.storageBackend='r2';root.tid=resolvedTid;}
     seedProjBaseline(pid);
     await storage.saveRegistry(REG);
     return true;
@@ -12448,6 +12520,7 @@ function openConnectModal(){
    タイル情報取得のため laycat.project.json を GET（キャッシュ済みなら reuse） */
 async function _r2Tile(p){
   const pid=p.pid;
+  const tid=p.tid; /* v.008：listMyProjects は {tid, pid, ...} を返す */
   const card=el('div','proj-card');
   card.style.cssText='cursor:pointer';
   const media=el('div','proj-media');
@@ -12463,13 +12536,20 @@ async function _r2Tile(p){
   }else{
     const roleBadge=el('span','mp-badge');roleBadge.textContent=(p.role==='owner')?'Owner':(p.role==='admin')?'Admin':'メンバー';
     meta.appendChild(roleBadge);
+    /* v.008：テナント種別を小バッジで表示（運営／個人／テナント名） */
+    if(tid){
+      const tBadge=el('span','mp-badge');
+      tBadge.style.cssText='margin-left:4px;background:var(--bg3);color:var(--text3);font-size:10px';
+      tBadge.textContent=(tid==='operator')?'運営':(String(tid).startsWith('personal__'))?'個人':tid;
+      meta.appendChild(tBadge);
+    }
   }
   foot.appendChild(meta);
   card.appendChild(foot);
   /* laycat.project.json を GET して name/thumbnail を反映 */
   (async()=>{
     try{
-      const data=await storage._r2.getJson('projects/'+pid+'/'+storage._projFileName);
+      const data=await storage._r2.getJson('projects/'+pid+'/'+storage._projFileName,{tid});
       if(data){
         nameLine.textContent=data.name||data.nodes&&data.nodes[0]&&data.nodes[0].name||pid;
         const root=Array.isArray(data.nodes)?data.nodes.find(n=>n.id===pid||!n.parentId):null;
@@ -12498,7 +12578,7 @@ async function _r2Tile(p){
     if(isConnected){toast('既に接続されています。ホームからお進みください');return}
     if(!confirm('プロジェクト「'+(nameLine.textContent||pid)+'」に接続しますか？'))return;
     card.style.pointerEvents='none';card.style.opacity='.5';
-    const ok=await connectR2ProjectById(pid);
+    const ok=await connectR2ProjectById(pid,tid);
     if(ok){closeModal();render();resolveThumbs()}
     else{card.style.pointerEvents='';card.style.opacity=''}
   };
@@ -12589,67 +12669,28 @@ function _nasTile(p){
    ※ owner 側があらかじめメンバー管理 UI で自分のメールを追加している必要あり（persist で _access.json 反映） */
 function openR2ConnectModal(){
   openModal(body=>{
-    const inner=mHead(body,'☁ R2 プロジェクトに接続','所有者から共有された「プロジェクトID」を入力してください（例：nd_mrtl8u3x1）');
-    inner.appendChild(el('div','form-label','プロジェクトID'));
+    const inner=mHead(body,'☁ R2 プロジェクトに接続','所有者から共有された「テナントID」と「プロジェクトID」を入力してください');
+    inner.appendChild(el('div','form-label','テナントID (tid)'));
+    const tidIn=el('input','form-input');tidIn.type='text';tidIn.placeholder='operator / personal__xxx / <tenant-id>';
+    inner.appendChild(tidIn);
+    inner.appendChild(el('div','form-label','プロジェクトID (pid)'));
     const idIn=el('input','form-input');idIn.type='text';idIn.placeholder='nd_xxxxxxxxx';
     inner.appendChild(idIn);
     const note=el('div','form-label');note.style.cssText='color:var(--text3);margin-top:6px;font-size:12px';
-    note.innerHTML='※ 事前に所有者側でメンバー管理からあなたのメール（<b>'+((authUser&&authUser.email)||'未ログイン')+'</b>）を追加してもらう必要があります。<br>※ プロジェクトIDは所有者の LayCAT のプロジェクト設定画面で確認できます。';
+    note.innerHTML='※ 事前に所有者側でメンバー管理からあなたのメール（<b>'+((authUser&&authUser.email)||'未ログイン')+'</b>）を追加してもらう必要があります。<br>※ 通常は「プロジェクトに接続」のタイル一覧から選べば ID 入力は不要です。';
     inner.appendChild(note);
     const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=closeModal;
     const connect=el('button','btn btn-primary','接続');
     connect.onclick=async()=>{
       let pid=(idIn.value||'').trim();
-      /* URL や余分な / を含んで貼られても pid だけ抜き出す */
       const m=pid.match(/([a-zA-Z0-9_-]+)/);if(m)pid=m[1];
       if(!pid)return toast('プロジェクトID を入力してください');
-      if(REG.some(e=>e.id===pid))return toast('このプロジェクトは既に接続されています');
-      if(!(authUser&&authUser.email))return toast('R2 プロジェクトに接続するには Google ログインが必要です');
-      const ep=storage._r2.endpoint();if(!ep)return toast('R2 endpoint 未設定');
+      const tid=(tidIn.value||'').trim();
+      if(!tid)return toast('テナントID を入力してください');
       connect.disabled=true;connect.textContent='接続中...';
-      try{
-        /* 事前に REG に暫定エントリを追加（backend=r2）：これで _backend(pid) が r2 を返し、以降の呼び出しで正しく R2 分岐が走る */
-        REG.push({id:pid,name:'(loading)',folderName:null,backend:'r2'});
-        /* 認可チェック（_access.json） */
-        const access=await storage._r2.getAccess(pid);
-        if(!access){
-          REG=REG.filter(e=>e.id!==pid);
-          toast('プロジェクトが見つかりません、または権限がありません（403/404）。プロジェクトIDを確認してください');
-          connect.disabled=false;connect.textContent='接続';return;
-        }
-        const me=String(authUser.email||'').toLowerCase();
-        const isOwner=String(access.owner||'').toLowerCase()===me;
-        const isMember=(access.members||[]).map(x=>String(x||'').toLowerCase()).includes(me);
-        if(!isOwner&&!isMember){
-          REG=REG.filter(e=>e.id!==pid);
-          toast('あなたはこのプロジェクトのメンバーではありません。所有者に追加を依頼してください');
-          connect.disabled=false;connect.textContent='接続';return;
-        }
-        /* プロジェクトデータを取得 */
-        const data=await storage.loadProject(pid);
-        if(!data||!Array.isArray(data.nodes)){
-          REG=REG.filter(e=>e.id!==pid);
-          toast('プロジェクトデータが読み込めませんでした（laycat.project.json 不正 or 未作成）');
-          connect.disabled=false;connect.textContent='接続';return;
-        }
-        /* DB.nodes/DB.submits にマージ（初期化と同じ処理） */
-        for(const n of data.nodes)if(!DB.nodes.some(x=>x.id===n.id))DB.nodes.push(n);
-        if(Array.isArray(data.submits))for(const s of data.submits)if(!DB.submits.some(x=>x.id===s.id))DB.submits.push(s);
-        /* リールも取り込み */
-        try{const rls=await storage.loadReels(pid);if(Array.isArray(rls))for(const r of rls)if(!DB.reels.some(x=>x.id===r.id))DB.reels.push(r);}catch(_){}
-        normalizeNodes();
-        /* REG エントリを本物の情報に更新 */
-        const root=getNode(pid);const reg=REG.find(e=>e.id===pid);
-        if(reg&&root){reg.name=root.name||pid;reg.backend='r2';root.storageBackend='r2';}
-        seedProjBaseline(pid);
-        await storage.saveRegistry(REG);
-        toast('R2 プロジェクトに接続しました');
-        closeModal();render();resolveThumbs();
-      }catch(e){
-        REG=REG.filter(e=>e.id!==pid);
-        toast('接続に失敗しました：'+String(e&&e.message||e));
-        connect.disabled=false;connect.textContent='接続';
-      }
+      const ok=await connectR2ProjectById(pid,tid);
+      if(ok){toast('R2 プロジェクトに接続しました');closeModal();render();resolveThumbs();}
+      else{connect.disabled=false;connect.textContent='接続';}
     };
     mFoot(body,[cancel,connect]);
   });

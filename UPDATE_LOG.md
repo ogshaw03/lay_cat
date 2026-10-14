@@ -18,6 +18,45 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.14.008) **R2 バックエンドのマルチテナント化（LayCAT／Phase 1）**：
+  - **目的**：運営 R2 を `tenants/<tid>/projects/<pid>/...` のテナント分離型キーに移行。将来のバケット分離や顧客自前 Worker 運用への移行コストを下げる。
+  - **tid 割当ルール**（新規プロジェクト作成時に自動解決）：
+    - 運営ユーザー → `operator`
+    - テナント所属ユーザー → そのテナント ID
+    - 個人ユーザー（未所属）→ `personal__<emailKey>`
+  - **URL ルーティング（Worker 側 v2.0.0）**：
+    - `GET/PUT/DELETE /api/r2/tenants/<tid>/projects/<pid>/<path>`
+    - `GET /api/r2/list/tenants/<tid>/projects/<pid>/<prefix>`
+    - `DELETE /api/r2/purge/tenants/<tid>/projects/<pid>/`
+    - `GET /api/r2/mine` → `{projects:[{tid, pid, name, owner, members, role}]}` （返却形式変更）
+    - `POST /api/r2/rebuild-memberships`（運営用：全テナントの `_access.json` を走査して Firestore `laycatMemberships` を再構築）
+  - **認可（3 段階判定）**：
+    - (a) `personal__<emailKey>` が自分のもの → allow
+    - (b) `operator` tid かつ自分が operator → allow
+    - (c) Firestore `tenants/<tid>/members/<myEmailKey>` 存在 → allow（同テナントメンバー）
+    - (d) `_access.json` の owner/members に自分が含まれる → allow（クロステナント招待ゲスト）
+    - (e) `operatorEmails` → allow（最終エスカレーション）
+  - **クライアント側（`laycat_dev.html`）実装**：
+    - `storage._r2._tenantPath(key, opts)` を導入し、既存の `'projects/<pid>/...'` 形式のキーに `tenants/<tid>/` を内部で prepend。
+    - tid 解決の優先順位：`opts.tid` → `getNode(pid).tid`（root）→ `REG.find(id).tid` → `localStorage._tidMap[pid]`。全呼び出し元を変えずに済むように内部解決。
+    - `_tidMap`：`listMyProjects()` 取得時と `rememberTid()` 呼び出し時に localStorage に保存される pid→tid サイドキャッシュ。
+    - `resolveTidForNewProject(email)`：`window.__laynaFB.isOperator()` → `window.__laynaFB.getUserTenantId()` → `personal__<emailKey>` のフォールバック。
+    - `setBackendR2(id, tid)`：REG エントリ・`root.tid`・`_tidMap` の 3 箇所に tid を保存。
+    - `connectR2ProjectById(pid, tid)`：第 2 引数 tid 必須化（省略時は `_resolveTid` が解決）。REG push 時点で tid を含める。
+    - 接続モーダルタイル（`_r2Tile`）：運営／個人／テナント名の小バッジを追加。クリック時に `tid` を渡す。
+    - 手動 ID 入力モーダル（`openR2ConnectModal`）：tid 入力欄を追加し、重複した接続ロジックを `connectR2ProjectById` に統合。
+  - **書き込み境界**：
+    - 書き込まれる JSON：`tenants/<tid>/projects/<pid>/_access.json`（新規作成時）／`tenants/<tid>/projects/<pid>/laycat.project.json`／`tenants/<tid>/projects/<pid>/shots/*.json`／`tenants/<tid>/projects/<pid>/status/*.json`／`tenants/<tid>/projects/<pid>/reels.json` 等（既存キーのプレフィックスだけ変わる）。
+    - Firestore：`tenants/<tid>/members/<emailKey>`（運営がテナント運用で追加）、`laycatMemberships/<emailKey>/projects/<pid>`（tid フィールド追加）。
+    - 既存プロジェクトは「無し」とユーザー確認済み。マイグレーション不要。既存 R2 バケットはそのまま使い回し、新ルート経由で `tenants/<tid>/...` 以下に書く。
+  - **デモ検証**：UI 流れは `_tidMap` を活用した内部解決で既存の呼び出し元が変化なし＝デモ注入の既存シナリオは影響なし（R2 バックエンドは Firebase ログインを必要とするためデモでは起動しない）。CLAUDE.md 新ルール「修正後の動作確認（必須）」：**UI 動作に影響する変更ではあるが R2 バックエンドは本番 Firebase を伴うためデモデータでの検証対象外**（デモは folder バックエンド）。R2 プロジェクト作成・接続の実動作確認は、Worker デプロイ後に別途行う。
+  - **残作業**：
+    - `window.__laynaFB.isOperator(email)` と `window.__laynaFB.getUserTenantId(email)` の実装（Firestore 設計に沿って別途追加）。それまでは `resolveTidForNewProject` は `personal__<emailKey>` にフォールバックする。
+    - `docs/MULTITENANT_R2.md`：キー構造・認可フロー・テナント追加手順（別コミット予定）。
+    - `wrangler.toml.example`：Worker v2.0.0 への移行注記（必要なら別コミット）。
+    - Worker デプロイ（既存 `laycat-r2-api` の上書きデプロイ）。
+  - APP_VERSION：2026.10.11.007 → 2026.10.14.008
+
 - (dev v2026.10.11.007) **追加モーダルの工程色チップがプロジェクト設定の色を反映していない不具合を修正（LayCAT）**：
   - 事象：プロジェクト設定「工程テンプレ」で色を変更しても、ショットページを追加モーダル内の工程リストに表示される色チップは古い自動色（ハッシュ）のまま。
   - 原因：`openAddModal` の工程編集 UI (L12745/12747) が `stageColor(nm)`（名前ハッシュのみ）を使っており、`root.stageColors[nm]`（ユーザー保存の手動色）を見ていなかった。
