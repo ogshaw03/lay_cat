@@ -223,9 +223,10 @@ async function checkTenantAndProjectAcl(env, tid, pid, email) {
   const members = Array.isArray(access.members) ? access.members : [];
   if (members.map(m => String(m || '').toLowerCase()).includes(lower)) return { allowed: true, reason: 'member', access };
 
-  // (e) 運営エスカレーション（owner 不在時の緊急対応）
-  if (await isStaffEmail(env, email)) return { allowed: true, reason: 'operator-escalation', access };
-
+  // v2.1.0：グローバル権限（operator）とテナント権限の分離に伴い、
+  // 以前の "operator-escalation"（運営がどのテナントの _access.json のメンバーで
+  // なくてもアクセス可能）は削除。緊急対応時は operator が明示的に _access.json に
+  // 自分を追加する／テナント管理者に依頼する形で解決する。
   return { allowed: false, reason: 'not-a-member', access };
 }
 
@@ -693,13 +694,15 @@ export default {
       }
 
       // (2) 自分のテナント配下の全プロジェクト（memberships 以外でもテナントメンバーなら見える）
-      // operator は 'operator' テナントを常に見られる。
+      // v2.1.0：グローバル権限（operator）とテナント権限の分離に伴い、
+      // 「operator は 'operator' テナントを常に見られる」の自動追加は削除。
+      // operator は tenants/operator/members/<emailKey> に自分を追加していれば
+      // getMyTenantId 経由で primary tenant として tidsToScan に乗る。
       const myTid = await getMyTenantId(env, me).catch(() => null);
       const personalTid = PERSONAL_TID_PREFIX + memberKeyFromEmail(me);
       const tidsToScan = new Set();
       if (myTid && isValidTid(myTid)) tidsToScan.add(myTid);
       tidsToScan.add(personalTid);
-      if (isAdminUser) tidsToScan.add(OPERATOR_TID);
 
       const tenantPids = new Map(); // pid -> tid（membership に無いが見える分）
       for (const scanTid of tidsToScan) {

@@ -18,6 +18,28 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.14.014) **operator（グローバル権限）／tenant（テナント権限）の完全分離＋個人ユーザー R2 設定 UI**：
+  - **背景**：
+    - 権限用語の定義：**グローバル権限**（access-console.html で設定、`laynaAccess/config.operatorEmails` → `authUser.role='operator'`）と、**テナント権限**（テナント管理モーダルで設定、`tenants/<tid>/members/<emailKey>.role`）を明確に分離。
+    - 従来は operator が全テナントに super admin として自動的に入れていた（意図せぬデータガバナンス侵害）。例：グローバル operator の `ogusho1101@gmail.com` がテナント管理モーダルで `CafeGroup` を開けた＝ CafeGroup のメンバー一覧・会社休日・R2 設定が丸見え。
+  - **変更内容**：
+    - **クライアント `refreshTenantAdminButton`**：operator 自動付与ブロックを削除。operator であっても、tenant 管理モーダルに出るのは「`tenants/<tid>.ownerEmail` 一致」または「`tenants/<tid>/members/<emailKey>.role === 'admin'`」のテナントのみ。
+    - **クライアント `openCalendarModal`**：会社休日の編集権限から `authUser.role === 'operator'` を削除。`authUser.tenantRole === 'owner' | 'admin'` のみ編集可能。
+    - **Worker (v2.1.0) `checkTenantAndProjectAcl`**：`(e) operator-escalation` 分岐を削除。グローバル operator は `_access.json` に自分を明示的に追加しない限りそのプロジェクトに入れない。緊急対応は access-console からの逃げ道で別途対応。
+    - **Worker (v2.1.0) `/api/r2/mine`**：`if (isAdminUser) tidsToScan.add(OPERATOR_TID)` を削除。operator は `tenants/operator/members/<emailKey>` に自分を追加していれば getMyTenantId 経由で operator tid が primary tenant として tidsToScan に乗る。
+    - **残っている operator バイパス**：
+      - `checkTenantAndProjectAcl (b)`: `tid === 'operator' && isStaffEmail` は維持（operator 専用テナントへの自明なアクセス）
+      - project 作成時の `resolveTidForNewProject`: operator は自動的に `tid='operator'` で作成（自分のテナントなので OK）
+  - **個人ユーザー R2 エンドポイント設定 UI**：
+    - テナント管理モーダルは個人ユーザー（tenantId なし or `personal__` 始まり）には表示されないため、R2 エンドポイントを UI 上から設定する経路が無かった。
+    - マイページに「R2 ストレージ（個人）」セクションを追加。URL 入力＋疎通確認＋保存ボタン。書込先は `tenants/personal__<emailKey>.r2Endpoint`（setDoc merge:true で新規作成も可能）。
+    - 保存後 `storage._r2._endpointCache` をクリアして即座に新 URL が使われる。
+  - **書き込み境界**：
+    - Firestore：`tenants/personal__<emailKey>.r2Endpoint` に string|null を書く（merge）
+    - 既存プロジェクトデータへの影響なし
+  - **Firestore ルール要注意**：`tenants/personal__<emailKey>` の書き込み権限を本人（emailKey 一致）に許可するルール追加が必要かも。access-console/firestore ルールを別途確認。
+  - APP_VERSION：2026.10.14.013 → 2026.10.14.014
+
 - (dev v2026.10.14.013) **顧客自前 R2 対応（LayCAT 本体／テナント単位で R2 Worker 切替）**：
   - **目的**：顧客（テナント）が自分の Cloudflare アカウント＋ R2 バケット＋ Worker を用意して、LayCAT のストレージを独立運用できるようにする。運営 R2 への依存を無くせる。
   - **設計**（事前合意済み）：

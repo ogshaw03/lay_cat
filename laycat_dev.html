@@ -4326,7 +4326,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.14.013';
+const APP_VERSION='2026.10.14.014';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -22083,6 +22083,20 @@ async function openMyPageModal(){
           <h4 class="mp-section-title">役職（複数選択可）</h4>
           <div class="mp-roles-grid">${rolesHtml}</div>
         </section>
+        <!-- v.014：個人テナントの R2 エンドポイント設定（テナント管理モーダルを持たない個人ユーザー用）。
+             テナント所属ユーザーは所属テナントで既に r2Endpoint を設定しているはずなので、
+             このセクションは「個人テナント」の人だけ表示。
+             個人判定：curTenantId が 'personal__' で始まる、または未設定。 -->
+        ${(!curTenantId || String(curTenantId).startsWith('personal__')) ? `
+        <section class="mp-section">
+          <h4 class="mp-section-title">R2 ストレージ（個人）</h4>
+          <div class="mp-help">未設定なら運営の R2 を使います。自前の Cloudflare Worker をデプロイして URL を入れると、あなたの個人プロジェクトがその Worker 経由で自前 R2 に保存されます（詳細は docs/CUSTOMER_R2_SETUP.md）。</div>
+          <div class="mp-time-row" style="margin-top:6px;align-items:center;flex-wrap:wrap">
+            <label class="mp-field" style="flex:1;min-width:260px"><span class="mp-label">エンドポイント</span><input type="text" class="mp-input" id="mpR2Endpoint" placeholder="空欄＝運営 R2 を使用／https://自前-worker.workers.dev" style="font-family:var(--font-code);font-size:12px"></label>
+            <button class="btn btn-ghost" id="mpR2TestBtn" style="padding:5px 10px;font-size:12px;margin-top:18px" title="入力した URL で /api/r2/health を叩いて疎通確認">疎通確認</button>
+            <button class="btn btn-primary" id="mpR2SaveBtn" style="padding:5px 12px;font-size:12px;margin-top:18px">保存</button>
+          </div>
+        </section>` : ''}
       </div>
       <div class="mp-foot">
         <button class="btn btn-ghost mp-cancel">キャンセル</button>
@@ -22090,6 +22104,51 @@ async function openMyPageModal(){
       </div>`;
     body.querySelector('.mp-close').onclick=closeModal;
     body.querySelector('.mp-cancel').onclick=closeModal;
+    /* v.014：個人テナント R2 エンドポイント設定（セクション表示時のみ有効）。
+       書き込み先：tenants/personal__<emailKey>.r2Endpoint（セクション内の個別保存ボタン）。
+       マイページ全体の「保存」ボタンとは独立（プロフィール・稼働時間と干渉させない）。 */
+    const mpR2EndpointEl = body.querySelector('#mpR2Endpoint');
+    if(mpR2EndpointEl){
+      const myKey = String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+      const personalTid = curTenantId && String(curTenantId).startsWith('personal__') ? curTenantId : ('personal__' + myKey);
+      /* 現在値を読込 */
+      (async()=>{
+        try{
+          const cur = await window.__laynaFB.getTenantR2Endpoint(personalTid);
+          if(cur) mpR2EndpointEl.value = cur;
+        }catch(_){}
+      })();
+      const _normalizeR2Url=u=>{u=String(u||'').trim().replace(/\/$/,'');if(!u)return '';if(!/^https?:\/\//i.test(u))u='https://'+u;return u;};
+      const mpR2TestBtn = body.querySelector('#mpR2TestBtn');
+      if(mpR2TestBtn){
+        mpR2TestBtn.onclick=async()=>{
+          const url = _normalizeR2Url(mpR2EndpointEl.value||'');
+          if(!url){ toast('URL を入力してください'); return; }
+          mpR2TestBtn.disabled = true; mpR2TestBtn.textContent='確認中…';
+          try{
+            const r = await fetch(url+'/api/r2/health',{method:'GET'});
+            if(r.ok){ const j=await r.json().catch(()=>null); toast('疎通 OK ('+(j&&j.edition||'unknown')+')'); }
+            else{ toast('疎通失敗：HTTP '+r.status); }
+          }catch(e){ toast('疎通失敗：'+String(e&&e.message||e)); }
+          mpR2TestBtn.disabled=false; mpR2TestBtn.textContent='疎通確認';
+        };
+      }
+      const mpR2SaveBtn = body.querySelector('#mpR2SaveBtn');
+      if(mpR2SaveBtn){
+        mpR2SaveBtn.onclick=async()=>{
+          const url = _normalizeR2Url(mpR2EndpointEl.value||'');
+          if(!url){
+            if(!confirm('R2 エンドポイントを空にすると、あなたの個人プロジェクトは運営 R2 に保存されます（既存の自前 R2 データは参照できなくなります）。続行しますか？')) return;
+          }
+          mpR2SaveBtn.disabled = true;
+          const ok = await window.__laynaFB.updateTenantR2Endpoint(personalTid, url, email);
+          mpR2SaveBtn.disabled = false;
+          if(!ok){ toast('保存に失敗しました（Firestore ルール要確認）'); return; }
+          toast(url ? ('R2 エンドポイントを保存しました：'+url) : 'R2 エンドポイントを空にしました');
+          try{ if(storage._r2._endpointCache) storage._r2._endpointCache.delete(personalTid); }catch(_){}
+        };
+      }
+    }
     body.querySelector('.mp-save').onclick=async()=>{
       const name=body.querySelector('#mpName').value.trim();
       const start=body.querySelector('#mpStart').value;
@@ -22140,12 +22199,12 @@ async function _calEnsureCompany(){
 }
 async function openCalendarModal(){
   if(!authUser){toast('ログインが必要です');return}
-  /* Phase M3b：編集権限をテナント役職ベースに完全統合。
-     - 運営（operator）：全テナントの会社休日を編集可能（SaaS 運営の最高権限）
-     - テナント owner / admin：自テナントの会社休日のみ編集可能
-     - 旧全体 admin 経路は Phase M3b で撤去 */
+  /* v.014：グローバル権限（operator）とテナント権限（owner/admin/member）を明確に分離。
+     - operator だけという理由で全テナントの会社休日を編集できる挙動は撤廃
+     - operator であっても、編集するテナントの member として owner/admin ロールが
+       無ければ編集不可。operator 自身のテナント（例：tid='operator'）で admin
+       として登録されていればそこの会社休日は編集できる。 */
   const canEdit = (
-    authUser.role === 'operator' ||
     authUser.tenantRole === 'owner' ||
     authUser.tenantRole === 'admin'
   );
@@ -22276,23 +22335,22 @@ async function refreshTenantAdminButton(){
   if(!btn) return;
   if(!authUser || !authUser.email || !window.__laynaFB) { btn.classList.add('hidden'); return; }
   try{
-    /* operator は全テナント管理可能。tenants 一覧を取得して全て admin 扱いで追加。 */
-    if(authUser.role === 'operator'){
-      const all = window.__laynaFB.loadAllTenants ? await window.__laynaFB.loadAllTenants() : [];
-      _tenantAdminAvailable = (all||[]).map(t => ({tenantId: t.id, name: t.name||t.id, role: 'operator'}));
-    } else {
-      /* 契約者（ownerEmail 一致）or admin ロール：findUserTenants + tenants.ownerEmail チェック */
-      const emailLc = String(authUser.email).toLowerCase();
-      const all = window.__laynaFB.loadAllTenants ? await window.__laynaFB.loadAllTenants() : [];
-      const myMemberships = window.__laynaFB.findUserTenants ? await window.__laynaFB.findUserTenants(emailLc) : [];
-      const memberMap = {};
-      for(const mm of (myMemberships||[])) memberMap[mm.tenantId] = mm.role;
-      for(const t of (all||[])){
-        if(String(t.ownerEmail||'').toLowerCase() === emailLc){
-          _tenantAdminAvailable.push({tenantId:t.id, name:t.name||t.id, role:'owner'});
-        } else if(memberMap[t.id] === 'admin'){
-          _tenantAdminAvailable.push({tenantId:t.id, name:t.name||t.id, role:'admin'});
-        }
+    /* v.014：グローバル権限（operator）とテナント権限（owner/admin/member）を明確に分離。
+       operator だからという理由で全テナント管理可能 ─ という挙動は撤廃。
+       operator であっても、テナント管理モーダルで触れるのは「自分が ownerEmail／members に
+       admin として登録されているテナント」のみ。他テナント（例：CafeGroup）には入れない。
+       ※ operator 専用テナント（tid='operator'）には、operator 自身が admin として
+         登録されていれば従来通り入れる（この経路はこのループでカバー済み）。 */
+    const emailLc = String(authUser.email).toLowerCase();
+    const all = window.__laynaFB.loadAllTenants ? await window.__laynaFB.loadAllTenants() : [];
+    const myMemberships = window.__laynaFB.findUserTenants ? await window.__laynaFB.findUserTenants(emailLc) : [];
+    const memberMap = {};
+    for(const mm of (myMemberships||[])) memberMap[mm.tenantId] = mm.role;
+    for(const t of (all||[])){
+      if(String(t.ownerEmail||'').toLowerCase() === emailLc){
+        _tenantAdminAvailable.push({tenantId:t.id, name:t.name||t.id, role:'owner'});
+      } else if(memberMap[t.id] === 'admin'){
+        _tenantAdminAvailable.push({tenantId:t.id, name:t.name||t.id, role:'admin'});
       }
     }
   }catch(_){ _tenantAdminAvailable = []; }
