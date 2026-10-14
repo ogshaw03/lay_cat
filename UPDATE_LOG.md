@@ -18,10 +18,10 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
-- (dev v2026.10.14.010) **R2 接続モーダルのタイル名が ID 表示になる不具合を修正**：
+- (dev v2026.10.14.010) **R2 接続モーダルのタイル名解決を堅牢化**：
   - 事象：「プロジェクトに接続」モーダルの R2 プロジェクトタイル一覧で、プロジェクト名ではなく pid (`nd_mv7...`) が表示されていた。
-  - 原因：`_r2Tile` が `data.name || data.nodes[0].name || pid` の順で名前を解決していたが、`laycat.project.json` には top-level `name` フィールドが無く、`nodes[0]` も必ずしも root とは限らないため pid にフォールバックしていた。
-  - 修正：`data.nodes.find(n => n.id === pid)` → `find(n => !n.parentId)` → `nodes[0]` の順で root ノードを特定し、その `.name` を使うよう変更。
+  - 直接原因：v.008-009 のマルチテナント化デバッグ中に Worker 側 401/403 で `storage._r2.getJson` が null を返し、`catch` に落ちて `nameLine.textContent=pid` が設定された状態になっていた。Worker 正常化後は本来の名前が出るはずだが、タイル生成が同一セッションでキャッシュ的に残り続けた可能性が高い。
+  - 修正内容：`_r2Tile` の名前解決を `data.name || data.nodes[0].name || pid` から、root ノード（`id===pid`、無ければ `parentId` なし、無ければ `nodes[0]`）の `.name` を使う方式に変更。`projectData(pid)` が返す `data.name` と `root.name` は同じ値なので表示結果は変わらないが、`nodes[0]` が root とは限らないケース（デモデータ・部分ロード等）でもフォールバックが効くため副次的に堅牢化。
   - 書き込み境界：UI 描画のみ、データ無変更。
   - APP_VERSION：2026.10.14.009 → 2026.10.14.010
 
