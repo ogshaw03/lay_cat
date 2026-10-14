@@ -438,13 +438,15 @@ service cloud.firestore {
       allow update:         if false;
     }
 
-    // ===== テナント定義（マルチテナント化 Phase M1/M2/M3b）=====
+    // ===== テナント定義（マルチテナント化 Phase M1/M2/M3b, v.014 顧客自前 R2 対応）=====
     // 保存先：tenants/{tenantId}
     // ドキュメント内容：{ name, description, domains, ownerEmail, plan, licenseLimit,
-    //                     allowDomainAutoJoin, createdBy, ... }
+    //                     allowDomainAutoJoin, coreHours, r2Endpoint, createdBy, ... }
     // 読取は認証者全員（LayCAT ログイン時のドメイン自動判定で参照）。
     // 作成・削除・ownerEmail/plan/licenseLimit 等の変更：運営のみ。
-    // allowDomainAutoJoin の切替：owner or admin も可能（当該フィールドのみ）。
+    // allowDomainAutoJoin / coreHours / r2Endpoint の切替：owner or admin も可能（当該フィールドのみ）。
+    // v.014：個人テナント（tenantId == 'personal__<myKey>'）は本人が create / update 可能
+    //       （r2Endpoint 関連フィールドのみ、他フィールドの変更は不可）。
     function _tenantOwner(tid) {
       return exists(/databases/$(database)/documents/tenants/$(tid))
         ? get(/databases/$(database)/documents/tenants/$(tid)).data.get('ownerEmail','')
@@ -456,7 +458,7 @@ service cloud.firestore {
         ? get(/databases/$(database)/documents/tenants/$(tid)/members/$(myK)).data.get('role','')
         : '';
     }
-    // owner/admin が設定フィールド（allowDomainAutoJoin / coreHours）のみを更新するケース
+    // owner/admin が設定フィールド（allowDomainAutoJoin / coreHours / r2Endpoint）のみを更新するケース
     function _canUpdateTenantSettings(tid) {
       let myEmail = request.auth.token.email;
       let isOwner = myEmail == _tenantOwner(tid);
@@ -464,12 +466,28 @@ service cloud.firestore {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
       return signedIn()
         && (isOwner || isAdmin)
-        && changed.hasOnly(['allowDomainAutoJoin','coreHours','updatedAt','updatedBy']);
+        && changed.hasOnly(['allowDomainAutoJoin','coreHours','r2Endpoint','updatedAt','updatedBy']);
+    }
+    // v.014：個人テナント判定（tenantId == 'personal__<myKey>'）
+    function _isMyPersonalTenant(tid) {
+      return tid == 'personal__' + myKey();
+    }
+    // v.014：個人テナントの create / update は本人のみ、r2Endpoint 関連フィールドだけ変更可。
+    //       既存ドキュメントが無い場合（resource==null）も空マップ差分で判定する。
+    function _canWriteMyPersonalTenant(tid) {
+      let changed = request.resource.data.diff(resource == null ? {} : resource.data).affectedKeys();
+      return signedIn()
+        && _isMyPersonalTenant(tid)
+        && changed.hasOnly(['r2Endpoint','updatedAt','updatedBy']);
     }
     match /tenants/{tenantId} {
       allow read:              if signedIn();
-      allow create, delete:    if isStaff();
-      allow update:            if isStaff() || _canUpdateTenantSettings(tenantId);
+      allow create:            if isStaff()
+                                  || _canWriteMyPersonalTenant(tenantId);
+      allow delete:            if isStaff();
+      allow update:            if isStaff()
+                                  || _canUpdateTenantSettings(tenantId)
+                                  || _canWriteMyPersonalTenant(tenantId);
     }
 
     // ===== テナントメンバーシップ（Phase M2：チーム管理）=====

@@ -4326,7 +4326,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.14.014';
+const APP_VERSION='2026.10.14.015';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -22083,20 +22083,14 @@ async function openMyPageModal(){
           <h4 class="mp-section-title">役職（複数選択可）</h4>
           <div class="mp-roles-grid">${rolesHtml}</div>
         </section>
-        <!-- v.014：個人テナントの R2 エンドポイント設定（テナント管理モーダルを持たない個人ユーザー用）。
-             テナント所属ユーザーは所属テナントで既に r2Endpoint を設定しているはずなので、
-             このセクションは「個人テナント」の人だけ表示。
-             個人判定：curTenantId が 'personal__' で始まる、または未設定。 -->
-        ${(!curTenantId || String(curTenantId).startsWith('personal__')) ? `
-        <section class="mp-section">
-          <h4 class="mp-section-title">R2 ストレージ（個人）</h4>
-          <div class="mp-help">未設定なら運営の R2 を使います。自前の Cloudflare Worker をデプロイして URL を入れると、あなたの個人プロジェクトがその Worker 経由で自前 R2 に保存されます（詳細は docs/CUSTOMER_R2_SETUP.md）。</div>
-          <div class="mp-time-row" style="margin-top:6px;align-items:center;flex-wrap:wrap">
-            <label class="mp-field" style="flex:1;min-width:260px"><span class="mp-label">エンドポイント</span><input type="text" class="mp-input" id="mpR2Endpoint" placeholder="空欄＝運営 R2 を使用／https://自前-worker.workers.dev" style="font-family:var(--font-code);font-size:12px"></label>
-            <button class="btn btn-ghost" id="mpR2TestBtn" style="padding:5px 10px;font-size:12px;margin-top:18px" title="入力した URL で /api/r2/health を叩いて疎通確認">疎通確認</button>
-            <button class="btn btn-primary" id="mpR2SaveBtn" style="padding:5px 12px;font-size:12px;margin-top:18px">保存</button>
-          </div>
-        </section>` : ''}
+        <!-- v.015：R2 エンドポイント設定の表示判定を resolveTidForNewProject の戻り値で決める。
+             - 戻り値が 'personal__<myKey>' → 個人セクション表示（マイページから設定可）
+             - 戻り値が 'operator' → 「🏢 テナント管理」の operator テナントで設定、と誘導
+             - 戻り値が実テナント ID → 所属テナントの owner/admin に設定依頼、と誘導 -->
+        <section class="mp-section" id="mpR2Section">
+          <h4 class="mp-section-title">R2 ストレージ</h4>
+          <div id="mpR2Body" class="mp-help">読み込み中…</div>
+        </section>
       </div>
       <div class="mp-foot">
         <button class="btn btn-ghost mp-cancel">キャンセル</button>
@@ -22104,51 +22098,75 @@ async function openMyPageModal(){
       </div>`;
     body.querySelector('.mp-close').onclick=closeModal;
     body.querySelector('.mp-cancel').onclick=closeModal;
-    /* v.014：個人テナント R2 エンドポイント設定（セクション表示時のみ有効）。
-       書き込み先：tenants/personal__<emailKey>.r2Endpoint（セクション内の個別保存ボタン）。
-       マイページ全体の「保存」ボタンとは独立（プロフィール・稼働時間と干渉させない）。 */
-    const mpR2EndpointEl = body.querySelector('#mpR2Endpoint');
-    if(mpR2EndpointEl){
-      const myKey = String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
-      const personalTid = curTenantId && String(curTenantId).startsWith('personal__') ? curTenantId : ('personal__' + myKey);
-      /* 現在値を読込 */
-      (async()=>{
+    /* v.015：R2 エンドポイント設定 — 新規プロジェクト作成時に適用される tid を実際に解決してから
+       表示を分岐。これにより「設定したのに違う tid に書かれて反映されない」事故を防ぐ。 */
+    (async()=>{
+      const bodyEl = body.querySelector('#mpR2Body');
+      if(!bodyEl) return;
+      let resolvedTid = null;
+      try{ resolvedTid = await storage._r2.resolveTidForNewProject(email); }catch(_){}
+      if(!resolvedTid){
+        bodyEl.innerHTML = '<span style="color:var(--text3)">tid を解決できませんでした（ログイン状態を確認してください）。</span>';
+        return;
+      }
+      const esc = s => String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      /* ケース A：個人テナント（マイページから直接設定可能） */
+      if(String(resolvedTid).startsWith('personal__')){
+        bodyEl.innerHTML = `
+          <div class="mp-help">未設定なら運営の R2 を使います。自前の Cloudflare Worker をデプロイして URL を入れると、あなたの個人プロジェクトがその Worker 経由で自前 R2 に保存されます（詳細は <code>docs/CUSTOMER_R2_SETUP.md</code>）。</div>
+          <div class="mp-time-row" style="margin-top:6px;align-items:center;flex-wrap:wrap">
+            <label class="mp-field" style="flex:1;min-width:260px"><span class="mp-label">エンドポイント</span><input type="text" class="mp-input" id="mpR2Endpoint" placeholder="空欄＝運営 R2 を使用／https://自前-worker.workers.dev" style="font-family:var(--font-code);font-size:12px"></label>
+            <button class="btn btn-ghost" id="mpR2TestBtn" style="padding:5px 10px;font-size:12px;margin-top:18px" title="入力した URL で /api/r2/health を叩いて疎通確認">疎通確認</button>
+            <button class="btn btn-primary" id="mpR2SaveBtn" style="padding:5px 12px;font-size:12px;margin-top:18px">保存</button>
+          </div>`;
+        const inp = bodyEl.querySelector('#mpR2Endpoint');
         try{
-          const cur = await window.__laynaFB.getTenantR2Endpoint(personalTid);
-          if(cur) mpR2EndpointEl.value = cur;
+          const cur = await window.__laynaFB.getTenantR2Endpoint(resolvedTid);
+          if(cur) inp.value = cur;
         }catch(_){}
-      })();
-      const _normalizeR2Url=u=>{u=String(u||'').trim().replace(/\/$/,'');if(!u)return '';if(!/^https?:\/\//i.test(u))u='https://'+u;return u;};
-      const mpR2TestBtn = body.querySelector('#mpR2TestBtn');
-      if(mpR2TestBtn){
-        mpR2TestBtn.onclick=async()=>{
-          const url = _normalizeR2Url(mpR2EndpointEl.value||'');
+        const _normalizeR2Url=u=>{u=String(u||'').trim().replace(/\/$/,'');if(!u)return '';if(!/^https?:\/\//i.test(u))u='https://'+u;return u;};
+        const testBtn = bodyEl.querySelector('#mpR2TestBtn');
+        testBtn.onclick=async()=>{
+          const url = _normalizeR2Url(inp.value||'');
           if(!url){ toast('URL を入力してください'); return; }
-          mpR2TestBtn.disabled = true; mpR2TestBtn.textContent='確認中…';
+          testBtn.disabled = true; testBtn.textContent='確認中…';
           try{
             const r = await fetch(url+'/api/r2/health',{method:'GET'});
             if(r.ok){ const j=await r.json().catch(()=>null); toast('疎通 OK ('+(j&&j.edition||'unknown')+')'); }
             else{ toast('疎通失敗：HTTP '+r.status); }
           }catch(e){ toast('疎通失敗：'+String(e&&e.message||e)); }
-          mpR2TestBtn.disabled=false; mpR2TestBtn.textContent='疎通確認';
+          testBtn.disabled=false; testBtn.textContent='疎通確認';
         };
-      }
-      const mpR2SaveBtn = body.querySelector('#mpR2SaveBtn');
-      if(mpR2SaveBtn){
-        mpR2SaveBtn.onclick=async()=>{
-          const url = _normalizeR2Url(mpR2EndpointEl.value||'');
+        const saveBtn = bodyEl.querySelector('#mpR2SaveBtn');
+        saveBtn.onclick=async()=>{
+          const url = _normalizeR2Url(inp.value||'');
           if(!url){
             if(!confirm('R2 エンドポイントを空にすると、あなたの個人プロジェクトは運営 R2 に保存されます（既存の自前 R2 データは参照できなくなります）。続行しますか？')) return;
           }
-          mpR2SaveBtn.disabled = true;
-          const ok = await window.__laynaFB.updateTenantR2Endpoint(personalTid, url, email);
-          mpR2SaveBtn.disabled = false;
+          saveBtn.disabled = true;
+          const ok = await window.__laynaFB.updateTenantR2Endpoint(resolvedTid, url, email);
+          saveBtn.disabled = false;
           if(!ok){ toast('保存に失敗しました（Firestore ルール要確認）'); return; }
           toast(url ? ('R2 エンドポイントを保存しました：'+url) : 'R2 エンドポイントを空にしました');
-          try{ if(storage._r2._endpointCache) storage._r2._endpointCache.delete(personalTid); }catch(_){}
+          try{ storage._r2._endpointCache.delete(resolvedTid); }catch(_){}
         };
+        return;
       }
-    }
+      /* ケース B：operator テナント */
+      if(resolvedTid === 'operator'){
+        bodyEl.innerHTML = `<span style="color:var(--text3)">あなたのアカウントは運営（operator）です。R2 エンドポイントの設定は右上の <b>🏢 テナント管理</b> から <code>operator</code> テナントを選んで行ってください。</span>`;
+        return;
+      }
+      /* ケース C：所属テナント */
+      let tenantName = resolvedTid;
+      try{
+        if(window.__laynaFB && window.__laynaFB.loadTenant){
+          const t = await window.__laynaFB.loadTenant(resolvedTid);
+          if(t && t.name) tenantName = t.name;
+        }
+      }catch(_){}
+      bodyEl.innerHTML = `<span style="color:var(--text3)">あなたのプロジェクトは <b>${esc(tenantName)}</b> テナントに保存されます。R2 エンドポイントの設定はそのテナントの owner / admin が <b>🏢 テナント管理</b> から行います。</span>`;
+    })();
     body.querySelector('.mp-save').onclick=async()=>{
       const name=body.querySelector('#mpName').value.trim();
       const start=body.querySelector('#mpStart').value;

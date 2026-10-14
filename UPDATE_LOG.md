@@ -18,6 +18,25 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.14.015) **マイページの R2 設定が「保存しても反映されない」問題を修正＋アクセス管理コンソールの Firestore ルールを更新**：
+  - **問題 1**（operator）：運営アカウントでマイページから R2 設定を保存すると success トーストは出るが、新規プロジェクトは運営 R2 に行き続ける。
+    - 原因：マイページは `tenants/personal__<myKey>` に書くが、operator の `resolveTidForNewProject` は `'operator'` を返すため、作成されたプロジェクトは `tenants/operator.r2Endpoint` を見に行き、個人テナントの設定は無視される。
+  - **問題 2**（tenant member で `laycatUsers.tenantId` 未同期の場合）：個人セクションが表示されるが、Firestore ルールで `tenants/personal__<myKey>` への write が拒否されて「保存に失敗」。
+  - **修正内容**：
+    - **マイページ側**：静的な「個人セクション出し／出さない」判定を廃止。`storage._r2.resolveTidForNewProject(email)` の戻り値に応じて 3 ケースで UI 分岐：
+      - A. 戻り値が `'personal__<myKey>'` → 個人用の UI（URL 入力＋疎通確認＋保存）
+      - B. 戻り値が `'operator'` → 「テナント管理の operator テナントから設定してください」と案内
+      - C. 戻り値が実テナント ID → 「あなたのプロジェクトは <tenantName> テナントに保存されます。owner/admin にテナント管理から設定を依頼してください」と案内
+    - **Firestore ルール（access-console.html）**：
+      - `_canUpdateTenantSettings` の allowed changed keys に `r2Endpoint` を追加
+      - `_isMyPersonalTenant(tid)` ヘルパ追加：`tid == 'personal__' + myKey()` 判定
+      - `_canWriteMyPersonalTenant(tid)` ヘルパ追加：個人テナントの create/update を本人のみ（`r2Endpoint`/`updatedAt`/`updatedBy` フィールドのみ変更可）に制限
+      - `match /tenants/{tenantId}` の `allow create/update` に `_canWriteMyPersonalTenant` を追加
+  - **書き込み境界**：
+    - Firestore ルールの変更：`tenants/{tenantId}` の `allow` 条件のみ、既存のテナントデータへの影響なし
+    - 個人ユーザーは自分の `tenants/personal__<emailKey>` を create / update 可能に（他ユーザーのテナントは不可）
+  - APP_VERSION：2026.10.14.014 → 2026.10.14.015
+
 - (dev v2026.10.14.014) **operator（グローバル権限）／tenant（テナント権限）の完全分離＋個人ユーザー R2 設定 UI**：
   - **背景**：
     - 権限用語の定義：**グローバル権限**（access-console.html で設定、`laynaAccess/config.operatorEmails` → `authUser.role='operator'`）と、**テナント権限**（テナント管理モーダルで設定、`tenants/<tid>/members/<emailKey>.role`）を明確に分離。
