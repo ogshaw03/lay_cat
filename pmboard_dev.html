@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.08.079';
+const APP_VERSION='2026.10.14.080';
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -968,16 +968,104 @@ function urlParam(k){
 }
 
 const storage = {
-  dirHandle: null,   /* 現在アクティブなプロジェクトのフォルダハンドル */
+  dirHandle: null,   /* 現在アクティブなプロジェクトのフォルダハンドル（folder backend 時のみ） */
   pid: null,         /* 現在アクティブなプロジェクト ID */
+  backend: 'folder', /* v.080：'folder' | 'r2'。connectProject で設定。 */
+
+  /* v.080：R2 プロキシ（LayCAT 本体の storage._r2 と同じインターフェース）。
+     tenants/<tid>/projects/<pid>/<key> 構造に対して Worker 経由で r/w する。
+     tid は内部で解決（opts.tid 明示 / REG エントリの tid / _tidMap のキャッシュの順）。 */
+  _r2:{
+    _default:'https://laycat-r2-api.ogusho1101.workers.dev',
+    _norm(u){u=String(u||'').trim().replace(/\/$/,'');if(!u)return '';if(!/^https?:\/\//i.test(u))u='https://'+u;return u},
+    endpoint(){try{const u=this._norm(localStorage.getItem('laycat_r2_endpoint')||'');return u||this._default||null}catch(_){return this._default||null}},
+    async _token(){try{return (window.__laynaFB&&window.__laynaFB.getIdToken)?await window.__laynaFB.getIdToken():null}catch(_){return null}},
+    /* tid 解決：LayCAT 本体と同じ localStorage サイドキャッシュ `laycat_r2_tid_map` を共有。
+       同じオリジン（GitHub Pages）で動くので LayCAT が listMyProjects 時に埋めた map をそのまま使える。 */
+    _tidMap:null,
+    _TID_LS_KEY:'laycat_r2_tid_map',
+    _loadTidMap(){
+      if(this._tidMap)return this._tidMap;
+      try{const raw=localStorage.getItem(this._TID_LS_KEY);const obj=raw?JSON.parse(raw):{};this._tidMap=obj&&typeof obj==='object'?obj:{};}catch(_){this._tidMap={};}
+      return this._tidMap;
+    },
+    _saveTidMap(){try{localStorage.setItem(this._TID_LS_KEY,JSON.stringify(this._tidMap||{}));}catch(_){}},
+    rememberTid(pid,tid){
+      if(!pid||!tid)return;
+      const m=this._loadTidMap();
+      if(m[pid]===tid)return;
+      m[pid]=tid;this._saveTidMap();
+    },
+    _resolveTid(pid,optsTid){
+      if(optsTid)return optsTid;
+      if(!pid)return null;
+      /* laycat_registry（LayCAT 本体が書く）に tid が入っていれば優先 */
+      try{
+        const reg=JSON.parse(localStorage.getItem('layna_registry')||'[]');
+        if(Array.isArray(reg)){const e=reg.find(x=>x.id===pid);if(e&&e.tid)return e.tid;}
+      }catch(_){}
+      const m=this._loadTidMap();
+      if(m[pid])return m[pid];
+      return null;
+    },
+    _tenantPath(key,opts){
+      const pid=opts&&opts.pid;
+      const tid=this._resolveTid(pid,opts&&opts.tid);
+      if(!tid)throw new Error('tid-unresolved pid='+pid);
+      return 'tenants/'+tid+'/'+key;
+    },
+    async _fetch(method,path,body,contentType){
+      const ep=this.endpoint();if(!ep)throw new Error('R2 endpoint 未設定');
+      const tok=await this._token();if(!tok)throw new Error('未ログイン（R2 認証に必要）');
+      const headers={authorization:'Bearer '+tok};
+      if(body!=null&&contentType)headers['x-laycat-content-type']=contentType;
+      return await fetch(ep+path,{method,headers,body});
+    },
+    async getJson(key,opts){try{const r=await this._fetch('GET','/api/r2/'+this._tenantPath(key,opts));if(!r.ok)return null;return await r.json()}catch(_){return null}},
+    async putJson(key,obj,opts){return this.put(key,JSON.stringify(obj,null,2),'application/json',opts)},
+    async put(key,body,contentType,opts){try{const r=await this._fetch('PUT','/api/r2/'+this._tenantPath(key,opts),body,contentType||'application/octet-stream');return r.ok}catch(_){return false}},
+    async del(key,opts){try{const r=await this._fetch('DELETE','/api/r2/'+this._tenantPath(key,opts));return r.ok||r.status===404}catch(_){return false}},
+    async getBlob(key,opts){try{const r=await this._fetch('GET','/api/r2/'+this._tenantPath(key,opts));if(!r.ok)return null;return await r.blob()}catch(_){return null}},
+    /* prefix 配下の key 一覧を返す。資料タブで reference/items/ 下を列挙する用途。 */
+    async listByPrefix(prefix,opts){try{const r=await this._fetch('GET','/api/r2/list/'+this._tenantPath(prefix,opts));if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}},
+    /* ping：/api/r2/mine が 200 を返せば認可通過（グローバル allowlist 判定もここで通る）。 */
+    async ping(){try{const ep=this.endpoint();if(!ep)return false;const tok=await this._token();if(!tok)return false;const r=await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});return r.ok}catch(_){return false}},
+  },
+
   async connectProject(pid){
-    /* LayCAT の IDB からハンドルを取得 → permission 確認 → 接続 */
+    /* v.080：backend 判定を追加。
+       - 'r2'：Firebase 認証 OK なら即接続（ping で grouped allowlist 判定も確認）
+       - 'folder'：従来通り LayCAT の IDB からハンドル取得＋ permission 確認 */
     this.pid = pid;
     this.dirHandle = null;
+    this.backend = 'folder';
     if(!pid) return {ok:false, err:'プロジェクト ID が指定されていません'};
+    /* laycat_registry から backend を取得 */
+    const reg = laycatRegistry();
+    const entry = reg.find(e=>e.id===pid);
+    const be = (entry && entry.backend==='r2') ? 'r2' : 'folder';
+    if(be==='r2'){
+      /* R2 プロジェクト：Firebase ログイン必須、ping で許可確認 */
+      this.backend = 'r2';
+      /* tid を REG エントリから _tidMap に転写（LayCAT 本体が listMyProjects 時に書くが、
+         PMB 単独起動時はまだ無いことがある） */
+      if(entry && entry.tid) this._r2.rememberTid(pid, entry.tid);
+      if(!(window.__laynaFBUser && window.__laynaFBUser.email)){
+        return {ok:false, needsAuth:true, err:'R2 プロジェクトを開くには Google ログインが必要です。右上から「ログイン」してください。'};
+      }
+      const tid = this._r2._resolveTid(pid);
+      if(!tid){
+        return {ok:false, err:'テナント ID を解決できませんでした。LayCAT 本体で一度プロジェクトを開いてから再読み込みしてください（tid サイドキャッシュが埋まります）。'};
+      }
+      const ok = await this._r2.ping();
+      if(!ok){
+        return {ok:false, err:'R2 Worker 認証に失敗しました（403/401）。アクセス権または Firebase ログインを確認してください。'};
+      }
+      return {ok:true};
+    }
+    /* folder プロジェクト：従来通り */
     const h = await laycatIdbGet('handles','proj_'+pid);
     if(!h) return {ok:false, err:'このプロジェクトのフォルダハンドルが LayCAT に保存されていません。LayCAT でプロジェクトを開いてフォルダを接続してください。'};
-    /* permission 確認 */
     let perm='denied';
     try{ perm = await h.queryPermission({mode:'readwrite'}); }catch(_){}
     if(perm!=='granted'){
@@ -999,6 +1087,10 @@ const storage = {
     return false;
   },
   async readJson(path){
+    if(this.backend==='r2'){
+      /* R2：Worker 経由で projects/<pid>/<path> を GET */
+      return await this._r2.getJson('projects/'+this.pid+'/'+path, {pid:this.pid});
+    }
     if(!this.dirHandle) return null;
     try{
       const parts = path.split('/');
@@ -1010,6 +1102,9 @@ const storage = {
     }catch(_){return null;}
   },
   async writeJson(path, data){
+    if(this.backend==='r2'){
+      return await this._r2.putJson('projects/'+this.pid+'/'+path, data, {pid:this.pid});
+    }
     if(!this.dirHandle) return false;
     try{
       const parts = path.split('/');
@@ -1023,6 +1118,17 @@ const storage = {
     }catch(e){console.warn('writeJson failed',path,e);return false;}
   },
   async listDir(dirName){
+    if(this.backend==='r2'){
+      /* R2：Worker /api/r2/list で prefix 配下の key 一覧を取得。
+         prefix の末尾に "/" を付けて渡す必要がある（Worker 側のルート正規表現にマッチさせるため）。 */
+      const normalized = String(dirName||'').replace(/\/$/,'')+'/';
+      const keys = await this._r2.listByPrefix('projects/'+this.pid+'/'+normalized, {pid:this.pid});
+      /* 返却形式を folder 版と揃える：basename の配列 */
+      return keys.map(k=>{
+        const idx = k.lastIndexOf('/');
+        return idx>=0 ? k.slice(idx+1) : k;
+      }).filter(n=>n && n.length>0);
+    }
     if(!this.dirHandle) return [];
     try{
       /* v.063：dirName に "/" が含まれる場合はパス分割して段階的に降りる。
@@ -1051,6 +1157,11 @@ const storage = {
      - resolveMediaUrl(path)：URL オブジェクトを返す（キャッシュ付き） */
   _urlCache: new Map(),
   async writeBlob(path, blob){
+    if(this.backend==='r2'){
+      /* R2：バイナリ PUT。contentType は blob.type を使う（空なら octet-stream） */
+      const ct = (blob && blob.type) || 'application/octet-stream';
+      return await this._r2.put('projects/'+this.pid+'/'+path, blob, ct, {pid:this.pid});
+    }
     if(!this.dirHandle) return false;
     try{
       const parts = path.split('/');
@@ -1064,6 +1175,9 @@ const storage = {
     }catch(e){console.warn('writeBlob failed',path,e);return false;}
   },
   async removeFile(path){
+    if(this.backend==='r2'){
+      return await this._r2.del('projects/'+this.pid+'/'+path, {pid:this.pid});
+    }
     if(!this.dirHandle) return false;
     try{
       const parts = path.split('/');
@@ -1076,13 +1190,27 @@ const storage = {
   async resolveMediaUrl(path){
     if(!path) return null;
     if(this._urlCache.has(path)) return this._urlCache.get(path);
+    /* v.080：R2 対応。
+       - "r2:<pid>|<key>" → Worker 経由で GET blob → URL.createObjectURL
+       - "p:<pid>|<path>" → folder backend でローカル解決
+       - プレフィックスなし → folder のそのまま
+       mediaRef にエンコードされた pid はこの開いているプロジェクトと必ずしも一致しないが、
+       同一プロジェクト内の参照のみ扱うため this.pid を使って問題ない。 */
+    if(path.startsWith('r2:')){
+      if(this.backend!=='r2') return null; /* folder モードで r2: 参照に遭遇したら解決不可 */
+      const i = path.indexOf('|');
+      if(i<0) return null;
+      const relKey = path.slice(i+1);
+      try{
+        const blob = await this._r2.getBlob('projects/'+this.pid+'/'+relKey, {pid:this.pid});
+        if(!blob) return null;
+        const url = URL.createObjectURL(blob);
+        this._urlCache.set(path, url);
+        return url;
+      }catch(_){return null;}
+    }
     if(!this.dirHandle) return null;
-    /* v.062：LayCAT 本体が書き込む "p:<pid>|<path>" / "r2:<pid>|<path>" 形式に対応。
-       - p: は "|" 以降のパスだけ切り出して dirHandle 基準でローカル解決（PMB は 1 プロジェクト 1 フォルダ接続）
-       - r2: は PMB 非対応（null を返す）
-       - プレフィックスなしは従来通りそのまま使う（レガシー PMB-written 用） */
     let relPath = path;
-    if(path.startsWith('r2:')) return null;
     if(path.startsWith('p:')){
       const i = path.indexOf('|');
       if(i >= 0) relPath = path.slice(i+1);
@@ -1122,8 +1250,11 @@ const storage = {
     const ok = await this.writeBlob('reference/Media/'+filename, blob);
     if(!ok) return null;
     /* v.062：LayCAT 本体と相互運用するため、mediaRef を "p:<pid>|reference/Media/<fn>" 形式で返す。
+       v.080：R2 backend では "r2:<pid>|..." 形式で返す（LayCAT 本体と同じ規約）。
        pid が無い（接続前など）場合は従来の素のパスにフォールバック。 */
-    return this.pid ? ('p:'+this.pid+'|reference/Media/'+filename) : ('reference/Media/'+filename);
+    if(!this.pid) return 'reference/Media/'+filename;
+    const prefix = (this.backend==='r2') ? 'r2:' : 'p:';
+    return prefix+this.pid+'|reference/Media/'+filename;
   },
 };
 
@@ -3372,6 +3503,16 @@ async function switchToProject(pid){
       };
       return;
     }
+    if(r.needsAuth){
+      /* v.080：R2 プロジェクトなのに未ログイン */
+      body.innerHTML=`
+        <div class="empty-panel">
+          <div class="ep-ico">🔑</div>
+          <div class="ep-title">Google ログインが必要です</div>
+          <div class="ep-sub">このプロジェクトは R2（クラウド）に保存されています。アクセスするには Google ログインが必要です。<br>右上の「ログイン」ボタンからサインインしてください。</div>
+        </div>`;
+      return;
+    }
     body.innerHTML=`
       <div class="empty-panel">
         <div class="ep-ico">⚠</div>
@@ -3387,6 +3528,12 @@ async function switchToProject(pid){
 function updateFolderUI(){
   const fs = document.getElementById('folderStatus');
   const nm = document.getElementById('folderName');
+  /* v.080：R2 backend 時はフォルダ名の代わりに「☁ R2」を表示（dirHandle は常に null） */
+  if(storage.backend==='r2' && storage.pid){
+    fs.classList.add('connected'); fs.classList.remove('warn');
+    nm.textContent = '☁ R2';
+    return;
+  }
   if(storage.dirHandle){
     fs.classList.add('connected'); fs.classList.remove('warn');
     nm.textContent = storage.dirHandle.name || '接続済み';
@@ -5440,8 +5587,9 @@ function bindFilterEvents(){
   }
 }
 document.getElementById('folderStatus').addEventListener('click', ()=>{
-  /* 許可未取得時に押されたらプロジェクトへ再接続を試行（button re-render で許可ボタンが出る） */
-  if(!storage.dirHandle && storage.pid) switchToProject(storage.pid);
+  /* 許可未取得時（folder: dirHandle 無し／R2: 認証エラー等）に押されたらプロジェクトへ再接続を試行 */
+  if(storage.pid && !storage.dirHandle && storage.backend!=='r2') switchToProject(storage.pid);
+  else if(storage.pid && storage.backend==='r2') switchToProject(storage.pid);
 });
 
 /* =========== 空状態（プロジェクト未選択）UI =========== */
@@ -5567,7 +5715,9 @@ function updateLastUpdatedLabel(){
   if(el) el.textContent = '最終更新 ' + fmtJstDateTime(new Date()) + '（JST）';
 }
 async function hourlyRefresh(){
-  if(!storage.pid || !storage.dirHandle) return;
+  if(!storage.pid) return;
+  /* folder は dirHandle 必須、R2 は backend='r2' が立っていれば OK */
+  if(storage.backend==='folder' && !storage.dirHandle) return;
   try{ await loadAndRender(); updateLastUpdatedLabel(); }catch(e){ console.warn('hourly refresh failed', e); }
 }
 document.getElementById('refreshBtn').addEventListener('click', hourlyRefresh);
@@ -5607,6 +5757,21 @@ if(_paramPid){
     window.__laynaFB={
       login:()=>signInWithPopup(auth,provider),
       logout:()=>signOut(auth),
+      /* v.080：R2 プロキシ Worker 認証用。LayCAT 本体と同じ /api/r2/... リクエストで
+         Bearer トークンに載せる。期限切れ間近は Firebase SDK が自動更新するので毎回叩いて OK。 */
+      getIdToken:async()=>{try{const u=auth.currentUser;if(!u)return null;return await u.getIdToken(false)}catch(_){return null}},
+      /* v.080：R2 のプロジェクト作成時に tid を解決するためのヘルパ（PMB は通常使わないが整合性のため実装）。
+         laycatUsers/<emailKey>.tenantId を返す。 */
+      getUserTenantId:async(email)=>{try{
+        if(!email)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const snap=await m.getDoc(m.doc(fs,'laycatUsers',key));
+        if(!snap.exists())return null;
+        const d=snap.data()||{};
+        return (typeof d.tenantId==='string'&&d.tenantId)?d.tenantId:null;
+      }catch(e){return null}},
       loadAccess:async()=>{try{
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);const snap=await m.getDoc(m.doc(fs,'laynaAccess','config'));

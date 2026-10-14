@@ -3898,6 +3898,29 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.14.080) **R2 バックエンド対応（PMB／マルチテナント統合）**：
+  - **背景**：LayCAT 本体が v.008-012 で R2 マルチテナント化したが、PMB は FSA (File System Access API) ベースのまま＝ホーム画面に R2 プロジェクトの chip は出るが、クリックすると「フォルダハンドルが保存されていません」で接続失敗する状態だった。
+  - **実装内容**：
+    - `__laynaFB` に `getIdToken` と `getUserTenantId` を追加（LayCAT 本体と同じ Firebase project、同じ Firestore `laycatUsers/<emailKey>.tenantId` を参照）
+    - `storage._r2` を追加（LayCAT 本体の実装を移植）：`_tenantPath` / `_tidMap` / `_resolveTid` / `getJson` / `putJson` / `put` / `del` / `getBlob` / `listByPrefix` / `ping`。`_tidMap` は LayCAT と同じ `localStorage.laycat_r2_tid_map` を共有するので、LayCAT で一度でも開けば PMB からも tid 解決できる。
+    - `connectProject(pid)` に backend 判定を追加：`laycat_registry` の entry.backend で分岐し、R2 なら Firebase 認証チェック＋ ping で接続確認、folder なら従来通り
+    - storage の 8 API メソッド（`readJson` / `writeJson` / `listDir` / `writeBlob` / `removeFile` / `resolveMediaUrl` / `putReferenceMedia` / 間接的に `loadReferenceItems` / `saveReferenceItem` / `deleteReferenceItem`）全てに `backend === 'r2'` 分岐を追加。R2 時は `tenants/<tid>/projects/<pid>/<path>` に r/w、folder 時は従来の FSA 経路
+    - `resolveMediaUrl` が `r2:<pid>|<key>` 形式の mediaRef を Worker 経由 getBlob → URL.createObjectURL で解決できるように（従来は null で弾いていた）
+    - `putReferenceMedia` が R2 時は `r2:<pid>|reference/Media/<fn>` 形式の mediaRef を返す（LayCAT 本体と同じ規約で相互運用性維持）
+    - `switchToProject` に `needsAuth` ハンドリング追加（R2 プロジェクトなのに Google ログイン前の場合、ログイン促しメッセージ表示）
+    - `updateFolderUI` が R2 時に「☁ R2」と表示（dirHandle が無いため）
+  - **書き込み境界**：
+    - R2 プロジェクトのみ `tenants/<tid>/projects/<pid>/{status/*.json, schedule/*.json, notes/*.json, pmboard/customSchedules.json, milestones.json, reference/items/*.json, reference/Media/*}` に書く（既存キー構造そのまま）
+    - Firestore：PMB からの書き込みは一切なし（`laycatMemberships` 等は LayCAT 本体が既に書く）。読み取りは `laycatUsers/<emailKey>.tenantId` のみ
+    - フォルダ運用プロジェクトは**完全無影響**（既存コードパスは `backend!=='r2'` で従来通り動く）
+  - **動作確認**：
+    - 既存フォルダ運用プロジェクトでのデグレ無し：確認必須（Phase D）
+    - R2 プロジェクトで read 系（笓ロード・工程色・ガント表示）が通ること：確認必須
+    - R2 プロジェクトで書き込み系（ステータス変更・ガント予定・資料タブ）が通ること：確認必須
+  - **残作業**：
+    - R2 プロジェクトのメンバー同時編集時の楽観ロック（Phase 2）：現状 LayCAT 本体と同じく「後勝ち」。PMB で主に書く status.json は shot.json と違って楽観ロックが実装されていないので同時編集リスクあり。実運用で問題が出てから対処。
+  - APP_VERSION：2026.10.08.079 → 2026.10.14.080
+
 - (dev v2026.10.08.079) **資料タブ：画像／動画サムネが切れる場合の再取得フォールバック（PMB、LayCAT v.144 連動）**：
   - `inner.onerror` で `storage.resolveMediaUrl` を呼び直す（最大 2 回）。
   - APP_VERSION：2026.10.08.078 → 2026.10.08.079
