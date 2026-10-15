@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.15.082';
+const APP_VERSION='2026.10.15.083';
 /* v.082：デモモード（?demo=1） — LayCAT と同じ URL パラメータで PMB も試用可能に。
    ?tab=<X> で初期タブ（gantt / efforts / reference 等）に遷移。 */
 const DEMO_MODE = (()=>{try{return new URLSearchParams(location.search).get('demo')==='1'}catch(_){return false}})();
@@ -1143,6 +1143,7 @@ const storage = {
     const shotIds = [];
     const shotFiles = {};
     const scheduleFiles = {};
+    const statusFiles = {}; /* v.082b：status/<id>.json。shot section と current review node に発行 */
     /* ガント用の日付：今日を起点に 1 ショット 10 日ぶん、連番で割り振る */
     const base = new Date();
     base.setHours(0,0,0,0);
@@ -1207,6 +1208,41 @@ const storage = {
             cur = addDays(end, 1);
           }
           scheduleFiles[shId] = { v:1, shotId: shId, stages: schedStages };
+
+          /* v.082b：status/<shotId>.json とcurrent review の status/<reviewId>.json を発行。
+             実績バーが出るよう、作業ステータス（retake）→ 完了系の遷移履歴も入れる。 */
+          const histTs = n => new Date(Date.now() - n*86400*1000).toISOString();
+          const buildHistory = (status) => {
+            if(status === 'approved'){
+              return [
+                { ts: histTs(7), to: 'retake',  by: sh.worker },
+                { ts: histTs(2), to: 'approved', by: sh.worker },
+              ];
+            }
+            if(status === 'pending'){
+              return [
+                { ts: histTs(5), to: 'retake',  by: sh.worker },
+                { ts: histTs(1), to: 'pending', by: sh.worker },
+              ];
+            }
+            if(status === 'retake'){
+              return [
+                { ts: histTs(10), to: 'retake',  by: sh.worker },
+                { ts: histTs(6),  to: 'pending', by: sh.worker },
+                { ts: histTs(3),  to: 'retake',  by: sh.worker },
+              ];
+            }
+            if(status === 'omit'){
+              return [ { ts: histTs(1), to: 'omit', by: '-' } ];
+            }
+            return [];
+          };
+          /* current review の status */
+          const currentReviewId = shId + '_r_' + reviewStages.find(st=>st.label===sh.stage).id;
+          statusFiles[currentReviewId] = { v:5, shotId: currentReviewId, status: sh.status, history: buildHistory(sh.status) };
+          /* shot section 自身の status（LayCAT v.014 以降は shot にも status を書くので揃える） */
+          statusFiles[shId] = { v:5, shotId: shId, status: sh.status, history: buildHistory(sh.status) };
+
           shotIdx++;
         }
       }
@@ -1217,6 +1253,9 @@ const storage = {
     for(const sid of shotIds){
       files.set('shots/'+sid+'.json', shotFiles[sid]);
       files.set('schedule/'+sid+'.json', scheduleFiles[sid]);
+    }
+    for(const key of Object.keys(statusFiles)){
+      files.set('status/'+key+'.json', statusFiles[key]);
     }
     return files;
   },

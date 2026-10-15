@@ -18,6 +18,19 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.15.018) **デモデータ強化：アニメ画像使用／資料タブ／コメント／PMB status 連動**：
+  - **ショット版画像**：Canvas 生成の手描きサンプルは撤廃。intro.html で使っているアニメ風ギャラリ画像 `slides_assets/gal_01〜09.png` を 9 枚循環で使用。全 18 ショットの現工程 review に v1/v2 の 2 版を注入。
+  - **タイプを `video` に**：ショットカードの `latestVideoVersionUnder` が拾うよう `type:'video'` に変更。これで一覧タブの各ショットサムネイルにアニメ画像が入る。
+  - **コメント・メッセージ**：各工程に合わせたレビューコメント（監督・制作の対話形式）を version.review.notes に流し込み、ショット section.comments にも 1 件追加。
+  - **資料タブ**：`state.refItemsByPid[rootId]` に以下を事前投入：
+    - 「キャラクター」セクション（3 画像＋説明テキスト）
+    - 「背景 Reference」セクション（3 画像）
+    - 「設定・ルール」セクション（2 枠の形状＋テキスト／作画ルール・色指定）
+    - 「外部リンク」セクション（URL リンク＋ 3 参考画像）
+  - **PMB status/*.json 生成**：PMB の `_buildDemoFiles` に status ファイルを追加。各 shot section と current review に status を書き、`approved` / `pending` / `retake` / `omit` に応じた遷移履歴も付与。これで PMB ガントの実績バー（作業セグメント）・ステータスバッジ・ステータス分布グラフが連動して表示される。
+  - **書き込み境界**：デモモード時はいかなる永続化も発生しない（既存通り）
+  - APP_VERSION：LayCAT 2026.10.15.017 → 2026.10.15.018 相当（code は 017 のまま、demo_project_inject.js の変更）、PMB 2026.10.15.082 → 2026.10.15.083
+
 - (dev v2026.10.15.017) **デモモード強化：フラッシュ対策・サンプル版画像・ショット系ボタン**：
   - **問題 1**：`?demo=1` 起動時に、ユーザー本人の IndexedDB プロジェクトが一瞬見える「フラッシュ」が発生していた。
     - 原因：`boot()` が `storage.loadLocal()` / `loadRegistry()` / 各プロジェクトのデータを IDB から読み込んでから、`startAppFlow` の末尾でデモデータを注入する順序だった。
