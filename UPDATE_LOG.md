@@ -3985,6 +3985,19 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (intro) **intro.html にデモ導線追加（Phase C）**：
+  - Hero：「🎬 デモを触ってみる」ボタン（`laycat_dev.html?demo=1`）を SOON バッジの代わりに配置
+  - started セクション Step 1：「🎬 まずデモで触ってみる」リンク追加
+  - 各 features に「→ デモで触る」ボタン：
+    - 「ショットを一覧で表示」 → `laycat_dev.html?demo=1&page=shots`
+    - 「資料は、1 箇所に無限キャンバスで」 → `laycat_dev.html?demo=1&page=reference`
+    - 「進捗は、グラフでまとめて管理」 → `laycat_dev.html?demo=1`
+    - 「ショット別ガントで、進行状況を一目で」 → `pmboard_dev.html?demo=1&tab=schedule`
+    - 「入力ゼロで、ショット別の稼働日数を自動集計」 → `pmboard_dev.html?demo=1&tab=effort`
+  - Final CTA：「アプリはリリース準備中」を「デモは今すぐ試せます」に書き換え、LayCAT／PMB の両デモボタンを配置
+  - 全ボタン `target="_blank"` で新タブで開く
+  - R2 Phase 1 と顧客自前 R2 は intro ではまだ紹介していない（必要になったら追加）
+
 - (dev v2026.10.15.082) **PMB のデモモード対応（`?demo=1`／Phase B）**：
   - **目的**：intro.html の進捗管理セクションから「→ 触って試す」で PMB も試用可能に。LayCAT 本体 v.016 と同じ URL 契約。
   - **URL パラメータ**：
