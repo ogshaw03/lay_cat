@@ -68,13 +68,14 @@
       { id:'anim@example.com',     name:'鈴木作画', roles:['作画'],  color:'#5CB878' },
       { id:'paint@example.com',    name:'田中仕上', roles:['仕上げ'],color:'#5A9BFF' },
     ],
-    /* 統一ステータス定義（進捗タブや PMB と形式を揃える） */
+    /* v.023：統一ステータス定義（進捗タブや PMB と形式を揃える）＋ color 付与。
+       stInfo が color を参照してショットページ・ショット一覧・進捗タブで色付きバッジ表示に。 */
     statuses: [
-      { id:'pending',  label:'チェック待ち', checkWait:true },
-      { id:'approved', label:'OK' },
-      { id:'retake',   label:'リテイク' },
-      { id:'done',     label:'完了' },
-      { id:'omit',     label:'オミット' },
+      { id:'pending',  label:'チェック待ち', color:'#F2C86B', checkWait:true },
+      { id:'approved', label:'OK',           color:'#5CB878' },
+      { id:'retake',   label:'リテイク',     color:'#F2986B' },
+      { id:'done',     label:'完了',         color:'#5A9BFF' },
+      { id:'omit',     label:'オミット',     color:'#808090' },
     ],
     /* v.020：アセットカテゴリとアセット。
        - アセットは「shot.assets / shot.tags ∪ asset.tagIds」の両経路でショットに紐付く
