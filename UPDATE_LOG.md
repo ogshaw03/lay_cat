@@ -18,6 +18,25 @@ pmboard（進行管理ボード）は本ファイルの下部「pmboard アッ�
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.15.016) **デモモード（`?demo=1`）追加（LayCAT 本体／Phase A）**：
+  - **目的**：intro.html の機能紹介セクションから「→ 触って試す」ボタンで本体を直接起動→ ダウンロード・ログイン不要で LayCAT をブラウザで触れる体験に。本体の機能追加が自動的にデモに反映されるよう「本体を薄い wrapper で呼ぶ」方式。
+  - **URL パラメータ**：
+    - `?demo=1` → デモモード有効化
+    - `?page=<X>` → 初期タブ（`shots` / `progress` / `reference` / `submit`（REEL）/ `check`（工数）/ `assets` / `browse` / `timeline` 等。日本語別名も対応）
+    - `?id=<Y>` → 特定ノード（例：`nd_demo_sh001`）を初期選択
+  - **実装内容**（`laycat_dev.html`）：
+    - 冒頭に `DEMO_MODE` / `DEMO_PAGE` / `DEMO_ID` 定数（URL パラメータから読込）
+    - `initApp()` を `DEMO_MODE` なら認証完全スキップ＋ダミーユーザー（`デモユーザー`）で起動するよう分岐
+    - `persist()` を `DEMO_MODE` なら no-op（IndexedDB／Firestore／R2 への書込一切なし。デモデータは in-memory のみ、リロードで消える）
+    - `startAppFlow()` の末尾に以下を追加：
+      - `docs/demo_project_inject.js` を fetch→ Function 経由で eval してデモデータ（18 ショット・工程 3 種・4 名担当・ステータス分布あり）を注入
+      - `?page` / `?id` に応じて `state.currentId` / `state.projTab` を設定し `render()` 呼び出し
+    - 画面上部にデモバナー（オレンジグラデーション、閉じるボタン付き）を表示
+    - `folderWarnBanner()` を `DEMO_MODE` では null 返却（フォルダ未設定警告を抑制）
+  - **書き込み境界**：デモモード時はいかなる永続化も発生しない。IDB / Firestore / R2 / localStorage 全て no-op。
+  - **残りフェーズ**：Phase B（PMB の `?demo=1`）、Phase C（`intro.html` の各 features セクションに「→ 触って試す」ボタン追加）
+  - APP_VERSION：2026.10.14.015 → 2026.10.15.016
+
 - (dev v2026.10.14.015) **マイページの R2 設定が「保存しても反映されない」問題を修正＋アクセス管理コンソールの Firestore ルールを更新**：
   - **問題 1**（operator）：運営アカウントでマイページから R2 設定を保存すると success トーストは出るが、新規プロジェクトは運営 R2 に行き続ける。
     - 原因：マイページは `tenants/personal__<myKey>` に書くが、operator の `resolveTidForNewProject` は `'operator'` を返すため、作成されたプロジェクトは `tenants/operator.r2Endpoint` を見に行き、個人テナントの設定は無視される。

@@ -4109,6 +4109,9 @@ let _persistChain=Promise.resolve();
    バックグラウンドの shot 保存が消えるケースがあった。 */
 let _persistBusy=0;
 function persist(){
+  /* v.016：DEMO_MODE は書込一切なし（IndexedDB も触らない）。
+     デモデータは in-memory のみでリロードで消える。これはデモの意図通り。 */
+  if(DEMO_MODE) return Promise.resolve();
   _persistBusy++;
   _persistChain=_persistChain.then(()=>_persistNow()).catch(e=>{try{console.warn('persist failed',e)}catch(_){}}).finally(()=>{_persistBusy=Math.max(0,_persistBusy-1)});
   return _persistChain;
@@ -4326,7 +4329,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.14.015';
+const APP_VERSION='2026.10.15.016';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6388,6 +6391,7 @@ function buildTaskTabs(root){
 }
 /* 保存先フォルダ未設定の警告バナー（動画はフォルダにしか保存できないため） */
 function folderWarnBanner(root){
+  if(DEMO_MODE) return null; /* v.016：デモモードではフォルダ警告非表示 */
   if(!root||root.folderName)return null;
   if(root.storageBackend==='r2')return null; /* R2 プロジェクトはフォルダ不要 */
   const b=el('div','folder-warn');
@@ -21923,7 +21927,88 @@ async function startAppFlow(){
   /* 保存先はブラウザ内保存(IndexedDB)に固定。フォルダ管理はプロジェクト単位で行う。 */
   storage.useIdb();
   try{await boot()}catch(e){console.error(e);toast('起動に失敗しました: '+e.message)}
+  /* v.016：DEMO_MODE はブート完了後に docs/demo_project_inject.js を fetch → eval して注入し、
+     ?page / ?id に応じて初期画面を切り替える。 */
+  if(DEMO_MODE){
+    try{
+      const r = await fetch('docs/demo_project_inject.js?v='+APP_VERSION,{cache:'no-store'});
+      if(r.ok){
+        const code = await r.text();
+        /* IIFE 形式なのでそのまま Function 実行で副作用（DB.nodes.push）を発生させる */
+        (new Function(code))();
+      }
+    }catch(e){console.warn('demo inject failed',e);try{toast('デモデータの注入に失敗しました')}catch(_){}}
+    /* 初期画面：?page / ?id */
+    try{
+      const rootId = 'nd_demo_root';
+      if(DEMO_ID){
+        /* ショット単体ページを表示（go() は review ノードを「本文表示」で開く挙動なので、
+           shot ノード（section with kind='shot'）の子 review ノードを選ぶのが素直） */
+        const n = getNode(DEMO_ID);
+        if(n){
+          state.currentId = DEMO_ID;
+          for(const x of pathOf(DEMO_ID)) state.expanded.add(x.id);
+          /* review ノードなら本文表示 */
+          state.projTab = (n.type==='review') ? 'browse' : (DEMO_PAGE || 'timeline');
+        }
+      }else if(DEMO_PAGE){
+        state.currentId = rootId;
+        for(const x of pathOf(rootId)) state.expanded.add(x.id);
+        /* ページ別名 → projTab */
+        const pageMap = {
+          'home':'timeline', 'timeline':'timeline',
+          'shots':'shots', 'ショット':'shots',
+          'gantt':'progress', 'progress':'progress', '進捗':'progress',
+          'reference':'reference', '資料':'reference',
+          'reels':'submit', 'reel':'submit', 'リール':'submit',
+          'efforts':'check', 'check':'check', '工数':'check',
+          'assets':'assets', 'browse':'browse',
+        };
+        state.projTab = pageMap[DEMO_PAGE] || 'timeline';
+      }else{
+        /* デフォルトはルート → ホーム（timeline） */
+        state.currentId = rootId;
+        for(const x of pathOf(rootId)) state.expanded.add(x.id);
+      }
+      render();resolveThumbs();
+    }catch(e){console.warn('demo nav failed',e)}
+    /* デモバナー表示 */
+    _showDemoBanner();
+  }
 }
+/* v.016：デモ版バナー（画面上部に固定、閉じるボタン付き） */
+function _showDemoBanner(){
+  try{
+    if(document.getElementById('demoBanner'))return;
+    const b = document.createElement('div');
+    b.id='demoBanner';
+    b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#F2986B,#F2C86B);color:#000;padding:6px 14px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,.3)';
+    b.innerHTML = '<span style="font-size:14px">🎬</span><span>LayCAT デモ版 — 保存操作は反映されません。本番は <a href="laycat_dev.html" style="color:#000;text-decoration:underline">こちら</a></span><button type="button" id="demoBannerClose" style="margin-left:auto;background:transparent;border:1px solid rgba(0,0,0,.4);color:#000;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px">閉じる ×</button>';
+    document.body.appendChild(b);
+    /* バナー分だけ chrome を押し下げ */
+    document.documentElement.style.setProperty('--demo-banner-h','28px');
+    const chrome = document.querySelector('.chrome, header, body > :not(script):not(style)');
+    if(chrome && !document.getElementById('demoBannerSpacer')){
+      const sp = document.createElement('div');
+      sp.id='demoBannerSpacer';sp.style.cssText='height:28px';
+      document.body.insertBefore(sp, document.body.firstChild);
+    }
+    document.getElementById('demoBannerClose').onclick=()=>{b.remove();const sp=document.getElementById('demoBannerSpacer');if(sp)sp.remove();};
+  }catch(_){}
+}
+
+/* ===== v.016：デモモード =====
+   `?demo=1` が付いていると：
+   - Firebase ログインを完全スキップ（ダミーユーザーで起動）
+   - persist / storage._r2 系の書込を no-op（IndexedDB / Firestore / R2 への書込一切なし）
+   - 起動時に docs/demo_project_inject.js を自動注入してデモデータ投入
+   - `?page=<X>` で初期タブ（shots/gantt/reference/reels/efforts/home/browse）に遷移
+   - `?id=<Y>` で特定ノード（例：デモショット nd_demo_sh001）を初期選択
+   - 上部に「デモ版」バナーを表示
+   intro.html の各機能紹介から「→ 触って試す」ボタンでここに飛ばす想定。 */
+const DEMO_MODE = (()=>{try{return new URLSearchParams(location.search).get('demo')==='1'}catch(_){return false}})();
+const DEMO_PAGE = (()=>{try{return (new URLSearchParams(location.search).get('page')||'').toLowerCase()}catch(_){return ''}})();
+const DEMO_ID   = (()=>{try{return new URLSearchParams(location.search).get('id')||''}catch(_){return ''}})();
 
 /* ===== 認証（Googleログイン + git許可リスト access.json）===== */
 let accessCfg=null,AUTH_ON=false;
@@ -22926,6 +23011,13 @@ async function _computeTenantRole(tenantId, email){
   }catch(_){ return null; }
 }
 async function initApp(){
+  /* v.016：DEMO_MODE は認証・アクセスチェックを完全バイパス */
+  if(DEMO_MODE){
+    AUTH_ON = false;
+    authUser = {name:'デモユーザー', email:'demo@laycat.local', photo:'', role:'member'};
+    startAppFlow();
+    return;
+  }
   try{accessCfg=await (await fetch('./access.json',{cache:'no-store'})).json()}catch(_){accessCfg=null}
   AUTH_ON=!!(accessCfg&&accessCfg.authRequired)&&location.hostname==='ogshaw03.github.io';
   if(!AUTH_ON){startAppFlow();return}       // exe/ローカル/プレビューは自動的に認証オフ
