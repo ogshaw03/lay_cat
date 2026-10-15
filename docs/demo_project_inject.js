@@ -109,20 +109,38 @@
   const galUrls = Array.from({length:9},(_,i)=>'slides_assets/gal_0'+(i+1)+'.png');
   galUrls.forEach(_registerDemoImage);
 
-  /* コメント・メッセージのサンプルを工程別に用意（レビューっぽい雰囲気を出す） */
+  /* コメント・メッセージのサンプルを工程別に用意（レビューっぽい雰囲気を出す）。
+     v.018：ショットページ動画ブロックは「フレーム付きコメント」しか表示しないので、
+     v1 のレビュー時指摘には必ず `frame` を入れる。
+     v2 のアップロード時メッセージは shotNode.comments + v.uploadCommentId で接続する。 */
   const commentTemplates = {
-    'レイアウト': [
-      { author:'山田監督', text:'構図 OK ですが、キャラの右側にもう少し空間欲しいです' },
-      { author:'佐藤制作', text:'タイミングよさそう。この引きで続けてください' },
-    ],
-    '動画': [
-      { author:'山田監督', text:'10f あたりの振り返り、もう少し溜めてください' },
-      { author:'山田監督', text:'全体的に良いです。コンテ通りで仕上げへ' },
-    ],
-    '仕上げ': [
-      { author:'山田監督', text:'影の濃さ 10% くらい薄くできますか' },
-      { author:'佐藤制作', text:'色味 OK です。完パケへお願いします' },
-    ],
+    'レイアウト': {
+      v1Frames: [
+        { frame:14, author:'山田監督', text:'構図 OK ですが、キャラの右側にもう少し空間欲しいです' },
+        { frame:38, author:'山田監督', text:'ここで一度カメラを引きにしませんか' },
+        { frame:62, author:'佐藤制作', text:'タイミングよさそう。この引きで続けてください' },
+      ],
+      v2Upload:   { author:'鈴木作画', text:'空間と引きの指摘を反映しました。確認お願いします 🙏' },
+      v2Frames:   [ { frame:22, author:'山田監督', text:'構図直り良くなりました！👍' } ],
+    },
+    '動画': {
+      v1Frames: [
+        { frame:10, author:'山田監督', text:'振り返りのタイミング、もう少し溜めてください' },
+        { frame:28, author:'山田監督', text:'目線の動き、ここで一瞬止めると良さそう' },
+        { frame:52, author:'佐藤制作', text:'全体の流れ良いです。あとは尺調整だけ' },
+      ],
+      v2Upload:   { author:'鈴木作画', text:'タイミング・目線の指摘を反映しました！' },
+      v2Frames:   [ { frame:15, author:'山田監督', text:'溜め OK です。コンテ通りで仕上げへ 🎬' } ],
+    },
+    '仕上げ': {
+      v1Frames: [
+        { frame:8,  author:'山田監督', text:'影の濃さ 10% くらい薄くできますか' },
+        { frame:34, author:'山田監督', text:'ここのハイライト、もう一段入れてほしい' },
+        { frame:70, author:'佐藤制作', text:'全体の色調 OK です' },
+      ],
+      v2Upload:   { author:'田中仕上', text:'影の濃度調整＋ハイライト追加しました。色味最終確認お願いします' },
+      v2Frames:   [ { frame:45, author:'山田監督', text:'色味 OK。完パケへ進めてください ✨' } ],
+    },
   };
 
   let shotCount = 0;
@@ -164,33 +182,43 @@
             /* v2 の方が新しいようにタイムスタンプをずらす */
             const t1 = new Date(Date.now() - 7*86400*1000).toISOString();
             const t2 = new Date(Date.now() - 2*86400*1000).toISOString();
-            /* コメントサンプル（版の review.notes に流し込み） */
-            const comments = commentTemplates[st.label] || [];
-            const v1Notes = comments.slice(0,1).map((c,i)=>({ id:'nt_'+shId+'_v1_'+i, author:c.author, text:c.text, time:t1 }));
-            const v2Notes = (sh.status==='retake' ? comments : comments.slice(1)).map((c,i)=>({ id:'nt_'+shId+'_v2_'+i, author:c.author, text:c.text, time:t2 }));
+            /* コメントサンプル（版の review.notes に流し込み）。
+               v.018：ショットページ動画ブロックは frame 付きコメントしか表示しないので、
+               デモの指摘には必ず frame 番号を入れる。アノテ窓とショットページで同じコメントが見える。 */
+            const tmpl = commentTemplates[st.label] || null;
+            const v1Notes = (tmpl ? tmpl.v1Frames : []).map((c,i)=>({
+              id:'nt_'+shId+'_v1_'+i,
+              author:c.author, text:c.text, time:t1, frame:c.frame
+            }));
+            const v2Notes = (tmpl ? tmpl.v2Frames : []).map((c,i)=>({
+              id:'nt_'+shId+'_v2_'+i,
+              author:c.author, text:c.text, time:t2, frame:c.frame
+            }));
+            /* v2 のアップロード時メッセージ：
+               review node の comments に書いて、version.uploadCommentId で参照する。
+               （_uploadCommentBlock は版の親ノード＝ review node の comments を見る） */
+            let uploadCommentId = null;
+            if(tmpl && tmpl.v2Upload){
+              uploadCommentId = 'cm_'+shId+'_'+st.id+'_v2upload';
+              reviewNode.comments = reviewNode.comments || [];
+              reviewNode.comments.push({
+                id: uploadCommentId,
+                author: tmpl.v2Upload.author,
+                text: tmpl.v2Upload.text,
+                time: t2,
+                stage: st.label,
+                kind: 'upload',
+              });
+            }
             reviewNode.versions = [
               { id:'ver_'+shId+'_v1', name:'v1', type:'video', file:ref1, thumb:ref1,
                 uploadedBy:sh.worker, uploadedAt:t1, stage:st.label,
                 review:{status:'retake', notes:v1Notes} },
               { id:'ver_'+shId+'_v2', name:'v2', type:'video', file:ref2, thumb:ref2,
                 uploadedBy:sh.worker, uploadedAt:t2, stage:st.label,
+                uploadCommentId: uploadCommentId,
                 review:{status: sh.status==='approved'?'approved':(sh.status==='retake'?'retake':'pending'), notes:v2Notes} },
             ];
-            /* ショット section に全体コメントも 1 つ入れる（アノテ窓のメッセージ欄に出る） */
-            if(comments[0]){
-              const shotNode = DB.nodes.find(n=>n.id===shId);
-              if(shotNode){
-                shotNode.comments = shotNode.comments || [];
-                shotNode.comments.push({
-                  id:'cm_'+shId+'_1',
-                  author: comments[0].author,
-                  text: comments[0].text,
-                  time: t2,
-                  stage: st.label,
-                  kind: 'upload',
-                });
-              }
-            }
           }
           DB.nodes.push(reviewNode);
         }
