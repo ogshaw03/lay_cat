@@ -3985,6 +3985,23 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+- (dev v2026.10.15.082) **PMB のデモモード対応（`?demo=1`／Phase B）**：
+  - **目的**：intro.html の進捗管理セクションから「→ 触って試す」で PMB も試用可能に。LayCAT 本体 v.016 と同じ URL 契約。
+  - **URL パラメータ**：
+    - `?demo=1` → デモ有効化（Firebase ログイン不要、デモ project 自動接続）
+    - `?tab=<X>` → 初期タブ（`schedule`/`effort`/`reference`/`retake`/`activity`/`log` および `ガント`/`工数`/`資料` 等の日本語別名）
+  - **実装内容**：
+    - 冒頭に `DEMO_MODE` / `DEMO_TAB` 定数（URL パラメータから読込）
+    - `storage` に `backend='demo'` と `_demoFiles`（LayCAT の `docs/demo_project_inject.js` と同じ 18 ショット・工程 3 種を PMB の読取形式に展開した pre-built な Map）
+    - `_buildDemoFiles()` が `laycat.project.json`（骨格に全 shot＋ review 子ノード含む）、`shots/<sid>.json`、`schedule/<sid>.json`（ガントバー表示用の 3 工程の予定日付、ショットごとに 3 日ずつずらして配置）を生成
+    - `storage.connectProject(pid)` が DEMO_MODE なら pid 無視して `nd_demo_root` にデモ接続（FSA / R2 認証バイパス）
+    - `storage.readJson` / `writeJson` / `listDir` に `backend==='demo'` 分岐追加。読取は `_demoFiles` から、書込は no-op（成功を返す）
+    - `_pmCheckMemberAccess` を DEMO_MODE はスキップ（デモユーザーもメンバーチェック通過）
+    - 初期化フローで `?demo=1` なら picker/home をバイパスして `switchToProject('nd_demo_root')` を直接呼ぶ、`?tab=<X>` で top タブ切替
+    - 画面上部にデモバナー表示
+  - **書き込み境界**：デモモード時はいかなる永続化も発生しない（FSA / R2 / Firestore 一切なし）
+  - APP_VERSION：2026.10.14.081 → 2026.10.15.082
+
 - (dev v2026.10.14.081) **顧客自前 R2 対応（PMB／LayCAT 本体 v.013 連動）**：
   - `storage._r2` に `_endpointForTid` / `_urlFor` を追加（LayCAT 本体と同じ実装を移植）
   - put/del/get/getBlob/listByPrefix/getJson/putJson を `_urlFor` 経由に書き換え

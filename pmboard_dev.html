@@ -763,7 +763,11 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.14.081';
+const APP_VERSION='2026.10.15.082';
+/* v.082：デモモード（?demo=1） — LayCAT と同じ URL パラメータで PMB も試用可能に。
+   ?tab=<X> で初期タブ（gantt / efforts / reference 等）に遷移。 */
+const DEMO_MODE = (()=>{try{return new URLSearchParams(location.search).get('demo')==='1'}catch(_){return false}})();
+const DEMO_TAB  = (()=>{try{return (new URLSearchParams(location.search).get('tab')||'').toLowerCase()}catch(_){return ''}})();
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -1083,7 +1087,149 @@ const storage = {
     }catch(_){return false}},
   },
 
+  /* v.082：デモモード用スタブ。backend='demo' のときは _demoFiles から読む（書込は no-op）。 */
+  _demoFiles: null,
+  _buildDemoFiles(){
+    /* LayCAT の docs/demo_project_inject.js と同じ構造を PMB の読取形式（laycat.project.json
+       + shots/<sid>.json + schedule/<sid>.json）に展開する。
+       変更があったら両方同期させる（demo データの一元管理は Phase 2 で検討）。 */
+    const now = new Date().toISOString();
+    const rootId = 'nd_demo_root';
+    const structure = [
+      { ep:'EP01', sqs:[
+        { sq:'A-pt', shots:[
+          { nm:'sh001', stage:'動画',       status:'pending',  worker:'鈴木作画' },
+          { nm:'sh002', stage:'レイアウト', status:'approved', worker:'山田監督' },
+          { nm:'sh003', stage:'仕上げ',     status:'retake',   worker:'田中仕上' },
+          { nm:'sh004', stage:'動画',       status:'pending',  worker:'鈴木作画' },
+          { nm:'sh005', stage:'仕上げ',     status:'approved', worker:'田中仕上' },
+        ]},
+        { sq:'B-pt', shots:[
+          { nm:'sh006', stage:'レイアウト', status:'pending',  worker:'山田監督' },
+          { nm:'sh007', stage:'動画',       status:'retake',   worker:'鈴木作画' },
+          { nm:'sh008', stage:'仕上げ',     status:'approved', worker:'田中仕上' },
+          { nm:'sh009', stage:'レイアウト', status:'omit',     worker:'-' },
+        ]},
+      ]},
+      { ep:'EP02', sqs:[
+        { sq:'A-pt', shots:[
+          { nm:'sh010', stage:'動画',       status:'pending',  worker:'鈴木作画' },
+          { nm:'sh011', stage:'レイアウト', status:'approved', worker:'山田監督' },
+          { nm:'sh012', stage:'仕上げ',     status:'pending',  worker:'田中仕上' },
+          { nm:'sh013', stage:'動画',       status:'retake',   worker:'鈴木作画' },
+          { nm:'sh014', stage:'動画',       status:'pending',  worker:'鈴木作画' },
+        ]},
+        { sq:'B-pt', shots:[
+          { nm:'sh015', stage:'レイアウト', status:'pending',  worker:'山田監督' },
+          { nm:'sh016', stage:'仕上げ',     status:'approved', worker:'田中仕上' },
+          { nm:'sh017', stage:'レイアウト', status:'omit',     worker:'-' },
+          { nm:'sh018', stage:'動画',       status:'approved', worker:'鈴木作画' },
+        ]},
+      ]},
+    ];
+    const reviewStages = [
+      { id:'lay', label:'レイアウト' },
+      { id:'anm', label:'動画' },
+      { id:'col', label:'仕上げ' },
+    ];
+    const projStatuses = [
+      { id:'pending',  label:'チェック待ち', checkWait:true },
+      { id:'approved', label:'OK' },
+      { id:'retake',   label:'リテイク' },
+      { id:'done',     label:'完了' },
+      { id:'omit',     label:'オミット' },
+    ];
+    const nodes = [];
+    const shotIds = [];
+    const shotFiles = {};
+    const scheduleFiles = {};
+    /* ガント用の日付：今日を起点に 1 ショット 10 日ぶん、連番で割り振る */
+    const base = new Date();
+    base.setHours(0,0,0,0);
+    const ymd = d => d.toISOString().slice(0,10);
+    const addDays = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+    /* root 骨格 */
+    nodes.push({
+      id: rootId, parentId: null, name: 'DEMO_プロジェクト', type: 'section',
+      description: '取説用のサンプルプロジェクト', createdAt: now, versions: [],
+      stages: ['レイアウト','動画','仕上げ'],
+      stageColors: { 'レイアウト':'#5A9BFF', '動画':'#5CB878', '仕上げ':'#F2986B' },
+      statuses: projStatuses,
+      members: [
+        { id:'director@example.com', name:'山田監督', roles:['director'] },
+        { id:'pm@example.com',       name:'佐藤制作', roles:['pm'] },
+        { id:'anim@example.com',     name:'鈴木作画', roles:['animator'] },
+        { id:'paint@example.com',    name:'田中仕上', roles:['paint'] },
+      ],
+    });
+    let shotIdx = 0;
+    for(const ep of structure){
+      const epId = 'nd_demo_' + ep.ep.toLowerCase();
+      nodes.push({ id: epId, parentId: rootId, name: ep.ep, type: 'section', createdAt: now, versions: [] });
+      for(const sq of ep.sqs){
+        const sqId = epId + '_' + sq.sq.toLowerCase().replace(/[^a-z0-9]/g,'');
+        nodes.push({ id: sqId, parentId: epId, name: sq.sq, type: 'section', createdAt: now, versions: [] });
+        for(const sh of sq.shots){
+          const shId = 'nd_demo_' + sh.nm;
+          /* 骨格：shot section（旧モデル shot = type:section で子が全部 review）として PMB が
+             認識できるよう、review 子ノードも project.json 骨格に含める。
+             shots/<sid>.json にも同じ構造を入れて PMB の両方のパスで取れるように。 */
+          const shotNode = {
+            id: shId, parentId: sqId, name: sh.nm, type: 'section',
+            currentStage: sh.stage, status: sh.status,
+            createdAt: now, versions: [],
+            assignedWorker: sh.worker, assignedChecker: '山田監督',
+          };
+          nodes.push(shotNode);
+          shotIds.push(shId);
+          const reviewNodes = reviewStages.map(st=>({
+            id: shId + '_r_' + st.id, parentId: shId, name: st.label,
+            type: 'review', createdAt: now, versions: [],
+            status: (st.label === sh.stage) ? sh.status : undefined,
+          }));
+          /* 骨格にも review 子を push（PMB の isLegacyShot 判定が allNodes を見るため） */
+          for(const r of reviewNodes) nodes.push(r);
+          /* shots/<sid>.json の中身 */
+          shotFiles[shId] = { v:1, shotId: shId, nodes: [shotNode, ...reviewNodes] };
+          /* schedule/<sid>.json の中身：stages 配列（PMB の scheduleMap[shotId].stages を参照）。
+             stageId は review ノードの id と一致させる必要がある（loadProjectData の
+             `schedStages.find(x=>x.stageId===k.id)` で引く）。 */
+          const start = addDays(base, shotIdx * 3);
+          const schedStages = [];
+          let cur = new Date(start);
+          for(const st of reviewStages){
+            const end = addDays(cur, 8);
+            schedStages.push({
+              stageId: shId + '_r_' + st.id,
+              plannedStart: ymd(cur),
+              plannedEnd: ymd(end),
+            });
+            cur = addDays(end, 1);
+          }
+          scheduleFiles[shId] = { v:1, shotId: shId, stages: schedStages };
+          shotIdx++;
+        }
+      }
+    }
+    const projJson = { v:4, id: rootId, name: 'DEMO_プロジェクト', nodes, shotIds, submits: [], submitIds: [] };
+    const files = new Map();
+    files.set('laycat.project.json', projJson);
+    for(const sid of shotIds){
+      files.set('shots/'+sid+'.json', shotFiles[sid]);
+      files.set('schedule/'+sid+'.json', scheduleFiles[sid]);
+    }
+    return files;
+  },
+
   async connectProject(pid){
+    /* v.082：デモモード — pid 無視して固定のデモプロジェクトに接続。 */
+    if(DEMO_MODE){
+      this.pid = 'nd_demo_root';
+      this.backend = 'demo';
+      this.dirHandle = null;
+      if(!this._demoFiles) this._demoFiles = this._buildDemoFiles();
+      return {ok:true};
+    }
     /* v.080：backend 判定を追加。
        - 'r2'：Firebase 認証 OK なら即接続（ping で grouped allowlist 判定も確認）
        - 'folder'：従来通り LayCAT の IDB からハンドル取得＋ permission 確認 */
@@ -1138,6 +1284,11 @@ const storage = {
     return false;
   },
   async readJson(path){
+    if(this.backend==='demo'){
+      /* v.082：デモモード — _demoFiles から返す */
+      const v = this._demoFiles && this._demoFiles.get(path);
+      return v ? JSON.parse(JSON.stringify(v)) : null;
+    }
     if(this.backend==='r2'){
       /* R2：Worker 経由で projects/<pid>/<path> を GET */
       return await this._r2.getJson('projects/'+this.pid+'/'+path, {pid:this.pid});
@@ -1153,6 +1304,10 @@ const storage = {
     }catch(_){return null;}
   },
   async writeJson(path, data){
+    if(this.backend==='demo'){
+      /* v.082：デモモードは書込 no-op（成功を返して UI 側を破綻させない） */
+      return true;
+    }
     if(this.backend==='r2'){
       return await this._r2.putJson('projects/'+this.pid+'/'+path, data, {pid:this.pid});
     }
@@ -1169,6 +1324,19 @@ const storage = {
     }catch(e){console.warn('writeJson failed',path,e);return false;}
   },
   async listDir(dirName){
+    if(this.backend==='demo'){
+      /* v.082：デモモード — _demoFiles のキーを prefix でフィルタして basename を返す */
+      if(!this._demoFiles) return [];
+      const prefix = String(dirName||'').replace(/\/$/,'')+'/';
+      const names = [];
+      for(const key of this._demoFiles.keys()){
+        if(key.startsWith(prefix)){
+          const rest = key.slice(prefix.length);
+          if(rest && !rest.includes('/')) names.push(rest);
+        }
+      }
+      return names;
+    }
     if(this.backend==='r2'){
       /* R2：Worker /api/r2/list で prefix 配下の key 一覧を取得。
          prefix の末尾に "/" を付けて渡す必要がある（Worker 側のルート正規表現にマッチさせるため）。 */
@@ -3619,6 +3787,7 @@ function _pmIsMember(root){
   return false;
 }
 function _pmCheckMemberAccess(){
+  if(DEMO_MODE) return true; /* v.082：デモモードはメンバーチェックをスキップ */
   const nodes=(DATA.project&&Array.isArray(DATA.project.nodes))?DATA.project.nodes:[];
   const root=nodes.find(n=>n.id===(DATA.project&&DATA.project.id))||nodes.find(n=>!n.parentId);
   if(_pmIsMember(root))return true;
@@ -5780,14 +5949,52 @@ const homeBtn = document.getElementById('pmHomeBtn');
 if(homeBtn) homeBtn.addEventListener('click', showHomeView);
 
 /* 初期表示：?pid=<id> が URL に指定されていればそのプロジェクトを直接開く（ディープリンク維持）。
-   指定が無い場合はホーム（プロジェクト一覧）を表示し、ユーザーが選んだプロジェクトを開く。 */
-const _paramPid = urlParam('pid');
-if(_paramPid){
-  const sel = document.getElementById('projSelect');
-  if(sel && Array.from(sel.options).some(o=>o.value===_paramPid)) sel.value = _paramPid;
-  switchToProject(_paramPid).then(updateLastUpdatedLabel);
+   指定が無い場合はホーム（プロジェクト一覧）を表示し、ユーザーが選んだプロジェクトを開く。
+   v.082：?demo=1 なら強制的にデモプロジェクトを開く（picker/home は無視）。 */
+if(DEMO_MODE){
+  _showDemoBanner();
+  switchToProject('nd_demo_root').then(async ()=>{
+    updateLastUpdatedLabel();
+    /* ?tab=<X> で初期タブ切替。PMB の上部タブは data-tab 属性でクリック切替。 */
+    if(DEMO_TAB){
+      const tabMap = {
+        'schedule':'schedule', 'gantt':'schedule', 'ガント':'schedule', 'shots':'schedule',
+        'effort':'effort', 'efforts':'effort', '工数':'effort', 'check':'effort',
+        'reference':'reference', '資料':'reference', 'refs':'reference',
+        'retake':'retake', 'リテイク':'retake',
+        'activity':'activity', 'アクティビティ':'activity',
+        'log':'log', '操作ログ':'log',
+      };
+      const paneTab = tabMap[DEMO_TAB];
+      if(paneTab){
+        try{
+          const btn = document.querySelector('#tabs button[data-tab="'+paneTab+'"]');
+          if(btn) btn.click();
+        }catch(_){}
+      }
+    }
+  });
 }else{
-  showHomeView();
+  const _paramPid = urlParam('pid');
+  if(_paramPid){
+    const sel = document.getElementById('projSelect');
+    if(sel && Array.from(sel.options).some(o=>o.value===_paramPid)) sel.value = _paramPid;
+    switchToProject(_paramPid).then(updateLastUpdatedLabel);
+  }else{
+    showHomeView();
+  }
+}
+/* v.082：デモバナー */
+function _showDemoBanner(){
+  try{
+    if(document.getElementById('pmbDemoBanner'))return;
+    const b = document.createElement('div');
+    b.id='pmbDemoBanner';
+    b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#F2986B,#F2C86B);color:#000;padding:6px 14px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,.3)';
+    b.innerHTML = '<span style="font-size:14px">🎬</span><span>PM Board デモ版 — 操作は反映されません。本番は <a href="pmboard_dev.html" style="color:#000;text-decoration:underline">こちら</a></span><button type="button" id="pmbDemoBannerClose" style="margin-left:auto;background:transparent;border:1px solid rgba(0,0,0,.4);color:#000;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px">閉じる ×</button>';
+    document.body.appendChild(b);
+    document.getElementById('pmbDemoBannerClose').onclick=()=>{b.remove();};
+  }catch(_){}
 }
 } /* end _pmAppInit */
 
