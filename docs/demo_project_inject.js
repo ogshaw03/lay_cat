@@ -76,6 +76,34 @@
       { id:'done',     label:'完了' },
       { id:'omit',     label:'オミット' },
     ],
+    /* v.020：アセットカテゴリとアセット。
+       - アセットは「shot.assets / shot.tags ∪ asset.tagIds」の両経路でショットに紐付く
+       - 下記ではタグ経由で紐付けて、ショットページの「使用アセット」セクションに自動表示 */
+    assetCategories: [
+      { id:'cat_char', name:'キャラ' },
+      { id:'cat_veh',  name:'小物・乗り物' },
+      { id:'cat_bg',   name:'背景' },
+    ],
+    assets: [
+      { id:'as_main_char', name:'主人公（カズキ）',  thumb:'slides_assets/gal_01.png',
+        memo:'20 代男性、ジャケット＋カメラ。全ショット登場。',
+        categoryId:'cat_char', tagIds:['tag_main'], usedInShots:[], createdAt:now, updatedAt:now },
+      { id:'as_sub_char',  name:'ヒロイン（アカネ）', thumb:'slides_assets/gal_03.png',
+        memo:'20 代女性、学生時代の友人。感情表現シーンに出演。',
+        categoryId:'cat_char', tagIds:['tag_emote'], usedInShots:[], createdAt:now, updatedAt:now },
+      { id:'as_subB_char', name:'サブキャラ（タクマ）',thumb:'slides_assets/gal_02.png',
+        memo:'バイク乗り。アクションシーンで多用。',
+        categoryId:'cat_char', tagIds:['tag_action','tag_sub'], usedInShots:[], createdAt:now, updatedAt:now },
+      { id:'as_car',       name:'ランドクルーザー（赤）', thumb:'slides_assets/gal_06.png',
+        memo:'主人公の愛車。全ロケーションで登場。',
+        categoryId:'cat_veh', tagIds:['tag_main','tag_action'], usedInShots:[], createdAt:now, updatedAt:now },
+      { id:'as_bg_mt',     name:'峠道（ロケ：山岳）', thumb:'slides_assets/gal_04.png',
+        memo:'実写ロケ素材あり（ロケーション映像参照）。',
+        categoryId:'cat_bg', tagIds:['tag_action'], usedInShots:[], createdAt:now, updatedAt:now },
+      { id:'as_bg_city',   name:'夕暮れ都市', thumb:'slides_assets/gal_05.png',
+        memo:'都市パートで使用。CG と合成の予定。',
+        categoryId:'cat_bg', tagIds:['tag_main'], usedInShots:[], createdAt:now, updatedAt:now },
+    ],
   });
 
   /* メンバー検索用マッピング（name → email） */
@@ -298,8 +326,11 @@
     }
   }
 
-  /* v.017：資料タブのデモ資料も投入。state.refItemsByPid[rootId] に配置する。
-     intro.html の gal_*.png を利用して「キャラ資料・背景資料・設定メモ」のモックを作る。 */
+  /* v.020：資料タブデモ投入。anime キャラ（gal_*.png）× 実写ロケ動画（movie/*.mp4）の
+     「キャラクターが各地を旅する」ロードムービー風プロジェクトとして組み立てる。
+     - キャラクター：gal 画像
+     - ロケーション：実動画クリップ（mediaType:'video'）
+     - ルール・リンク：テキスト／外部 URL */
   try{
     if(typeof state !== 'undefined'){
       state.refItemsByPid = state.refItemsByPid || {};
@@ -307,48 +338,55 @@
       state.refItemsByPid[rootId] = [
         /* セクション A：キャラクター */
         t('title', { text:'キャラクター', x:60, y:40, fontSize:48, color:'#F2C86B' }),
-        t('text',  { text:'主人公・ヒロインの衣装や表情のバリエーション。アニメーションの参考に。',
-                     x:60, y:110, fontSize:16, color:'#aaa', w:720 }),
+        t('text',  { text:'主人公・ヒロインの衣装や表情のバリエーション。旅先での描き分けの参考に。',
+                     x:60, y:110, fontSize:16, color:'#aaa', w:800 }),
         t('image', { mediaRef:galUrls[0], mediaType:'image', label:'主人公 立ちポーズ',
                      x:60, y:170, w:420, h:280 }),
         t('image', { mediaRef:galUrls[1], mediaType:'image', label:'主人公 走り',
                      x:500, y:170, w:420, h:280 }),
         t('image', { mediaRef:galUrls[2], mediaType:'image', label:'ヒロイン 微笑み',
                      x:940, y:170, w:420, h:280 }),
-        t('text',  { text:'※ 服の色味は背景の光源に馴染ませてください',
-                     x:60, y:470, fontSize:14, color:'#6fa8dc', w:600 }),
+        t('text',  { text:'※ 服の色味は背景の光源（夕暮れ・雨天）に馴染ませてください',
+                     x:60, y:470, fontSize:14, color:'#6fa8dc', w:700 }),
 
-        /* セクション B：背景 */
-        t('title', { text:'背景 Reference', x:60, y:560, fontSize:48, color:'#5A9BFF' }),
-        t('text',  { text:'教室／河川敷／駅前の 3 シーン分のロケーション資料。',
-                     x:60, y:630, fontSize:16, color:'#aaa', w:720 }),
-        t('image', { mediaRef:galUrls[3], mediaType:'image', label:'教室内',
+        /* セクション B：ロケーション映像（実動画クリップ） */
+        t('title', { text:'ロケーション映像', x:60, y:560, fontSize:48, color:'#5A9BFF' }),
+        t('text',  { text:'ロケハン撮影の実写クリップ（各 30 秒前後）。レイアウトや背景美術の参考に。再生して確認できます。',
+                     x:60, y:630, fontSize:16, color:'#aaa', w:900 }),
+        t('image', { mediaRef:movUrls[0], mediaType:'video', label:'山間ハイウェイ（空撮）',
                      x:60, y:690, w:420, h:280 }),
-        t('image', { mediaRef:galUrls[4], mediaType:'image', label:'河川敷',
+        t('image', { mediaRef:movUrls[5], mediaType:'video', label:'山道・熱帯樹林',
                      x:500, y:690, w:420, h:280 }),
-        t('image', { mediaRef:galUrls[5], mediaType:'image', label:'駅前',
+        t('image', { mediaRef:movUrls[4], mediaType:'video', label:'峠道・曇天',
                      x:940, y:690, w:420, h:280 }),
+        t('image', { mediaRef:movUrls[1], mediaType:'video', label:'湖畔・樹木越しの眺め',
+                     x:60, y:1000, w:420, h:280 }),
+        t('image', { mediaRef:movUrls[3], mediaType:'video', label:'夕暮れの都市・ハイウェイ',
+                     x:500, y:1000, w:420, h:280 }),
+        t('image', { mediaRef:movUrls[2], mediaType:'video', label:'ラフアニメ参考（ダンス）',
+                     x:940, y:1000, w:420, h:280 }),
 
-        /* セクション C：設定メモ */
-        t('title', { text:'設定・ルール', x:60, y:1080, fontSize:48, color:'#5CB878' }),
-        t('shape', { shape:'rect', color:'#5CB878', opacity:0.12, x:60, y:1150, w:720, h:260 }),
-        t('text',  { text:'■ 作画ルール\n・瞳のハイライトは右上固定\n・ジャンプ時の髪の揺れは 3F ホールド→1F 戻し\n・ピカピカは最大 2F まで',
-                     x:80, y:1170, fontSize:18, color:'#e8e8ec', w:680 }),
-        t('shape', { shape:'rect', color:'#F2986B', opacity:0.12, x:800, y:1150, w:560, h:260 }),
-        t('text',  { text:'■ 色指定\n主人公の髪：#C9A96A\n学ランの黒：#1E1E26\n夕焼け：グラデ ⇒ #F2986B → #D04A4A',
-                     x:820, y:1170, fontSize:18, color:'#e8e8ec', w:520 }),
+        /* セクション C：撮影・制作ルール */
+        t('title', { text:'制作ルール', x:60, y:1380, fontSize:48, color:'#5CB878' }),
+        t('shape', { shape:'rect', color:'#5CB878', opacity:0.12, x:60, y:1450, w:720, h:260 }),
+        t('text',  { text:'■ ロケ合わせ作画ルール\n・光源方向は実写クリップの時間帯に合わせる\n・遠景は実写の雰囲気を 20〜30% ブレンド\n・空の色は雲量に合わせて 3 パターン用意',
+                     x:80, y:1470, fontSize:18, color:'#e8e8ec', w:680 }),
+        t('shape', { shape:'rect', color:'#F2986B', opacity:0.12, x:800, y:1450, w:560, h:260 }),
+        t('text',  { text:'■ 色指定\n主人公の髪：#C9A96A\nジャケット：#2E3C58\n夕焼け：#F2986B → #D04A4A\n雨天：#4A5768 → #26303E',
+                     x:820, y:1470, fontSize:18, color:'#e8e8ec', w:520 }),
 
         /* セクション D：外部リンク */
-        t('title', { text:'外部リンク', x:60, y:1470, fontSize:32, color:'#A56BF0' }),
+        t('title', { text:'外部リンク・コンテ', x:60, y:1770, fontSize:32, color:'#A56BF0' }),
+        t('text',  { text:'📎 LayCAT 公式サイト',
+                     x:60, y:1820, fontSize:16, color:'#e8e8ec', w:300 }),
         t('text',  { text:'https://ogshaw03.github.io/lay_cat/',
-                     x:60, y:1520, fontSize:14, color:'#6fa8dc', underline:true, w:500,
+                     x:60, y:1850, fontSize:14, color:'#6fa8dc', underline:true, w:500,
                      href:'https://ogshaw03.github.io/lay_cat/' }),
-        t('image', { mediaRef:galUrls[6], mediaType:'image', label:'参考映像サムネ',
-                     x:60, y:1570, w:320, h:200 }),
-        t('image', { mediaRef:galUrls[7], mediaType:'image', label:'構図参考',
-                     x:400, y:1570, w:320, h:200 }),
-        t('image', { mediaRef:galUrls[8], mediaType:'image', label:'色味参考',
-                     x:740, y:1570, w:320, h:200 }),
+        t('text',  { text:'📎 ロケーション撮影メモ（Google Docs）',
+                     x:60, y:1900, fontSize:16, color:'#e8e8ec', w:400 }),
+        t('text',  { text:'https://example.com/location-notes',
+                     x:60, y:1930, fontSize:14, color:'#6fa8dc', underline:true, w:500,
+                     href:'https://example.com/location-notes' }),
       ];
     }
   }catch(e){ console.warn('ref items inject error:', e); }
