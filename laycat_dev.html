@@ -4329,7 +4329,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.15.017';
+const APP_VERSION='2026.10.15.018';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4401,6 +4401,10 @@ function _maybeShowTabMuteHint(){ /* no-op — 警告表示を停止 */ }
    (a) src が空のときは無視、(b) 一度でも loadedmetadata/canplay が来たら誤爆と判定して既存 badge も除去、
    (c) error 発火から ~1.2s 遅延して、その間にロード成功があったら表示を取り消す。 */
 function attachCodecWarn(vid,host){
+  /* v.018：デモモードは <video> 要素に PNG (サンプルアニメ画像) を流しているので、
+     ブラウザが「コーデック非対応」と警告するのを抑制する。
+     デモの意図（サムネイル表示のための便宜的な video タグ）とは別のメッセージなのでユーザー混乱を招く。 */
+  if(typeof DEMO_MODE!=='undefined' && DEMO_MODE) return;
   if(!vid||vid._codecWarn)return;vid._codecWarn=true;
   const boxOf=()=>host||vid.parentElement;
   const addBadge=()=>{const box=boxOf();if(!box||box._codecBadge)return;box._codecBadge=true;try{const cs=getComputedStyle(box);if(cs.position==='static')box.style.position='relative'}catch(_){}const ov=el('div','codec-warn');ov.appendChild(el('div','cw-ic','⚠'));ov.appendChild(el('div','cw-tx','この動画はブラウザで再生できないコーデックの可能性があります（Animation / ProRes 等）。H.264 の mp4 / mov へ変換してください。'));box.appendChild(ov)};
