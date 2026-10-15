@@ -4329,7 +4329,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.15.016';
+const APP_VERSION='2026.10.15.017';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4431,6 +4431,14 @@ function chrome(on){$('.header').style.display=on?'':'none';$('.app-body').style
    ============================================================ */
 async function boot(){
   const g=$('#gateScreen');if(g)g.remove();chrome(true);
+  /* v.016：DEMO_MODE は IDB からの実データ読込を完全スキップ。
+     空の DB / REG で始めて、呼び出し元（startAppFlow）がデモデータ注入する。
+     これにより「起動直後に本人のプロジェクトが一瞬見える」フラッシュを防ぐ。 */
+  if(DEMO_MODE){
+    DB={version:3,nodes:[],reels:[],notifications:[],submits:[]};
+    REG=[];
+    return;
+  }
   /* IndexedDB の永続化リクエスト：
      - Chrome/Edge：ブックマーク・PWA インストール・通知許可・訪問頻度などから自動判定で granted になりやすい
      - Safari：ダイアログを 1 回出す（拒否されても致命ではない）

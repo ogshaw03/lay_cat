@@ -27,6 +27,64 @@
   const now = new Date().toISOString();
   const rootId = 'nd_demo_root';
 
+  /* v.016：デモ用のサンプル画像を canvas で生成（アノテ窓・タイムリマップ UI を試せるように）。
+     ショット名を描き入れた 1280x720 の PNG を data URL で返す。
+     storage.urlCache に先に入れておけば getURL() がネットワーク往復ゼロで解決してくれる。 */
+  function _makeDemoFrame(shotName, stage, bg1, bg2){
+    try{
+      const c = document.createElement('canvas');
+      c.width = 1280; c.height = 720;
+      const ctx = c.getContext('2d');
+      /* 背景グラデ */
+      const g = ctx.createLinearGradient(0,0,c.width,c.height);
+      g.addColorStop(0, bg1);
+      g.addColorStop(1, bg2);
+      ctx.fillStyle = g;
+      ctx.fillRect(0,0,c.width,c.height);
+      /* センター円（キャラアタリ） */
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(c.width/2, c.height/2 - 40, 120, 0, Math.PI*2); ctx.stroke();
+      /* 体 */
+      ctx.beginPath(); ctx.moveTo(c.width/2, c.height/2 + 80); ctx.lineTo(c.width/2, c.height/2 + 240); ctx.stroke();
+      /* 腕 */
+      ctx.beginPath(); ctx.moveTo(c.width/2, c.height/2 + 120); ctx.lineTo(c.width/2 - 140, c.height/2 + 200); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(c.width/2, c.height/2 + 120); ctx.lineTo(c.width/2 + 140, c.height/2 + 200); ctx.stroke();
+      /* 脚 */
+      ctx.beginPath(); ctx.moveTo(c.width/2, c.height/2 + 240); ctx.lineTo(c.width/2 - 90, c.height/2 + 360); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(c.width/2, c.height/2 + 240); ctx.lineTo(c.width/2 + 90, c.height/2 + 360); ctx.stroke();
+      /* ショット情報オーバーレイ */
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(32, 32, 300, 70);
+      ctx.fillStyle = '#F2C86B';
+      ctx.font = 'bold 32px "Space Grotesk", sans-serif';
+      ctx.fillText(shotName, 48, 68);
+      ctx.fillStyle = '#aaa';
+      ctx.font = '18px sans-serif';
+      ctx.fillText(stage + ' / DEMO', 48, 92);
+      /* セーフフレーム */
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8,8]);
+      ctx.strokeRect(80, 60, c.width - 160, c.height - 120);
+      ctx.setLineDash([]);
+      /* 右下ウォーターマーク */
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.font = '14px sans-serif';
+      ctx.fillText('🎬 LayCAT DEMO — サンプルフレーム', c.width - 320, c.height - 30);
+      return c.toDataURL('image/png', 0.9);
+    }catch(e){ return null; }
+  }
+
+  /* storage.urlCache にデモ画像を事前投入するためのヘルパ */
+  function _registerDemoImage(ref, dataUrl){
+    try{
+      if(typeof storage!=='undefined' && storage.urlCache && dataUrl){
+        storage.urlCache.set(ref, dataUrl);
+      }
+    }catch(_){}
+  }
+
   // ===== Root（プロジェクト） =====
   // 注意：root.stages は **文字列配列** が正。openAddModal の工程編集 UI は
   //       `inp.value = nm` で表示するため、オブジェクト配列を入れると [object Object] と表示される。
@@ -89,6 +147,15 @@
     { id:'col', label:'仕上げ' },
   ];
 
+  /* v.016：どのショットに「サンプル版」を仕込むか（アノテ窓・タイムリマップが開けるように）。
+     多すぎると起動が重くなるので代表的な数ショットだけに限定。 */
+  const sampleShots = new Set(['sh001','sh002','sh003','sh010']);
+  const stagePalette = {
+    'レイアウト': ['#1E3A5F', '#5A9BFF'],
+    '動画':       ['#1E4A2E', '#5CB878'],
+    '仕上げ':     ['#4F2E1E', '#F2986B'],
+  };
+
   let shotCount = 0;
   for (const ep of structure) {
     const epId = 'nd_demo_' + ep.ep.toLowerCase();
@@ -112,11 +179,32 @@
         // ショットの status を伝搬しておく。他工程 review の status は未着手扱いになる。
         for (const st of reviewStages) {
           const isCurrent = (st.label === sh.stage);
-          DB.nodes.push({
+          const reviewNode = {
             id: shId + '_r_' + st.id, parentId: shId, name: st.label,
             type: 'review', createdAt: now, versions: [],
             status: isCurrent ? sh.status : undefined,
-          });
+          };
+          /* v.016：デモショット（sampleShots に含まれる）の現工程 review に、サンプル画像版を 2 つ入れる。
+             - v1, v2 の 2 版を用意して「版履歴の切替」も体感可能
+             - type='image' にしているが LayCAT 側のアノテ・タイムリマップ UI は画像でも開ける */
+          if(isCurrent && sampleShots.has(sh.nm)){
+            const palette = stagePalette[st.label] || ['#333', '#777'];
+            const frame1 = _makeDemoFrame(sh.nm + ' v1', st.label, palette[0], palette[1]);
+            const frame2 = _makeDemoFrame(sh.nm + ' v2', st.label, palette[1], palette[0]);
+            const ref1 = 'demo:' + shId + '_v1';
+            const ref2 = 'demo:' + shId + '_v2';
+            _registerDemoImage(ref1, frame1);
+            _registerDemoImage(ref2, frame2);
+            reviewNode.versions = [
+              { id:'ver_'+shId+'_v1', name:'v1 (サンプル)', type:'image', file:ref1, thumb:ref1,
+                uploadedBy:sh.worker, uploadedAt:now, stage:st.label,
+                review:{status:'pending', notes:[]} },
+              { id:'ver_'+shId+'_v2', name:'v2 (サンプル)', type:'image', file:ref2, thumb:ref2,
+                uploadedBy:sh.worker, uploadedAt:now, stage:st.label,
+                review:{status: sh.status==='approved'?'approved':'pending', notes:[]} },
+            ];
+          }
+          DB.nodes.push(reviewNode);
         }
         shotCount++;
       }
