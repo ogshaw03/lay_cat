@@ -134,11 +134,22 @@
     { id:'col', label:'仕上げ' },
   ];
 
-  /* v.017：全ショットに intro.html のアニメ風ギャラリ画像（gal_01〜09）を割り振る。
-     9 枚しか無いので循環させて使う。版 v1 と v2 で違う画像にして「版履歴の切替」も体感可能。
-     サムネサイズを圧迫しないよう、相対パスのまま読み込む。 */
+  /* v.017：全ショットのサムネに intro.html のアニメ風ギャラリ画像（gal_01〜09）を割り振る。
+     9 枚しか無いので循環使用。相対パスのまま読み込む。 */
   const galUrls = Array.from({length:9},(_,i)=>'slides_assets/gal_0'+(i+1)+'.png');
   galUrls.forEach(_registerDemoImage);
+  /* v.020：実動画サンプル（slides_assets/movie 配下）。
+     ショットの v.file として割り振り、ショットページでインライン再生＆アノテ・リタイム
+     ビューアで実際に触れるように。6 本を循環使用。 */
+  const movUrls = [
+    'slides_assets/movie/100223-video-360.mp4',
+    'slides_assets/movie/101516-video-360.mp4',
+    'slides_assets/movie/140630-775595877_medium.mp4',
+    'slides_assets/movie/4067-360.mp4',
+    'slides_assets/movie/41576-360.mp4',
+    'slides_assets/movie/4633-360.mp4',
+  ];
+  movUrls.forEach(_registerDemoImage);
 
   /* コメント・メッセージのサンプルを工程別に用意（レビューっぽい雰囲気を出す）。
      v.018：ショットページ動画ブロックは「フレーム付きコメント」しか表示しないので、
@@ -234,8 +245,11 @@
           if(isCurrent){
             const imgIdx1 = (shotCount * 2) % 9;
             const imgIdx2 = (shotCount * 2 + 1) % 9;
-            const ref1 = galUrls[imgIdx1];
-            const ref2 = galUrls[imgIdx2];
+            const ref1 = galUrls[imgIdx1];      /* v1 のサムネ（poster） */
+            const ref2 = galUrls[imgIdx2];      /* v2 のサムネ（poster） */
+            /* v.020：v.file には実動画 URL。v1/v2 で同じ動画を使う（版は進捗の違いを示す物語なので
+               視覚的に同じ映像でも違和感ない）。ショット別に動画を散らすため shotCount で循環。 */
+            const movUrl = movUrls[shotCount % movUrls.length];
             /* v2 の方が新しいようにタイムスタンプをずらす */
             const t1 = new Date(Date.now() - 7*86400*1000).toISOString();
             const t2 = new Date(Date.now() - 2*86400*1000).toISOString();
@@ -268,10 +282,10 @@
               });
             }
             reviewNode.versions = [
-              { id:'ver_'+shId+'_v1', name:'v1', type:'video', file:ref1, thumb:ref1,
+              { id:'ver_'+shId+'_v1', name:'v1', type:'video', file:movUrl, thumb:ref1,
                 uploadedBy:workerName, uploadedAt:t1, stage:st.label,
                 review:{status:'retake', notes:v1Notes} },
-              { id:'ver_'+shId+'_v2', name:'v2', type:'video', file:ref2, thumb:ref2,
+              { id:'ver_'+shId+'_v2', name:'v2', type:'video', file:movUrl, thumb:ref2,
                 uploadedBy:workerName, uploadedAt:t2, stage:st.label,
                 uploadCommentId: uploadCommentId,
                 review:{status: sh.status==='approved'?'approved':(sh.status==='retake'?'retake':'pending'), notes:v2Notes} },
