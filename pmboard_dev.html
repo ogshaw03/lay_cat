@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.15.084';
+const APP_VERSION='2026.10.15.085';
 /* v.082：デモモード（?demo=1） — LayCAT と同じ URL パラメータで PMB も試用可能に。
    ?tab=<X> で初期タブ（gantt / efforts / reference 等）に遷移。 */
 const DEMO_MODE = (()=>{try{return new URLSearchParams(location.search).get('demo')==='1'}catch(_){return false}})();
@@ -1132,12 +1132,13 @@ const storage = {
       { id:'anm', label:'動画' },
       { id:'col', label:'仕上げ' },
     ];
+    /* v.084：ステータスに色付与（PMB ガントの status chip の背景色として使用）。 */
     const projStatuses = [
-      { id:'pending',  label:'チェック待ち', checkWait:true },
-      { id:'approved', label:'OK' },
-      { id:'retake',   label:'リテイク' },
-      { id:'done',     label:'完了' },
-      { id:'omit',     label:'オミット' },
+      { id:'pending',  label:'チェック待ち', color:'#F2C86B', checkWait:true },
+      { id:'approved', label:'OK',           color:'#5CB878' },
+      { id:'retake',   label:'リテイク',     color:'#F2986B' },
+      { id:'done',     label:'完了',         color:'#5A9BFF' },
+      { id:'omit',     label:'オミット',     color:'#808090' },
     ];
     const nodes = [];
     const shotIds = [];
@@ -1267,6 +1268,57 @@ const storage = {
     for(const key of Object.keys(statusFiles)){
       files.set('status/'+key+'.json', statusFiles[key]);
     }
+    /* v.084：資料タブデモ資料を LayCAT 本体と同じ内容で投入。
+       個別 reference/items/<id>.json ファイルを生成（PMB の loadReferenceItems が listDir で列挙する）。
+       「キャラクター × ロケーション映像」のロードムービー風ミックス構成に。 */
+    const galUrls = Array.from({length:9},(_,i)=>'slides_assets/gal_0'+(i+1)+'.png');
+    const movUrls = [
+      'slides_assets/movie/100223-video-360.mp4',
+      'slides_assets/movie/101516-video-360.mp4',
+      'slides_assets/movie/140630-775595877_medium.mp4',
+      'slides_assets/movie/4067-360.mp4',
+      'slides_assets/movie/41576-360.mp4',
+      'slides_assets/movie/4633-360.mp4',
+    ];
+    const refItems = [
+      /* キャラクター */
+      { type:'title', text:'キャラクター',          x:60, y:40,   fontSize:48, color:'#F2C86B' },
+      { type:'text',  text:'主人公・ヒロインの衣装や表情のバリエーション。旅先での描き分けの参考に。',
+                                                   x:60, y:110,  fontSize:16, color:'#aaa', w:800 },
+      { type:'image', mediaRef:galUrls[0], mediaType:'image', label:'主人公 立ちポーズ', x:60, y:170, w:420, h:280 },
+      { type:'image', mediaRef:galUrls[1], mediaType:'image', label:'主人公 走り',       x:500, y:170, w:420, h:280 },
+      { type:'image', mediaRef:galUrls[2], mediaType:'image', label:'ヒロイン 微笑み',   x:940, y:170, w:420, h:280 },
+      { type:'text',  text:'※ 服の色味は背景の光源（夕暮れ・雨天）に馴染ませてください',
+                                                   x:60, y:470, fontSize:14, color:'#6fa8dc', w:700 },
+      /* ロケーション映像 */
+      { type:'title', text:'ロケーション映像',      x:60, y:560, fontSize:48, color:'#5A9BFF' },
+      { type:'text',  text:'ロケハン撮影の実写クリップ（各 30 秒前後）。レイアウトや背景美術の参考に。',
+                                                   x:60, y:630, fontSize:16, color:'#aaa', w:900 },
+      { type:'image', mediaRef:movUrls[0], mediaType:'video', label:'山間ハイウェイ（空撮）', x:60,  y:690, w:420, h:280 },
+      { type:'image', mediaRef:movUrls[5], mediaType:'video', label:'山道・熱帯樹林',       x:500, y:690, w:420, h:280 },
+      { type:'image', mediaRef:movUrls[4], mediaType:'video', label:'峠道・曇天',           x:940, y:690, w:420, h:280 },
+      { type:'image', mediaRef:movUrls[1], mediaType:'video', label:'湖畔・樹木越しの眺め', x:60,  y:1000, w:420, h:280 },
+      { type:'image', mediaRef:movUrls[3], mediaType:'video', label:'夕暮れの都市・ハイウェイ', x:500, y:1000, w:420, h:280 },
+      { type:'image', mediaRef:movUrls[2], mediaType:'video', label:'ラフアニメ参考（ダンス）', x:940, y:1000, w:420, h:280 },
+      /* 制作ルール */
+      { type:'title', text:'制作ルール', x:60, y:1380, fontSize:48, color:'#5CB878' },
+      { type:'shape', shape:'rect', color:'#5CB878', opacity:0.12, x:60, y:1450, w:720, h:260 },
+      { type:'text',  text:'■ ロケ合わせ作画ルール\n・光源方向は実写クリップの時間帯に合わせる\n・遠景は実写の雰囲気を 20〜30% ブレンド\n・空の色は雲量に合わせて 3 パターン用意',
+                                                   x:80, y:1470, fontSize:18, color:'#e8e8ec', w:680 },
+      { type:'shape', shape:'rect', color:'#F2986B', opacity:0.12, x:800, y:1450, w:560, h:260 },
+      { type:'text',  text:'■ 色指定\n主人公の髪：#C9A96A\nジャケット：#2E3C58\n夕焼け：#F2986B → #D04A4A\n雨天：#4A5768 → #26303E',
+                                                   x:820, y:1470, fontSize:18, color:'#e8e8ec', w:520 },
+      /* 外部リンク */
+      { type:'title', text:'外部リンク・コンテ',    x:60, y:1770, fontSize:32, color:'#A56BF0' },
+      { type:'text',  text:'📎 LayCAT 公式サイト',   x:60, y:1820, fontSize:16, color:'#e8e8ec', w:300 },
+      { type:'text',  text:'https://ogshaw03.github.io/lay_cat/', x:60, y:1850, fontSize:14, color:'#6fa8dc', underline:true, w:500, href:'https://ogshaw03.github.io/lay_cat/' },
+      { type:'text',  text:'📎 ロケーション撮影メモ（Google Docs）', x:60, y:1900, fontSize:16, color:'#e8e8ec', w:400 },
+      { type:'text',  text:'https://example.com/location-notes', x:60, y:1930, fontSize:14, color:'#6fa8dc', underline:true, w:500, href:'https://example.com/location-notes' },
+    ];
+    refItems.forEach((item, idx) => {
+      item.id = 'ref_demo_'+String(idx).padStart(3,'0');
+      files.set('reference/items/'+item.id+'.json', item);
+    });
     return files;
   },
 
@@ -1458,6 +1510,12 @@ const storage = {
   async resolveMediaUrl(path){
     if(!path) return null;
     if(this._urlCache.has(path)) return this._urlCache.get(path);
+    /* v.084：デモモード — path を URL とみなしてそのまま返す（相対パス解決は fetch 時）。
+       LayCAT 側と同じく、デモの mediaRef は 'slides_assets/gal_01.png' 等の相対パスを直接保持。 */
+    if(this.backend==='demo'){
+      this._urlCache.set(path, path);
+      return path;
+    }
     /* v.080：R2 対応。
        - "r2:<pid>|<key>" → Worker 経由で GET blob → URL.createObjectURL
        - "p:<pid>|<path>" → folder backend でローカル解決
