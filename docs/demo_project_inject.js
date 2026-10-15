@@ -82,28 +82,30 @@
        - 下記ではタグ経由で紐付けて、ショットページの「使用アセット」セクションに自動表示 */
     assetCategories: [
       { id:'cat_char', name:'キャラ' },
-      { id:'cat_veh',  name:'小物・乗り物' },
-      { id:'cat_bg',   name:'背景' },
+      { id:'cat_bg',   name:'背景・ロケ' },
+      { id:'cat_prop', name:'小物' },
     ],
+    /* v.024：gal_*.png はすべて女性キャラなので、アセット定義もそれに合わせる。
+       背景・ロケは実動画クリップのサムネを流用（mediaType:'video' として thumb に動画 URL を入れる）。 */
     assets: [
-      { id:'as_main_char', name:'主人公（カズキ）',  thumb:'slides_assets/gal_01.png',
-        memo:'20 代男性、ジャケット＋カメラ。全ショット登場。',
+      { id:'as_main_char', name:'アカネ（主人公）',  thumb:'slides_assets/gal_01.png',
+        memo:'高校3年生。ロードムービー主人公。全ショット登場。',
         categoryId:'cat_char', tagIds:['tag_main'], usedInShots:[], createdAt:now, updatedAt:now },
-      { id:'as_sub_char',  name:'ヒロイン（アカネ）', thumb:'slides_assets/gal_03.png',
-        memo:'20 代女性、学生時代の友人。感情表現シーンに出演。',
+      { id:'as_sub_char',  name:'ユイ（親友）', thumb:'slides_assets/gal_03.png',
+        memo:'アカネの親友。感情表現シーンで出番多め。',
         categoryId:'cat_char', tagIds:['tag_emote'], usedInShots:[], createdAt:now, updatedAt:now },
-      { id:'as_subB_char', name:'サブキャラ（タクマ）',thumb:'slides_assets/gal_02.png',
-        memo:'バイク乗り。アクションシーンで多用。',
+      { id:'as_subB_char', name:'ハルカ（妹）', thumb:'slides_assets/gal_02.png',
+        memo:'アカネの妹。アクションシーンでは年齢相応に走り回る。',
         categoryId:'cat_char', tagIds:['tag_action','tag_sub'], usedInShots:[], createdAt:now, updatedAt:now },
-      { id:'as_car',       name:'ランドクルーザー（赤）', thumb:'slides_assets/gal_06.png',
-        memo:'主人公の愛車。全ロケーションで登場。',
-        categoryId:'cat_veh', tagIds:['tag_main','tag_action'], usedInShots:[], createdAt:now, updatedAt:now },
-      { id:'as_bg_mt',     name:'峠道（ロケ：山岳）', thumb:'slides_assets/gal_04.png',
-        memo:'実写ロケ素材あり（ロケーション映像参照）。',
+      { id:'as_bg_mt',     name:'峠道（ロケ：山岳）', thumb:'slides_assets/movie/41576-360.mp4',
+        memo:'実写ロケ素材（曇天・峠）。背景美術の参考に。',
         categoryId:'cat_bg', tagIds:['tag_action'], usedInShots:[], createdAt:now, updatedAt:now },
-      { id:'as_bg_city',   name:'夕暮れ都市', thumb:'slides_assets/gal_05.png',
-        memo:'都市パートで使用。CG と合成の予定。',
+      { id:'as_bg_city',   name:'夕暮れハイウェイ', thumb:'slides_assets/movie/4067-360.mp4',
+        memo:'都市パートで使用。CG 合成の下敷きに。',
         categoryId:'cat_bg', tagIds:['tag_main'], usedInShots:[], createdAt:now, updatedAt:now },
+      { id:'as_bg_lake',   name:'湖畔・樹木越し', thumb:'slides_assets/movie/101516-video-360.mp4',
+        memo:'休憩シーンの背景参考。木漏れ日の光源に注意。',
+        categoryId:'cat_bg', tagIds:['tag_emote'], usedInShots:[], createdAt:now, updatedAt:now },
     ],
   });
 
@@ -184,35 +186,35 @@
      v.018：ショットページ動画ブロックは「フレーム付きコメント」しか表示しないので、
      v1 のレビュー時指摘には必ず `frame` を入れる。
      v2 のアップロード時メッセージは shotNode.comments + v.uploadCommentId で接続する。 */
-  /* v2Upload.author は呼び出し時に sh.worker（アップロード者）を渡す（uploadedBy と一致させる）。
-     v1Frames / v2Frames の author はレビュワー寄りに固定（監督・制作がフィードバックするロール分担）。 */
+  /* v.023：ロードムービー（road trip）テーマに合わせたコメントに書き換え。
+     車・道路・景色についてのディレクションを工程別に用意。 */
   const commentTemplates = {
     'レイアウト': {
       v1Frames: [
-        { frame:14, author:'山田監督', text:'構図 OK ですが、キャラの右側にもう少し空間欲しいです' },
-        { frame:38, author:'山田監督', text:'ここで一度カメラを引きにしませんか' },
-        { frame:62, author:'佐藤制作', text:'タイミングよさそう。この引きで続けてください' },
+        { frame:12, author:'山田監督', text:'引きの構図、もう少し手前で止めてください（画面から車が離れすぎ）' },
+        { frame:34, author:'山田監督', text:'このカーブ、カメラのパンがもう少しゆっくりだと情緒が出ます' },
+        { frame:58, author:'佐藤制作', text:'引きの間合いは良さそう。この構図で続けてください' },
       ],
-      v2UploadText: '空間と引きの指摘を反映しました。確認お願いします 🙏',
-      v2Frames:   [ { frame:22, author:'山田監督', text:'構図直り良くなりました！👍' } ],
+      v2UploadText: '引きとパンのタイミング指摘を反映しました 🙏',
+      v2Frames:   [ { frame:20, author:'山田監督', text:'構図 OK です！引きも効いてます 👍' } ],
     },
     '動画': {
       v1Frames: [
-        { frame:10, author:'山田監督', text:'振り返りのタイミング、もう少し溜めてください' },
-        { frame:28, author:'山田監督', text:'目線の動き、ここで一瞬止めると良さそう' },
-        { frame:52, author:'佐藤制作', text:'全体の流れ良いです。あとは尺調整だけ' },
+        { frame:10, author:'山田監督', text:'車の走り、もう少し溜めてから加速させてください' },
+        { frame:28, author:'山田監督', text:'ここでカットの繋ぎを一瞬止める「間」が欲しい' },
+        { frame:52, author:'佐藤制作', text:'全体の流れは良いです。あとは尺のバランス調整だけ' },
       ],
-      v2UploadText: 'タイミング・目線の指摘を反映しました！',
-      v2Frames:   [ { frame:15, author:'山田監督', text:'溜め OK です。コンテ通りで仕上げへ 🎬' } ],
+      v2UploadText: '走り出しのタメ・カット繋ぎを調整しました！',
+      v2Frames:   [ { frame:16, author:'山田監督', text:'タメ良くなりました。コンテ通りで仕上げへ 🎬' } ],
     },
     '仕上げ': {
       v1Frames: [
-        { frame:8,  author:'山田監督', text:'影の濃さ 10% くらい薄くできますか' },
-        { frame:34, author:'山田監督', text:'ここのハイライト、もう一段入れてほしい' },
-        { frame:70, author:'佐藤制作', text:'全体の色調 OK です' },
+        { frame:8,  author:'山田監督', text:'空の夕焼け、もう少しオレンジ寄せでお願いします' },
+        { frame:34, author:'山田監督', text:'道路の反射光、もう一段強めると画面が締まります' },
+        { frame:70, author:'佐藤制作', text:'全体の色調は OK です' },
       ],
-      v2UploadText: '影の濃度調整＋ハイライト追加しました。色味最終確認お願いします',
-      v2Frames:   [ { frame:45, author:'山田監督', text:'色味 OK。完パケへ進めてください ✨' } ],
+      v2UploadText: '夕焼けの色味＋反射光を強化しました。最終確認お願いします',
+      v2Frames:   [ { frame:48, author:'山田監督', text:'色味 OK です！完パケへ進めてください ✨' } ],
     },
   };
 
@@ -392,8 +394,89 @@
     }
   }catch(e){ console.warn('ref items inject error:', e); }
 
+  /* v.024：デモ REEL を 1 つ追加（intro.html から ?page=reel で呼ばれると自動オープン）。
+     現工程 review の最新版 (v2) を全ショット分集めてクリップ化。omit ショット（versions なし）はスキップ。 */
+  try{
+    DB.reels = DB.reels || [];
+    const reelClips = [];
+    for(const node of DB.nodes){
+      if(!String(node.id||'').startsWith('nd_demo_')) continue;
+      if(node.type !== 'review') continue;
+      const vs = node.versions || [];
+      if(!vs.length) continue;
+      /* 最新 version を 1 本選ぶ */
+      const v = vs[vs.length-1];
+      reelClips.push({ nodeId: node.id, vId: v.id });
+    }
+    if(reelClips.length){
+      DB.reels.push({
+        id: 'rl_demo_main',
+        projectId: rootId,
+        name: 'DEMO ロードムービー 試写用 REEL',
+        clips: reelClips,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }catch(e){ console.warn('demo reel inject failed', e); }
+
   state.currentId = rootId;
   try { render(); } catch(e) { console.warn('render error:', e); }
   console.log('[LayCAT demo] injected', shotCount, 'shots across', structure.length, 'episodes.');
+
+  /* v.024：動画サンプルの先頭付近をキャンバスで切り出してポスター JPEG を生成し、
+     ショットカード・資料タブの `<img>` サムネ（gal_*.png アニメ画像）を差し替える。
+     動画と無関係なアニメ画像が並んでいるとテーマ不整合に見えるので、動画自身の
+     1 フレームをポスターにして視覚的に揃える。 */
+  function _makeVideoPoster(movUrl){
+    return new Promise(res=>{
+      try{
+        const v=document.createElement('video');
+        v.muted=true; v.playsInline=true; v.crossOrigin='anonymous';
+        v.preload='auto';
+        let done=false; const finish=(url)=>{ if(done)return; done=true; try{v.remove();}catch(_){} res(url); };
+        v.addEventListener('loadeddata',()=>{ try{ v.currentTime = Math.min(1,(v.duration||4)/4); }catch(_){ finish(null); } });
+        v.addEventListener('seeked',()=>{
+          try{
+            const c=document.createElement('canvas');
+            c.width = v.videoWidth||480; c.height = v.videoHeight||270;
+            c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+            finish(c.toDataURL('image/jpeg',0.72));
+          }catch(e){ finish(null); }
+        });
+        v.addEventListener('error',()=>finish(null));
+        setTimeout(()=>finish(null), 8000);
+        v.src = movUrl; v.load();
+      }catch(e){ res(null); }
+    });
+  }
+  (async ()=>{
+    try{
+      await Promise.all(movUrls.map(async url=>{
+        const posterKey = 'demo:poster:'+url;
+        const dataUrl = await _makeVideoPoster(url);
+        if(!dataUrl) return;
+        try{ storage.urlCache.set(posterKey, dataUrl); }catch(_){}
+        /* v.thumb を動画ポスターに差し替え（v.file と同じ URL のバージョンに適用） */
+        for(const node of DB.nodes){
+          if(!String(node.id||'').startsWith('nd_demo_')) continue;
+          for(const vv of (node.versions||[])){
+            if(vv && vv.file === url) vv.thumb = posterKey;
+          }
+        }
+        /* アセットの thumb も動画 URL なら posterKey に差し替え */
+        try{
+          const rootNode = getNode(rootId);
+          if(rootNode && Array.isArray(rootNode.assets)){
+            for(const a of rootNode.assets){
+              if(a && a.thumb === url) a.thumb = posterKey;
+            }
+          }
+        }catch(_){}
+      }));
+      try{ render(); resolveThumbs(); }catch(_){}
+    }catch(e){ console.warn('demo poster gen failed', e); }
+  })();
+
   return 'OK: '+shotCount+' shots';
 })();

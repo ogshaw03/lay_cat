@@ -4329,7 +4329,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.15.023';
+const APP_VERSION='2026.10.15.024';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -21983,6 +21983,45 @@ async function startAppFlow(){
         for(const x of pathOf(rootId)) state.expanded.add(x.id);
       }
       render();resolveThumbs();
+      /* v.024：?page=reel / リール / reels なら、デモ REEL を自動オープン */
+      if(DEMO_PAGE === 'reel' || DEMO_PAGE === 'reels' || DEMO_PAGE === 'リール'){
+        try{
+          setTimeout(()=>{
+            try{
+              if(typeof openReelFromSaved === 'function'){
+                openReelFromSaved('rl_demo_main');
+              }
+            }catch(e){ console.warn('demo auto-reel failed', e); }
+          }, 400);
+        }catch(_){}
+      }
+      /* v.024：?page=timeremap なら、現在ショットの最新版でタイムリマップ・ビューアを自動オープン */
+      if(DEMO_PAGE === 'timeremap' || DEMO_PAGE === 'retime' || DEMO_PAGE === 'タイムリマップ'){
+        try{
+          setTimeout(()=>{
+            try{
+              const n = getNode(state.currentId);
+              if(!n) return;
+              /* review ノードならその最新 version、shot ノードなら現工程 review の最新 version */
+              let targetNode = n, targetVer = null;
+              if(n.type === 'review'){
+                const vs = n.versions || [];
+                targetVer = vs[vs.length-1] || null;
+              }else if(n.kind === 'shot'){
+                const stageName = n.currentStage;
+                const rev = (DB.nodes||[]).find(x=>x.parentId===n.id && x.type==='review' && x.name===stageName);
+                if(rev){
+                  targetNode = rev;
+                  const vs = rev.versions || [];
+                  targetVer = vs[vs.length-1] || null;
+                }
+              }
+              if(targetVer && typeof openRetimer === 'function') openRetimer(targetNode, targetVer);
+              else toast && toast('タイムリマップ対象の版が見つかりませんでした');
+            }catch(e){console.warn('demo auto-retime failed',e)}
+          }, 300);
+        }catch(_){}
+      }
     }catch(e){console.warn('demo nav failed',e)}
     /* デモバナー表示 */
     _showDemoBanner();
