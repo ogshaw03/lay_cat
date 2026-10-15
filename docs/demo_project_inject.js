@@ -45,6 +45,8 @@
   // 注意：root.stages は **文字列配列** が正。openAddModal の工程編集 UI は
   //       `inp.value = nm` で表示するため、オブジェクト配列を入れると [object Object] と表示される。
   //       色は root.stageColors（{name: color}）に別途保存される。
+  // v.019：メンバー構造を本番準拠に（m.id=メール／m.name／m.roles[]／m.color）。
+  //       assignee / reviewer はこの m.id を参照する。
   DB.nodes.push({
     id: rootId, parentId: null, name: 'DEMO_プロジェクト', type: 'section',
     description: '取説用のサンプルプロジェクト', thumbnail: null, createdAt: now, versions: [],
@@ -53,13 +55,42 @@
       { id:'tpl_default', name:'テンプレートA', stages:['レイアウト','動画','仕上げ'] },
     ],
     stageColors: { 'レイアウト':'#5A9BFF', '動画':'#5CB878', '仕上げ':'#F2986B' },
+    /* v.019：プロジェクトタグのサンプル。追加モーダルや shot のタグ付けに表示される。 */
+    tags: [
+      { id:'tag_main',   name:'メイン', createdAt: now },
+      { id:'tag_sub',    name:'サブ',   createdAt: now },
+      { id:'tag_action', name:'アクション', createdAt: now },
+      { id:'tag_emote',  name:'感情表現', createdAt: now },
+    ],
     members: [
-      { email:'director@example.com', name:'山田監督', role:'director' },
-      { email:'pm@example.com',       name:'佐藤制作', role:'pm' },
-      { email:'anim@example.com',     name:'鈴木作画', role:'animator' },
-      { email:'paint@example.com',    name:'田中仕上', role:'paint' },
+      { id:'director@example.com', name:'山田監督', roles:['監督'],  color:'#F2986B' },
+      { id:'pm@example.com',       name:'佐藤制作', roles:['制作'],  color:'#A56BF0' },
+      { id:'anim@example.com',     name:'鈴木作画', roles:['作画'],  color:'#5CB878' },
+      { id:'paint@example.com',    name:'田中仕上', roles:['仕上げ'],color:'#5A9BFF' },
+    ],
+    /* 統一ステータス定義（進捗タブや PMB と形式を揃える） */
+    statuses: [
+      { id:'pending',  label:'チェック待ち', checkWait:true },
+      { id:'approved', label:'OK' },
+      { id:'retake',   label:'リテイク' },
+      { id:'done',     label:'完了' },
+      { id:'omit',     label:'オミット' },
     ],
   });
+
+  /* メンバー検索用マッピング（name → email） */
+  const memberEmailByName = {
+    '山田監督': 'director@example.com',
+    '佐藤制作': 'pm@example.com',
+    '鈴木作画': 'anim@example.com',
+    '田中仕上': 'paint@example.com',
+  };
+  /* 工程ごとに適切な作業担当を自動選択 */
+  const workerByStage = {
+    'レイアウト': 'anim@example.com',  /* 作画が LO 兼任 */
+    '動画':       'anim@example.com',
+    '仕上げ':     'paint@example.com',
+  };
 
   // ===== エピソード × シーケンス =====
   // 注意：shot.currentStage は stage の **label**（名前）を入れること。
@@ -113,6 +144,8 @@
      v.018：ショットページ動画ブロックは「フレーム付きコメント」しか表示しないので、
      v1 のレビュー時指摘には必ず `frame` を入れる。
      v2 のアップロード時メッセージは shotNode.comments + v.uploadCommentId で接続する。 */
+  /* v2Upload.author は呼び出し時に sh.worker（アップロード者）を渡す（uploadedBy と一致させる）。
+     v1Frames / v2Frames の author はレビュワー寄りに固定（監督・制作がフィードバックするロール分担）。 */
   const commentTemplates = {
     'レイアウト': {
       v1Frames: [
@@ -120,7 +153,7 @@
         { frame:38, author:'山田監督', text:'ここで一度カメラを引きにしませんか' },
         { frame:62, author:'佐藤制作', text:'タイミングよさそう。この引きで続けてください' },
       ],
-      v2Upload:   { author:'鈴木作画', text:'空間と引きの指摘を反映しました。確認お願いします 🙏' },
+      v2UploadText: '空間と引きの指摘を反映しました。確認お願いします 🙏',
       v2Frames:   [ { frame:22, author:'山田監督', text:'構図直り良くなりました！👍' } ],
     },
     '動画': {
@@ -129,7 +162,7 @@
         { frame:28, author:'山田監督', text:'目線の動き、ここで一瞬止めると良さそう' },
         { frame:52, author:'佐藤制作', text:'全体の流れ良いです。あとは尺調整だけ' },
       ],
-      v2Upload:   { author:'鈴木作画', text:'タイミング・目線の指摘を反映しました！' },
+      v2UploadText: 'タイミング・目線の指摘を反映しました！',
       v2Frames:   [ { frame:15, author:'山田監督', text:'溜め OK です。コンテ通りで仕上げへ 🎬' } ],
     },
     '仕上げ': {
@@ -138,7 +171,7 @@
         { frame:34, author:'山田監督', text:'ここのハイライト、もう一段入れてほしい' },
         { frame:70, author:'佐藤制作', text:'全体の色調 OK です' },
       ],
-      v2Upload:   { author:'田中仕上', text:'影の濃度調整＋ハイライト追加しました。色味最終確認お願いします' },
+      v2UploadText: '影の濃度調整＋ハイライト追加しました。色味最終確認お願いします',
       v2Frames:   [ { frame:45, author:'山田監督', text:'色味 OK。完パケへ進めてください ✨' } ],
     },
   };
@@ -156,20 +189,44 @@
       });
       for (const sh of sq.shots) {
         const shId = 'nd_demo_' + sh.nm;
+        /* v.019：assignedWorker/Checker → assignee/reviewer に変更。値は member.id (= メール)。
+           name 文字列が入っていた旧形式では taskAssignBadges の memberById 検索で解決できなかった。 */
+        /* v.019：工程に応じた担当者を自動選択。sh.worker（旧式 name 文字列）は無視。
+           - LO/動画 → 鈴木作画（anim）
+           - 仕上げ → 田中仕上（paint）
+           omit shots（sh.worker='-'）は assignee を null に。 */
+        const workerEmail = sh.worker === '-' ? null : (workerByStage[sh.stage] || null);
+        const workerName  = sh.worker === '-' ? '-' : (
+          Object.keys(memberEmailByName).find(n => memberEmailByName[n] === workerEmail) || sh.worker
+        );
+        const assignee = workerEmail;
+        const reviewer = memberEmailByName['山田監督'];
+        /* v.019：ショットにタグを付与。ショット番号で疑似ランダムに割り当て。 */
+        const tagPool = ['tag_main','tag_sub','tag_action','tag_emote'];
+        const tagIdx = (shotCount * 7 + 3) % tagPool.length;
+        const shotTags = [tagPool[tagIdx]];
+        if(shotCount % 3 === 0) shotTags.push(tagPool[(tagIdx+1) % tagPool.length]);
         DB.nodes.push({
           id: shId, parentId: sqId, name: sh.nm, type: 'section', kind: 'shot',
           currentStage: sh.stage, status: sh.status, createdAt: now, versions: [],
-          assignedWorker: sh.worker, assignedChecker: '山田監督',
+          assignee, reviewer, tags: shotTags,
         });
         // _isShotLikeNode 判定を通すため review 子ノードを追加（stage 分）。
         // 進捗タブは「現工程 review ノードの status」を見るので、現工程の review ノードに
         // ショットの status を伝搬しておく。他工程 review の status は未着手扱いになる。
         for (const st of reviewStages) {
           const isCurrent = (st.label === sh.stage);
+          /* v.019：各 review node にも assignee/reviewer を設定（工程により作業担当が変わるため工程別）。
+             - 現工程の review の assignee はショットの担当（既に代入済み）
+             - 他工程の review はその工程の典型的な担当者 */
+          const reviewAssignee = workerByStage[st.label] || null;
+          const reviewReviewer = memberEmailByName['山田監督'];
           const reviewNode = {
             id: shId + '_r_' + st.id, parentId: shId, name: st.label,
             type: 'review', createdAt: now, versions: [],
             status: isCurrent ? sh.status : undefined,
+            assignee: reviewAssignee,
+            reviewer: reviewReviewer,
           };
           /* v.017：現工程 review にサンプル版を 2 つ入れる（全 18 ショット対象）。
              - type:'video' で `latestVideoVersionUnder` が拾い、ショットカードにサムネが出る
@@ -196,15 +253,15 @@
             }));
             /* v2 のアップロード時メッセージ：
                review node の comments に書いて、version.uploadCommentId で参照する。
-               （_uploadCommentBlock は版の親ノード＝ review node の comments を見る） */
+               author は workerName（uploadedBy と一致）。 */
             let uploadCommentId = null;
-            if(tmpl && tmpl.v2Upload){
+            if(tmpl && tmpl.v2UploadText){
               uploadCommentId = 'cm_'+shId+'_'+st.id+'_v2upload';
               reviewNode.comments = reviewNode.comments || [];
               reviewNode.comments.push({
                 id: uploadCommentId,
-                author: tmpl.v2Upload.author,
-                text: tmpl.v2Upload.text,
+                author: workerName,
+                text: tmpl.v2UploadText,
                 time: t2,
                 stage: st.label,
                 kind: 'upload',
@@ -212,10 +269,10 @@
             }
             reviewNode.versions = [
               { id:'ver_'+shId+'_v1', name:'v1', type:'video', file:ref1, thumb:ref1,
-                uploadedBy:sh.worker, uploadedAt:t1, stage:st.label,
+                uploadedBy:workerName, uploadedAt:t1, stage:st.label,
                 review:{status:'retake', notes:v1Notes} },
               { id:'ver_'+shId+'_v2', name:'v2', type:'video', file:ref2, thumb:ref2,
-                uploadedBy:sh.worker, uploadedAt:t2, stage:st.label,
+                uploadedBy:workerName, uploadedAt:t2, stage:st.label,
                 uploadCommentId: uploadCommentId,
                 review:{status: sh.status==='approved'?'approved':(sh.status==='retake'?'retake':'pending'), notes:v2Notes} },
             ];

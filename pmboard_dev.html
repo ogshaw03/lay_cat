@@ -763,7 +763,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.15.083';
+const APP_VERSION='2026.10.15.084';
 /* v.082：デモモード（?demo=1） — LayCAT と同じ URL パラメータで PMB も試用可能に。
    ?tab=<X> で初期タブ（gantt / efforts / reference 等）に遷移。 */
 const DEMO_MODE = (()=>{try{return new URLSearchParams(location.search).get('demo')==='1'}catch(_){return false}})();
@@ -1157,12 +1157,19 @@ const storage = {
       stageColors: { 'レイアウト':'#5A9BFF', '動画':'#5CB878', '仕上げ':'#F2986B' },
       statuses: projStatuses,
       members: [
-        { id:'director@example.com', name:'山田監督', roles:['director'] },
-        { id:'pm@example.com',       name:'佐藤制作', roles:['pm'] },
-        { id:'anim@example.com',     name:'鈴木作画', roles:['animator'] },
-        { id:'paint@example.com',    name:'田中仕上', roles:['paint'] },
+        { id:'director@example.com', name:'山田監督', roles:['監督'],  color:'#F2986B' },
+        { id:'pm@example.com',       name:'佐藤制作', roles:['制作'],  color:'#A56BF0' },
+        { id:'anim@example.com',     name:'鈴木作画', roles:['作画'],  color:'#5CB878' },
+        { id:'paint@example.com',    name:'田中仕上', roles:['仕上げ'],color:'#5A9BFF' },
       ],
     });
+    /* v.083：PMB も LayCAT と同じく assignee/reviewer を email で持たせる。 */
+    const workerByStage = {
+      'レイアウト': 'anim@example.com',
+      '動画':       'anim@example.com',
+      '仕上げ':     'paint@example.com',
+    };
+    const reviewerEmail = 'director@example.com';
     let shotIdx = 0;
     for(const ep of structure){
       const epId = 'nd_demo_' + ep.ep.toLowerCase();
@@ -1172,6 +1179,7 @@ const storage = {
         nodes.push({ id: sqId, parentId: epId, name: sq.sq, type: 'section', createdAt: now, versions: [] });
         for(const sh of sq.shots){
           const shId = 'nd_demo_' + sh.nm;
+          const shotAssignee = (sh.worker === '-') ? null : (workerByStage[sh.stage] || null);
           /* 骨格：shot section（旧モデル shot = type:section で子が全部 review）として PMB が
              認識できるよう、review 子ノードも project.json 骨格に含める。
              shots/<sid>.json にも同じ構造を入れて PMB の両方のパスで取れるように。 */
@@ -1179,7 +1187,7 @@ const storage = {
             id: shId, parentId: sqId, name: sh.nm, type: 'section',
             currentStage: sh.stage, status: sh.status,
             createdAt: now, versions: [],
-            assignedWorker: sh.worker, assignedChecker: '山田監督',
+            assignee: shotAssignee, reviewer: reviewerEmail,
           };
           nodes.push(shotNode);
           shotIds.push(shId);
@@ -1187,6 +1195,8 @@ const storage = {
             id: shId + '_r_' + st.id, parentId: shId, name: st.label,
             type: 'review', createdAt: now, versions: [],
             status: (st.label === sh.stage) ? sh.status : undefined,
+            assignee: workerByStage[st.label] || null,
+            reviewer: reviewerEmail,
           }));
           /* 骨格にも review 子を push（PMB の isLegacyShot 判定が allNodes を見るため） */
           for(const r of reviewNodes) nodes.push(r);
