@@ -4329,7 +4329,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.15.025';
+const APP_VERSION='2026.10.19.027';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4384,6 +4384,36 @@ const currentUser=()=>authUser?authUser.name:(($('#currentUser').value||'').trim
   setInterval(push,3000);
 })();
 function toast(m){const t=el('div','toast',m);document.body.appendChild(t);setTimeout(()=>t.remove(),2400)}
+/* v.026：全画面フルスクリーンのビジーオーバーレイ。
+   プロジェクト新規作成・参加・接続のような「数秒かかる非同期処理中に UI が固まって見える」場面で表示する。
+   同時呼び出しに備えて id 一意化はせず、既にあるものを上書きで表示切替。showBusy の戻り値を hideBusy
+   に渡さずとも、hideBusy() 単独でクリーンアップ可能。 */
+function showBusy(message){
+  try{
+    let ov=document.getElementById('busyOverlay');
+    if(!ov){
+      ov=document.createElement('div');
+      ov.id='busyOverlay';
+      ov.style.cssText='position:fixed;inset:0;z-index:10000;background:rgba(10,10,14,.62);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;pointer-events:auto;user-select:none;transition:opacity .18s ease';
+      ov.innerHTML='<div style="width:46px;height:46px;border-radius:50%;border:3px solid rgba(242,152,107,.25);border-top-color:#F2986B;animation:busySpin 0.9s linear infinite"></div>'
+                 +'<div id="busyMsg" style="font-family:var(--font-head);font-weight:700;font-size:15px;color:#eeeef2;letter-spacing:.5px;text-shadow:0 1px 2px rgba(0,0,0,.4)"></div>'
+                 +'<style>@keyframes busySpin{to{transform:rotate(360deg)}}</style>';
+      document.body.appendChild(ov);
+    }
+    const msgEl=ov.querySelector('#busyMsg');
+    if(msgEl)msgEl.textContent=message||'処理中…';
+    ov.style.opacity='1';
+    ov.style.display='flex';
+  }catch(_){}
+}
+function hideBusy(){
+  try{
+    const ov=document.getElementById('busyOverlay');
+    if(!ov)return;
+    ov.style.opacity='0';
+    setTimeout(()=>{try{ov.remove()}catch(_){}},200);
+  }catch(_){}
+}
 /* 任意の document／window に対してトーストを表示。REEL ポップアップから呼ぶ場合に使用。 */
 function toastIn(targetDoc,m,ms){
   try{
@@ -5691,6 +5721,9 @@ async function connectProjectFlow(){
   if(!storage.supportsFolder()){toast('このブラウザはフォルダ接続に未対応です（Chrome / Edge 推奨）');return}
   let handle;
   try{handle=await window.showDirectoryPicker({mode:'readwrite'})}catch(e){if(e&&e.name!=='AbortError')toast(pickerFailMsg(e));return}
+  /* v.026：フォルダ選択後の読み込み・パース・ノード注入・persist は数秒かかる。ビジーオーバーレイで進行中を可視化。 */
+  showBusy('プロジェクトに参加中…');
+  try{
   let data=null;
   try{data=await storage._readProjFile(handle)}catch(e){data=null}
   if(!data||!data.id||(!Array.isArray(data.nodes)&&!data.enc)){
@@ -5770,6 +5803,8 @@ async function connectProjectFlow(){
   }catch(_){}
   toast('プロジェクト「'+((root&&root.name)||data.name)+'」を接続しました'+(_abs.merged?'（競合コピー'+_abs.count+'件を統合して復旧）':''));
   go(data.id);
+  }catch(e){toast('プロジェクト参加に失敗しました：'+String(e&&e.message||e));}
+  finally{hideBusy();}
 }
 /* DB を辿らずに rootOf の id を返す簡易版（接続処理中の一時判定用） */
 function rootOfId(node){let n=node;while(n&&n.parentId){const p=getNode(n.parentId);if(!p)break;n=p}return n?n.id:null}
@@ -12490,6 +12525,10 @@ function openProjectModal(){
         const ep=(r2In.value||'').trim();
         storage._r2.setEndpoint(ep);
       }
+      /* v.026：R2 新規作成は tid 解決・_access.json PUT・laycat.project.json PUT・persist などで
+         数秒かかる。ユーザー目線で UI が固まって見えるため、ビジーオーバーレイで進行中を可視化。 */
+      showBusy(backend==='r2'?'プロジェクトを作成中…（R2 へ初期保存）':'プロジェクトを作成中…');
+      try{
       const id=addNode(null,name,descRow.f.value.trim(),'section');
       /* 作成者を owner ＆ 最初のメンバーとして自動登録（backend 問わず）。
          担当割り当て・＠メンションは members 名簿を元に動くので、自分が最初から入っていないと
@@ -12513,7 +12552,7 @@ function openProjectModal(){
         const _me=(authUser&&authUser.email)||'';
         let _tid=null;
         try{ _tid = await storage._r2.resolveTidForNewProject(_me); }catch(_){}
-        if(!_tid){toast('tid を解決できませんでした（Firebase ログインが必要です）');return}
+        if(!_tid){hideBusy();toast('tid を解決できませんでした（Firebase ログインが必要です）');return}
         storage.setBackendR2(id,_tid);
         /* R2 プロジェクト：_access.json を先に PUT する
            （Worker のブートストラップ判定を通すため、laycat.project.json の PUT より前に実行） */
@@ -12532,6 +12571,7 @@ function openProjectModal(){
       }
       if(thumbUrl){try{URL.revokeObjectURL(thumbUrl)}catch(_){}}
       await persist();closeModal();go(id);resolveThumbs();
+      hideBusy();
       /* 作成直後：メンバー登録を先に済ませるよう促す。文面は短く、参加不可の旨を明示。 */
       setTimeout(()=>{
         const root=getNode(id);if(!root)return;
@@ -12551,6 +12591,7 @@ function openProjectModal(){
           mFoot(body,[skip,openBtn]);
         });
       },350);
+      }catch(e){hideBusy();toast('プロジェクト作成に失敗しました：'+String(e&&e.message||e));}
     };
     mFoot(body,[cancel,save]);
   });
@@ -12567,6 +12608,8 @@ async function connectR2ProjectById(pid,tid){
      接続モーダル側の listMyProjects で既に rememberTid 済みのはずなので通常は解決できる。 */
   const resolvedTid=tid||storage._r2._resolveTid(pid);
   if(!resolvedTid){toast('tid を解決できませんでした（プロジェクト一覧の読み込みに失敗？）');return false}
+  /* v.026：R2 参加は access/project 読込・reels 取得・baseline 作成で数秒かかる。ビジーオーバーレイ表示。 */
+  showBusy('R2 プロジェクトに参加中…');
   /* 暫定 REG エントリ：_backend(pid) を r2 と判定させるため。tid も同時に記録。 */
   REG.push({id:pid,name:'(loading)',folderName:null,backend:'r2',tid:resolvedTid});
   storage._r2.rememberTid(pid,resolvedTid);
@@ -12604,6 +12647,8 @@ async function connectR2ProjectById(pid,tid){
     REG=REG.filter(e=>e.id!==pid);
     toast('接続に失敗しました：'+String(e&&e.message||e));
     return false;
+  }finally{
+    hideBusy();
   }
 }
 /* 統合された「プロジェクトに接続」モーダル。
@@ -13247,8 +13292,17 @@ function openRename(node){
           const clCb=el('input');clCb.type='checkbox';clCb.checked=(st2.clientWait===true);clCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
           clCb.onchange=()=>{st2.clientWait=clCb.checked};
           clLabel.appendChild(clCb);clLabel.appendChild(document.createTextNode('クライアント待ち'));
+          /* v.027：順番の入れ替え（↑／↓）。先頭ステータスがショット追加時の既定値になる・
+             並び順はレビュー画面の判定ボタン・進捗ダッシュボードにそのまま反映されるので、
+             並び替え手段が必要。先頭／末尾は disabled。 */
+          const upBtn=el('button','btn btn-ghost btn-sm','↑');upBtn.type='button';upBtn.title='上に移動';
+          upBtn.disabled=(i===0);
+          upBtn.onclick=()=>{if(i<=0)return;const t=stArr[i-1];stArr[i-1]=stArr[i];stArr[i]=t;redrawSt();};
+          const downBtn=el('button','btn btn-ghost btn-sm','↓');downBtn.type='button';downBtn.title='下に移動';
+          downBtn.disabled=(i===stArr.length-1);
+          downBtn.onclick=()=>{if(i>=stArr.length-1)return;const t=stArr[i+1];stArr[i+1]=stArr[i];stArr[i]=t;redrawSt();};
           const del=el('button','btn btn-danger btn-sm','削除');del.onclick=()=>{stArr.splice(i,1);redrawSt()};
-          row.appendChild(color);row.appendChild(nm);row.appendChild(cwLabel);row.appendChild(clLabel);row.appendChild(del);stWrap.appendChild(row);
+          row.appendChild(color);row.appendChild(nm);row.appendChild(cwLabel);row.appendChild(clLabel);row.appendChild(upBtn);row.appendChild(downBtn);row.appendChild(del);stWrap.appendChild(row);
         });
       };
       redrawSt();
@@ -14372,6 +14426,78 @@ function openMembersWindow(root){
   phBox.appendChild(ce('div','muted','参加側はピッカーで自分で選び直す必要がありますが、このメモが「どこを探せばいいか」の目印になります。ブラウザ API の制約でフルパスは自動取得できないため手入力です。'));
   wrap.appendChild(phBox);
   const tbl=ce('table');wrap.appendChild(tbl);
+
+  /* v.027：R2 マルチテナントプロジェクトでは、同テナント所属メンバー一覧から選択して追加できる。
+     Firestore `tenants/{tid}/members` を取得し、まだメンバー表に居ない人だけをタイル表示。
+     「＋ 追加」で `work` 配列に push → 既存 UI の保存フローで永続化。
+     tid が無い（NAS フォルダプロジェクト）場合はこのセクションを表示しない。 */
+  const tenantWrap=ce('div');tenantWrap.style.cssText='margin-top:20px;padding-top:16px;border-top:1px solid #23232a';
+  const tnHead=ce('div',null,'🏢 テナント所属メンバーから追加');tnHead.style.cssText='font-size:13px;font-weight:700;color:#e8e8ec;margin-bottom:6px';
+  tenantWrap.appendChild(tnHead);
+  const tnMuted=ce('div','muted','同じテナントに所属しているメンバーを一覧表示します。「＋ 追加」ボタンでこのプロジェクトのメンバー表に追加できます（まだ「保存」は実行されません）。');
+  tenantWrap.appendChild(tnMuted);
+  const tnList=ce('div');tnList.style.cssText='display:flex;flex-direction:column;gap:6px';
+  tenantWrap.appendChild(tnList);
+  wrap.appendChild(tenantWrap);
+
+  async function _refreshTenantMembers(){
+    tnList.innerHTML='';
+    /* tid 解決：root.tid が最も確実、無ければ _r2._resolveTid で補完 */
+    const tid=(root&&root.tid)||((storage&&storage._r2&&storage._r2._resolveTid)?storage._r2._resolveTid(root.id):null);
+    if(!tid){
+      tenantWrap.style.display='none';
+      return;
+    }
+    if(!window.__laynaFB || !window.__laynaFB.loadTenantMembers){
+      const em=ce('div','muted','（Firebase 未初期化のため利用できません）');tnList.appendChild(em);return;
+    }
+    const loading=ce('div','muted','読み込み中…');tnList.appendChild(loading);
+    let tenantMembers=null;
+    try{ tenantMembers=await window.__laynaFB.loadTenantMembers(tid); }catch(_){}
+    loading.remove();
+    if(!tenantMembers){
+      const em=ce('div','muted','（テナントメンバー一覧の取得に失敗しました）');tnList.appendChild(em);return;
+    }
+    /* 既にプロジェクトメンバー表に居る人を除外（work の id と重複チェック） */
+    const existing=new Set(work.map(m=>String(m.id||'').toLowerCase()));
+    const candidates=tenantMembers.filter(tm=>{
+      const em=String(tm.email||'').toLowerCase();
+      return em && !existing.has(em);
+    });
+    if(!candidates.length){
+      const em=ce('div','muted','（追加可能なメンバーがいません。全員すでにメンバー表に居ます）');tnList.appendChild(em);return;
+    }
+    for(const tm of candidates){
+      const row=ce('div');row.style.cssText='display:flex;align-items:center;gap:10px;padding:7px 10px;background:#15151a;border:1px solid #2a2a2f;border-radius:7px';
+      const info=ce('div');info.style.cssText='flex:1 1 auto;display:flex;flex-direction:column;gap:2px;min-width:0';
+      const nm=ce('div',null,String(tm.name||tm.email||'(名前なし)'));nm.style.cssText='font-size:12px;color:#e8e8ec;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      const em=ce('div',null,String(tm.email||''));em.style.cssText='font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11px;color:#8a8a99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      info.appendChild(nm);info.appendChild(em);
+      row.appendChild(info);
+      if(tm.role){
+        const rb=ce('span',null,String(tm.role));rb.style.cssText='padding:2px 8px;background:rgba(90,155,255,.15);border:1px solid rgba(90,155,255,.4);color:#5A9BFF;border-radius:999px;font-size:10px;flex:0 0 auto';
+        row.appendChild(rb);
+      }
+      const addRow=ce('button','btn primary','＋ 追加');addRow.style.cssText='flex:0 0 auto;padding:5px 12px;font-size:11px;border-radius:5px;cursor:pointer';
+      addRow.onclick=()=>{
+        /* 重複ガード（連打対策） */
+        const emailLc=String(tm.email||'').toLowerCase();
+        if(work.some(m=>String(m.id||'').toLowerCase()===emailLc))return;
+        work.push({
+          id: tm.email||'',
+          name: tm.name||tm.email||'',
+          roles: tm.role||'',
+          color: '#4da6ff',
+          active: true,
+        });
+        redraw();
+        _refreshTenantMembers(); /* 候補一覧を更新（追加済みを除外） */
+      };
+      row.appendChild(addRow);
+      tnList.appendChild(row);
+    }
+  }
+  _refreshTenantMembers();
 
   /* v.134：未受理招待の可視化（Phase 3 #1）。
      自分が発行した招待のうち、相手がまだログインしていないもの一覧。失効も表示。
