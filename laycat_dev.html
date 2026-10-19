@@ -4329,7 +4329,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.19.028';
+const APP_VERSION='2026.10.19.029';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14465,7 +14465,12 @@ function openMembersWindow(root){
     if(!window.__laynaFB || !window.__laynaFB.loadTenantMembers){
       const em=ce('div','muted','（Firebase 未初期化のため利用できません）');tnList.appendChild(em);return;
     }
-    const loading=ce('div','muted','読み込み中…（tid: '+tid+' / 出所: '+tidSource+'）');tnList.appendChild(loading);
+    /* v.029：tid の出所バッジを完了後も常時表示（読み込みが一瞬で終わると「読み込み中…」が
+       見えないため、どの経路で tid が解決されたか残しておく。 */
+    const tidBadge=ce('div','muted','tid: '+tid+' / 出所: '+tidSource);
+    tidBadge.style.cssText='font-size:10px;color:#6a6a79;margin:4px 0 8px;font-family:ui-monospace,"SF Mono",Menlo,monospace;word-break:break-all';
+    tnList.appendChild(tidBadge);
+    const loading=ce('div','muted','読み込み中…');tnList.appendChild(loading);
     let tenantMembers=null;
     let loadErr=null;
     try{ tenantMembers=await window.__laynaFB.loadTenantMembers(tid); }catch(e){ loadErr=e; }
