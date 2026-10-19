@@ -2325,43 +2325,185 @@ const storage={
     endpoint(){try{const u=this._norm(localStorage.getItem('laycat_r2_endpoint')||'');return u||this._default||null}catch(_){return this._default||null}},
     setEndpoint(url){try{const u=this._norm(url);if(u&&u!==this._default)localStorage.setItem('laycat_r2_endpoint',u);else localStorage.removeItem('laycat_r2_endpoint')}catch(_){}},
     async _token(){try{return (window.__laynaFB&&window.__laynaFB.getIdToken)?await window.__laynaFB.getIdToken():null}catch(_){return null}},
-    async _fetch(method,path,body,contentType){
-      const ep=this.endpoint();if(!ep)throw new Error('R2 endpoint 未設定');
+
+    /* v.008：マルチテナント対応。Worker 側 URL が /api/r2/tenants/<tid>/projects/<pid>/... に変わったため、
+       旧 API（key = 'projects/<pid>/...'）呼び出しをそのまま維持しつつ、内部で tid を解決して
+       `tenants/<tid>/` を prepend する。
+       tid 解決の優先順位：
+         1. opts.tid の明示指定
+         2. getNode(pid) → rootOf(n).tid（既にメモリ上にある）
+         3. REG.find(e=>e.id===pid).tid（永続化されたマッピング）
+         4. this._tidMap（localStorage のサイドキャッシュ、listMyProjects で埋める） */
+    _tidMap:null,
+    _TID_LS_KEY:'laycat_r2_tid_map',
+    _loadTidMap(){
+      if(this._tidMap)return this._tidMap;
+      try{const raw=localStorage.getItem(this._TID_LS_KEY);const obj=raw?JSON.parse(raw):{};this._tidMap=obj&&typeof obj==='object'?obj:{};}catch(_){this._tidMap={};}
+      return this._tidMap;
+    },
+    _saveTidMap(){try{localStorage.setItem(this._TID_LS_KEY,JSON.stringify(this._tidMap||{}));}catch(_){}},
+    rememberTid(pid,tid){
+      if(!pid||!tid)return;
+      const m=this._loadTidMap();
+      if(m[pid]===tid)return;
+      m[pid]=tid;this._saveTidMap();
+    },
+    _resolveTid(pid,optsTid){
+      if(optsTid)return optsTid;
+      if(!pid)return null;
+      try{if(typeof getNode==='function'){const n=getNode(pid);if(n){const r=rootOf(n);if(r&&r.tid)return r.tid;}}}catch(_){}
+      try{if(typeof REG!=='undefined'&&Array.isArray(REG)){const e=REG.find(x=>x.id===pid);if(e&&e.tid)return e.tid;}}catch(_){}
+      const m=this._loadTidMap();
+      if(m[pid])return m[pid];
+      return null;
+    },
+    _pidFromKey(key){const m=String(key||'').match(/^projects\/([^/]+)\//);return m?m[1]:null;},
+
+    /* v.013：顧客自前 R2 対応。endpoint は tid ごとに Firestore `tenants/<tid>.r2Endpoint` で切替可能。
+       - mode='customer' の場合は URL に tenants/<tid>/ プレフィックス無し（1 バケット = 1 テナント前提）
+       - mode='operator' の場合は従来通り URL に tenants/<tid>/ 付き
+       - キャッシュは _endpointCache（tid ごと 5 分 TTL） */
+    _endpointCache: new Map(), /* tid -> {ep, mode, at} */
+    _endpointCacheTtlMs: 5 * 60 * 1000,
+    async _endpointForTid(tid){
+      if(!tid) return {ep:this.endpoint(), mode:'operator'};
+      const cached = this._endpointCache.get(tid);
+      if(cached && (Date.now() - cached.at) < this._endpointCacheTtlMs) return cached;
+      let custom = null;
+      try{
+        if(window.__laynaFB && typeof window.__laynaFB.getTenantR2Endpoint === 'function'){
+          custom = await window.__laynaFB.getTenantR2Endpoint(tid).catch(()=>null);
+        }
+      }catch(_){}
+      const normalized = custom ? this._norm(custom) : null;
+      const resolved = {
+        ep: normalized || this.endpoint(),
+        mode: normalized ? 'customer' : 'operator',
+        at: Date.now(),
+      };
+      this._endpointCache.set(tid, resolved);
+      return resolved;
+    },
+
+    /* v.013：op kind に応じて URL を組み立てる（operator / customer で形が違う）。
+       key 例：'projects/<pid>/laycat.project.json' / 'projects/<pid>/reference/items/' */
+    async _urlFor(op, key, opts){
+      const pid = (opts&&opts.pid) || this._pidFromKey(key);
+      const tid = this._resolveTid(pid, opts&&opts.tid);
+      if(!tid) throw new Error('tid-unresolved pid='+pid);
+      const {ep, mode} = await this._endpointForTid(tid);
+      if(mode === 'customer'){
+        if(op === 'object') return ep + '/api/r2/' + key;
+        if(op === 'list')   return ep + '/api/r2/list/' + key;
+        if(op === 'purge')  return ep + '/api/r2/purge/' + key;
+      }else{
+        if(op === 'object') return ep + '/api/r2/tenants/' + tid + '/' + key;
+        if(op === 'list')   return ep + '/api/r2/list/tenants/' + tid + '/' + key;
+        if(op === 'purge')  return ep + '/api/r2/purge/tenants/' + tid + '/' + key;
+      }
+      throw new Error('_urlFor: unknown op='+op);
+    },
+    /* v.008：プロジェクト作成時の tid 解決ヘルパ。
+       優先順位：
+         1. operator 判定（window.__laynaFB.isOperator があればそれを信頼）
+         2. laycatUsers/<myKey>.tenantId（window.__laynaFB.getUserTenantId で取得）
+         3. 'personal__<myKey>' */
+    async resolveTidForNewProject(myEmail){
+      const email=String(myEmail||'').toLowerCase();
+      if(!email)return null;
+      const myKey=email.replace(/[.@#$/\[\]]/g,'_');
+      try{if(window.__laynaFB&&typeof window.__laynaFB.isOperator==='function'){const isOp=await window.__laynaFB.isOperator(email).catch(()=>false);if(isOp)return 'operator';}}catch(_){}
+      try{if(window.__laynaFB&&typeof window.__laynaFB.getUserTenantId==='function'){const tid=await window.__laynaFB.getUserTenantId(email).catch(()=>null);if(tid&&typeof tid==='string'&&tid.length)return tid;}}catch(_){}
+      return 'personal__'+myKey;
+    },
+
+    /* v.013：url は呼び出し元で _urlFor() で解決済みの絶対 URL を渡す。 */
+    async _fetchUrl(method,url,body,contentType){
       const tok=await this._token();if(!tok)throw new Error('未ログイン（R2 認証に必要）');
       const headers={authorization:'Bearer '+tok};
       if(body!=null&&contentType)headers['x-laycat-content-type']=contentType;
-      return await fetch(ep+path,{method,headers,body});
+      return await fetch(url,{method,headers,body});
     },
-    async put(key,body,contentType){try{const r=await this._fetch('PUT','/api/r2/'+key,body,contentType||'application/octet-stream');return r.ok}catch(_){return false}},
-    async del(key){try{const r=await this._fetch('DELETE','/api/r2/'+key);return r.ok||r.status===404}catch(_){return false}},
-    async getBlob(key){try{const r=await this._fetch('GET','/api/r2/'+key);if(!r.ok)return null;return await r.blob()}catch(_){return null}},
-    async getJson(key){try{const r=await this._fetch('GET','/api/r2/'+key);if(!r.ok)return null;return await r.json()}catch(_){return null}},
-    async putJson(key,obj){return this.put(key,JSON.stringify(obj,null,2),'application/json')},
-    /* v.090：prefix 配下のオブジェクト列挙（Worker 側 /api/r2/list/<prefix>）。
-       資料タブで reference/items/*.json を列挙する用途。 */
-    async listByPrefix(prefix){try{const r=await this._fetch('GET','/api/r2/list/'+prefix);if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}},
-    async purge(pid){try{const r=await this._fetch('DELETE','/api/r2/purge/projects/'+pid+'/');return r.ok}catch(_){return false}},
-    async ping(){try{const ep=this.endpoint();if(!ep)return false;const tok=await this._token();if(!tok)return false;/* 存在しないダミー key を GET し、404 が返ることで到達＋認証を確認 */const r=await fetch(ep+'/api/r2/projects/__ping__/nothing.json',{method:'GET',headers:{authorization:'Bearer '+tok}});return r.status===404||r.status===200}catch(_){return false}},
+    async put(key,body,contentType,opts){
+      try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('PUT',url,body,contentType||'application/octet-stream');return r.ok}catch(_){return false}
+    },
+    async del(key,opts){
+      try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('DELETE',url);return r.ok||r.status===404}catch(_){return false}
+    },
+    async getBlob(key,opts){
+      try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return null;return await r.blob()}catch(_){return null}
+    },
+    async getJson(key,opts){
+      try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return null;return await r.json()}catch(_){return null}
+    },
+    async putJson(key,obj,opts){return this.put(key,JSON.stringify(obj,null,2),'application/json',opts)},
+    async listByPrefix(prefix,opts){
+      try{const url=await this._urlFor('list',prefix,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}
+    },
+    async purge(pid,opts){
+      try{const url=await this._urlFor('purge','projects/'+pid+'/',{pid,...(opts||{})});const r=await this._fetchUrl('DELETE',url);return r.ok}catch(_){return false}
+    },
+    /* ping：v.008 で /api/r2/mine に変更（旧 ping は tid 不要なダミー pid を叩いていたが、新ルートでは tid が必要になるため廃止）。 */
+    async ping(){try{const ep=this.endpoint();if(!ep)return false;const tok=await this._token();if(!tok)return false;const r=await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});return r.ok}catch(_){return false}},
     /* _access.json 管理：Worker 側で owner/members 判定に使う小さな JSON。
        プロジェクト暗号化とは独立に平文で置く（Worker が復号鍵を持たないため）。 */
-    async getAccess(pid){try{return await this.getJson('projects/'+pid+'/_access.json')}catch(_){return null}},
-    async putAccess(pid,owner,members){
+    async getAccess(pid,opts){try{return await this.getJson('projects/'+pid+'/_access.json',{pid,...(opts||{})})}catch(_){return null}},
+    async putAccess(pid,owner,members,opts){
       const obj={owner:String(owner||'').toLowerCase(),members:(members||[]).map(x=>String(x||'').toLowerCase()).filter(Boolean),updatedAt:nowIso()};
       /* 重複除去 */
       obj.members=Array.from(new Set(obj.members));
-      return await this.putJson('projects/'+pid+'/_access.json',obj);
+      return await this.putJson('projects/'+pid+'/_access.json',obj,{pid,...(opts||{})});
     },
-    /* 自分がメンバーとして参加できる R2 プロジェクト一覧を Worker から取得。
-       Worker がバケットをスキャンして _access.json ベースで絞り込む。 */
+    /* 自分がメンバーとして参加できる R2 プロジェクト一覧を取得。
+       v.013：運営 Worker ＋ 自分の所属テナントの顧客 Worker（あれば）を両方叩いてマージ。
+       副作用：取得した pid → tid を _tidMap に自動キャッシュ。 */
     async listMyProjects(){
+      const seen = new Set();
+      const results = [];
+      const tok = await this._token();
+      if(!tok) return [];
+      /* (1) 運営 Worker */
       try{
-        const ep=this.endpoint();if(!ep)return [];
-        const tok=await this._token();if(!tok)return [];
-        const r=await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});
-        if(!r.ok)return [];
-        const j=await r.json();
-        return Array.isArray(j&&j.projects)?j.projects:[];
-      }catch(_){return []}
+        const ep = this.endpoint();
+        if(ep){
+          const r = await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});
+          if(r.ok){
+            const j = await r.json();
+            const list = Array.isArray(j&&j.projects)?j.projects:[];
+            for(const p of list){
+              if(!p||!p.pid||seen.has(p.pid))continue;
+              seen.add(p.pid);
+              if(p.tid) this.rememberTid(p.pid, p.tid);
+              results.push(p);
+            }
+          }
+        }
+      }catch(_){}
+      /* (2) 自分の所属テナントが顧客 R2 を使っていればそれも叩く（顧客 Worker は tid を返さないので自前で付与） */
+      try{
+        const myEmail = (window.__laynaFBUser&&window.__laynaFBUser.email) || null;
+        if(myEmail && window.__laynaFB && window.__laynaFB.getUserTenantId){
+          const myTid = await window.__laynaFB.getUserTenantId(myEmail).catch(()=>null);
+          if(myTid){
+            const {ep, mode} = await this._endpointForTid(myTid);
+            if(mode === 'customer' && ep){
+              const r = await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});
+              if(r.ok){
+                const j = await r.json();
+                const list = Array.isArray(j&&j.projects)?j.projects:[];
+                for(const p of list){
+                  if(!p||!p.pid||seen.has(p.pid))continue;
+                  seen.add(p.pid);
+                  const augmented = {...p, tid: myTid};
+                  this.rememberTid(p.pid, myTid);
+                  results.push(augmented);
+                }
+              }
+            }
+          }
+        }
+      }catch(_){}
+      return results;
     },
   },
   /* プロジェクトのバックエンドを返す：'r2' | 'folder'。既存プロジェクトは常に 'folder'。 */
@@ -2371,10 +2513,13 @@ const storage={
     try{const n=(typeof getNode==='function')?getNode(id):null;if(n){const r=rootOf(n);if(r&&r.storageBackend==='r2')return 'r2'}}catch(_){}
     return 'folder';
   },
-  /* 新規プロジェクトを R2 バックエンドとしてマーク（作成時のみ呼ぶ）。 */
-  setBackendR2(id){
-    try{if(typeof REG!=='undefined'&&Array.isArray(REG)){let e=REG.find(x=>x.id===id);if(!e){e={id,name:'',folderName:null};REG.push(e)}e.backend='r2'}}catch(_){}
-    try{const n=(typeof getNode==='function')?getNode(id):null;if(n){const r=rootOf(n);if(r)r.storageBackend='r2'}}catch(_){}
+  /* 新規プロジェクトを R2 バックエンドとしてマーク（作成時のみ呼ぶ）。
+     v.008：tid を第 2 引数で受け付けて REG と root.tid に保存。
+     tid 省略時は既存の値を維持（既存プロジェクト再マーク時）。 */
+  setBackendR2(id,tid){
+    try{if(typeof REG!=='undefined'&&Array.isArray(REG)){let e=REG.find(x=>x.id===id);if(!e){e={id,name:'',folderName:null};REG.push(e)}e.backend='r2';if(tid)e.tid=tid;}}catch(_){}
+    try{const n=(typeof getNode==='function')?getNode(id):null;if(n){const r=rootOf(n);if(r){r.storageBackend='r2';if(tid)r.tid=tid;}}}catch(_){}
+    if(tid){try{this._r2.rememberTid(id,tid)}catch(_){}}
   },
   /* R2 か folder のどちらかで保存先が用意されているか（ローカル書き込み前の判定に使う）。 */
   async hasStorageConfigured(id){if(this._backend(id)==='r2')return !!this._r2.endpoint();return this.hasFolderConfigured(id)},
@@ -3964,6 +4109,9 @@ let _persistChain=Promise.resolve();
    バックグラウンドの shot 保存が消えるケースがあった。 */
 let _persistBusy=0;
 function persist(){
+  /* v.016：DEMO_MODE は書込一切なし（IndexedDB も触らない）。
+     デモデータは in-memory のみでリロードで消える。これはデモの意図通り。 */
+  if(DEMO_MODE) return Promise.resolve();
   _persistBusy++;
   _persistChain=_persistChain.then(()=>_persistNow()).catch(e=>{try{console.warn('persist failed',e)}catch(_){}}).finally(()=>{_persistBusy=Math.max(0,_persistBusy-1)});
   return _persistChain;
@@ -4181,7 +4329,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='beta v0.4.0';
+const APP_VERSION='beta v0.5.0';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4236,6 +4384,36 @@ const currentUser=()=>authUser?authUser.name:(($('#currentUser').value||'').trim
   setInterval(push,3000);
 })();
 function toast(m){const t=el('div','toast',m);document.body.appendChild(t);setTimeout(()=>t.remove(),2400)}
+/* v.026：全画面フルスクリーンのビジーオーバーレイ。
+   プロジェクト新規作成・参加・接続のような「数秒かかる非同期処理中に UI が固まって見える」場面で表示する。
+   同時呼び出しに備えて id 一意化はせず、既にあるものを上書きで表示切替。showBusy の戻り値を hideBusy
+   に渡さずとも、hideBusy() 単独でクリーンアップ可能。 */
+function showBusy(message){
+  try{
+    let ov=document.getElementById('busyOverlay');
+    if(!ov){
+      ov=document.createElement('div');
+      ov.id='busyOverlay';
+      ov.style.cssText='position:fixed;inset:0;z-index:10000;background:rgba(10,10,14,.62);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;pointer-events:auto;user-select:none;transition:opacity .18s ease';
+      ov.innerHTML='<div style="width:46px;height:46px;border-radius:50%;border:3px solid rgba(242,152,107,.25);border-top-color:#F2986B;animation:busySpin 0.9s linear infinite"></div>'
+                 +'<div id="busyMsg" style="font-family:var(--font-head);font-weight:700;font-size:15px;color:#eeeef2;letter-spacing:.5px;text-shadow:0 1px 2px rgba(0,0,0,.4)"></div>'
+                 +'<style>@keyframes busySpin{to{transform:rotate(360deg)}}</style>';
+      document.body.appendChild(ov);
+    }
+    const msgEl=ov.querySelector('#busyMsg');
+    if(msgEl)msgEl.textContent=message||'処理中…';
+    ov.style.opacity='1';
+    ov.style.display='flex';
+  }catch(_){}
+}
+function hideBusy(){
+  try{
+    const ov=document.getElementById('busyOverlay');
+    if(!ov)return;
+    ov.style.opacity='0';
+    setTimeout(()=>{try{ov.remove()}catch(_){}},200);
+  }catch(_){}
+}
 /* 任意の document／window に対してトーストを表示。REEL ポップアップから呼ぶ場合に使用。 */
 function toastIn(targetDoc,m,ms){
   try{
@@ -4253,6 +4431,10 @@ function _maybeShowTabMuteHint(){ /* no-op — 警告表示を停止 */ }
    (a) src が空のときは無視、(b) 一度でも loadedmetadata/canplay が来たら誤爆と判定して既存 badge も除去、
    (c) error 発火から ~1.2s 遅延して、その間にロード成功があったら表示を取り消す。 */
 function attachCodecWarn(vid,host){
+  /* v.018：デモモードは <video> 要素に PNG (サンプルアニメ画像) を流しているので、
+     ブラウザが「コーデック非対応」と警告するのを抑制する。
+     デモの意図（サムネイル表示のための便宜的な video タグ）とは別のメッセージなのでユーザー混乱を招く。 */
+  if(typeof DEMO_MODE!=='undefined' && DEMO_MODE) return;
   if(!vid||vid._codecWarn)return;vid._codecWarn=true;
   const boxOf=()=>host||vid.parentElement;
   const addBadge=()=>{const box=boxOf();if(!box||box._codecBadge)return;box._codecBadge=true;try{const cs=getComputedStyle(box);if(cs.position==='static')box.style.position='relative'}catch(_){}const ov=el('div','codec-warn');ov.appendChild(el('div','cw-ic','⚠'));ov.appendChild(el('div','cw-tx','この動画はブラウザで再生できないコーデックの可能性があります（Animation / ProRes 等）。H.264 の mp4 / mov へ変換してください。'));box.appendChild(ov)};
@@ -4283,6 +4465,14 @@ function chrome(on){$('.header').style.display=on?'':'none';$('.app-body').style
    ============================================================ */
 async function boot(){
   const g=$('#gateScreen');if(g)g.remove();chrome(true);
+  /* v.016：DEMO_MODE は IDB からの実データ読込を完全スキップ。
+     空の DB / REG で始めて、呼び出し元（startAppFlow）がデモデータ注入する。
+     これにより「起動直後に本人のプロジェクトが一瞬見える」フラッシュを防ぐ。 */
+  if(DEMO_MODE){
+    DB={version:3,nodes:[],reels:[],notifications:[],submits:[]};
+    REG=[];
+    return;
+  }
   /* IndexedDB の永続化リクエスト：
      - Chrome/Edge：ブックマーク・PWA インストール・通知許可・訪問頻度などから自動判定で granted になりやすい
      - Safari：ダイアログを 1 回出す（拒否されても致命ではない）
@@ -5531,6 +5721,9 @@ async function connectProjectFlow(){
   if(!storage.supportsFolder()){toast('このブラウザはフォルダ接続に未対応です（Chrome / Edge 推奨）');return}
   let handle;
   try{handle=await window.showDirectoryPicker({mode:'readwrite'})}catch(e){if(e&&e.name!=='AbortError')toast(pickerFailMsg(e));return}
+  /* v.026：フォルダ選択後の読み込み・パース・ノード注入・persist は数秒かかる。ビジーオーバーレイで進行中を可視化。 */
+  showBusy('プロジェクトに参加中…');
+  try{
   let data=null;
   try{data=await storage._readProjFile(handle)}catch(e){data=null}
   if(!data||!data.id||(!Array.isArray(data.nodes)&&!data.enc)){
@@ -5610,6 +5803,8 @@ async function connectProjectFlow(){
   }catch(_){}
   toast('プロジェクト「'+((root&&root.name)||data.name)+'」を接続しました'+(_abs.merged?'（競合コピー'+_abs.count+'件を統合して復旧）':''));
   go(data.id);
+  }catch(e){toast('プロジェクト参加に失敗しました：'+String(e&&e.message||e));}
+  finally{hideBusy();}
 }
 /* DB を辿らずに rootOf の id を返す簡易版（接続処理中の一時判定用） */
 function rootOfId(node){let n=node;while(n&&n.parentId){const p=getNode(n.parentId);if(!p)break;n=p}return n?n.id:null}
@@ -6243,6 +6438,7 @@ function buildTaskTabs(root){
 }
 /* 保存先フォルダ未設定の警告バナー（動画はフォルダにしか保存できないため） */
 function folderWarnBanner(root){
+  if(DEMO_MODE) return null; /* v.016：デモモードではフォルダ警告非表示 */
   if(!root||root.folderName)return null;
   if(root.storageBackend==='r2')return null; /* R2 プロジェクトはフォルダ不要 */
   const b=el('div','folder-warn');
@@ -8312,6 +8508,16 @@ function renderProjShots(main,cur){
   const mkBtn=(mode,svg,title)=>{const b=el('button','sv-sw-btn'+(state.shotsView===mode?' on':''));b.type='button';b.innerHTML=svg;b.title=title;b.onclick=()=>{if(state.shotsView!==mode){state.shotsView=mode;try{localStorage.setItem('layna_shotsView',mode)}catch(_){}renderBody();resolveThumbs()}};return b;};
   seg.appendChild(mkBtn('grid',ICON_GRID,'グリッド表示'));seg.appendChild(mkBtn('list',ICON_LIST,'縦並び表示'));
   head.appendChild(seg);
+  /* v.006：ショットタブ右上「＋ 追加」ボタン。
+     押下で openAddModal を開き、モーダル内のプルダウンで追加先フォルダを選べる。
+     初期の親候補は shotsParentsOf(cur)[0]（なければ cur.id）。初期種別はショットページ。 */
+  const addBtn=el('button','btn btn-ghost btn-sm','＋ 追加');
+  addBtn.title='ショットページまたはフォルダを追加（親フォルダはモーダル内で選択）';
+  addBtn.onclick=()=>{
+    const _defParent=(parents&&parents.length)?parents[0]:cur.id;
+    openAddModal(_defParent,'review');
+  };
+  head.appendChild(addBtn);
   /* v.017：全ショットの最新動画をショット順に REEL に並べる（全体確認用） */
   const reelAllBtn=el('button','btn btn-primary btn-sm','▶ 全ショットを REEL で通し確認');
   reelAllBtn.title='プロジェクト内の全ショットの最新動画をショット順で REEL に並べます（全体確認用）';
@@ -8971,7 +9177,8 @@ function buildShotAssetsPane(container,shot,root){
     const nm=el('div');nm.style.cssText='padding:4px 6px 6px;font-family:var(--font-code);font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3';
     nm.textContent=a.name||'(名称未設定)';
     tile.appendChild(nm);
-    tile.onclick=()=>openAssetDrawer(a.id);
+    /* v.025：ショットページ経由は閲覧専用で開く（意図しない書き換え防止） */
+    tile.onclick=()=>openAssetDrawer(a.id,{readOnly:true});
     grid.appendChild(tile);
   }
   wrap.appendChild(grid);
@@ -9084,8 +9291,11 @@ function buildShotPmMemoPane(container,shot,root){
   document.addEventListener('visibilitychange',onVis);
 }
 /* アセット詳細ドロワー（レビュー／サブミットと同じ右スライドを使い回し） */
-function openAssetDrawer(assetId){
-  const key=activeTabKey();const dr={kind:'asset',id:assetId,tab:key};
+/* v.025：opts.readOnly=true でショットページ「使用アセット」経由の閲覧専用モード。
+   アセット情報の意図しない書き換え（デザイナーのミス等）防止のため、
+   ショットページから開いた際は編集 UI を一切出さず、必要なら「アセットタブで編集」ボタンで誘導する。 */
+function openAssetDrawer(assetId, opts){
+  const key=activeTabKey();const dr={kind:'asset',id:assetId,tab:key,readOnly:!!(opts&&opts.readOnly)};
   if(key)state.tabDrawers[key]=dr;
   state.drawer=dr;
   buildDrawerShell();
@@ -9101,16 +9311,115 @@ function fillAssetDrawer(){
   back._t.textContent=a.name||'(名称未設定)';
   back._p.textContent='アセット';
   back._acts.innerHTML='';
-  const delBtn=el('button','btn btn-danger btn-sm','削除');
-  delBtn.onclick=async()=>{
-    if(!confirm('このアセットを削除しますか？\n紐付いた全ショットからも外れます。'))return;
-    deleteAsset(root,a.id);
-    try{await persist()}catch(_){}
-    closeReviewDrawer();render();
-  };
-  back._acts.appendChild(delBtn);
+  const readOnly=!!state.drawer.readOnly;
+  if(readOnly){
+    /* v.025：ショットページ「使用アセット」からの閲覧専用モード。
+       編集は「アセットタブで編集」ボタンでアセットタブに遷移してもらう。 */
+    const editBtn=el('button','btn btn-ghost btn-sm','アセットタブで編集');
+    editBtn.title='このアセットの編集はアセットタブからのみ可能です';
+    editBtn.onclick=()=>{
+      try{
+        state.projTab='assets';
+        /* 右スライドは一旦閉じて、アセットタブで同じアセットを編集可能で開き直す */
+        closeReviewDrawer();
+        render();
+        setTimeout(()=>openAssetDrawer(a.id),0);
+      }catch(_){}
+    };
+    back._acts.appendChild(editBtn);
+  }else{
+    const delBtn=el('button','btn btn-danger btn-sm','削除');
+    delBtn.onclick=async()=>{
+      if(!confirm('このアセットを削除しますか？\n紐付いた全ショットからも外れます。'))return;
+      deleteAsset(root,a.id);
+      try{await persist()}catch(_){}
+      closeReviewDrawer();render();
+    };
+    back._acts.appendChild(delBtn);
+  }
   const body=back._body;body.innerHTML='';
   back.classList.remove('drawer-review');back.classList.add('drawer-asset');
+  if(readOnly){
+    /* 閲覧専用ビュー：名前／カテゴリ／サムネ／フォルダパス／メモ／使用ショット／タグ を表示のみ。 */
+    const noticeBar=el('div');
+    noticeBar.style.cssText='background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:12px;color:var(--text2);font-size:12px;display:flex;align-items:center;gap:8px';
+    noticeBar.innerHTML='<span style="font-size:14px">🔒</span><span>このショットから開いた表示は<b>閲覧専用</b>です。編集はアセットタブから行ってください。</span>';
+    body.appendChild(noticeBar);
+    /* 名前 */
+    body.appendChild(el('div','section-label','名前'));
+    const nmBox=el('div');
+    nmBox.style.cssText='padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-code);font-size:14px;font-weight:700;word-break:break-all';
+    nmBox.textContent=a.name||'(名称未設定)';
+    body.appendChild(nmBox);
+    /* カテゴリ */
+    body.appendChild(el('div','section-label','カテゴリ'));
+    const catName=(getAssetCategories(root).find(c=>c.id===a.categoryId)||{}).name||'（未分類）';
+    const catBox=el('div');
+    catBox.style.cssText='padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px';
+    catBox.textContent=catName;
+    body.appendChild(catBox);
+    /* サムネ（固定サイズ：既存の編集ビューと同じ 240x135 の 16:9） */
+    body.appendChild(el('div','section-label','サムネ'));
+    const thumbBox=el('div');
+    thumbBox.style.cssText='width:240px;height:135px;background-color:var(--bg3);border:1px solid var(--border);border-radius:8px;background-size:cover;background-position:center;background-repeat:no-repeat';
+    if(a.thumb)storage.getURL(a.thumb).then(u=>{if(u)thumbBox.style.backgroundImage='url("'+u+'")'});
+    body.appendChild(thumbBox);
+    /* フォルダパス */
+    if(a.folderPath){
+      body.appendChild(el('div','section-label','フォルダパス（外部）'));
+      const pathRow=el('div');pathRow.style.cssText='display:flex;gap:6px;align-items:center';
+      const pathBox=el('div');
+      pathBox.style.cssText='flex:1;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-code);font-size:12px;word-break:break-all';
+      pathBox.textContent=a.folderPath;
+      pathRow.appendChild(pathBox);
+      const copy=el('button','btn btn-ghost btn-sm','コピー');
+      copy.onclick=async()=>{try{await navigator.clipboard.writeText(a.folderPath||'');copy.textContent='✓';setTimeout(()=>copy.textContent='コピー',900)}catch(_){}};
+      pathRow.appendChild(copy);
+      body.appendChild(pathRow);
+    }
+    /* メモ */
+    if(a.memo){
+      body.appendChild(el('div','section-label','メモ'));
+      const memoBox=el('div');
+      memoBox.style.cssText='padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;white-space:pre-wrap;line-height:1.5';
+      memoBox.textContent=a.memo;
+      body.appendChild(memoBox);
+    }
+    /* タグ（読み取り） */
+    const tagIds=Array.isArray(a.tagIds)?a.tagIds:[];
+    if(tagIds.length){
+      body.appendChild(el('div','section-label','タグ'));
+      const tw=el('div');tw.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+      for(const tid of tagIds){
+        const t=getTag(root,tid);if(!t)continue;
+        const chip=el('span');chip.style.cssText='padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;font-family:var(--font-code);font-size:12px;color:var(--text2)';
+        chip.textContent='#'+t.name;
+        tw.appendChild(chip);
+      }
+      body.appendChild(tw);
+    }
+    /* 使用ショット（手動＋タグ経由） */
+    const effShots=effectiveUsedShots(root,a);
+    body.appendChild(el('div','section-label','使用ショット ('+effShots.length+')'));
+    if(!effShots.length){
+      const em=el('div');em.style.cssText='color:var(--text3);font-size:12px';em.textContent='紐付いているショットはありません。';
+      body.appendChild(em);
+    }else{
+      const chipWrap=el('div');chipWrap.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+      const manualSet=new Set(a.usedInShots||[]);
+      for(const sh of effShots){
+        const chip=el('span');
+        const isManual=manualSet.has(sh.id);
+        chip.style.cssText='padding:4px 10px;background:var(--bg3);border:1px '+(isManual?'solid':'dashed')+' var(--border);border-radius:12px;font-family:var(--font-code);font-size:12px;color:var(--text2)';
+        chip.textContent=sh.name;
+        chip.title=isManual?'手動で紐付け':'タグ経由で自動紐付け';
+        chipWrap.appendChild(chip);
+      }
+      body.appendChild(chipWrap);
+    }
+    setTimeout(resolveThumbs,0);
+    return;
+  }
   /* --- 名前 --- */
   body.appendChild(el('div','section-label','名前'));
   const nameIn=el('input');nameIn.type='text';nameIn.value=a.name||'';
@@ -12216,6 +12525,10 @@ function openProjectModal(){
         const ep=(r2In.value||'').trim();
         storage._r2.setEndpoint(ep);
       }
+      /* v.026：R2 新規作成は tid 解決・_access.json PUT・laycat.project.json PUT・persist などで
+         数秒かかる。ユーザー目線で UI が固まって見えるため、ビジーオーバーレイで進行中を可視化。 */
+      showBusy(backend==='r2'?'プロジェクトを作成中…（R2 へ初期保存）':'プロジェクトを作成中…');
+      try{
       const id=addNode(null,name,descRow.f.value.trim(),'section');
       /* 作成者を owner ＆ 最初のメンバーとして自動登録（backend 問わず）。
          担当割り当て・＠メンションは members 名簿を元に動くので、自分が最初から入っていないと
@@ -12232,12 +12545,19 @@ function openProjectModal(){
         }
       }
       if(backend==='r2'){
-        storage.setBackendR2(id);
+        /* v.008：マルチテナント対応。tid を先に解決してから setBackendR2 で REG/root に埋め込む。
+           - 運営ユーザー → 'operator'
+           - テナント所属ユーザー → そのテナント ID
+           - 個人ユーザー → 'personal__<emailKey>' */
+        const _me=(authUser&&authUser.email)||'';
+        let _tid=null;
+        try{ _tid = await storage._r2.resolveTidForNewProject(_me); }catch(_){}
+        if(!_tid){hideBusy();toast('tid を解決できませんでした（Firebase ログインが必要です）');return}
+        storage.setBackendR2(id,_tid);
         /* R2 プロジェクト：_access.json を先に PUT する
            （Worker のブートストラップ判定を通すため、laycat.project.json の PUT より前に実行） */
-        const _me=(authUser&&authUser.email)||'';
         if(_me){
-          try{await storage._r2.putAccess(id,_me,[_me])}catch(e){toast('R2 のアクセス設定に失敗しました：'+String(e&&e.message||e));}
+          try{await storage._r2.putAccess(id,_me,[_me],{tid:_tid})}catch(e){toast('R2 のアクセス設定に失敗しました：'+String(e&&e.message||e));}
         }
       }else if(projFolderHandle){
         await storage.setProjRoot(id,projFolderHandle);getNode(id).folderName=projFolderHandle.name;
@@ -12251,6 +12571,7 @@ function openProjectModal(){
       }
       if(thumbUrl){try{URL.revokeObjectURL(thumbUrl)}catch(_){}}
       await persist();closeModal();go(id);resolveThumbs();
+      hideBusy();
       /* 作成直後：メンバー登録を先に済ませるよう促す。文面は短く、参加不可の旨を明示。 */
       setTimeout(()=>{
         const root=getNode(id);if(!root)return;
@@ -12270,6 +12591,7 @@ function openProjectModal(){
           mFoot(body,[skip,openBtn]);
         });
       },350);
+      }catch(e){hideBusy();toast('プロジェクト作成に失敗しました：'+String(e&&e.message||e));}
     };
     mFoot(body,[cancel,save]);
   });
@@ -12277,15 +12599,22 @@ function openProjectModal(){
 /* R2 プロジェクトをIDで接続する共通処理。
    openR2ConnectModal（手動ID入力）と openConnectModal（タイル一覧）の両方から呼ばれる。
    成功時 true、失敗時 false を返す（トーストは内部で出す）。 */
-async function connectR2ProjectById(pid){
+async function connectR2ProjectById(pid,tid){
   if(!pid)return false;
   if(REG.some(e=>e.id===pid)){toast('このプロジェクトは既に接続されています');return false}
   if(!(authUser&&authUser.email)){toast('R2 プロジェクトに接続するには Google ログインが必要です');return false}
   const ep=storage._r2.endpoint();if(!ep){toast('R2 endpoint 未設定');return false}
-  /* 暫定 REG エントリ：_backend(pid) を r2 と判定させるため */
-  REG.push({id:pid,name:'(loading)',folderName:null,backend:'r2'});
+  /* v.008：tid 必須。指定が無ければ _tidMap から解決、それも無ければ失敗。
+     接続モーダル側の listMyProjects で既に rememberTid 済みのはずなので通常は解決できる。 */
+  const resolvedTid=tid||storage._r2._resolveTid(pid);
+  if(!resolvedTid){toast('tid を解決できませんでした（プロジェクト一覧の読み込みに失敗？）');return false}
+  /* v.026：R2 参加は access/project 読込・reels 取得・baseline 作成で数秒かかる。ビジーオーバーレイ表示。 */
+  showBusy('R2 プロジェクトに参加中…');
+  /* 暫定 REG エントリ：_backend(pid) を r2 と判定させるため。tid も同時に記録。 */
+  REG.push({id:pid,name:'(loading)',folderName:null,backend:'r2',tid:resolvedTid});
+  storage._r2.rememberTid(pid,resolvedTid);
   try{
-    const access=await storage._r2.getAccess(pid);
+    const access=await storage._r2.getAccess(pid,{tid:resolvedTid});
     if(!access){
       REG=REG.filter(e=>e.id!==pid);
       toast('プロジェクトが見つかりません、または権限がありません（403/404）');
@@ -12294,10 +12623,10 @@ async function connectR2ProjectById(pid){
     const me=String(authUser.email||'').toLowerCase();
     const isOwner=String(access.owner||'').toLowerCase()===me;
     const isMember=(access.members||[]).map(x=>String(x||'').toLowerCase()).includes(me);
+    /* v.008：テナントメンバーなら _access.json 判定をスキップしても OK（Worker 側で判定済み）。
+       ただし UI にメンバーリストを表示するために access.members は尊重する。 */
     if(!isOwner&&!isMember){
-      REG=REG.filter(e=>e.id!==pid);
-      toast('あなたはこのプロジェクトのメンバーではありません。所有者に追加を依頼してください');
-      return false;
+      /* 同テナントメンバー扱いで接続続行（Worker が許可してるはず）。警告は出さない。 */
     }
     const data=await storage.loadProject(pid);
     if(!data||!Array.isArray(data.nodes)){
@@ -12310,7 +12639,7 @@ async function connectR2ProjectById(pid){
     try{const rls=await storage.loadReels(pid);if(Array.isArray(rls))for(const r of rls)if(!DB.reels.some(x=>x.id===r.id))DB.reels.push(r);}catch(_){}
     normalizeNodes();
     const root=getNode(pid);const reg=REG.find(e=>e.id===pid);
-    if(reg&&root){reg.name=root.name||pid;reg.backend='r2';root.storageBackend='r2';}
+    if(reg&&root){reg.name=root.name||pid;reg.backend='r2';reg.tid=resolvedTid;root.storageBackend='r2';root.tid=resolvedTid;}
     seedProjBaseline(pid);
     await storage.saveRegistry(REG);
     return true;
@@ -12318,6 +12647,8 @@ async function connectR2ProjectById(pid){
     REG=REG.filter(e=>e.id!==pid);
     toast('接続に失敗しました：'+String(e&&e.message||e));
     return false;
+  }finally{
+    hideBusy();
   }
 }
 /* 統合された「プロジェクトに接続」モーダル。
@@ -12438,6 +12769,7 @@ function openConnectModal(){
    タイル情報取得のため laycat.project.json を GET（キャッシュ済みなら reuse） */
 async function _r2Tile(p){
   const pid=p.pid;
+  const tid=p.tid; /* v.008：listMyProjects は {tid, pid, ...} を返す */
   const card=el('div','proj-card');
   card.style.cssText='cursor:pointer';
   const media=el('div','proj-media');
@@ -12459,10 +12791,12 @@ async function _r2Tile(p){
   /* laycat.project.json を GET して name/thumbnail を反映 */
   (async()=>{
     try{
-      const data=await storage._r2.getJson('projects/'+pid+'/'+storage._projFileName);
+      const data=await storage._r2.getJson('projects/'+pid+'/'+storage._projFileName,{tid});
       if(data){
-        nameLine.textContent=data.name||data.nodes&&data.nodes[0]&&data.nodes[0].name||pid;
-        const root=Array.isArray(data.nodes)?data.nodes.find(n=>n.id===pid||!n.parentId):null;
+        /* v.011：laycat.project.json の top-level data.name を直接使う（projectData が root.name で populate 済み）。
+           root ノード参照はサムネイル取得のみに必要なので別途取得。 */
+        nameLine.textContent=data.name||pid;
+        const root=Array.isArray(data.nodes)?(data.nodes.find(n=>n.id===pid)||data.nodes.find(n=>!n.parentId)):null;
         const thumbRef=root&&root.thumbnail;
         if(thumbRef){
           try{
@@ -12488,7 +12822,7 @@ async function _r2Tile(p){
     if(isConnected){toast('既に接続されています。ホームからお進みください');return}
     if(!confirm('プロジェクト「'+(nameLine.textContent||pid)+'」に接続しますか？'))return;
     card.style.pointerEvents='none';card.style.opacity='.5';
-    const ok=await connectR2ProjectById(pid);
+    const ok=await connectR2ProjectById(pid,tid);
     if(ok){closeModal();render();resolveThumbs()}
     else{card.style.pointerEvents='';card.style.opacity=''}
   };
@@ -12579,67 +12913,28 @@ function _nasTile(p){
    ※ owner 側があらかじめメンバー管理 UI で自分のメールを追加している必要あり（persist で _access.json 反映） */
 function openR2ConnectModal(){
   openModal(body=>{
-    const inner=mHead(body,'☁ R2 プロジェクトに接続','所有者から共有された「プロジェクトID」を入力してください（例：nd_mrtl8u3x1）');
-    inner.appendChild(el('div','form-label','プロジェクトID'));
+    const inner=mHead(body,'☁ R2 プロジェクトに接続','所有者から共有された「テナントID」と「プロジェクトID」を入力してください');
+    inner.appendChild(el('div','form-label','テナントID (tid)'));
+    const tidIn=el('input','form-input');tidIn.type='text';tidIn.placeholder='operator / personal__xxx / <tenant-id>';
+    inner.appendChild(tidIn);
+    inner.appendChild(el('div','form-label','プロジェクトID (pid)'));
     const idIn=el('input','form-input');idIn.type='text';idIn.placeholder='nd_xxxxxxxxx';
     inner.appendChild(idIn);
     const note=el('div','form-label');note.style.cssText='color:var(--text3);margin-top:6px;font-size:12px';
-    note.innerHTML='※ 事前に所有者側でメンバー管理からあなたのメール（<b>'+((authUser&&authUser.email)||'未ログイン')+'</b>）を追加してもらう必要があります。<br>※ プロジェクトIDは所有者の LayCAT のプロジェクト設定画面で確認できます。';
+    note.innerHTML='※ 事前に所有者側でメンバー管理からあなたのメール（<b>'+((authUser&&authUser.email)||'未ログイン')+'</b>）を追加してもらう必要があります。<br>※ 通常は「プロジェクトに接続」のタイル一覧から選べば ID 入力は不要です。';
     inner.appendChild(note);
     const cancel=el('button','btn btn-ghost','キャンセル');cancel.onclick=closeModal;
     const connect=el('button','btn btn-primary','接続');
     connect.onclick=async()=>{
       let pid=(idIn.value||'').trim();
-      /* URL や余分な / を含んで貼られても pid だけ抜き出す */
       const m=pid.match(/([a-zA-Z0-9_-]+)/);if(m)pid=m[1];
       if(!pid)return toast('プロジェクトID を入力してください');
-      if(REG.some(e=>e.id===pid))return toast('このプロジェクトは既に接続されています');
-      if(!(authUser&&authUser.email))return toast('R2 プロジェクトに接続するには Google ログインが必要です');
-      const ep=storage._r2.endpoint();if(!ep)return toast('R2 endpoint 未設定');
+      const tid=(tidIn.value||'').trim();
+      if(!tid)return toast('テナントID を入力してください');
       connect.disabled=true;connect.textContent='接続中...';
-      try{
-        /* 事前に REG に暫定エントリを追加（backend=r2）：これで _backend(pid) が r2 を返し、以降の呼び出しで正しく R2 分岐が走る */
-        REG.push({id:pid,name:'(loading)',folderName:null,backend:'r2'});
-        /* 認可チェック（_access.json） */
-        const access=await storage._r2.getAccess(pid);
-        if(!access){
-          REG=REG.filter(e=>e.id!==pid);
-          toast('プロジェクトが見つかりません、または権限がありません（403/404）。プロジェクトIDを確認してください');
-          connect.disabled=false;connect.textContent='接続';return;
-        }
-        const me=String(authUser.email||'').toLowerCase();
-        const isOwner=String(access.owner||'').toLowerCase()===me;
-        const isMember=(access.members||[]).map(x=>String(x||'').toLowerCase()).includes(me);
-        if(!isOwner&&!isMember){
-          REG=REG.filter(e=>e.id!==pid);
-          toast('あなたはこのプロジェクトのメンバーではありません。所有者に追加を依頼してください');
-          connect.disabled=false;connect.textContent='接続';return;
-        }
-        /* プロジェクトデータを取得 */
-        const data=await storage.loadProject(pid);
-        if(!data||!Array.isArray(data.nodes)){
-          REG=REG.filter(e=>e.id!==pid);
-          toast('プロジェクトデータが読み込めませんでした（laycat.project.json 不正 or 未作成）');
-          connect.disabled=false;connect.textContent='接続';return;
-        }
-        /* DB.nodes/DB.submits にマージ（初期化と同じ処理） */
-        for(const n of data.nodes)if(!DB.nodes.some(x=>x.id===n.id))DB.nodes.push(n);
-        if(Array.isArray(data.submits))for(const s of data.submits)if(!DB.submits.some(x=>x.id===s.id))DB.submits.push(s);
-        /* リールも取り込み */
-        try{const rls=await storage.loadReels(pid);if(Array.isArray(rls))for(const r of rls)if(!DB.reels.some(x=>x.id===r.id))DB.reels.push(r);}catch(_){}
-        normalizeNodes();
-        /* REG エントリを本物の情報に更新 */
-        const root=getNode(pid);const reg=REG.find(e=>e.id===pid);
-        if(reg&&root){reg.name=root.name||pid;reg.backend='r2';root.storageBackend='r2';}
-        seedProjBaseline(pid);
-        await storage.saveRegistry(REG);
-        toast('R2 プロジェクトに接続しました');
-        closeModal();render();resolveThumbs();
-      }catch(e){
-        REG=REG.filter(e=>e.id!==pid);
-        toast('接続に失敗しました：'+String(e&&e.message||e));
-        connect.disabled=false;connect.textContent='接続';
-      }
+      const ok=await connectR2ProjectById(pid,tid);
+      if(ok){toast('R2 プロジェクトに接続しました');closeModal();render();resolveThumbs();}
+      else{connect.disabled=false;connect.textContent='接続';}
     };
     mFoot(body,[cancel,connect]);
   });
@@ -12651,7 +12946,29 @@ function openAddModal(parentId,initialType,role){
        initialType が明示されればそれを初期選択に、無ければ 'section'（フォルダ）を既定。 */
     const _initT=(initialType==='review')?'review':'section';
     const roleTitle=(_initT==='review'?'ショットページを追加':'フォルダを追加');
-    const inner=mHead(body,roleTitle,cur?('親: '+cur.name):'新規アイテム');
+    const inner=mHead(body,roleTitle,'');
+    /* v.006：親フォルダ プルダウン。
+       旧 subtitle「親: xxx」の代わりに、プロジェクト直下＋section 型フォルダをモーダル内で選べる。
+       追加先はこのプルダウンで決定。レガシー shot container（section 直下が全て review のもの）
+       はフォルダとみなさず除外。 */
+    const _rootForDrop=cur?rootOf(cur):null;
+    let parentSel=null;
+    if(_rootForDrop){
+      const parRow=frow('親フォルダ','select');
+      const _isShotSec=(n)=>{const kids=childrenOf(n.id);return kids.length>=1&&kids.every(k=>k.type==='review')&&!kids.some(k=>k.currentStage!=null||k.kind==='shot')};
+      const opts=[{id:_rootForDrop.id,label:'（プロジェクト直下）'+(_rootForDrop.name?' — '+_rootForDrop.name:'')}];
+      (function walk(pid,depth){
+        const kids=childrenOf(pid).filter(n=>n.type==='section'&&!_isShotSec(n));
+        for(const k of kids){
+          opts.push({id:k.id,label:'　'.repeat(depth+1)+'└ '+k.name});
+          walk(k.id,depth+1);
+        }
+      })(_rootForDrop.id,0);
+      for(const o of opts){const op=el('option',null,o.label);op.value=o.id;parRow.f.appendChild(op)}
+      parRow.f.value=parentId||_rootForDrop.id;
+      inner.appendChild(parRow.r);
+      parentSel=parRow.f;
+    }
     const nameRow=frow('名前 / ベース名（例: sh010 / EP01）','input');
     inner.appendChild(nameRow.r);
     const nameLab=nameRow.r.querySelector('label');
@@ -12710,9 +13027,12 @@ function openAddModal(parentId,initialType,role){
       }
       stagesEdit.forEach((nm,i)=>{
         const row=el('div');row.style.cssText='display:flex;align-items:center;gap:6px';
-        const sc=el('span');sc.style.cssText='width:12px;height:12px;border-radius:3px;flex-shrink:0;background:'+(function(){try{return stageColor(nm)}catch(_){return 'var(--text3)'}})();
+        /* v.007：色チップは stageColor(ハッシュ) ではなく stageColorFor(root, nm) を使う。
+           プロジェクト設定で保存した `root.stageColors[name]` を優先するので、
+           ユーザーが設定した色が追加モーダルの工程色チップにも反映される。 */
+        const sc=el('span');sc.style.cssText='width:12px;height:12px;border-radius:3px;flex-shrink:0;background:'+(function(){try{return stageColorFor(_rootForStages,nm)}catch(_){return 'var(--text3)'}})();
         const inp=el('input','form-input');inp.value=nm;inp.style.cssText='flex:1;min-width:100px;max-width:220px';
-        inp.oninput=()=>{stagesEdit[i]=inp.value;try{sc.style.background=stageColor(inp.value)}catch(_){}};
+        inp.oninput=()=>{stagesEdit[i]=inp.value;try{sc.style.background=stageColorFor(_rootForStages,inp.value)}catch(_){}};
         const del=el('button','btn btn-danger btn-sm','削除');del.type='button';
         del.onclick=()=>{stagesEdit.splice(i,1);redrawStages()};
         row.appendChild(sc);row.appendChild(inp);row.appendChild(del);stageListWrap.appendChild(row);
@@ -12726,6 +13046,9 @@ function openAddModal(parentId,initialType,role){
     save.onclick=async()=>{
       const base=nameRow.f.value.trim();if(!base)return toast('名前を入力してください');
       const type=ts.get();
+      /* v.006：親フォルダはプルダウンで選ばれた値（未設定なら旧 parentId） */
+      const targetParentId=parentSel?parentSel.value:parentId;
+      if(!targetParentId||!getNode(targetParentId))return toast('親フォルダが選択されていません');
       let names=[base];
       if(seqCb.checked){
         const cnt=Math.max(1,Math.min(200,parseInt(cntI.value)||1));
@@ -12748,7 +13071,7 @@ function openAddModal(parentId,initialType,role){
       const _initStage=(function(){const c=stagesEdit.map(x=>String(x||'').trim()).filter(Boolean);return c.length?c[0]:''})();
       const createdIds=[];
       for(const nm of names){
-        const id=addNode(parentId,nm,names.length===1?descRow.f.value.trim():'',type);
+        const id=addNode(targetParentId,nm,names.length===1?descRow.f.value.trim():'',type);
         createdIds.push(id);
         const nd=getNode(id);
         /* v.038：ショットページ（review）は Simple B の 1 ショット＝ 1 ページ。
@@ -12759,7 +13082,7 @@ function openAddModal(parentId,initialType,role){
           if(_initStage)nd.currentStage=_initStage;
         }
       }
-      await persist();closeModal();if(parentId)state.expanded.add(parentId);render();resolveThumbs();
+      await persist();closeModal();if(targetParentId)state.expanded.add(targetParentId);render();resolveThumbs();
       if(names.length>1)toast(names.length+'件を作成しました');
     };
     mFoot(body,[cancel,save]);
@@ -12807,15 +13130,22 @@ function openRename(node){
        ・カテゴリ（サブセクション）：プロジェクトのテンプレートから選んで適用＋直接編集 */
     let stagesArr=null;         /* カテゴリの場合の node.stages 編集用 */
     let stageTemplatesArr=null; /* プロジェクトルートの場合の stageTemplates 編集用 */
+    let stageColorsLocal=null;  /* v.006：工程色マップのローカル編集（工程テンプレ UI 内のピッカー）用 */
     let secN=2;
     if(node.type==='section'){
       if(isProjectRoot){
-        sec(secN++,'🧩','工程テンプレート','このプロジェクトで使う工程のセットをテンプレートとして管理します。ショット設定で「このテンプレートを適用」を選ぶと、その工程が自動で展開されます。エピソード用／PV 用など、複数のテンプレートを持てます。');
+        sec(secN++,'🧩','工程テンプレート','このプロジェクトで使う工程のセットをテンプレートとして管理します。ショット設定で「このテンプレートを適用」を選ぶと、その工程が自動で展開されます。エピソード用／PV 用など、複数のテンプレートを持てます。各工程の **色** も左のピッカーから設定でき、ショットカード・進捗グラフ・PM Board のバッジに反映されます。');
         stageTemplatesArr=projectStageTemplates(node).map(t=>({
           id:t.id||newId('tpl'),
           name:t.name||'テンプレート',
           stages:(Array.isArray(t.stages)?t.stages:[]).slice(),
         }));
+        /* v.006：工程バッジの色セクションを撤去し、ここに統合。
+           node.stageColors をローカルコピーして編集、保存時にまとめて反映。
+           工程名変更時はキーも引越し（下記 inp.oninput）。 */
+        stageColorsLocal=Object.assign({},node.stageColors||{});
+        const _autoColor=(nm)=>{try{return stageColorFor(node,nm)}catch(_){return '#5a5a6a'}};
+        const _pickColorFor=(nm)=>{const v=stageColorsLocal[nm];return (v&&/^#[0-9a-fA-F]{6}$/.test(v))?v:_autoColor(nm)};
         const tplHost=el('div');inner.appendChild(tplHost);
         const redrawAll=()=>{
           tplHost.innerHTML='';
@@ -12833,10 +13163,29 @@ function openRename(node){
               stgWrap.innerHTML='';
               tpl.stages.forEach((nm,i)=>{
                 const row=el('div','step-row');
-                const sc=el('span');sc.style.cssText='width:13px;height:13px;border-radius:3px;flex-shrink:0;align-self:center;background:'+stageColor(nm);
-                const inp=el('input','form-input');inp.value=nm;inp.oninput=()=>{tpl.stages[i]=inp.value;sc.style.background=stageColor(inp.value)};
-                const del=el('button','btn btn-danger btn-sm','削除');del.onclick=()=>{tpl.stages.splice(i,1);redrawStg()};
-                row.appendChild(sc);row.appendChild(inp);row.appendChild(del);stgWrap.appendChild(row);
+                /* v.006：横並びレイアウト。.step-row に CSS 無いので inline flex で確実に。 */
+                row.style.cssText='display:flex;gap:6px;align-items:center;margin-bottom:4px';
+                /* v.006：工程色ピッカー（旧「工程バッジの色」セクションを統合）。
+                   クリックすると node.stageColors[name] に書き込まれる（保存時に確定）。 */
+                const pk=el('input');pk.type='color';pk.value=_pickColorFor(nm);
+                pk.style.cssText='width:36px;height:30px;background:none;border:none;flex-shrink:0;cursor:pointer;padding:0';
+                pk.title='工程バッジの色（クリックで変更）';
+                pk.oninput=()=>{const cur=(inp.value||'').trim();if(cur)stageColorsLocal[cur]=pk.value};
+                const inp=el('input','form-input');inp.value=nm;inp.style.flex='1';inp.style.minWidth='120px';
+                inp.oninput=()=>{
+                  const oldName=tpl.stages[i];
+                  tpl.stages[i]=inp.value;
+                  /* 名前変更時に色マップのキーも引越し */
+                  if(oldName&&oldName!==inp.value&&stageColorsLocal[oldName]!==undefined){
+                    stageColorsLocal[inp.value]=stageColorsLocal[oldName];
+                    delete stageColorsLocal[oldName];
+                  }
+                  pk.value=_pickColorFor(inp.value);
+                };
+                const reset=el('button','btn btn-ghost btn-sm','自');reset.type='button';reset.title='自動配色に戻す';
+                reset.onclick=()=>{delete stageColorsLocal[(inp.value||'').trim()];pk.value=_autoColor((inp.value||'').trim())};
+                const del=el('button','btn btn-danger btn-sm','削除');del.onclick=()=>{const removed=tpl.stages[i];tpl.stages.splice(i,1);if(removed)delete stageColorsLocal[removed];redrawStg()};
+                row.appendChild(pk);row.appendChild(inp);row.appendChild(reset);row.appendChild(del);stgWrap.appendChild(row);
               });
             };
             redrawStg();box.appendChild(stgWrap);
@@ -12885,7 +13234,7 @@ function openRename(node){
     /* タスク（工程）：作業担当・チェック担当（メンバーから選択。ショット単位ではなく工程ごとに設定） */
     /* 作業者/チェック者の設定はショットページ上部バー（設定ボタンの左）に移設 */
     /* プロジェクト（ルート）ならステータス／進捗のショット親フォルダを編集できる */
-    let stArr=null,spSel=null,projThumbFile=null,projThumbUrlTmp=null,projCropWidget=null,scArr=null,ovSel=null,splitChk=null;
+    let stArr=null,spSel=null,projThumbFile=null,projThumbUrlTmp=null,projCropWidget=null,ovSel=null,splitChk=null;
     let pwNew=null,pwConf=null,pwRemove=null;
     if(!node.parentId){
       /* プロジェクトサムネイル（元画像はそのまま・トリミングのみ調整可能） */
@@ -12943,8 +13292,17 @@ function openRename(node){
           const clCb=el('input');clCb.type='checkbox';clCb.checked=(st2.clientWait===true);clCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
           clCb.onchange=()=>{st2.clientWait=clCb.checked};
           clLabel.appendChild(clCb);clLabel.appendChild(document.createTextNode('クライアント待ち'));
+          /* v.027：順番の入れ替え（↑／↓）。先頭ステータスがショット追加時の既定値になる・
+             並び順はレビュー画面の判定ボタン・進捗ダッシュボードにそのまま反映されるので、
+             並び替え手段が必要。先頭／末尾は disabled。 */
+          const upBtn=el('button','btn btn-ghost btn-sm','↑');upBtn.type='button';upBtn.title='上に移動';
+          upBtn.disabled=(i===0);
+          upBtn.onclick=()=>{if(i<=0)return;const t=stArr[i-1];stArr[i-1]=stArr[i];stArr[i]=t;redrawSt();};
+          const downBtn=el('button','btn btn-ghost btn-sm','↓');downBtn.type='button';downBtn.title='下に移動';
+          downBtn.disabled=(i===stArr.length-1);
+          downBtn.onclick=()=>{if(i>=stArr.length-1)return;const t=stArr[i+1];stArr[i+1]=stArr[i];stArr[i]=t;redrawSt();};
           const del=el('button','btn btn-danger btn-sm','削除');del.onclick=()=>{stArr.splice(i,1);redrawSt()};
-          row.appendChild(color);row.appendChild(nm);row.appendChild(cwLabel);row.appendChild(clLabel);row.appendChild(del);stWrap.appendChild(row);
+          row.appendChild(color);row.appendChild(nm);row.appendChild(cwLabel);row.appendChild(clLabel);row.appendChild(upBtn);row.appendChild(downBtn);row.appendChild(del);stWrap.appendChild(row);
         });
       };
       redrawSt();
@@ -12952,26 +13310,8 @@ function openRename(node){
       const addSt=el('button','btn btn-ghost btn-sm','＋ ステータスを追加');addSt.style.marginBottom='12px';
       addSt.onclick=()=>{stArr.push({id:newId('st'),label:'新ステータス',color:'#60a5ff',checkWait:false});redrawSt()};
       inner.appendChild(addSt);
-      /* 工程バッジの色（工程名ごと・全ショット共通）。実在する工程名を列挙し、一度選べば同名の全工程に反映される。 */
-      sec(secN++,'🎨','工程バッジの色','工程名（LAY / ANIM / COMP など）ごとに固有色を割り当てられます。1 回設定すれば、全ショットの同じ工程バッジに反映されます。「自動」ボタンで自動配色に戻せます。');
-      const scWrap=el('div','step-grid');
-      const scNames=[...projStageColorMap(node).keys()];
-      scArr=scNames.map(nm=>({name:nm,color:(node.stageColors&&node.stageColors[nm])||''}));
-      const drawSC=()=>{
-        scWrap.innerHTML='';
-        if(!scArr.length){scWrap.appendChild(el('div','form-label','（工程がまだありません）'));return}
-        scArr.forEach(st2=>{
-          const row=el('div','step-row');
-          const auto=stageColorFor(node,st2.name);
-          const pk=el('input');pk.type='color';pk.value=/^#[0-9a-fA-F]{6}$/.test(st2.color)?st2.color:auto;pk.style.cssText='width:36px;height:30px;background:none;border:none;flex-shrink:0';pk.oninput=()=>{st2.color=pk.value};
-          const nm=el('input','form-input');nm.value=st2.name;nm.readOnly=true;nm.style.opacity='.75';
-          const ab=el('button','btn btn-ghost btn-sm','自動');ab.type='button';ab.title='自動配色に戻す';ab.onclick=()=>{st2.color='';drawSC()};
-          row.appendChild(pk);row.appendChild(nm);row.appendChild(ab);scWrap.appendChild(row);
-        });
-      };
-      drawSC();
-      inner.appendChild(scWrap);
-      const scNote=el('div','form-label','※「自動」は工程名から自動で割り当てた色（重複しないよう配分）に戻します。');scNote.style.marginBottom='12px';inner.appendChild(scNote);
+      /* v.006：工程バッジの色セクションは撤去（工程テンプレ内の各工程行の左ピッカーに統合）。
+         互換のため node.stageColors の読み出し・書き込み経路は変更していない。 */
       /* 進捗（工程/ステータスグラフ）のショット親フォルダ（複数選択可） */
       sec(secN++,'📂','進捗表示の起点フォルダ','進捗タブ・ショットタブが「どのフォルダの直下をショットとして数えるか」を指定します。エピソードが複数のフォルダに分かれている場合は複数選択できます。未選択なら自動検出。');
       const spWrap=el('div','sp-parents');spWrap.style.cssText='display:flex;flex-direction:column;gap:2px;max-height:190px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px';
@@ -13130,7 +13470,17 @@ function openRename(node){
         else{delete node.stageTemplates}
       }
       /* 工程バッジの手動色（工程名→色）をプロジェクトルートに保存。空（自動）は削除。 */
-      if(scArr!=null){const cmap=Object.assign({},node.stageColors||{});for(const st2 of scArr){const nm=st2.name;if(!nm)continue;if(st2.color&&/^#[0-9a-fA-F]{6}$/.test(st2.color))cmap[nm]=st2.color;else delete cmap[nm]}if(Object.keys(cmap).length)node.stageColors=cmap;else delete node.stageColors}
+      /* v.006：工程色の保存。stageColorsLocal（工程テンプレ UI の各ピッカー）を node.stageColors に反映。
+         空値・不正な形式はキーを削除。全て空になったら stageColors フィールド自体を削除。 */
+      if(stageColorsLocal!=null){
+        const cmap={};
+        for(const k in stageColorsLocal){
+          const v=stageColorsLocal[k];
+          if(v&&/^#[0-9a-fA-F]{6}$/.test(v))cmap[k]=v;
+        }
+        if(Object.keys(cmap).length)node.stageColors=cmap;
+        else delete node.stageColors;
+      }
       /* 進行状況バッジの手動オーバーライド（auto=削除して自動判定に戻す） */
       if(ovSel){const v=ovSel.get();if(v==='active'||v==='done')node.statusOverride=v;else delete node.statusOverride}
       /* v.062：工数集計の設定（manhours.splitParallelByAssignee） */
@@ -14076,6 +14426,100 @@ function openMembersWindow(root){
   phBox.appendChild(ce('div','muted','参加側はピッカーで自分で選び直す必要がありますが、このメモが「どこを探せばいいか」の目印になります。ブラウザ API の制約でフルパスは自動取得できないため手入力です。'));
   wrap.appendChild(phBox);
   const tbl=ce('table');wrap.appendChild(tbl);
+
+  /* v.027：R2 マルチテナントプロジェクトでは、同テナント所属メンバー一覧から選択して追加できる。
+     Firestore `tenants/{tid}/members` を取得し、まだメンバー表に居ない人だけをタイル表示。
+     「＋ 追加」で `work` 配列に push → 既存 UI の保存フローで永続化。
+     tid が無い（NAS フォルダプロジェクト）場合はこのセクションを表示しない。 */
+  const tenantWrap=ce('div');tenantWrap.style.cssText='margin-top:20px;padding-top:16px;border-top:1px solid #23232a';
+  const tnHead=ce('div',null,'🏢 テナント所属メンバーから追加');tnHead.style.cssText='font-size:13px;font-weight:700;color:#e8e8ec;margin-bottom:6px';
+  tenantWrap.appendChild(tnHead);
+  const tnMuted=ce('div','muted','同じテナントに所属しているメンバーを一覧表示します。「＋ 追加」ボタンでこのプロジェクトのメンバー表に追加できます（まだ「保存」は実行されません）。');
+  tenantWrap.appendChild(tnMuted);
+  const tnList=ce('div');tnList.style.cssText='display:flex;flex-direction:column;gap:6px';
+  tenantWrap.appendChild(tnList);
+  wrap.appendChild(tenantWrap);
+
+  async function _refreshTenantMembers(){
+    tnList.innerHTML='';
+    /* v.028：tid 解決を 3 段階に拡張。
+       (1) root.tid（R2 プロジェクトのテナント ID、接続時に設定）
+       (2) storage._r2._resolveTid（REG / _tidMap からの逆引き）
+       (3) authUser.tenantId（ログインユーザー自身の所属テナント = フォルダプロジェクトでも利用可）
+       全部ダメなら「取得できない理由」をユーザーに明示（デバッグ用）。 */
+    let tid=(root&&root.tid)||null;
+    let tidSource='root.tid';
+    if(!tid && storage && storage._r2 && storage._r2._resolveTid){
+      const t=storage._r2._resolveTid(root.id);
+      if(t){tid=t;tidSource='storage._r2._resolveTid';}
+    }
+    if(!tid && typeof authUser!=='undefined' && authUser && authUser.tenantId){
+      tid=authUser.tenantId;tidSource='authUser.tenantId（ログインユーザーの所属テナント）';
+    }
+    if(!tid){
+      const em=ce('div','muted','テナント ID が解決できません。'
+        +'（R2 プロジェクトのみ対応：接続時に root.tid が設定されます。'
+        +' また、ログインユーザー自身がどのテナントにも所属していない場合も表示されません）');
+      tnList.appendChild(em);return;
+    }
+    if(!window.__laynaFB || !window.__laynaFB.loadTenantMembers){
+      const em=ce('div','muted','（Firebase 未初期化のため利用できません）');tnList.appendChild(em);return;
+    }
+    /* v.029：tid の出所バッジを完了後も常時表示（読み込みが一瞬で終わると「読み込み中…」が
+       見えないため、どの経路で tid が解決されたか残しておく。 */
+    const tidBadge=ce('div','muted','tid: '+tid+' / 出所: '+tidSource);
+    tidBadge.style.cssText='font-size:10px;color:#6a6a79;margin:4px 0 8px;font-family:ui-monospace,"SF Mono",Menlo,monospace;word-break:break-all';
+    tnList.appendChild(tidBadge);
+    const loading=ce('div','muted','読み込み中…');tnList.appendChild(loading);
+    let tenantMembers=null;
+    let loadErr=null;
+    try{ tenantMembers=await window.__laynaFB.loadTenantMembers(tid); }catch(e){ loadErr=e; }
+    loading.remove();
+    if(!tenantMembers){
+      const em=ce('div','muted','（テナント '+tid+' のメンバー一覧を取得できませんでした'
+        +(loadErr?' / '+String(loadErr&&loadErr.message||loadErr):'')+'）');
+      tnList.appendChild(em);return;
+    }
+    /* 既にプロジェクトメンバー表に居る人を除外（work の id と重複チェック） */
+    const existing=new Set(work.map(m=>String(m.id||'').toLowerCase()));
+    const candidates=tenantMembers.filter(tm=>{
+      const em=String(tm.email||'').toLowerCase();
+      return em && !existing.has(em);
+    });
+    if(!candidates.length){
+      const em=ce('div','muted','（追加可能なメンバーがいません。全員すでにメンバー表に居ます）');tnList.appendChild(em);return;
+    }
+    for(const tm of candidates){
+      const row=ce('div');row.style.cssText='display:flex;align-items:center;gap:10px;padding:7px 10px;background:#15151a;border:1px solid #2a2a2f;border-radius:7px';
+      const info=ce('div');info.style.cssText='flex:1 1 auto;display:flex;flex-direction:column;gap:2px;min-width:0';
+      const nm=ce('div',null,String(tm.name||tm.email||'(名前なし)'));nm.style.cssText='font-size:12px;color:#e8e8ec;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      const em=ce('div',null,String(tm.email||''));em.style.cssText='font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11px;color:#8a8a99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      info.appendChild(nm);info.appendChild(em);
+      row.appendChild(info);
+      if(tm.role){
+        const rb=ce('span',null,String(tm.role));rb.style.cssText='padding:2px 8px;background:rgba(90,155,255,.15);border:1px solid rgba(90,155,255,.4);color:#5A9BFF;border-radius:999px;font-size:10px;flex:0 0 auto';
+        row.appendChild(rb);
+      }
+      const addRow=ce('button','btn primary','＋ 追加');addRow.style.cssText='flex:0 0 auto;padding:5px 12px;font-size:11px;border-radius:5px;cursor:pointer';
+      addRow.onclick=()=>{
+        /* 重複ガード（連打対策） */
+        const emailLc=String(tm.email||'').toLowerCase();
+        if(work.some(m=>String(m.id||'').toLowerCase()===emailLc))return;
+        work.push({
+          id: tm.email||'',
+          name: tm.name||tm.email||'',
+          roles: tm.role||'',
+          color: '#4da6ff',
+          active: true,
+        });
+        redraw();
+        _refreshTenantMembers(); /* 候補一覧を更新（追加済みを除外） */
+      };
+      row.appendChild(addRow);
+      tnList.appendChild(row);
+    }
+  }
+  _refreshTenantMembers();
 
   /* v.134：未受理招待の可視化（Phase 3 #1）。
      自分が発行した招待のうち、相手がまだログインしていないもの一覧。失効も表示。
@@ -18363,6 +18807,9 @@ async function openRetimer(node,v){
     for(let i=0;i<kf.length-1;i++){const a=kf[i],b=kf[i+1];if(D>=a.t&&D<=b.t){const dt=b.t-a.t;return dt>0?(b.s-a.s)/dt:0}}
     return 1;
   };
+  /* v.025：直近に playbackRate を変えた時刻（performance.now()）。rate 変更直後は
+     デコーダが新しい速度に追従する間 drift が過大に見えるため、短時間（120ms）は drift seek をスキップ。 */
+  let lastRateChangeTs=0;
   const playTick=(ts)=>{
     if(!playing)return;
     const elapsed=(ts-playStartTs)/1000;
@@ -18374,11 +18821,20 @@ async function openRetimer(node,v){
     const rate=_segRateAt(f);
     if(rate>0){
       const nr=_clampRate(rate);
-      if(Math.abs(video.playbackRate-nr)>0.01)video.playbackRate=nr;
+      /* v.025：playbackRate 変更の閾値を 0.01→0.05 に緩和。
+         rAF ごとに _segRateAt が小数誤差で微変動することがあり、playbackRate 再設定を
+         頻発させるとデコーダがリセットされる挙動のブラウザ（Chromium）で短い中断が発生する。
+         速度変更の体感的な違いが出ない範囲で再設定頻度を減らす。 */
+      if(Math.abs(video.playbackRate-nr)>0.05){video.playbackRate=nr;lastRateChangeTs=ts;}
       if(video.paused){video.currentTime=expectedSrc/FPS;video.play().catch(()=>{})}
-      /* 大きなドリフトのみ補正（数フレーム超で seek）。少しのズレは無視して滑らかさ優先 */
+      /* v.025：drift 補正の閾値を 3F→8F に拡大、rate 変更直後 120ms はスキップ。
+         currentTime 書き込みは seeking を発動させ、seeked まで再生が止まる（＝カクつき）。
+         デコード負荷の変動で等倍再生でも累積 drift が 3F を超えやすく、頻繁な seek が
+         「たまに止まる」として体感されていた。少しのズレは視覚的に気づかれないため閾値を
+         拡大。rate 変更直後はデコーダが新しい速度に追従する猶予を与え seek しない。 */
       const drift=Math.abs(video.currentTime*FPS-expectedSrc);
-      if(drift>3)video.currentTime=expectedSrc/FPS;
+      const sinceRateChange=ts-lastRateChangeTs;
+      if(drift>8 && sinceRateChange>120)video.currentTime=expectedSrc/FPS;
     }else{
       /* フリーズ or 逆再生：ネイティブ再生を停止して手動 seek */
       if(!video.paused){try{video.pause()}catch(_){}}
@@ -21746,7 +22202,127 @@ async function startAppFlow(){
   /* 保存先はブラウザ内保存(IndexedDB)に固定。フォルダ管理はプロジェクト単位で行う。 */
   storage.useIdb();
   try{await boot()}catch(e){console.error(e);toast('起動に失敗しました: '+e.message)}
+  /* v.016：DEMO_MODE はブート完了後に docs/demo_project_inject.js を fetch → eval して注入し、
+     ?page / ?id に応じて初期画面を切り替える。 */
+  if(DEMO_MODE){
+    try{
+      const r = await fetch('docs/demo_project_inject.js?v='+APP_VERSION,{cache:'no-store'});
+      if(r.ok){
+        const code = await r.text();
+        /* IIFE 形式なのでそのまま Function 実行で副作用（DB.nodes.push）を発生させる */
+        (new Function(code))();
+      }
+    }catch(e){console.warn('demo inject failed',e);try{toast('デモデータの注入に失敗しました')}catch(_){}}
+    /* 初期画面：?page / ?id */
+    try{
+      const rootId = 'nd_demo_root';
+      if(DEMO_ID){
+        /* ショット単体ページを表示（go() は review ノードを「本文表示」で開く挙動なので、
+           shot ノード（section with kind='shot'）の子 review ノードを選ぶのが素直） */
+        const n = getNode(DEMO_ID);
+        if(n){
+          state.currentId = DEMO_ID;
+          for(const x of pathOf(DEMO_ID)) state.expanded.add(x.id);
+          /* review ノードなら本文表示 */
+          state.projTab = (n.type==='review') ? 'browse' : (DEMO_PAGE || 'timeline');
+        }
+      }else if(DEMO_PAGE){
+        state.currentId = rootId;
+        for(const x of pathOf(rootId)) state.expanded.add(x.id);
+        /* ページ別名 → projTab */
+        const pageMap = {
+          'home':'timeline', 'timeline':'timeline',
+          'shots':'shots', 'ショット':'shots',
+          'gantt':'progress', 'progress':'progress', '進捗':'progress',
+          'reference':'reference', '資料':'reference',
+          'reels':'submit', 'reel':'submit', 'リール':'submit',
+          'efforts':'check', 'check':'check', '工数':'check',
+          'assets':'assets', 'browse':'browse',
+        };
+        state.projTab = pageMap[DEMO_PAGE] || 'timeline';
+      }else{
+        /* デフォルトはルート → ホーム（timeline） */
+        state.currentId = rootId;
+        for(const x of pathOf(rootId)) state.expanded.add(x.id);
+      }
+      render();resolveThumbs();
+      /* v.024：?page=reel / リール / reels なら、デモ REEL を自動オープン */
+      if(DEMO_PAGE === 'reel' || DEMO_PAGE === 'reels' || DEMO_PAGE === 'リール'){
+        try{
+          setTimeout(()=>{
+            try{
+              if(typeof openReelFromSaved === 'function'){
+                openReelFromSaved('rl_demo_main');
+              }
+            }catch(e){ console.warn('demo auto-reel failed', e); }
+          }, 400);
+        }catch(_){}
+      }
+      /* v.024：?page=timeremap なら、現在ショットの最新版でタイムリマップ・ビューアを自動オープン */
+      if(DEMO_PAGE === 'timeremap' || DEMO_PAGE === 'retime' || DEMO_PAGE === 'タイムリマップ'){
+        try{
+          setTimeout(()=>{
+            try{
+              const n = getNode(state.currentId);
+              if(!n) return;
+              /* review ノードならその最新 version、shot ノードなら現工程 review の最新 version */
+              let targetNode = n, targetVer = null;
+              if(n.type === 'review'){
+                const vs = n.versions || [];
+                targetVer = vs[vs.length-1] || null;
+              }else if(n.kind === 'shot'){
+                const stageName = n.currentStage;
+                const rev = (DB.nodes||[]).find(x=>x.parentId===n.id && x.type==='review' && x.name===stageName);
+                if(rev){
+                  targetNode = rev;
+                  const vs = rev.versions || [];
+                  targetVer = vs[vs.length-1] || null;
+                }
+              }
+              if(targetVer && typeof openRetimer === 'function') openRetimer(targetNode, targetVer);
+              else toast && toast('タイムリマップ対象の版が見つかりませんでした');
+            }catch(e){console.warn('demo auto-retime failed',e)}
+          }, 300);
+        }catch(_){}
+      }
+    }catch(e){console.warn('demo nav failed',e)}
+    /* デモバナー表示 */
+    _showDemoBanner();
+  }
 }
+/* v.016：デモ版バナー（画面上部に固定、閉じるボタン付き） */
+function _showDemoBanner(){
+  try{
+    if(document.getElementById('demoBanner'))return;
+    const b = document.createElement('div');
+    b.id='demoBanner';
+    b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#F2986B,#F2C86B);color:#000;padding:6px 14px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,.3)';
+    b.innerHTML = '<span style="font-size:14px">🎬</span><span>LayCAT デモ版 — 保存操作は反映されません。本番は <a href="laycat_dev.html" style="color:#000;text-decoration:underline">こちら</a></span><button type="button" id="demoBannerClose" style="margin-left:auto;background:transparent;border:1px solid rgba(0,0,0,.4);color:#000;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px">閉じる ×</button>';
+    document.body.appendChild(b);
+    /* バナー分だけ chrome を押し下げ */
+    document.documentElement.style.setProperty('--demo-banner-h','28px');
+    const chrome = document.querySelector('.chrome, header, body > :not(script):not(style)');
+    if(chrome && !document.getElementById('demoBannerSpacer')){
+      const sp = document.createElement('div');
+      sp.id='demoBannerSpacer';sp.style.cssText='height:28px';
+      document.body.insertBefore(sp, document.body.firstChild);
+    }
+    document.getElementById('demoBannerClose').onclick=()=>{b.remove();const sp=document.getElementById('demoBannerSpacer');if(sp)sp.remove();};
+  }catch(_){}
+}
+
+/* ===== v.016：デモモード =====
+   `?demo=1` が付いていると：
+   - Firebase ログインを完全スキップ（ダミーユーザーで起動）
+   - persist / storage._r2 系の書込を no-op（IndexedDB / Firestore / R2 への書込一切なし）
+   - 起動時に docs/demo_project_inject.js を自動注入してデモデータ投入
+   - `?page=<X>` で初期タブ（shots/gantt/reference/reels/efforts/home/browse）に遷移
+   - `?id=<Y>` で特定ノード（例：デモショット nd_demo_sh001）を初期選択
+   - 上部に「デモ版」バナーを表示
+   intro.html の各機能紹介から「→ 触って試す」ボタンでここに飛ばす想定。 */
+const DEMO_MODE = (()=>{try{return new URLSearchParams(location.search).get('demo')==='1'}catch(_){return false}})();
+const DEMO_PAGE = (()=>{try{return (new URLSearchParams(location.search).get('page')||'').toLowerCase()}catch(_){return ''}})();
+const DEMO_ID   = (()=>{try{return new URLSearchParams(location.search).get('id')||''}catch(_){return ''}})();
 
 /* ===== 認証（Googleログイン + git許可リスト access.json）===== */
 let accessCfg=null,AUTH_ON=false;
@@ -21906,6 +22482,14 @@ async function openMyPageModal(){
           <h4 class="mp-section-title">役職（複数選択可）</h4>
           <div class="mp-roles-grid">${rolesHtml}</div>
         </section>
+        <!-- v.015：R2 エンドポイント設定の表示判定を resolveTidForNewProject の戻り値で決める。
+             - 戻り値が 'personal__<myKey>' → 個人セクション表示（マイページから設定可）
+             - 戻り値が 'operator' → 「🏢 テナント管理」の operator テナントで設定、と誘導
+             - 戻り値が実テナント ID → 所属テナントの owner/admin に設定依頼、と誘導 -->
+        <section class="mp-section" id="mpR2Section">
+          <h4 class="mp-section-title">R2 ストレージ</h4>
+          <div id="mpR2Body" class="mp-help">読み込み中…</div>
+        </section>
       </div>
       <div class="mp-foot">
         <button class="btn btn-ghost mp-cancel">キャンセル</button>
@@ -21913,6 +22497,75 @@ async function openMyPageModal(){
       </div>`;
     body.querySelector('.mp-close').onclick=closeModal;
     body.querySelector('.mp-cancel').onclick=closeModal;
+    /* v.015：R2 エンドポイント設定 — 新規プロジェクト作成時に適用される tid を実際に解決してから
+       表示を分岐。これにより「設定したのに違う tid に書かれて反映されない」事故を防ぐ。 */
+    (async()=>{
+      const bodyEl = body.querySelector('#mpR2Body');
+      if(!bodyEl) return;
+      let resolvedTid = null;
+      try{ resolvedTid = await storage._r2.resolveTidForNewProject(email); }catch(_){}
+      if(!resolvedTid){
+        bodyEl.innerHTML = '<span style="color:var(--text3)">tid を解決できませんでした（ログイン状態を確認してください）。</span>';
+        return;
+      }
+      const esc = s => String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      /* ケース A：個人テナント（マイページから直接設定可能） */
+      if(String(resolvedTid).startsWith('personal__')){
+        bodyEl.innerHTML = `
+          <div class="mp-help">未設定なら運営の R2 を使います。自前の Cloudflare Worker をデプロイして URL を入れると、あなたの個人プロジェクトがその Worker 経由で自前 R2 に保存されます（詳細は <code>docs/CUSTOMER_R2_SETUP.md</code>）。</div>
+          <div class="mp-time-row" style="margin-top:6px;align-items:center;flex-wrap:wrap">
+            <label class="mp-field" style="flex:1;min-width:260px"><span class="mp-label">エンドポイント</span><input type="text" class="mp-input" id="mpR2Endpoint" placeholder="空欄＝運営 R2 を使用／https://自前-worker.workers.dev" style="font-family:var(--font-code);font-size:12px"></label>
+            <button class="btn btn-ghost" id="mpR2TestBtn" style="padding:5px 10px;font-size:12px;margin-top:18px" title="入力した URL で /api/r2/health を叩いて疎通確認">疎通確認</button>
+            <button class="btn btn-primary" id="mpR2SaveBtn" style="padding:5px 12px;font-size:12px;margin-top:18px">保存</button>
+          </div>`;
+        const inp = bodyEl.querySelector('#mpR2Endpoint');
+        try{
+          const cur = await window.__laynaFB.getTenantR2Endpoint(resolvedTid);
+          if(cur) inp.value = cur;
+        }catch(_){}
+        const _normalizeR2Url=u=>{u=String(u||'').trim().replace(/\/$/,'');if(!u)return '';if(!/^https?:\/\//i.test(u))u='https://'+u;return u;};
+        const testBtn = bodyEl.querySelector('#mpR2TestBtn');
+        testBtn.onclick=async()=>{
+          const url = _normalizeR2Url(inp.value||'');
+          if(!url){ toast('URL を入力してください'); return; }
+          testBtn.disabled = true; testBtn.textContent='確認中…';
+          try{
+            const r = await fetch(url+'/api/r2/health',{method:'GET'});
+            if(r.ok){ const j=await r.json().catch(()=>null); toast('疎通 OK ('+(j&&j.edition||'unknown')+')'); }
+            else{ toast('疎通失敗：HTTP '+r.status); }
+          }catch(e){ toast('疎通失敗：'+String(e&&e.message||e)); }
+          testBtn.disabled=false; testBtn.textContent='疎通確認';
+        };
+        const saveBtn = bodyEl.querySelector('#mpR2SaveBtn');
+        saveBtn.onclick=async()=>{
+          const url = _normalizeR2Url(inp.value||'');
+          if(!url){
+            if(!confirm('R2 エンドポイントを空にすると、あなたの個人プロジェクトは運営 R2 に保存されます（既存の自前 R2 データは参照できなくなります）。続行しますか？')) return;
+          }
+          saveBtn.disabled = true;
+          const ok = await window.__laynaFB.updateTenantR2Endpoint(resolvedTid, url, email);
+          saveBtn.disabled = false;
+          if(!ok){ toast('保存に失敗しました（Firestore ルール要確認）'); return; }
+          toast(url ? ('R2 エンドポイントを保存しました：'+url) : 'R2 エンドポイントを空にしました');
+          try{ storage._r2._endpointCache.delete(resolvedTid); }catch(_){}
+        };
+        return;
+      }
+      /* ケース B：operator テナント */
+      if(resolvedTid === 'operator'){
+        bodyEl.innerHTML = `<span style="color:var(--text3)">あなたのアカウントは運営（operator）です。R2 エンドポイントの設定は右上の <b>🏢 テナント管理</b> から <code>operator</code> テナントを選んで行ってください。</span>`;
+        return;
+      }
+      /* ケース C：所属テナント */
+      let tenantName = resolvedTid;
+      try{
+        if(window.__laynaFB && window.__laynaFB.loadTenant){
+          const t = await window.__laynaFB.loadTenant(resolvedTid);
+          if(t && t.name) tenantName = t.name;
+        }
+      }catch(_){}
+      bodyEl.innerHTML = `<span style="color:var(--text3)">あなたのプロジェクトは <b>${esc(tenantName)}</b> テナントに保存されます。R2 エンドポイントの設定はそのテナントの owner / admin が <b>🏢 テナント管理</b> から行います。</span>`;
+    })();
     body.querySelector('.mp-save').onclick=async()=>{
       const name=body.querySelector('#mpName').value.trim();
       const start=body.querySelector('#mpStart').value;
@@ -21963,12 +22616,12 @@ async function _calEnsureCompany(){
 }
 async function openCalendarModal(){
   if(!authUser){toast('ログインが必要です');return}
-  /* Phase M3b：編集権限をテナント役職ベースに完全統合。
-     - 運営（operator）：全テナントの会社休日を編集可能（SaaS 運営の最高権限）
-     - テナント owner / admin：自テナントの会社休日のみ編集可能
-     - 旧全体 admin 経路は Phase M3b で撤去 */
+  /* v.014：グローバル権限（operator）とテナント権限（owner/admin/member）を明確に分離。
+     - operator だけという理由で全テナントの会社休日を編集できる挙動は撤廃
+     - operator であっても、編集するテナントの member として owner/admin ロールが
+       無ければ編集不可。operator 自身のテナント（例：tid='operator'）で admin
+       として登録されていればそこの会社休日は編集できる。 */
   const canEdit = (
-    authUser.role === 'operator' ||
     authUser.tenantRole === 'owner' ||
     authUser.tenantRole === 'admin'
   );
@@ -22099,23 +22752,22 @@ async function refreshTenantAdminButton(){
   if(!btn) return;
   if(!authUser || !authUser.email || !window.__laynaFB) { btn.classList.add('hidden'); return; }
   try{
-    /* operator は全テナント管理可能。tenants 一覧を取得して全て admin 扱いで追加。 */
-    if(authUser.role === 'operator'){
-      const all = window.__laynaFB.loadAllTenants ? await window.__laynaFB.loadAllTenants() : [];
-      _tenantAdminAvailable = (all||[]).map(t => ({tenantId: t.id, name: t.name||t.id, role: 'operator'}));
-    } else {
-      /* 契約者（ownerEmail 一致）or admin ロール：findUserTenants + tenants.ownerEmail チェック */
-      const emailLc = String(authUser.email).toLowerCase();
-      const all = window.__laynaFB.loadAllTenants ? await window.__laynaFB.loadAllTenants() : [];
-      const myMemberships = window.__laynaFB.findUserTenants ? await window.__laynaFB.findUserTenants(emailLc) : [];
-      const memberMap = {};
-      for(const mm of (myMemberships||[])) memberMap[mm.tenantId] = mm.role;
-      for(const t of (all||[])){
-        if(String(t.ownerEmail||'').toLowerCase() === emailLc){
-          _tenantAdminAvailable.push({tenantId:t.id, name:t.name||t.id, role:'owner'});
-        } else if(memberMap[t.id] === 'admin'){
-          _tenantAdminAvailable.push({tenantId:t.id, name:t.name||t.id, role:'admin'});
-        }
+    /* v.014：グローバル権限（operator）とテナント権限（owner/admin/member）を明確に分離。
+       operator だからという理由で全テナント管理可能 ─ という挙動は撤廃。
+       operator であっても、テナント管理モーダルで触れるのは「自分が ownerEmail／members に
+       admin として登録されているテナント」のみ。他テナント（例：CafeGroup）には入れない。
+       ※ operator 専用テナント（tid='operator'）には、operator 自身が admin として
+         登録されていれば従来通り入れる（この経路はこのループでカバー済み）。 */
+    const emailLc = String(authUser.email).toLowerCase();
+    const all = window.__laynaFB.loadAllTenants ? await window.__laynaFB.loadAllTenants() : [];
+    const myMemberships = window.__laynaFB.findUserTenants ? await window.__laynaFB.findUserTenants(emailLc) : [];
+    const memberMap = {};
+    for(const mm of (myMemberships||[])) memberMap[mm.tenantId] = mm.role;
+    for(const t of (all||[])){
+      if(String(t.ownerEmail||'').toLowerCase() === emailLc){
+        _tenantAdminAvailable.push({tenantId:t.id, name:t.name||t.id, role:'owner'});
+      } else if(memberMap[t.id] === 'admin'){
+        _tenantAdminAvailable.push({tenantId:t.id, name:t.name||t.id, role:'admin'});
       }
     }
   }catch(_){ _tenantAdminAvailable = []; }
@@ -22240,6 +22892,16 @@ async function _tnRender(state){
       </div>
       <div class="tn-domain-list" style="margin-top:4px">テナント既定の定時。PM Board の工数集計で「個人のマイページ未設定」のユーザーに適用されます。<br>※ 変更後は PM Board の工数タブをリロードしてください。</div>
     </div>
+    <h4 class="tn-section-title">R2 ストレージ</h4>
+    <div class="tn-domain-box">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+        <span style="font-size:12px;color:var(--text2);min-width:68px">エンドポイント</span>
+        <input type="text" id="tnR2Endpoint" value="${esc(tenant.r2Endpoint||'')}" placeholder="空欄＝運営 R2 を使用／https://自前-worker.workers.dev" ${canToggleDomain?'':'disabled'} style="flex:1;min-width:280px;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:12px;font-family:var(--font-code)">
+        <button class="btn btn-ghost" id="tnR2TestBtn" ${canToggleDomain?'':'disabled'} style="padding:5px 10px;font-size:12px" title="入力した URL で /api/r2/health を叩いて疎通確認">疎通確認</button>
+        <button class="btn btn-primary" id="tnR2SaveBtn" ${canToggleDomain?'':'disabled'} style="padding:5px 12px;font-size:12px">保存</button>
+      </div>
+      <div class="tn-domain-list">未設定なら運営の R2 を使います。自前の Cloudflare Worker をデプロイして URL を入れると、このテナントの全プロジェクトがその Worker 経由で自前 R2 に保存されます。<br>※ 変更後は LayCAT をリロードしてください（切替タイミングで既存接続が切れることがあります）。</div>
+    </div>
     <h4 class="tn-section-title">メンバー（${members.length}）</h4>
     <div style="padding:4px 0">
       <button class="btn btn-primary" id="tnOpenMemberModal">👥 メンバー管理（追加・権限変更・削除）</button>
@@ -22265,6 +22927,45 @@ async function _tnRender(state){
       tnCoreSaveBtn.disabled = false;
       if(!ok){ toast('保存に失敗しました（権限不足？）'); return; }
       toast(`テナント既定の定時を ${s}〜${e} に設定しました`);
+    };
+  }
+  /* v.013：R2 エンドポイント設定（顧客自前 R2 対応） */
+  const tnR2TestBtn = bodyEl.querySelector('#tnR2TestBtn');
+  const tnR2SaveBtn = bodyEl.querySelector('#tnR2SaveBtn');
+  const tnR2EndpointEl = bodyEl.querySelector('#tnR2Endpoint');
+  function _normalizeR2Url(u){
+    u=String(u||'').trim().replace(/\/$/,'');
+    if(!u)return '';
+    if(!/^https?:\/\//i.test(u))u='https://'+u;
+    return u;
+  }
+  if(tnR2TestBtn && canToggleDomain){
+    tnR2TestBtn.onclick = async ()=>{
+      const url = _normalizeR2Url(tnR2EndpointEl.value||'');
+      if(!url){ toast('URL を入力してください'); return; }
+      tnR2TestBtn.disabled = true; tnR2TestBtn.textContent = '確認中…';
+      try{
+        const r = await fetch(url+'/api/r2/health', {method:'GET'});
+        if(r.ok){ const j=await r.json().catch(()=>null); toast('疎通 OK ('+(j&&j.edition||'unknown')+')'); }
+        else{ toast('疎通失敗：HTTP '+r.status); }
+      }catch(e){ toast('疎通失敗：'+String(e&&e.message||e)); }
+      tnR2TestBtn.disabled = false; tnR2TestBtn.textContent = '疎通確認';
+    };
+  }
+  if(tnR2SaveBtn && canToggleDomain){
+    tnR2SaveBtn.onclick = async ()=>{
+      const url = _normalizeR2Url(tnR2EndpointEl.value||'');
+      /* 空文字＝運営 R2 に戻す（確認プロンプト） */
+      if(!url){
+        if(!confirm('R2 エンドポイントを空にすると、このテナントのプロジェクトは運営 R2 に保存されます（既存の自前 R2 データは参照できなくなります）。続行しますか？')) return;
+      }
+      tnR2SaveBtn.disabled = true;
+      const ok = await window.__laynaFB.updateTenantR2Endpoint(tid, url, authUser.email);
+      tnR2SaveBtn.disabled = false;
+      if(!ok){ toast('保存に失敗しました（権限不足？）'); return; }
+      toast(url ? ('R2 エンドポイントを保存しました：'+url) : 'R2 エンドポイントを空にしました（運営 R2 に戻しました）');
+      /* クライアント側キャッシュを無効化 */
+      try{ if(storage._r2._endpointCache) storage._r2._endpointCache.delete(tid); }catch(_){}
     };
   }
   /* ドメイン自動許可トグル */
@@ -22624,6 +23325,13 @@ async function _computeTenantRole(tenantId, email){
   }catch(_){ return null; }
 }
 async function initApp(){
+  /* v.016：DEMO_MODE は認証・アクセスチェックを完全バイパス */
+  if(DEMO_MODE){
+    AUTH_ON = false;
+    authUser = {name:'デモユーザー', email:'demo@laycat.local', photo:'', role:'member'};
+    startAppFlow();
+    return;
+  }
   try{accessCfg=await (await fetch('./access.json',{cache:'no-store'})).json()}catch(_){accessCfg=null}
   AUTH_ON=!!(accessCfg&&accessCfg.authRequired)&&location.hostname==='ogshaw03.github.io';
   if(!AUTH_ON){startAppFlow();return}       // exe/ローカル/プレビューは自動的に認証オフ
@@ -22701,6 +23409,29 @@ initApp();
         await m.setDoc(m.doc(fs,'laycatUsers',key),payload,{merge:true});
         return true;
       }catch(e){return false}},
+      /* v.008：マルチテナント R2 Phase 1 — resolveTidForNewProject 用のヘルパ 2 つ。
+         - isOperator(email)：laynaAccess/config.operatorEmails に入っていれば true
+         - getUserTenantId(email)：laycatUsers/{emailKey}.tenantId を返す（無ければ null）
+         Worker 側の _isTenantAffiliated と同じ Firestore ドキュメントを見るので、
+         addTenantMember 書き込み後は即座にクライアント・Worker 双方に反映される。 */
+      isOperator:async(email)=>{try{
+        if(!email)return false;
+        const cfg=await window.__laynaFB.loadAccess();
+        if(!cfg)return false;
+        const ops=Array.isArray(cfg.operatorEmails)?cfg.operatorEmails:[];
+        const lower=String(email).toLowerCase();
+        return ops.some(e=>String(e||'').toLowerCase()===lower);
+      }catch(e){return false}},
+      getUserTenantId:async(email)=>{try{
+        if(!email)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const snap=await m.getDoc(m.doc(fs,'laycatUsers',key));
+        if(!snap.exists())return null;
+        const d=snap.data()||{};
+        return (typeof d.tenantId==='string'&&d.tenantId)?d.tenantId:null;
+      }catch(e){return null}},
       /* マルチテナント化 Phase M2：テナントのメンバー一覧を取得。
          tenants/{tid}/members サブコレクションを列挙。戻り値：[{emailKey, email, role, assignedBy, assignedAt}, ...] / 失敗時 null。 */
       /* v.076：laynaAccess/loggedUsers から全ユーザーの display name 索引を取得。
@@ -22807,6 +23538,32 @@ initApp();
         },{merge:true});
         return true;
       }catch(e){console.error('updateTenantCoreHours failed',e);return false}},
+      /* v.013：顧客自前 R2 対応。tenants/{tid}.r2Endpoint を読む／書く。
+         未設定（null）＝運営 R2 Worker を使う。URL が入っていたら顧客自前 R2 Worker を使う。
+         Worker 検証は updateTenantR2Endpoint 時に /api/r2/health を叩いて疎通確認する想定（UI 側で実装）。 */
+      getTenantR2Endpoint:async(tenantId)=>{try{
+        if(!tenantId)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const snap=await m.getDoc(m.doc(fs,'tenants',String(tenantId)));
+        if(!snap.exists())return null;
+        const d=snap.data()||{};
+        return (typeof d.r2Endpoint==='string'&&d.r2Endpoint)?d.r2Endpoint:null;
+      }catch(e){return null}},
+      updateTenantR2Endpoint:async(tenantId, endpoint, who)=>{try{
+        if(!tenantId)return false;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        /* endpoint は空文字 → null（＝運営 R2 に戻す）、文字列 → そのまま保存。
+           URL 正規化はクライアント側で済ませてから呼ぶ想定。 */
+        const value = (typeof endpoint==='string' && endpoint.length>0) ? endpoint : null;
+        await m.setDoc(m.doc(fs,'tenants',String(tenantId)),{
+          r2Endpoint: value,
+          updatedBy: String(who||''),
+          updatedAt: new Date().toISOString(),
+        },{merge:true});
+        return true;
+      }catch(e){console.error('updateTenantR2Endpoint failed',e);return false}},
       /* マルチテナント化 Phase M3b：テナントの allowDomainAutoJoin を切替。
          owner / admin が LayCAT 側のテナント管理モーダルからチェックボックス操作で呼ぶ。
          Firestore ルールが「このフィールドだけ変更」を強制する。 */
