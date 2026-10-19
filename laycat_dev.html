@@ -4329,7 +4329,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.19.027';
+const APP_VERSION='2026.10.19.028';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -14442,21 +14442,38 @@ function openMembersWindow(root){
 
   async function _refreshTenantMembers(){
     tnList.innerHTML='';
-    /* tid 解決：root.tid が最も確実、無ければ _r2._resolveTid で補完 */
-    const tid=(root&&root.tid)||((storage&&storage._r2&&storage._r2._resolveTid)?storage._r2._resolveTid(root.id):null);
+    /* v.028：tid 解決を 3 段階に拡張。
+       (1) root.tid（R2 プロジェクトのテナント ID、接続時に設定）
+       (2) storage._r2._resolveTid（REG / _tidMap からの逆引き）
+       (3) authUser.tenantId（ログインユーザー自身の所属テナント = フォルダプロジェクトでも利用可）
+       全部ダメなら「取得できない理由」をユーザーに明示（デバッグ用）。 */
+    let tid=(root&&root.tid)||null;
+    let tidSource='root.tid';
+    if(!tid && storage && storage._r2 && storage._r2._resolveTid){
+      const t=storage._r2._resolveTid(root.id);
+      if(t){tid=t;tidSource='storage._r2._resolveTid';}
+    }
+    if(!tid && typeof authUser!=='undefined' && authUser && authUser.tenantId){
+      tid=authUser.tenantId;tidSource='authUser.tenantId（ログインユーザーの所属テナント）';
+    }
     if(!tid){
-      tenantWrap.style.display='none';
-      return;
+      const em=ce('div','muted','テナント ID が解決できません。'
+        +'（R2 プロジェクトのみ対応：接続時に root.tid が設定されます。'
+        +' また、ログインユーザー自身がどのテナントにも所属していない場合も表示されません）');
+      tnList.appendChild(em);return;
     }
     if(!window.__laynaFB || !window.__laynaFB.loadTenantMembers){
       const em=ce('div','muted','（Firebase 未初期化のため利用できません）');tnList.appendChild(em);return;
     }
-    const loading=ce('div','muted','読み込み中…');tnList.appendChild(loading);
+    const loading=ce('div','muted','読み込み中…（tid: '+tid+' / 出所: '+tidSource+'）');tnList.appendChild(loading);
     let tenantMembers=null;
-    try{ tenantMembers=await window.__laynaFB.loadTenantMembers(tid); }catch(_){}
+    let loadErr=null;
+    try{ tenantMembers=await window.__laynaFB.loadTenantMembers(tid); }catch(e){ loadErr=e; }
     loading.remove();
     if(!tenantMembers){
-      const em=ce('div','muted','（テナントメンバー一覧の取得に失敗しました）');tnList.appendChild(em);return;
+      const em=ce('div','muted','（テナント '+tid+' のメンバー一覧を取得できませんでした'
+        +(loadErr?' / '+String(loadErr&&loadErr.message||loadErr):'')+'）');
+      tnList.appendChild(em);return;
     }
     /* 既にプロジェクトメンバー表に居る人を除外（work の id と重複チェック） */
     const existing=new Set(work.map(m=>String(m.id||'').toLowerCase()));
