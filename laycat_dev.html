@@ -4329,7 +4329,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.20.030';
+const APP_VERSION='2026.10.20.031';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -18635,35 +18635,12 @@ async function openRetimer(node,v){
     ctx.fillStyle='rgba(255,255,255,.35)';ctx.font='9px monospace';
     for(let i=0;i<=gridCols;i++){const t=Math.round((tot-1)*(i/gridCols));const gx=pad.l+plotW*(i/gridCols);ctx.fillText(String(t),gx-8,ch-6)}
     for(let i=0;i<=gridRows;i++){const s=Math.round(smax*(1-i/gridRows));const gy=pad.t+plotH*(i/gridRows);ctx.fillText(String(s),4,gy+3)}
-    /* 対角線（等倍参考）
-       v.030：キーフレーム未設定時にグラフが「空」に見える問題対策。
-       従来は 15% 透明度の点線で控えめだったが、キーフレームが無いと他に線が無く
-       グラフ機能が無効化されているように見えた。目立つ色・太さに変更。 */
-    const kf=_rmKeyframes(v);
-    const noKF=(kf.length<2);
-    ctx.strokeStyle=noKF?'rgba(255,255,255,.35)':'rgba(255,255,255,.15)';
-    ctx.lineWidth=noKF?1.5:1;
-    if(!noKF)ctx.setLineDash([4,4]);
+    /* 対角線（等倍参考） */
+    ctx.strokeStyle='rgba(255,255,255,.15)';ctx.setLineDash([4,4]);ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(x(0),y(0));ctx.lineTo(x(Math.min(tot-1,smax)),y(Math.min(tot-1,smax)));ctx.stroke();
     ctx.setLineDash([]);
-    /* v.030：キーフレーム未設定時はゴースト始点・終点を描画し「ここに置けます」の示唆。
-       クリックで本物のキーフレームとして追加可能（gHitKF は仮想点を拾わないが、
-       別途クリックで addKFAtCurrent 的な動線は再生ヘッド経由で ok）。 */
-    if(noKF && srcTotal>=2){
-      const pxA=x(0), pyA=y(0);
-      const pxB=x(Math.min(tot-1,smax)), pyB=y(Math.min(tot-1,smax));
-      ctx.strokeStyle='rgba(224,178,58,.5)';ctx.lineWidth=1.5;
-      ctx.fillStyle='rgba(224,178,58,.08)';
-      for(const [px,py] of [[pxA,pyA],[pxB,pyB]]){
-        ctx.beginPath();ctx.arc(px,py,5,0,2*Math.PI);ctx.fill();ctx.stroke();
-      }
-      /* 中央にヒントテキスト */
-      ctx.fillStyle='rgba(224,178,58,.55)';ctx.font='11px "Noto Sans JP",sans-serif';
-      const hint='下の「＋ キーフレーム（K）」ボタン、または再生ヘッドを動かして K キーで追加';
-      const tw=ctx.measureText(hint).width;
-      ctx.fillText(hint, pad.l+plotW/2-tw/2, pad.t+plotH/2+4);
-    }
-    /* キーフレーム折線 */
+    /* キーフレーム折線（v.031：AE/Maya 挙動化で起動直後に 2 点キーが入るため、常に描画される） */
+    const kf=_rmKeyframes(v);
     if(kf.length>=2){
       ctx.strokeStyle='#e0b23a';ctx.lineWidth=1.5;
       ctx.beginPath();
@@ -19027,8 +19004,18 @@ async function openRetimer(node,v){
         v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];
       }
     }
-    /* v.035 A-2 修正：ここでの新規初期化（keyframes=[] を [{0,0},{srcTotal-1,srcTotal-1}] にする）は廃止。
-       「開いただけ」で dirty 化しないよう、ユーザーが実際にリタイム ON にした瞬間に構築する。 */
+    /* v.031：AE / Maya 流に、起動直後でも対角線上に 2 点キーフレーム（始点・終点）が
+       入っている状態にする。v.035 A-2 で廃止していた挙動を復活。
+       dirty 化はしない（_markDirty を呼ばない＋ enabled は false のまま）＝ユーザーが
+       実際にリタイム ON にする／キーを動かす／キーを追加・削除するまで persist は走らない。
+       v.timeRemap 自体が無い版なら _ensureTR 相当で初期化してから 2 点を入れる。 */
+    if(srcTotal>=2){
+      if(!v.timeRemap)v.timeRemap={enabled:false,keyframes:[]};
+      if(!Array.isArray(v.timeRemap.keyframes))v.timeRemap.keyframes=[];
+      if(v.timeRemap.keyframes.length<2){
+        v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];
+      }
+    }
     videoReady=true;
     displayF=0;applyFrame();
     /* 読込前に押されていた再生ボタンをここで発火 */
