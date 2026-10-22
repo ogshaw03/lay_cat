@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta name="robots" content="noindex,nofollow">
+<meta charset="UTF-8">
+<title>LayCAT 価格提案</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#eee;font-family:'Noto Sans JP',sans-serif}
+  /* PPT 16:9 スライド想定：1280 × 720 */
+  .slide{
+    width:1280px;height:720px;background:#fff;margin:20px auto;
+    position:relative;padding:56px 72px 48px;
+    box-shadow:0 10px 40px rgba(0,0,0,.15);
+    color:#333;
+  }
+
+  /* タイトル */
+  .slide h1{
+    font-size:34px;font-weight:900;color:#1a1a2e;letter-spacing:-.01em;margin-bottom:6px;
+  }
+  .slide .accent-underline{
+    width:70px;height:4px;background:#5a9bff;border-radius:2px;margin-bottom:14px;
+  }
+  .slide .subtitle{
+    font-size:15px;color:#666;margin-bottom:28px;
+  }
+
+  /* 3 カラム */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px}
+  .card{
+    border-left:6px solid #5a9bff;background:#f7f9fc;
+    border-radius:6px;padding:20px 24px;
+  }
+  .card.compare{border-left-color:#6bbf6b;background:#f4faf5}
+  .card.include{border-left-color:#d4a651;background:#fdf9f0;grid-column:span 2}
+  .card h2{
+    font-size:16px;font-weight:800;color:#2c3e70;margin-bottom:12px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .card.compare h2{color:#3d7a3d}
+  .card.include h2{color:#8a6a30}
+
+  /* 料金表 */
+  .price-table{width:100%;font-size:14px}
+  .price-table tr{border-bottom:1px dashed #d5dde8}
+  .price-table tr:last-child{border-bottom:none}
+  .price-table td{padding:8px 0;vertical-align:top}
+  .price-table td.label{color:#555;width:44%;font-weight:600}
+  .price-table td.value{color:#1a1a2e;font-weight:700}
+  .price-table td.value b{color:#2c5eb0;font-size:16px;font-weight:900}
+  .price-table td .sub{color:#888;font-size:12px;font-weight:400;display:block;margin-top:2px}
+
+  /* 席数展開シナリオテーブル */
+  .scenario-table{width:100%;font-size:13.5px;border-collapse:collapse;margin-top:2px}
+  .scenario-table th{
+    text-align:left;padding:8px 10px;background:#e6f0ea;color:#3d7a3d;
+    font-weight:800;font-size:11.5px;letter-spacing:.5px;text-transform:uppercase;
+    border-bottom:2px solid #b8d8bf;
+  }
+  .scenario-table th.num{text-align:right}
+  .scenario-table td{padding:10px;border-bottom:1px dashed #d5dde8;vertical-align:middle}
+  .scenario-table tr:last-child td{border-bottom:none}
+  .scenario-table td.item{color:#333;font-weight:700}
+  .scenario-table td.item b{color:#1a1a2e;font-weight:900}
+  .scenario-table td.item .sub{color:#888;font-size:11px;font-weight:500;display:block;margin-top:1px}
+  .scenario-table td.num{
+    text-align:right;color:#333;font-weight:700;
+    font-variant-numeric:tabular-nums;font-family:'Inter','Noto Sans JP',monospace;
+  }
+  .scenario-table td.num.delta{color:#2a6a2a;font-weight:900;font-size:15px}
+  .scenario-table td.num.delta .pct{
+    color:#5a9bff;font-size:10.5px;font-weight:700;margin-left:5px;
+  }
+  .scenario-table tr.highlight{background:#f4faf5}
+  .scenario-table tr.highlight td{padding-top:12px;padding-bottom:12px}
+  .scenario-table tr.highlight td.num.delta{font-size:17px;color:#2a6a2a}
+
+  /* 含まれるもの */
+  .include-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;font-size:13.5px;color:#333}
+  .include-grid div{padding-left:16px;position:relative;line-height:1.55}
+  .include-grid div::before{
+    content:'';position:absolute;left:0;top:9px;width:6px;height:6px;
+    background:#d4a651;border-radius:50%;
+  }
+  .include-grid b{color:#8a6a30;font-weight:800}
+
+  /* 下部注釈 */
+  .footnote{
+    position:absolute;bottom:22px;left:72px;right:72px;
+    font-size:11px;color:#888;
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  .footnote .left{font-weight:600;color:#666}
+  .footnote .right{font-family:'Inter',monospace;letter-spacing:1px}
+</style>
+</head>
+<body>
+
+<div class="slide">
+  <h1>LayCAT 価格提案 — 席数連動 + 最低ライン方式</h1>
+  <div class="accent-underline"></div>
+  <div class="subtitle">50 席スタート・レビュワー無制限・年契約。展開に応じて席数を柔軟に増減。</div>
+
+  <div class="cols">
+    <!-- 左：基本料金 -->
+    <div class="card">
+      <h2>▊ 基本料金プラン</h2>
+      <table class="price-table">
+        <tr>
+          <td class="label">エディター席</td>
+          <td class="value"><b>¥2,000</b>／席／月</td>
+        </tr>
+        <tr>
+          <td class="label">最低契約席数</td>
+          <td class="value">50 席（<b>¥100,000</b>／月から）</td>
+        </tr>
+        <tr>
+          <td class="label">レビュワー席</td>
+          <td class="value">無制限・<b>無料</b>
+            <span class="sub">監督・営業・広報等、閲覧のみのユーザー</span>
+          </td>
+        </tr>
+        <tr>
+          <td class="label">ボリューム割引</td>
+          <td class="value">100 席以上：<b>¥1,600</b>／席
+            <span class="sub">全社展開時の追加インセンティブ</span>
+          </td>
+        </tr>
+        <tr>
+          <td class="label">契約単位</td>
+          <td class="value">12 ヶ月コミット・自動更新
+            <span class="sub">中途解約は 3 ヶ月前予告</span>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- 右：コスト比較 -->
+    <div class="card compare">
+      <h2>▊ ShotGrid との年間コスト比較（席数展開シナリオ）</h2>
+      <div style="font-size:12.5px;color:#555;margin-bottom:10px;line-height:1.55">
+        初年度 50 席の削減額は限定的だが、<b style="color:#2a6a2a">全社展開が進むほどコスト差が拡大</b>。将来の膨張リスクを抑える戦略投資。
+      </div>
+      <table class="scenario-table">
+        <thead>
+          <tr>
+            <th>席数（想定）</th>
+            <th class="num">ShotGrid</th>
+            <th class="num">LayCAT</th>
+            <th class="num">差額／年</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="highlight">
+            <td class="item"><b>初年度 50 席</b><span class="sub">今回の移行対象</span></td>
+            <td class="num">¥242 万</td>
+            <td class="num">¥120 万</td>
+            <td class="num delta">−¥122 万<span class="pct">-41%</span></td>
+          </tr>
+          <tr>
+            <td class="item">中期 100 席<span class="sub">他部署展開時</span></td>
+            <td class="num">¥484 万</td>
+            <td class="num">¥240 万</td>
+            <td class="num delta">−¥244 万<span class="pct">-50%</span></td>
+          </tr>
+          <tr>
+            <td class="item">全社 150 席<span class="sub">フル展開時</span></td>
+            <td class="num">¥726 万</td>
+            <td class="num">¥288 万</td>
+            <td class="num delta">−¥438 万<span class="pct">-60%</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="font-size:11px;color:#888;margin-top:8px;line-height:1.5">
+        ※ ShotGrid は 1 席増ごとに年 ¥4.8 万の直線コスト増。LayCAT は 100 席以上でボリューム割引適用。
+      </div>
+    </div>
+
+    <!-- 下：含まれるもの -->
+    <div class="card include">
+      <h2>▊ Enterprise 契約に含まれるサービス（SaaS 大衆プランとの差別化）</h2>
+      <div class="include-grid">
+        <div><b>SLA</b>：営業時間内 4 時間以内応答・優先バグ対応</div>
+        <div><b>カスタム開発枠</b>：月 8 時間まで込み（超過は ¥8,000／時）</div>
+        <div><b>社内専用機能</b>：御社ワークフローに合わせた機能開発・保守</div>
+        <div><b>即日対応</b>：バグ修正は当日〜翌日、機能追加は数日〜数週間</div>
+        <div><b>専任窓口</b>：開発者と直接コミュニケーション（Slack / チャット）</div>
+        <div><b>データ主権</b>：NAS 運用選択可・機密案件のクラウド禁止要件対応</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footnote">
+    <span class="left">LayCAT 導入提案</span>
+    <span class="right">17 / 17</span>
+  </div>
+</div>
+
+</body>
+</html>
