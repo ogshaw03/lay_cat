@@ -78,6 +78,27 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 
 /* =========== BODY =========== */
 .app-body{display:flex;flex:1;overflow:hidden;position:relative}
+/* v.064：ホーム画面（プロジェクト一覧カードグリッド）。
+   app-body 全面にオーバーレイして表示する。表示中は裏の gantt/sidebar は見えない。 */
+.pm-home-view{position:absolute;inset:0;background:var(--bg);z-index:50;display:none;flex-direction:column;overflow:auto}
+.pm-home-view.on{display:flex}
+.pm-home-head{padding:40px 48px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;border-bottom:1px solid var(--border)}
+.pm-home-title{font-family:var(--font-head);font-size:22px;font-weight:700;color:var(--text);letter-spacing:0.5px}
+.pm-home-sub{font-size:12px;color:var(--text3);margin-top:4px}
+.pm-home-body{padding:28px 48px 56px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.pm-home-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px 20px;cursor:pointer;transition:transform .12s ease, border-color .12s ease, background .12s ease;display:flex;flex-direction:column;gap:6px;min-height:116px;position:relative}
+.pm-home-card:hover{border-color:var(--accent);background:var(--bg3);transform:translateY(-2px)}
+.pm-home-card .pm-home-cname{font-family:var(--font-head);font-size:16px;font-weight:700;color:var(--text);line-height:1.25;word-break:break-word}
+.pm-home-card .pm-home-cfolder{font-size:11px;color:var(--text3);font-family:var(--font-code);letter-spacing:.3px;word-break:break-all}
+.pm-home-card .pm-home-cmeta{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:8px}
+.pm-home-card .pm-home-chip{font-size:10px;padding:2px 7px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);letter-spacing:.3px}
+.pm-home-card .pm-home-chip.last{background:rgba(74,158,255,0.12);border-color:rgba(74,158,255,0.4);color:#4a9eff}
+.pm-home-card .pm-home-chip.r2{background:rgba(255,180,80,0.12);border-color:rgba(255,180,80,0.4);color:#ffb450}
+.pm-home-empty{grid-column:1/-1;text-align:center;color:var(--text3);padding:60px 20px;font-size:13px}
+.pm-home-empty a{color:var(--accent);text-decoration:none;font-weight:700}
+.pm-home-empty a:hover{text-decoration:underline}
+#pmHomeBtn{display:none}
+#pmHomeBtn.show{display:inline-flex}
 .sidebar{width:250px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;padding:12px 8px;gap:14px}
 .sidebar-label{font-size:10px;font-weight:500;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;padding:0 8px;margin-bottom:4px}
 .sb-box{padding:10px 8px;background:transparent}
@@ -170,6 +191,90 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .pane{position:absolute;inset:0;overflow:auto;padding:0 20px 16px;display:none}
 .pane.on{display:block}
 .pane.on::before{content:'';display:block;height:16px}
+/* v.042：資料タブ（PureRef 風 無限キャンバス UI、モックデータ）。
+   LayCAT 本体の .ref-* と同構造。pane の padding は 0 にしてキャンバスを全面に展開。 */
+.pane[data-pane="reference"]{padding:0;overflow:hidden}
+.pane[data-pane="reference"].on::before{display:none}
+.ref-root{display:flex;position:absolute;inset:0;background:var(--bg)}
+.ref-side{width:240px;flex-shrink:0;border-right:1px solid var(--border);background:var(--bg2);display:flex;flex-direction:column;overflow:hidden}
+.ref-side .ref-side-hd{padding:10px 14px 6px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.4px;text-transform:uppercase;border-bottom:1px solid var(--border);font-family:var(--font-head)}
+.ref-side .ref-toc{flex:1;overflow-y:auto;padding:6px 4px}
+.ref-side .ref-toc-item{padding:7px 12px;border-radius:6px;cursor:pointer;color:var(--text2);font-size:12px;display:flex;align-items:center;gap:7px;line-height:1.4}
+.ref-side .ref-toc-item:hover{background:var(--bg3);color:var(--text)}
+.ref-side .ref-toc-item.active{background:var(--bg3);color:var(--text);font-weight:600}
+.ref-side .ref-toc-item .ref-toc-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.ref-main{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+.ref-canvas{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;cursor:grab;user-select:none}
+.ref-main.panning .ref-canvas{cursor:grabbing}
+.ref-item{position:absolute;left:0;top:0;box-sizing:border-box}
+.ref-item.ref-title{font-family:var(--font-head);font-weight:700;color:var(--text);letter-spacing:0.5px;line-height:1.1;pointer-events:none;white-space:nowrap}
+.ref-item.ref-image{background:var(--bg3);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--text3);font-size:11px;text-align:center;padding:8px}
+.ref-item.ref-image .ref-image-ph{display:flex;flex-direction:column;align-items:center;gap:4px}
+.ref-item.ref-image .ref-image-ph .ic{font-size:28px;opacity:0.5}
+.ref-item.ref-group{border:1.5px dashed;border-radius:12px;background:transparent;pointer-events:none}
+.ref-item.ref-group .ref-group-lbl{position:absolute;top:-14px;left:12px;background:var(--bg);padding:1px 8px;font-size:11px;font-family:var(--font-head);font-weight:700;letter-spacing:0.5px;border-radius:4px}
+.ref-hud{position:absolute;left:12px;bottom:22px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);font-family:var(--font-code);background:rgba(10,10,14,0.72);border:1px solid var(--border);border-radius:7px;padding:4px 10px;z-index:3;pointer-events:none}
+.ref-ctrls{position:absolute;right:12px;bottom:22px;display:flex;gap:4px;z-index:3}
+.ref-ctrls button{background:rgba(10,10,14,0.72);border:1px solid var(--border);color:var(--text2);font-family:var(--font-code);font-size:12px;padding:4px 10px;border-radius:7px;cursor:pointer}
+.ref-ctrls button:hover{color:var(--text);border-color:var(--border2)}
+.ref-grid-bg{position:absolute;inset:0;pointer-events:none;background-image:
+  linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+  linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size:100px 100px;background-position:0 0}
+/* v.046：資料タブ 編集モード */
+.ref-main.edit-mode .ref-canvas{cursor:default}
+.ref-main.edit-mode.panning .ref-canvas{cursor:grabbing}
+.ref-item.selected{outline:2px solid #4a9eff;outline-offset:2px;box-shadow:0 0 0 2px rgba(74,158,255,0.3);z-index:5}
+.ref-item.ref-group.selected{outline-color:#4a9eff;outline-style:solid;z-index:1}
+.ref-rubber{position:absolute;border:1px dashed #4a9eff;background:rgba(74,158,255,0.08);pointer-events:none;z-index:10}
+/* v.049：編集ボタンを目立たせる＋編集中のキャンバスに青枠＋インライン編集スタイル */
+.ref-ctrls button.ref-edit-btn{padding:6px 13px;font-size:12px;font-weight:700;min-width:84px;background:var(--bg2);border-color:var(--border2);color:var(--text)}
+.ref-ctrls button.ref-edit-btn:hover{background:var(--bg3);border-color:#4a9eff}
+.ref-ctrls button.ref-edit-btn.on{background:#4a9eff;border-color:#4a9eff;color:#0a0a0e}
+.ref-main.edit-mode{box-shadow:inset 0 0 0 3px rgba(74,158,255,0.45)}
+/* v.055：editing の white-space:normal! を外し、title=nowrap / text=pre-wrap を維持。
+   日本語タイトルが縦書き風になる問題を解消。 */
+.ref-item.editing{outline:2px solid #ffd36a!important;outline-offset:2px;box-shadow:0 0 0 2px rgba(255,211,106,0.3);cursor:text;background:rgba(255,211,106,0.08);z-index:7;pointer-events:auto!important;min-width:24px}
+.ref-item.ref-title.editing{white-space:nowrap!important}
+.ref-item.ref-text.editing{white-space:pre-wrap!important;word-break:break-word}
+.ref-item.editing:focus{outline:2px solid #ffd36a!important}
+.ref-toolbar{position:absolute;top:10px;left:12px;right:12px;display:none;z-index:4;background:rgba(10,10,14,0.86);border:1px solid var(--border);border-radius:9px;padding:5px 8px;align-items:center;gap:4px;flex-wrap:wrap;backdrop-filter:blur(6px)}
+.ref-main.edit-mode .ref-toolbar{display:flex}
+.ref-toolbar .tb-grp{display:flex;align-items:center;gap:2px;padding:0 6px;border-right:1px solid var(--border);height:28px}
+.ref-toolbar .tb-grp:last-child{border-right:0}
+.ref-toolbar button{background:transparent;border:1px solid transparent;color:var(--text2);font-family:inherit;font-size:11px;padding:4px 9px;border-radius:5px;cursor:pointer;height:26px;display:inline-flex;align-items:center;justify-content:center;min-width:28px}
+.ref-toolbar button:hover{background:var(--bg3);color:var(--text);border-color:var(--border2)}
+/* v.056：ショットページ流の select ルック（appearance:none + カスタム arrow） */
+.ref-toolbar select{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:4px 22px 4px 9px;border-radius:7px;cursor:pointer;height:26px;min-width:76px;appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'><path fill='none' stroke='%239a9aaa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5l4 4 4-4'/></svg>");background-repeat:no-repeat;background-position:right 7px center}
+.ref-toolbar select:hover{background-color:var(--bg2);border-color:var(--border2);color:var(--text)}
+.ref-toolbar select:focus{outline:none;border-color:var(--accent)}
+.ref-toolbar select option{background:var(--bg2);color:var(--text)}
+.ref-toolbar input[type=number]{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:3px 5px;border-radius:5px;width:48px;height:26px;box-sizing:border-box}
+.ref-toolbar input[type=range]{height:26px;width:80px}
+.ref-toolbar input[type=color]{background:transparent;border:1px solid var(--border);border-radius:5px;width:30px;height:26px;padding:1px;cursor:pointer}
+.ref-toolbar .tb-lbl{font-size:10px;color:var(--text3);font-family:var(--font-head);letter-spacing:0.5px;margin-right:3px}
+.ref-item.ref-text{font-family:var(--font-body);color:var(--text);line-height:1.3;pointer-events:none;white-space:pre-wrap;word-break:break-word}
+.ref-item.ref-shape{box-sizing:border-box;border:2px solid;pointer-events:none}
+.ref-item.ref-shape.shape-circle{border-radius:50%}
+.ref-main.edit-mode .ref-item{pointer-events:auto}
+.ref-handles{position:absolute;pointer-events:none;z-index:6}
+.ref-handles .rh{position:absolute;width:11px;height:11px;background:#4a9eff;border:1.5px solid #0a0a0e;border-radius:50%;pointer-events:auto;transform:translate(-50%,-50%);box-shadow:0 0 0 1px rgba(255,255,255,0.3)}
+.ref-handles .rh.nw{cursor:nw-resize;left:0;top:0}
+.ref-handles .rh.ne{cursor:ne-resize;left:100%;top:0}
+.ref-handles .rh.sw{cursor:sw-resize;left:0;top:100%}
+.ref-handles .rh.se{cursor:se-resize;left:100%;top:100%}
+.ref-ctx{position:absolute;z-index:20;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:5px 0;min-width:170px;box-shadow:0 8px 24px rgba(0,0,0,0.4);font-family:inherit;font-size:12px}
+.ref-ctx .cx-item{padding:7px 14px;cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:8px}
+.ref-ctx .cx-item:hover{background:var(--bg3);color:var(--text)}
+.ref-ctx .cx-item.disabled{opacity:0.4;pointer-events:none}
+.ref-ctx .cx-sep{height:1px;background:var(--border);margin:4px 0}
+.ref-ctx .cx-hint{font-size:10px;color:var(--text3);margin-left:auto}
+/* v.052：整列サブメニュー */
+.ref-ctx .cx-has-sub{position:relative}
+.ref-ctx .cx-has-sub .cx-arrow{margin-left:auto;color:var(--text3);font-size:10px;padding-left:10px}
+.ref-ctx .cx-has-sub .cx-sub{display:none;position:absolute;left:100%;top:-6px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:5px 0;min-width:140px;box-shadow:0 8px 24px rgba(0,0,0,0.4);margin-left:2px;z-index:21}
+.ref-ctx .cx-has-sub:hover .cx-sub{display:block}
+.ref-ctx .cx-has-sub.disabled .cx-sub{display:none!important}
 
 /* サブタブ列（メインタブの一段下・スケジュールタブでのみ表示） */
 .sub-tabs{display:flex;gap:2px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
@@ -358,23 +463,8 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 .effort-list .row .bar .fill{position:absolute;top:0;bottom:0;left:0;background:var(--accent);border-radius:var(--radius2)}
 .effort-list .row .n{font-family:var(--font-code);font-size:12px;color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
 .effort-list .row .n .u{color:var(--text3);font-size:10px;margin-left:2px}
-/* v.013：日別稼働ヒートマップ（マスク適用）— 工数タブ下部 */
-.effort-heatmap{margin-top:4px}
-.effort-heatmap .eh-head{display:grid;grid-template-columns:160px 1fr;align-items:center;padding:4px 0 6px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text3)}
-.effort-heatmap .eh-head .eh-axis{position:relative;height:18px;font-family:var(--font-code)}
-.effort-heatmap .eh-head .eh-tick{position:absolute;top:0;transform:translateX(-50%);font-size:9.5px;color:var(--text3);white-space:nowrap}
-.effort-heatmap .eh-head .eh-today{position:absolute;top:0;bottom:-6px;width:1px;background:var(--red);border-left:1px dashed var(--red)}
-.effort-heatmap .eh-row{display:grid;grid-template-columns:160px 1fr;align-items:center;height:22px;border-bottom:1px solid var(--border)}
-.effort-heatmap .eh-row:last-child{border-bottom:none}
-.effort-heatmap .eh-row .eh-name{color:var(--text);font-family:var(--font-code);font-size:11px;font-weight:600;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.effort-heatmap .eh-row .eh-name .eh-stage{font-size:9.5px;margin-left:4px;font-weight:500}
-.effort-heatmap .eh-row .eh-track{position:relative;height:18px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;overflow:hidden}
-.effort-heatmap .eh-row .eh-cell{position:absolute;top:0;bottom:0;background:var(--accent)}
-.effort-heatmap .eh-row .eh-wknd{position:absolute;top:0;bottom:0;background:rgba(0,0,0,0.18)}
-.effort-heatmap .eh-row .eh-today{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--red);border-left:1px dashed var(--red);z-index:2}
-.effort-heatmap .eh-legend{display:flex;gap:14px;align-items:center;margin-top:10px;font-size:10.5px;color:var(--text3)}
-.effort-heatmap .eh-legend .eh-sw{display:inline-block;width:14px;height:10px;vertical-align:middle;border-radius:2px;margin-right:4px}
-.effort-heatmap .eh-legend .eh-grad{display:inline-block;width:120px;height:10px;background:linear-gradient(90deg,var(--bg3),var(--accent));border:1px solid var(--border);vertical-align:middle;margin:0 6px}
+/* v.041：日別稼働ヒートマップ（マスク適用）は信憑性が低いため撤去。
+   関連 CSS（.effort-heatmap 系）は削除済み。 */
 
 /* =========== グラフパネル =========== */
 .chart-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
@@ -425,6 +515,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
   </div>
   <div class="app-ver" id="appVer">…</div>
   <div class="header-sep"></div>
+  <button class="btn btn-ghost btn-sm" id="pmHomeBtn" title="ホーム（プロジェクト一覧へ戻る）"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M3 10 L10 3 L17 10"/><path d="M5 9 V17 H15 V9"/></svg>ホーム</button>
   <div class="proj-picker" id="projPicker" title="プロジェクトを切り替え">
     <select id="projSelect"></select>
   </div>
@@ -454,6 +545,8 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 
 <!-- =========== BODY =========== -->
 <div class="app-body">
+<!-- v.064：ホーム画面（プロジェクト一覧）。表示中は app-body 全面を覆う -->
+<div class="pm-home-view" id="pmHomeView"></div>
 
 <!-- SIDEBAR -->
 <aside class="sidebar">
@@ -526,6 +619,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
   <nav class="head-tabs" id="tabs">
     <button class="ptab on" data-tab="schedule">スケジュール<span class="cnt">32</span></button>
     <button class="ptab" data-tab="effort">工数<span class="cnt">A/B</span></button>
+    <button class="ptab" data-tab="reference">資料</button>
     <button class="ptab" data-tab="retake">リテイク<span class="cnt">73</span></button>
     <button class="ptab" data-tab="activity">アクティビティ<span class="cnt">30d</span></button>
     <button class="ptab" data-tab="log">操作ログ<span class="cnt">1.2k</span></button>
@@ -576,6 +670,29 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
           <div class="row"><div class="l">SC-060 / C</div><div class="bar"><div class="fill" style="width:48%"></div></div><div class="n">20.2<span class="u">h</span></div></div>
           <div class="row"><div class="l">SC-070 / D</div><div class="bar"><div class="fill" style="width:25%"></div></div><div class="n">10.5<span class="u">h</span></div></div>
           <div class="row"><div class="l">SC-080 / D</div><div class="bar"><div class="fill" style="width:40%"></div></div><div class="n">17.0<span class="u">h</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 資料（PureRef 風 無限キャンバス UI、v.046 編集モード対応） ========== -->
+    <div class="pane" data-pane="reference">
+      <div class="ref-root">
+        <div class="ref-side">
+          <div class="ref-side-hd">目次</div>
+          <div class="ref-toc" id="refToc"></div>
+        </div>
+        <div class="ref-main" id="refMain">
+          <div class="ref-grid-bg" id="refGridBg"></div>
+          <div class="ref-canvas" id="refCanvas"></div>
+          <div class="ref-toolbar" id="refToolbar"></div>
+          <div class="ref-hud" id="refHud">pan: 0, 0   zoom: 100%</div>
+          <div class="ref-ctrls">
+            <button id="refEditBtn" class="ref-edit-btn" title="編集モードを切替（ON：アイテムの選択・移動・追加・削除／Alt+ドラッグで画面移動／タイトルはダブルクリックで文字編集）">📝 編集モード</button>
+            <button id="refZoomOut" title="縮小">−</button>
+            <button id="refZoomFit" title="等倍">100%</button>
+            <button id="refZoomIn" title="拡大">＋</button>
+            <button id="refZoomAll" title="全体表示">⊡</button>
+          </div>
         </div>
       </div>
     </div>
@@ -647,7 +764,11 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='pmboard v0.2.0';
+const APP_VERSION='pmboard v0.3.0';
+/* v.082：デモモード（?demo=1） — LayCAT と同じ URL パラメータで PMB も試用可能に。
+   ?tab=<X> で初期タブ（gantt / efforts / reference 等）に遷移。 */
+const DEMO_MODE = (()=>{try{return new URLSearchParams(location.search).get('demo')==='1'}catch(_){return false}})();
+const DEMO_TAB  = (()=>{try{return (new URLSearchParams(location.search).get('tab')||'').toLowerCase()}catch(_){return ''}})();
 
 /* =========== 工程分類・カラーマップ =========== */
 /* review 子ノード名 → 工程種を判定するキーワードマップ。
@@ -852,16 +973,398 @@ function urlParam(k){
 }
 
 const storage = {
-  dirHandle: null,   /* 現在アクティブなプロジェクトのフォルダハンドル */
+  dirHandle: null,   /* 現在アクティブなプロジェクトのフォルダハンドル（folder backend 時のみ） */
   pid: null,         /* 現在アクティブなプロジェクト ID */
+  backend: 'folder', /* v.080：'folder' | 'r2'。connectProject で設定。 */
+
+  /* v.080：R2 プロキシ（LayCAT 本体の storage._r2 と同じインターフェース）。
+     tenants/<tid>/projects/<pid>/<key> 構造に対して Worker 経由で r/w する。
+     tid は内部で解決（opts.tid 明示 / REG エントリの tid / _tidMap のキャッシュの順）。 */
+  _r2:{
+    _default:'https://laycat-r2-api.ogusho1101.workers.dev',
+    _norm(u){u=String(u||'').trim().replace(/\/$/,'');if(!u)return '';if(!/^https?:\/\//i.test(u))u='https://'+u;return u},
+    endpoint(){try{const u=this._norm(localStorage.getItem('laycat_r2_endpoint')||'');return u||this._default||null}catch(_){return this._default||null}},
+    async _token(){try{return (window.__laynaFB&&window.__laynaFB.getIdToken)?await window.__laynaFB.getIdToken():null}catch(_){return null}},
+    /* tid 解決：LayCAT 本体と同じ localStorage サイドキャッシュ `laycat_r2_tid_map` を共有。
+       同じオリジン（GitHub Pages）で動くので LayCAT が listMyProjects 時に埋めた map をそのまま使える。 */
+    _tidMap:null,
+    _TID_LS_KEY:'laycat_r2_tid_map',
+    _loadTidMap(){
+      if(this._tidMap)return this._tidMap;
+      try{const raw=localStorage.getItem(this._TID_LS_KEY);const obj=raw?JSON.parse(raw):{};this._tidMap=obj&&typeof obj==='object'?obj:{};}catch(_){this._tidMap={};}
+      return this._tidMap;
+    },
+    _saveTidMap(){try{localStorage.setItem(this._TID_LS_KEY,JSON.stringify(this._tidMap||{}));}catch(_){}},
+    rememberTid(pid,tid){
+      if(!pid||!tid)return;
+      const m=this._loadTidMap();
+      if(m[pid]===tid)return;
+      m[pid]=tid;this._saveTidMap();
+    },
+    _resolveTid(pid,optsTid){
+      if(optsTid)return optsTid;
+      if(!pid)return null;
+      /* laycat_registry（LayCAT 本体が書く）に tid が入っていれば優先 */
+      try{
+        const reg=JSON.parse(localStorage.getItem('layna_registry')||'[]');
+        if(Array.isArray(reg)){const e=reg.find(x=>x.id===pid);if(e&&e.tid)return e.tid;}
+      }catch(_){}
+      const m=this._loadTidMap();
+      if(m[pid])return m[pid];
+      return null;
+    },
+    /* v.081：顧客自前 R2 対応（LayCAT 本体 v.013 と同じ実装）。
+       endpoint は tid ごとに Firestore `tenants/<tid>.r2Endpoint` で切替可能。
+       - mode='customer' の場合は URL に tenants/<tid>/ プレフィックス無し
+       - mode='operator' の場合は従来通り URL に tenants/<tid>/ 付き
+       - キャッシュは _endpointCache（tid ごと 5 分 TTL） */
+    _endpointCache: new Map(),
+    _endpointCacheTtlMs: 5 * 60 * 1000,
+    async _endpointForTid(tid){
+      if(!tid) return {ep:this.endpoint(), mode:'operator'};
+      const cached = this._endpointCache.get(tid);
+      if(cached && (Date.now() - cached.at) < this._endpointCacheTtlMs) return cached;
+      let custom = null;
+      try{
+        if(window.__laynaFB && typeof window.__laynaFB.getTenantR2Endpoint === 'function'){
+          custom = await window.__laynaFB.getTenantR2Endpoint(tid).catch(()=>null);
+        }
+      }catch(_){}
+      const normalized = custom ? this._norm(custom) : null;
+      const resolved = {
+        ep: normalized || this.endpoint(),
+        mode: normalized ? 'customer' : 'operator',
+        at: Date.now(),
+      };
+      this._endpointCache.set(tid, resolved);
+      return resolved;
+    },
+    async _urlFor(op, key, opts){
+      const pid = opts && opts.pid;
+      const tid = this._resolveTid(pid, opts&&opts.tid);
+      if(!tid) throw new Error('tid-unresolved pid='+pid);
+      const {ep, mode} = await this._endpointForTid(tid);
+      if(mode === 'customer'){
+        if(op === 'object') return ep + '/api/r2/' + key;
+        if(op === 'list')   return ep + '/api/r2/list/' + key;
+        if(op === 'purge')  return ep + '/api/r2/purge/' + key;
+      }else{
+        if(op === 'object') return ep + '/api/r2/tenants/' + tid + '/' + key;
+        if(op === 'list')   return ep + '/api/r2/list/tenants/' + tid + '/' + key;
+        if(op === 'purge')  return ep + '/api/r2/purge/tenants/' + tid + '/' + key;
+      }
+      throw new Error('_urlFor: unknown op='+op);
+    },
+    async _fetchUrl(method,url,body,contentType){
+      const tok=await this._token();if(!tok)throw new Error('未ログイン（R2 認証に必要）');
+      const headers={authorization:'Bearer '+tok};
+      if(body!=null&&contentType)headers['x-laycat-content-type']=contentType;
+      return await fetch(url,{method,headers,body});
+    },
+    async getJson(key,opts){try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return null;return await r.json()}catch(_){return null}},
+    async putJson(key,obj,opts){return this.put(key,JSON.stringify(obj,null,2),'application/json',opts)},
+    async put(key,body,contentType,opts){try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('PUT',url,body,contentType||'application/octet-stream');return r.ok}catch(_){return false}},
+    async del(key,opts){try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('DELETE',url);return r.ok||r.status===404}catch(_){return false}},
+    async getBlob(key,opts){try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return null;return await r.blob()}catch(_){return null}},
+    /* prefix 配下の key 一覧を返す。資料タブで reference/items/ 下を列挙する用途。 */
+    async listByPrefix(prefix,opts){try{const url=await this._urlFor('list',prefix,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}},
+    /* ping：接続中のプロジェクトの tid に対応した endpoint の /api/r2/mine が 200 を返せば OK。
+       v.081：顧客 Worker 対応のため、tid 解決してから endpoint を決める。 */
+    async ping(){try{
+      const tok=await this._token();if(!tok)return false;
+      /* storage.pid があればそのテナントの endpoint、無ければ default（運営） */
+      const pid = (typeof storage!=='undefined'&&storage.pid) || null;
+      let ep = this.endpoint();
+      if(pid){
+        const tid = this._resolveTid(pid);
+        if(tid){
+          const resolved = await this._endpointForTid(tid);
+          ep = resolved.ep;
+        }
+      }
+      if(!ep) return false;
+      const r=await fetch(ep+'/api/r2/mine',{method:'GET',headers:{authorization:'Bearer '+tok}});
+      return r.ok;
+    }catch(_){return false}},
+  },
+
+  /* v.082：デモモード用スタブ。backend='demo' のときは _demoFiles から読む（書込は no-op）。 */
+  _demoFiles: null,
+  _buildDemoFiles(){
+    /* LayCAT の docs/demo_project_inject.js と同じ構造を PMB の読取形式（laycat.project.json
+       + shots/<sid>.json + schedule/<sid>.json）に展開する。
+       変更があったら両方同期させる（demo データの一元管理は Phase 2 で検討）。 */
+    const now = new Date().toISOString();
+    const rootId = 'nd_demo_root';
+    const structure = [
+      { ep:'EP01', sqs:[
+        { sq:'A-pt', shots:[
+          { nm:'sh001', stage:'動画',       status:'pending',  worker:'鈴木作画' },
+          { nm:'sh002', stage:'レイアウト', status:'approved', worker:'山田監督' },
+          { nm:'sh003', stage:'仕上げ',     status:'retake',   worker:'田中仕上' },
+          { nm:'sh004', stage:'動画',       status:'pending',  worker:'鈴木作画' },
+          { nm:'sh005', stage:'仕上げ',     status:'approved', worker:'田中仕上' },
+        ]},
+        { sq:'B-pt', shots:[
+          { nm:'sh006', stage:'レイアウト', status:'pending',  worker:'山田監督' },
+          { nm:'sh007', stage:'動画',       status:'retake',   worker:'鈴木作画' },
+          { nm:'sh008', stage:'仕上げ',     status:'approved', worker:'田中仕上' },
+          { nm:'sh009', stage:'レイアウト', status:'omit',     worker:'-' },
+        ]},
+      ]},
+      { ep:'EP02', sqs:[
+        { sq:'A-pt', shots:[
+          { nm:'sh010', stage:'動画',       status:'pending',  worker:'鈴木作画' },
+          { nm:'sh011', stage:'レイアウト', status:'approved', worker:'山田監督' },
+          { nm:'sh012', stage:'仕上げ',     status:'pending',  worker:'田中仕上' },
+          { nm:'sh013', stage:'動画',       status:'retake',   worker:'鈴木作画' },
+          { nm:'sh014', stage:'動画',       status:'pending',  worker:'鈴木作画' },
+        ]},
+        { sq:'B-pt', shots:[
+          { nm:'sh015', stage:'レイアウト', status:'pending',  worker:'山田監督' },
+          { nm:'sh016', stage:'仕上げ',     status:'approved', worker:'田中仕上' },
+          { nm:'sh017', stage:'レイアウト', status:'omit',     worker:'-' },
+          { nm:'sh018', stage:'動画',       status:'approved', worker:'鈴木作画' },
+        ]},
+      ]},
+    ];
+    const reviewStages = [
+      { id:'lay', label:'レイアウト' },
+      { id:'anm', label:'動画' },
+      { id:'col', label:'仕上げ' },
+    ];
+    /* v.084：ステータスに色付与（PMB ガントの status chip の背景色として使用）。 */
+    const projStatuses = [
+      { id:'pending',  label:'チェック待ち', color:'#F2C86B', checkWait:true },
+      { id:'approved', label:'OK',           color:'#5CB878' },
+      { id:'retake',   label:'リテイク',     color:'#F2986B' },
+      { id:'done',     label:'完了',         color:'#5A9BFF' },
+      { id:'omit',     label:'オミット',     color:'#808090' },
+    ];
+    const nodes = [];
+    const shotIds = [];
+    const shotFiles = {};
+    const scheduleFiles = {};
+    const statusFiles = {}; /* v.082b：status/<id>.json。shot section と current review node に発行 */
+    /* ガント用の日付：今日を起点に 1 ショット 10 日ぶん、連番で割り振る */
+    const base = new Date();
+    base.setHours(0,0,0,0);
+    const ymd = d => d.toISOString().slice(0,10);
+    const addDays = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+    /* root 骨格 */
+    nodes.push({
+      id: rootId, parentId: null, name: 'DEMO_プロジェクト', type: 'section',
+      description: '取説用のサンプルプロジェクト', createdAt: now, versions: [],
+      stages: ['レイアウト','動画','仕上げ'],
+      stageColors: { 'レイアウト':'#5A9BFF', '動画':'#5CB878', '仕上げ':'#F2986B' },
+      statuses: projStatuses,
+      members: [
+        { id:'director@example.com', name:'山田監督', roles:['監督'],  color:'#F2986B' },
+        { id:'pm@example.com',       name:'佐藤制作', roles:['制作'],  color:'#A56BF0' },
+        { id:'anim@example.com',     name:'鈴木作画', roles:['作画'],  color:'#5CB878' },
+        { id:'paint@example.com',    name:'田中仕上', roles:['仕上げ'],color:'#5A9BFF' },
+      ],
+    });
+    /* v.083：PMB も LayCAT と同じく assignee/reviewer を email で持たせる。 */
+    const workerByStage = {
+      'レイアウト': 'anim@example.com',
+      '動画':       'anim@example.com',
+      '仕上げ':     'paint@example.com',
+    };
+    const reviewerEmail = 'director@example.com';
+    let shotIdx = 0;
+    for(const ep of structure){
+      const epId = 'nd_demo_' + ep.ep.toLowerCase();
+      nodes.push({ id: epId, parentId: rootId, name: ep.ep, type: 'section', createdAt: now, versions: [] });
+      for(const sq of ep.sqs){
+        const sqId = epId + '_' + sq.sq.toLowerCase().replace(/[^a-z0-9]/g,'');
+        nodes.push({ id: sqId, parentId: epId, name: sq.sq, type: 'section', createdAt: now, versions: [] });
+        for(const sh of sq.shots){
+          const shId = 'nd_demo_' + sh.nm;
+          const shotAssignee = (sh.worker === '-') ? null : (workerByStage[sh.stage] || null);
+          /* 骨格：shot section（旧モデル shot = type:section で子が全部 review）として PMB が
+             認識できるよう、review 子ノードも project.json 骨格に含める。
+             shots/<sid>.json にも同じ構造を入れて PMB の両方のパスで取れるように。 */
+          const shotNode = {
+            id: shId, parentId: sqId, name: sh.nm, type: 'section',
+            currentStage: sh.stage, status: sh.status,
+            createdAt: now, versions: [],
+            assignee: shotAssignee, reviewer: reviewerEmail,
+          };
+          nodes.push(shotNode);
+          shotIds.push(shId);
+          const reviewNodes = reviewStages.map(st=>({
+            id: shId + '_r_' + st.id, parentId: shId, name: st.label,
+            type: 'review', createdAt: now, versions: [],
+            status: (st.label === sh.stage) ? sh.status : undefined,
+            assignee: workerByStage[st.label] || null,
+            reviewer: reviewerEmail,
+          }));
+          /* 骨格にも review 子を push（PMB の isLegacyShot 判定が allNodes を見るため） */
+          for(const r of reviewNodes) nodes.push(r);
+          /* shots/<sid>.json の中身 */
+          shotFiles[shId] = { v:1, shotId: shId, nodes: [shotNode, ...reviewNodes] };
+          /* schedule/<sid>.json の中身：stages 配列（PMB の scheduleMap[shotId].stages を参照）。
+             stageId は review ノードの id と一致させる必要がある（loadProjectData の
+             `schedStages.find(x=>x.stageId===k.id)` で引く）。 */
+          const start = addDays(base, shotIdx * 3);
+          const schedStages = [];
+          let cur = new Date(start);
+          for(const st of reviewStages){
+            const end = addDays(cur, 8);
+            schedStages.push({
+              stageId: shId + '_r_' + st.id,
+              plannedStart: ymd(cur),
+              plannedEnd: ymd(end),
+            });
+            cur = addDays(end, 1);
+          }
+          scheduleFiles[shId] = { v:1, shotId: shId, stages: schedStages };
+
+          /* v.082b：status/<shotId>.json とcurrent review の status/<reviewId>.json を発行。
+             実績バーが出るよう、作業ステータス（retake）→ 完了系の遷移履歴も入れる。 */
+          const histTs = n => new Date(Date.now() - n*86400*1000).toISOString();
+          const buildHistory = (status) => {
+            if(status === 'approved'){
+              return [
+                { ts: histTs(7), to: 'retake',  by: sh.worker },
+                { ts: histTs(2), to: 'approved', by: sh.worker },
+              ];
+            }
+            if(status === 'pending'){
+              return [
+                { ts: histTs(5), to: 'retake',  by: sh.worker },
+                { ts: histTs(1), to: 'pending', by: sh.worker },
+              ];
+            }
+            if(status === 'retake'){
+              return [
+                { ts: histTs(10), to: 'retake',  by: sh.worker },
+                { ts: histTs(6),  to: 'pending', by: sh.worker },
+                { ts: histTs(3),  to: 'retake',  by: sh.worker },
+              ];
+            }
+            if(status === 'omit'){
+              return [ { ts: histTs(1), to: 'omit', by: '-' } ];
+            }
+            return [];
+          };
+          /* current review の status */
+          const currentReviewId = shId + '_r_' + reviewStages.find(st=>st.label===sh.stage).id;
+          statusFiles[currentReviewId] = { v:5, shotId: currentReviewId, status: sh.status, history: buildHistory(sh.status) };
+          /* shot section 自身の status（LayCAT v.014 以降は shot にも status を書くので揃える） */
+          statusFiles[shId] = { v:5, shotId: shId, status: sh.status, history: buildHistory(sh.status) };
+
+          shotIdx++;
+        }
+      }
+    }
+    const projJson = { v:4, id: rootId, name: 'DEMO_プロジェクト', nodes, shotIds, submits: [], submitIds: [] };
+    const files = new Map();
+    files.set('laycat.project.json', projJson);
+    for(const sid of shotIds){
+      files.set('shots/'+sid+'.json', shotFiles[sid]);
+      files.set('schedule/'+sid+'.json', scheduleFiles[sid]);
+    }
+    for(const key of Object.keys(statusFiles)){
+      files.set('status/'+key+'.json', statusFiles[key]);
+    }
+    /* v.084：資料タブデモ資料を LayCAT 本体と同じ内容で投入。
+       個別 reference/items/<id>.json ファイルを生成（PMB の loadReferenceItems が listDir で列挙する）。
+       「キャラクター × ロケーション映像」のロードムービー風ミックス構成に。 */
+    const galUrls = Array.from({length:9},(_,i)=>'slides_assets/gal_0'+(i+1)+'.png');
+    const movUrls = [
+      'slides_assets/movie/100223-video-360.mp4',
+      'slides_assets/movie/101516-video-360.mp4',
+      'slides_assets/movie/140630-775595877_medium.mp4',
+      'slides_assets/movie/4067-360.mp4',
+      'slides_assets/movie/41576-360.mp4',
+      'slides_assets/movie/4633-360.mp4',
+    ];
+    const refItems = [
+      /* キャラクター */
+      { type:'title', text:'キャラクター',          x:60, y:40,   fontSize:48, color:'#F2C86B' },
+      { type:'text',  text:'主人公・ヒロインの衣装や表情のバリエーション。旅先での描き分けの参考に。',
+                                                   x:60, y:110,  fontSize:16, color:'#aaa', w:800 },
+      { type:'image', mediaRef:galUrls[0], mediaType:'image', label:'主人公 立ちポーズ', x:60, y:170, w:420, h:280 },
+      { type:'image', mediaRef:galUrls[1], mediaType:'image', label:'主人公 走り',       x:500, y:170, w:420, h:280 },
+      { type:'image', mediaRef:galUrls[2], mediaType:'image', label:'ヒロイン 微笑み',   x:940, y:170, w:420, h:280 },
+      { type:'text',  text:'※ 服の色味は背景の光源（夕暮れ・雨天）に馴染ませてください',
+                                                   x:60, y:470, fontSize:14, color:'#6fa8dc', w:700 },
+      /* ロケーション映像 */
+      { type:'title', text:'ロケーション映像',      x:60, y:560, fontSize:48, color:'#5A9BFF' },
+      { type:'text',  text:'ロケハン撮影の実写クリップ（各 30 秒前後）。レイアウトや背景美術の参考に。',
+                                                   x:60, y:630, fontSize:16, color:'#aaa', w:900 },
+      { type:'image', mediaRef:movUrls[0], mediaType:'video', label:'山間ハイウェイ（空撮）', x:60,  y:690, w:420, h:280 },
+      { type:'image', mediaRef:movUrls[5], mediaType:'video', label:'山道・熱帯樹林',       x:500, y:690, w:420, h:280 },
+      { type:'image', mediaRef:movUrls[4], mediaType:'video', label:'峠道・曇天',           x:940, y:690, w:420, h:280 },
+      { type:'image', mediaRef:movUrls[1], mediaType:'video', label:'湖畔・樹木越しの眺め', x:60,  y:1000, w:420, h:280 },
+      { type:'image', mediaRef:movUrls[3], mediaType:'video', label:'夕暮れの都市・ハイウェイ', x:500, y:1000, w:420, h:280 },
+      { type:'image', mediaRef:movUrls[2], mediaType:'video', label:'ラフアニメ参考（ダンス）', x:940, y:1000, w:420, h:280 },
+      /* 制作ルール */
+      { type:'title', text:'制作ルール', x:60, y:1380, fontSize:48, color:'#5CB878' },
+      { type:'shape', shape:'rect', color:'#5CB878', opacity:0.12, x:60, y:1450, w:720, h:260 },
+      { type:'text',  text:'■ ロケ合わせ作画ルール\n・光源方向は実写クリップの時間帯に合わせる\n・遠景は実写の雰囲気を 20〜30% ブレンド\n・空の色は雲量に合わせて 3 パターン用意',
+                                                   x:80, y:1470, fontSize:18, color:'#e8e8ec', w:680 },
+      { type:'shape', shape:'rect', color:'#F2986B', opacity:0.12, x:800, y:1450, w:560, h:260 },
+      { type:'text',  text:'■ 色指定\n主人公の髪：#C9A96A\nジャケット：#2E3C58\n夕焼け：#F2986B → #D04A4A\n雨天：#4A5768 → #26303E',
+                                                   x:820, y:1470, fontSize:18, color:'#e8e8ec', w:520 },
+      /* 外部リンク */
+      { type:'title', text:'外部リンク・コンテ',    x:60, y:1770, fontSize:32, color:'#A56BF0' },
+      { type:'text',  text:'📎 LayCAT 公式サイト',   x:60, y:1820, fontSize:16, color:'#e8e8ec', w:300 },
+      { type:'text',  text:'https://ogshaw03.github.io/lay_cat/', x:60, y:1850, fontSize:14, color:'#6fa8dc', underline:true, w:500, href:'https://ogshaw03.github.io/lay_cat/' },
+      { type:'text',  text:'📎 ロケーション撮影メモ（Google Docs）', x:60, y:1900, fontSize:16, color:'#e8e8ec', w:400 },
+      { type:'text',  text:'https://example.com/location-notes', x:60, y:1930, fontSize:14, color:'#6fa8dc', underline:true, w:500, href:'https://example.com/location-notes' },
+    ];
+    refItems.forEach((item, idx) => {
+      item.id = 'ref_demo_'+String(idx).padStart(3,'0');
+      files.set('reference/items/'+item.id+'.json', item);
+    });
+    return files;
+  },
+
   async connectProject(pid){
-    /* LayCAT の IDB からハンドルを取得 → permission 確認 → 接続 */
+    /* v.082：デモモード — pid 無視して固定のデモプロジェクトに接続。 */
+    if(DEMO_MODE){
+      this.pid = 'nd_demo_root';
+      this.backend = 'demo';
+      this.dirHandle = null;
+      if(!this._demoFiles) this._demoFiles = this._buildDemoFiles();
+      return {ok:true};
+    }
+    /* v.080：backend 判定を追加。
+       - 'r2'：Firebase 認証 OK なら即接続（ping で grouped allowlist 判定も確認）
+       - 'folder'：従来通り LayCAT の IDB からハンドル取得＋ permission 確認 */
     this.pid = pid;
     this.dirHandle = null;
+    this.backend = 'folder';
     if(!pid) return {ok:false, err:'プロジェクト ID が指定されていません'};
+    /* laycat_registry から backend を取得 */
+    const reg = laycatRegistry();
+    const entry = reg.find(e=>e.id===pid);
+    const be = (entry && entry.backend==='r2') ? 'r2' : 'folder';
+    if(be==='r2'){
+      /* R2 プロジェクト：Firebase ログイン必須、ping で許可確認 */
+      this.backend = 'r2';
+      /* tid を REG エントリから _tidMap に転写（LayCAT 本体が listMyProjects 時に書くが、
+         PMB 単独起動時はまだ無いことがある） */
+      if(entry && entry.tid) this._r2.rememberTid(pid, entry.tid);
+      if(!(window.__laynaFBUser && window.__laynaFBUser.email)){
+        return {ok:false, needsAuth:true, err:'R2 プロジェクトを開くには Google ログインが必要です。右上から「ログイン」してください。'};
+      }
+      const tid = this._r2._resolveTid(pid);
+      if(!tid){
+        return {ok:false, err:'テナント ID を解決できませんでした。LayCAT 本体で一度プロジェクトを開いてから再読み込みしてください（tid サイドキャッシュが埋まります）。'};
+      }
+      const ok = await this._r2.ping();
+      if(!ok){
+        return {ok:false, err:'R2 Worker 認証に失敗しました（403/401）。アクセス権または Firebase ログインを確認してください。'};
+      }
+      return {ok:true};
+    }
+    /* folder プロジェクト：従来通り */
     const h = await laycatIdbGet('handles','proj_'+pid);
     if(!h) return {ok:false, err:'このプロジェクトのフォルダハンドルが LayCAT に保存されていません。LayCAT でプロジェクトを開いてフォルダを接続してください。'};
-    /* permission 確認 */
     let perm='denied';
     try{ perm = await h.queryPermission({mode:'readwrite'}); }catch(_){}
     if(perm!=='granted'){
@@ -883,6 +1386,15 @@ const storage = {
     return false;
   },
   async readJson(path){
+    if(this.backend==='demo'){
+      /* v.082：デモモード — _demoFiles から返す */
+      const v = this._demoFiles && this._demoFiles.get(path);
+      return v ? JSON.parse(JSON.stringify(v)) : null;
+    }
+    if(this.backend==='r2'){
+      /* R2：Worker 経由で projects/<pid>/<path> を GET */
+      return await this._r2.getJson('projects/'+this.pid+'/'+path, {pid:this.pid});
+    }
     if(!this.dirHandle) return null;
     try{
       const parts = path.split('/');
@@ -894,6 +1406,13 @@ const storage = {
     }catch(_){return null;}
   },
   async writeJson(path, data){
+    if(this.backend==='demo'){
+      /* v.082：デモモードは書込 no-op（成功を返して UI 側を破綻させない） */
+      return true;
+    }
+    if(this.backend==='r2'){
+      return await this._r2.putJson('projects/'+this.pid+'/'+path, data, {pid:this.pid});
+    }
     if(!this.dirHandle) return false;
     try{
       const parts = path.split('/');
@@ -907,9 +1426,40 @@ const storage = {
     }catch(e){console.warn('writeJson failed',path,e);return false;}
   },
   async listDir(dirName){
+    if(this.backend==='demo'){
+      /* v.082：デモモード — _demoFiles のキーを prefix でフィルタして basename を返す */
+      if(!this._demoFiles) return [];
+      const prefix = String(dirName||'').replace(/\/$/,'')+'/';
+      const names = [];
+      for(const key of this._demoFiles.keys()){
+        if(key.startsWith(prefix)){
+          const rest = key.slice(prefix.length);
+          if(rest && !rest.includes('/')) names.push(rest);
+        }
+      }
+      return names;
+    }
+    if(this.backend==='r2'){
+      /* R2：Worker /api/r2/list で prefix 配下の key 一覧を取得。
+         prefix の末尾に "/" を付けて渡す必要がある（Worker 側のルート正規表現にマッチさせるため）。 */
+      const normalized = String(dirName||'').replace(/\/$/,'')+'/';
+      const keys = await this._r2.listByPrefix('projects/'+this.pid+'/'+normalized, {pid:this.pid});
+      /* 返却形式を folder 版と揃える：basename の配列 */
+      return keys.map(k=>{
+        const idx = k.lastIndexOf('/');
+        return idx>=0 ? k.slice(idx+1) : k;
+      }).filter(n=>n && n.length>0);
+    }
     if(!this.dirHandle) return [];
     try{
-      const dir = await this.dirHandle.getDirectoryHandle(dirName);
+      /* v.063：dirName に "/" が含まれる場合はパス分割して段階的に降りる。
+         従来は getDirectoryHandle("reference/items") のようにスラッシュを含む名前を
+         渡していたため TypeError で [] が返り、資料タブが常に空だった。 */
+      let dir = this.dirHandle;
+      for(const p of String(dirName).split('/')){
+        if(!p) continue;
+        dir = await dir.getDirectoryHandle(p);
+      }
       const names=[];
       if(typeof dir.entries==='function'){
         for await(const [name,h] of dir.entries()){
@@ -920,6 +1470,118 @@ const storage = {
       }
       return names;
     }catch(_){return [];}
+  },
+  /* v.046：資料タブ用の read/write ヘルパ。
+     - writeBlob(path, blob)：Media/<uuid>.<ext> への画像/動画書込
+     - resolveMediaBlob(path)：読み込んだ File を返す
+     - removeFile(path)：ファイル削除（削除時に親フォルダは残す）
+     - resolveMediaUrl(path)：URL オブジェクトを返す（キャッシュ付き） */
+  _urlCache: new Map(),
+  async writeBlob(path, blob){
+    if(this.backend==='r2'){
+      /* R2：バイナリ PUT。contentType は blob.type を使う（空なら octet-stream） */
+      const ct = (blob && blob.type) || 'application/octet-stream';
+      return await this._r2.put('projects/'+this.pid+'/'+path, blob, ct, {pid:this.pid});
+    }
+    if(!this.dirHandle) return false;
+    try{
+      const parts = path.split('/');
+      let cur = this.dirHandle;
+      for(let i=0;i<parts.length-1;i++){cur=await cur.getDirectoryHandle(parts[i],{create:true})}
+      const fh = await cur.getFileHandle(parts[parts.length-1],{create:true});
+      const w = await fh.createWritable();
+      await w.write(blob);
+      await w.close();
+      return true;
+    }catch(e){console.warn('writeBlob failed',path,e);return false;}
+  },
+  async removeFile(path){
+    if(this.backend==='r2'){
+      return await this._r2.del('projects/'+this.pid+'/'+path, {pid:this.pid});
+    }
+    if(!this.dirHandle) return false;
+    try{
+      const parts = path.split('/');
+      let cur = this.dirHandle;
+      for(let i=0;i<parts.length-1;i++){cur=await cur.getDirectoryHandle(parts[i])}
+      await cur.removeEntry(parts[parts.length-1]);
+      return true;
+    }catch(_){return false;}
+  },
+  async resolveMediaUrl(path){
+    if(!path) return null;
+    if(this._urlCache.has(path)) return this._urlCache.get(path);
+    /* v.084：デモモード — path を URL とみなしてそのまま返す（相対パス解決は fetch 時）。
+       LayCAT 側と同じく、デモの mediaRef は 'slides_assets/gal_01.png' 等の相対パスを直接保持。 */
+    if(this.backend==='demo'){
+      this._urlCache.set(path, path);
+      return path;
+    }
+    /* v.080：R2 対応。
+       - "r2:<pid>|<key>" → Worker 経由で GET blob → URL.createObjectURL
+       - "p:<pid>|<path>" → folder backend でローカル解決
+       - プレフィックスなし → folder のそのまま
+       mediaRef にエンコードされた pid はこの開いているプロジェクトと必ずしも一致しないが、
+       同一プロジェクト内の参照のみ扱うため this.pid を使って問題ない。 */
+    if(path.startsWith('r2:')){
+      if(this.backend!=='r2') return null; /* folder モードで r2: 参照に遭遇したら解決不可 */
+      const i = path.indexOf('|');
+      if(i<0) return null;
+      const relKey = path.slice(i+1);
+      try{
+        const blob = await this._r2.getBlob('projects/'+this.pid+'/'+relKey, {pid:this.pid});
+        if(!blob) return null;
+        const url = URL.createObjectURL(blob);
+        this._urlCache.set(path, url);
+        return url;
+      }catch(_){return null;}
+    }
+    if(!this.dirHandle) return null;
+    let relPath = path;
+    if(path.startsWith('p:')){
+      const i = path.indexOf('|');
+      if(i >= 0) relPath = path.slice(i+1);
+    }
+    try{
+      const parts = relPath.split('/');
+      let cur = this.dirHandle;
+      for(let i=0;i<parts.length-1;i++){cur=await cur.getDirectoryHandle(parts[i])}
+      const fh = await cur.getFileHandle(parts[parts.length-1]);
+      const file = await fh.getFile();
+      const url = URL.createObjectURL(file);
+      this._urlCache.set(path, url);
+      return url;
+    }catch(_){return null;}
+  },
+  /* ---- 資料タブ：細粒度 JSON API ---- */
+  async loadReferenceItems(){
+    const names = await this.listDir('reference/items');
+    if(!names.length) return [];
+    const items = [];
+    for(const name of names){
+      if(!name.endsWith('.json')) continue;
+      const data = await this.readJson('reference/items/'+name);
+      if(data && data.id) items.push(data);
+    }
+    return items;
+  },
+  async saveReferenceItem(item){
+    if(!item || !item.id) return false;
+    return await this.writeJson('reference/items/'+item.id+'.json', item);
+  },
+  async deleteReferenceItem(itemId){
+    if(!itemId) return false;
+    return await this.removeFile('reference/items/'+itemId+'.json');
+  },
+  async putReferenceMedia(filename, blob){
+    const ok = await this.writeBlob('reference/Media/'+filename, blob);
+    if(!ok) return null;
+    /* v.062：LayCAT 本体と相互運用するため、mediaRef を "p:<pid>|reference/Media/<fn>" 形式で返す。
+       v.080：R2 backend では "r2:<pid>|..." 形式で返す（LayCAT 本体と同じ規約）。
+       pid が無い（接続前など）場合は従来の素のパスにフォールバック。 */
+    if(!this.pid) return 'reference/Media/'+filename;
+    const prefix = (this.backend==='r2') ? 'r2:' : 'p:';
+    return prefix+this.pid+'|reference/Media/'+filename;
   },
 };
 
@@ -1153,6 +1815,8 @@ async function loadProjectData(){
   await loadAllUserProfiles();
   /* 【v.024】祝日（国の祝日 + 会社休日）を Firestore から読み込む。失敗しても静かにフォールバック。 */
   await loadHolidaysForTimeline();
+  /* 【v.036】テナント既定の定時（coreHours）を Firestore から読み込む（coreHours 優先順位の第 4 段）。 */
+  await loadTenantCoreHours();
   return {ok:true};
 }
 /* プロジェクトメンバー全員の Firestore プロフィールを並列取得して DATA.userProfiles にキャッシュする。
@@ -1171,6 +1835,25 @@ async function loadAllUserProfiles(){
     }catch(_){}
   });
   await Promise.all(promises);
+}
+/* v.036：現在ログイン中ユーザーの所属テナントの coreHours を Firestore から取得して
+   DATA.tenantCoreHours にキャッシュ。_getCoreHoursMinutes の優先順位 4 段目で使う。
+   失敗（未ログイン・tenantId 未設定・ルール未設定 等）は null でフォールバック。 */
+async function loadTenantCoreHours(){
+  DATA.tenantCoreHours = null;
+  if(!window.__laynaFB || !window.__laynaFB.loadTenant) return;
+  try{
+    const u = window.__laynaFBUser;
+    if(!u || !u.email) return;
+    const emailKey = _emailToKey(u.email);
+    const prof = DATA.userProfiles && DATA.userProfiles[emailKey];
+    const tid = prof && prof.tenantId;
+    if(!tid) return;
+    const tenant = await window.__laynaFB.loadTenant(tid);
+    if(tenant && tenant.coreHours && tenant.coreHours.start && tenant.coreHours.end){
+      DATA.tenantCoreHours = { start: tenant.coreHours.start, end: tenant.coreHours.end };
+    }
+  }catch(_){}
 }
 /* 【v.024】祝日（国の祝日 + 会社休日）を Firestore から読み込んで DATA.holidays にキャッシュ。
    DATA.timeline の start/end から必要年を算出して並列ロード。
@@ -1331,6 +2014,65 @@ function _buildPublicHolidaySet(){
 }
 function _buildCompanyHolidaySet(){
   return new Set(Array.isArray(DATA.companyHolidays) ? DATA.companyHolidays : []);
+}
+/* v.037：fractional day idx [a1, a2] を土日祝で区切った稼働サブセグメント配列に分割。
+   戻り値：[{s, e}, ...]（s / e は dayIdx スケールの fractional 値、稼働日のみ）。
+   連続稼働日は 1 本のサブセグメントに統合される。土日祝が間に挟まるとそこでバーを切る。
+   v.038：timelineStart が JST midnight に揃っていない（スクラブ後）前提で書き直し。
+   dayNo（整数）で日付をイテレートするのではなく、JST midnight ms で境界を取り直し、
+   実時刻ベースで土日祝を判定する → viewAnchor が fractional day でも正しく分断。 */
+function _splitBarByOffDays(a1, a2, timelineStart, pubSet, coSet, hourly, root){
+  /* v.040：hourly モード（日スケール）では各稼働日の時間帯も coreHours マスクで絞る。
+     土日祝で切ることに加え、平日でも定時外（coreHours の前後）でバーを切る。
+     非 hourly モード（週・月・3ヶ月・半年）はこれまで通り全日の塊で判定。 */
+  const subs = [];
+  const startMs = timelineStart.getTime();
+  const barStartMs = startMs + a1*86400000;
+  const barEndMs   = startMs + a2*86400000;
+  if(barEndMs <= barStartMs) return subs;
+  const toIdx = ms => (ms - startMs) / 86400000;
+  /* hourly モード：各稼働日の有効時間帯を coreHours にクリップするための offset（ms） */
+  let maskStartMs = 0, maskEndMs = 86400000;
+  if(hourly && root){
+    const mask = _getCoreHoursMinutes(root, null);
+    if(mask && typeof mask.start==='number' && typeof mask.end==='number' && mask.end>mask.start){
+      maskStartMs = mask.start * 60000;
+      maskEndMs   = mask.end   * 60000;
+    }
+  }
+  /* バー範囲に重なる JST 暦日を順に列挙（cursor は各日の JST 0:00 ms） */
+  let cursor = jstMidnightMs(new Date(barStartMs));
+  let runS = null, runE = null;
+  while(cursor < barEndMs){
+    const nextCursor = cursor + 86400000;
+    const dt = new Date(cursor);
+    const p = jstParts(dt);
+    const iso = p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0');
+    const isOff = (pubSet && pubSet.has(iso)) || (coSet && coSet.has(iso)) || p.wk===0 || p.wk===6;
+    if(!isOff){
+      /* 稼働日：有効時間帯 workStart〜workEnd をバー範囲でクリップ。
+         非 hourly は 0〜86400000 ms（終日）、hourly は coreHours。 */
+      const workStart = cursor + maskStartMs;
+      const workEnd   = cursor + maskEndMs;
+      const dayStart = Math.max(workStart, barStartMs);
+      const dayEnd   = Math.min(workEnd,   barEndMs);
+      if(dayEnd > dayStart){
+        /* 既存 run と連続（前日の workEnd と当日の workStart が一致 or バー境界）なら伸ばす。
+           hourly モードでは翌朝の workStart ≠ 前日の workEnd なので自然に新しいサブセグになる。 */
+        if(runS === null){ runS = dayStart; runE = dayEnd; }
+        else if(Math.abs(runE - dayStart) < 1){ runE = dayEnd; }
+        else{ subs.push({s:toIdx(runS), e:toIdx(runE)}); runS = dayStart; runE = dayEnd; }
+      }else{
+        /* 稼働日だがマスク範囲とバーが重ならない（例：hourly でバーが夜中のみ） */
+        if(runS !== null){ subs.push({s:toIdx(runS), e:toIdx(runE)}); runS = null; runE = null; }
+      }
+    }else{
+      if(runS !== null){ subs.push({s:toIdx(runS), e:toIdx(runE)}); runS = null; runE = null; }
+    }
+    cursor = nextCursor;
+  }
+  if(runS !== null) subs.push({s:toIdx(runS), e:toIdx(runE)});
+  return subs;
 }
 /* v.029：プロジェクトの root ノード取得（複数箇所から参照する便利関数） */
 function _getProjectRoot(){
@@ -1703,25 +2445,53 @@ function buildGantt(){
          それ以外のセグメントは日数ラベル（Nd）。
          v.022：v.020 の「マスク外を薄く表示」オーバーレイ方式はバーが読みづらく不評のため、
          従来の単色バー（opacity 0.9 完了／0.7 進行中）表示に戻した。マスク効果は工数タブと
-         ヒートマップで引き続き確認可能。 */
+         ヒートマップで引き続き確認可能。
+         v.037：土日祝で視覚的にバーを切る（_splitBarByOffDays で稼働サブセグメント化）。
+         バーが続いていると稼働しているように見えて誤認するため、土日祝の gap で明示的に分断。
+         Nd ラベルは稼働日ベースの合計（カレンダー日ではなく workday 合計）。 */
       for(const st of stages){
         const segs = st.workSegments || [];
         if(!segs.length) continue;
         let totalWorkDays = 0;
+        /* v.040：hourly モード（日スケール）では各稼働日の時間帯も coreHours マスクで絞る。
+           _splitBarByOffDays に hourly/root を渡す。合計ラベル（Nd）は hourly でも稼働日
+           合計のまま（非 hourly と揃える）→ 1 パス目は hourly=false で計算し、2 パス目のみ
+           hourly=true で描画分断。これで「表示上は時間帯でカット、ラベルは何日働いたか」になる。 */
+        const _hourly = !!(DATA.timeline && DATA.timeline.hourly);
+        const _root = _getProjectRoot();
+        /* 1 パス目：稼働日合計（ラベル用）を計算（hourly でも日単位カウント） */
+        segs.forEach((seg) => {
+          const a1 = dayIdx(seg.start);
+          const openEnd = seg.end === null;
+          const a2 = openEnd ? todayIdx : dayIdx(seg.end);
+          if(a2<0||a1>days) return;
+          const subsForTotal = _splitBarByOffDays(a1, a2, start, _pubSet, _coSet, false, null);
+          for(const sub of subsForTotal) totalWorkDays += Math.max(0, sub.e - sub.s);
+        });
+        /* 稼働日ゼロのケース（全部週末等）でも最低 1 日表示（旧挙動踏襲） */
+        if(totalWorkDays < 1) totalWorkDays = 1;
+        /* 2 パス目：描画（hourly なら coreHours でも分断） */
         segs.forEach((seg, idx) => {
           const a1 = dayIdx(seg.start);
           const openEnd = seg.end === null;
           const a2 = openEnd ? todayIdx : dayIdx(seg.end);
           if(a2<0||a1>days) return;
-          const w = Math.max(px*0.5, (a2-a1)*px);
           const isLast = idx === segs.length-1;
           const isWip = openEnd && !st.isDone && isLast;
           const style = `background:${st.color};opacity:${isWip?'.7':'.9'}`;
-          totalWorkDays += Math.max(1, a2-a1);
-          let labelText = '';
-          if(isWip) labelText = '進行中';
-          else if(isLast) labelText = `${totalWorkDays}d`;
-          track.push(`<div class="seg-actual ${isWip?'wip':''}" style="left:${a1*px}%;width:${w}%;${style}" title="実績：${escapeHtml(fmtJstDate(seg.start))} 〜 ${openEnd?'今日':escapeHtml(fmtJstDate(seg.end))}"><span class="seg-actual-lbl">${labelText}</span></div>`);
+          const subs = _splitBarByOffDays(a1, a2, start, _pubSet, _coSet, _hourly, _root);
+          if(!subs.length) return; /* 全日 off → 描画スキップ */
+          const lastSubIdx = subs.length - 1;
+          subs.forEach((sub, subIdx) => {
+            const sw = Math.max(px*0.3, (sub.e - sub.s) * px);
+            const isLastPiece = isLast && subIdx === lastSubIdx;
+            let labelText = '';
+            if(isLastPiece){
+              if(isWip) labelText = '進行中';
+              else labelText = `${Math.round(totalWorkDays*10)/10}d`;
+            }
+            track.push(`<div class="seg-actual ${isWip && isLastPiece?'wip':''}" style="left:${sub.s*px}%;width:${sw}%;${style}" title="実績：${escapeHtml(fmtJstDate(seg.start))} 〜 ${openEnd?'今日':escapeHtml(fmtJstDate(seg.end))}（稼働日のみ表示）"><span class="seg-actual-lbl">${labelText}</span></div>`);
+          });
         });
       }
       /* v.025／v.026：土日祝オーバーレイ（バーの上・マイルストーンの下）。bar.z-index(default) < overlay.z-index(3) < milestone.z-index */
@@ -2577,11 +3347,6 @@ function buildOtherTabsPlaceholder(){
         <h4>ショット別稼働日数（長い順）<span id="effortSplitChip" style="margin-left:10px;font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(140,180,240,.14);color:#8cb4f0;border:1px solid rgba(140,180,240,.34);font-family:var(--font-head);display:none">⚖ 並行作業按分：ON</span></h4>
         <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">ステータス履歴から自動算出。<b>作業ステータス</b>（未着手／チェック待ち／クライアント待ち／完了系＝オミット・承認含む、を除く）に滞在した期間のうち、<b>各担当者の稼働時間帯</b>（LayCAT 本体のマイページで個別設定可／デフォルト 10:30-19:30）に収まる分を合計。<b>残業対応</b>：定時外の作業者アクション（リテイク→作業中・作業中→チェック待ち 等）を証跡として、その日の稼働時間帯を自動拡張。チェック担当者のアクション（チェック待ち→*）は証跡から除外。「1 日」= 稼働時間帯の長さ（デフォルト 9 時間）換算。<b>並行作業按分 ON の場合</b>は、同一作業者が複数ショットを同時に作業中としている時間帯は並行ショット数で割って配分。</div>
         <div class="effort-list" id="effortList"></div>
-      </div>
-      <div class="panel">
-        <h4>日別稼働ヒートマップ（マスク適用）</h4>
-        <div class="mode-note" style="margin-bottom:10px;color:var(--text3);font-size:11px">各ショットの各日の稼働時間（マスク適用後・残業拡張あり）を色の濃淡で表示。<b>濃い＝その日は稼働時間帯いっぱい作業</b>、<b>薄い＝一部だけ作業</b>、空白＝作業なし。グレー帯＝土日。縦線＝今日。</div>
-        <div class="effort-heatmap" id="effortHeatmap"></div>
       </div>`;
   }
 }
@@ -2602,11 +3367,12 @@ function _hmToMinutes(hm){
   return h*60+mm;
 }
 /* 指定ステージの担当者 (assigneeId) に適用する coreHours を minute-of-day で返す。
-   優先順位（v.019）：
+   優先順位（v.036 更新）：
    1. マイページ Firestore プロフィール (DATA.userProfiles[emailKey].coreHours)
    2. プロジェクトメンバー個別 (root.members[i].coreHours)
    3. プロジェクト既定 (root.manhours.coreHours)
-   4. ハードコード fallback (10:30-19:30) */
+   4. テナント既定 (DATA.tenantCoreHours ← tenants/{tid}.coreHours を loadTenantCoreHours でキャッシュ)
+   5. ハードコード fallback (10:30-19:30) */
 function _getCoreHoursMinutes(root, assigneeId){
   if(assigneeId){
     /* 1. マイページで保存した Firestore プロフィール（最優先） */
@@ -2630,7 +3396,12 @@ function _getCoreHoursMinutes(root, assigneeId){
     const s=_hmToMinutes(root.manhours.coreHours.start), e=_hmToMinutes(root.manhours.coreHours.end);
     if(s!=null && e!=null && e>s) return {start:s, end:e};
   }
-  /* 4. fallback */
+  /* 4. テナント既定（v.036：現在ログイン中ユーザーの所属テナント） */
+  if(DATA.tenantCoreHours){
+    const s=_hmToMinutes(DATA.tenantCoreHours.start), e=_hmToMinutes(DATA.tenantCoreHours.end);
+    if(s!=null && e!=null && e>s) return {start:s, end:e};
+  }
+  /* 5. fallback */
   return _COREHOURS_FALLBACK;
 }
 /* work segment [segStartMs, segEndMs] と、日ごとの mask [mask.start, mask.end]（minute-of-day）との
@@ -2925,159 +3696,14 @@ function renderEffortPane(){
       <div class="n">${fmtDays(r.days)}<span class="u">日</span></div>
     </div>`;
   }).join('');
-  /* v.013：日別稼働ヒートマップ（マスク適用後）。
-     ショットごとに DATA.timeline の start〜end の各日の稼働時間を計算し、
-     coreHours 長さに対する比率を色の濃淡で表示。 */
-  renderEffortHeatmap(rows, root, dayDivisorMs, mhOpts);
+  /* v.041：日別稼働ヒートマップは信憑性が低いため撤去（renderEffortHeatmap /
+     _shotDailyMaskedMs は削除済み）。ショット別稼働日数リストのみを表示する。 */
 }
 
-/* 日別稼働ヒートマップのレンダ：
-   - rows: renderEffortPane と同じ順（長い順）
-   - root: coreHours 判定用
-   - dayDivisorMs: その日の最大稼働時間 ms（色濃度の分母に使う）
-   - mhOpts: 土日祝除外・日境界オプション */
-function renderEffortHeatmap(rows, root, dayDivisorMs, mhOpts){
-  const container = document.getElementById('effortHeatmap');
-  if(!container) return;
-  /* v.028：ヒートマップはデータ全体の範囲 (dataTimeline) を参照（スケジュールタブのビュー切替に左右されない）。 */
-  const tl = DATA.dataTimeline || DATA.timeline;
-  if(!tl || !tl.days){
-    container.innerHTML = '<div class="sb-empty">タイムライン未初期化</div>';
-    return;
-  }
-  const tStart = tl.start.getTime();
-  const totalDays = tl.days;
-  /* dataTimeline 基準の today idx */
-  const todayIdx = Math.round((jstMidnightMs(new Date()) - tStart) / 86400000);
-  const pxPerDay = 100 / totalDays; /* % */
-
-  /* ヘッダ軸：毎週月曜日に tick。月初は "M/D"（月付き）、それ以外は日付のみ "D"。
-     長期プロジェクト対応：300 日以上なら隔週に間引く。 */
-  const ticks = [];
-  const stride = totalDays >= 300 ? 14 : 7; /* 日数 */
-  for(let i=0;i<totalDays;i++){
-    const d = new Date(tStart + i*86400000);
-    const wk = d.getDay();
-    if(wk !== 1) continue; /* 月曜日だけ */
-    /* stride 間引き：i を stride で割った剰余で間引く（連続する月曜を近似的に間引く） */
-    const weekIndex = Math.floor(i/7);
-    if(stride===14 && weekIndex%2!==0) continue;
-    const date = d.getDate();
-    const month = d.getMonth()+1;
-    /* 月初週（date <= 7）は "M/D" 表記、それ以外は "D" のみ */
-    const label = (date<=7) ? `${month}/${date}` : `${date}`;
-    ticks.push({idx:i, label});
-  }
-  const todayTick = (todayIdx>=0 && todayIdx<=totalDays)
-    ? `<div class="eh-today" style="left:${todayIdx*pxPerDay}%"></div>` : '';
-  const tickHtml = ticks.map(t=>`<div class="eh-tick" style="left:${t.idx*pxPerDay}%">${escapeHtml(t.label)}</div>`).join('');
-
-  /* 各行：ショットの各日マスク適用時間を計算 → cells を描画 */
-  const htmlRows = rows.map(r=>{
-    const shot = DATA.shots.find(s=>s.sectionNode.id === r.shotId);
-    if(!shot) return '';
-    const daily = _shotDailyMaskedMs(shot, root, tStart, totalDays, mhOpts);
-    /* セル描画：連続した非ゼロ日はまとめず各日を div で描画（コードシンプル化） */
-    const cells = [];
-    /* 土日ハッチング */
-    for(let i=0;i<totalDays;i++){
-      const d = new Date(tStart + i*86400000);
-      const wk = d.getDay();
-      if(wk===0 || wk===6){
-        cells.push(`<div class="eh-wknd" style="left:${i*pxPerDay}%;width:${pxPerDay}%"></div>`);
-      }
-    }
-    /* 稼働セル */
-    for(let i=0;i<totalDays;i++){
-      const ms = daily[i];
-      if(ms <= 0) continue;
-      const ratio = Math.min(1, ms / dayDivisorMs);
-      const alpha = 0.15 + ratio * 0.85; /* 最低でも薄っすら見える */
-      const d = new Date(tStart + i*86400000);
-      const hours = (ms/3600000).toFixed(1);
-      cells.push(`<div class="eh-cell" style="left:${i*pxPerDay}%;width:${pxPerDay}%;opacity:${alpha}" title="${fmtJstDate(d)} ${hours}h"></div>`);
-    }
-    const todayLine = (todayIdx>=0 && todayIdx<=totalDays)
-      ? `<div class="eh-today" style="left:${todayIdx*pxPerDay}%"></div>` : '';
-    return `<div class="eh-row">
-      <div class="eh-name">${escapeHtml(r.name)} <span class="eh-stage" style="color:${resolveColor(r.stageColor)}">${escapeHtml(r.stageName)}</span></div>
-      <div class="eh-track">${cells.join('')}${todayLine}</div>
-    </div>`;
-  }).filter(x=>x).join('');
-
-  container.innerHTML = `
-    <div class="eh-head">
-      <div></div>
-      <div class="eh-axis">${tickHtml}${todayTick}</div>
-    </div>
-    ${htmlRows || '<div class="sb-empty">データなし</div>'}
-    <div class="eh-legend">
-      <span>稼働強度：</span>
-      <span>低</span><span class="eh-grad"></span><span>高（稼働時間帯いっぱい）</span>
-      <span style="margin-left:14px"><span class="eh-sw" style="background:rgba(0,0,0,0.18)"></span>土日</span>
-    </div>`;
-}
-
-/* 1 ショットの各日の稼働時間（マスク適用後 ms）を配列で返す。
-   v.018：Phase 2 強化 — segment 内の作業者アクション遷移を全て証跡として mask を拡張。
-   インデックス 0 = タイムライン start 日、インデックス totalDays-1 = end 日。 */
-function _shotDailyMaskedMs(shot, root, tStartMs, totalDays, mhOpts){
-  const daily = new Array(totalDays).fill(0);
-  const nowMs = Date.now();
-  const projStatuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
-  const opts = mhOpts || _getManhoursOptions(root);
-  const bHour = opts.dayBoundaryHour || 0;
-  /* v.023：workday 境界で日を区切り、土日祝は証跡がある時のみ稼働帯を認める。
-     ヒートマップのセル idx はカレンダー日ベース（tStartMs 起点）に揃える。
-     workday 開始 wdStart は tStartMs の 00:00 起点より "-bHour h" 相当だが、
-     cell idx は wdStart の "日付" を見て tStart との差分で決める（workday → calendar day の近似）。 */
-  for(const st of (shot.stages||[])){
-    const defaultMask = _getCoreHoursMinutes(root, st.assignee);
-    const history = st.history || [];
-    for(const seg of (st.workSegments||[])){
-      const sMs = seg.start ? seg.start.getTime() : null;
-      if(sMs == null) continue;
-      const isOpen = (seg.end == null);
-      const eMs = isOpen ? nowMs : seg.end.getTime();
-      const evidence = _collectWorkerEvidenceEvents(history, sMs, eMs, isOpen, projStatuses);
-      let wdStart = _workdayStartMs(sMs, bHour);
-      while(wdStart < eMs){
-        const wdEnd = wdStart + 86400000;
-        const isWork = _isWorkday(wdStart, opts);
-        let maskStartMs, maskEndMs;
-        if(isWork){
-          maskStartMs = wdStart + _clockToWorkdayOffset(defaultMask.start, bHour) * 60000;
-          maskEndMs   = wdStart + _clockToWorkdayOffset(defaultMask.end,   bHour) * 60000;
-        }else{
-          maskStartMs = null;
-          maskEndMs = null;
-        }
-        for(const tMs of evidence){
-          if(tMs >= wdStart && tMs < wdEnd){
-            if(maskStartMs == null || tMs < maskStartMs) maskStartMs = tMs;
-            if(maskEndMs   == null || tMs > maskEndMs)   maskEndMs   = tMs;
-          }
-        }
-        if(maskStartMs != null && maskEndMs != null && maskEndMs > maskStartMs){
-          const a = Math.max(sMs, maskStartMs);
-          const b = Math.min(eMs, maskEndMs);
-          if(b > a){
-            /* セル idx：workday 開始日のカレンダー日で決める。
-               tStartMs が 00:00 起点なので、wdStart (bHour:00) との差を日数で丸める。 */
-            const dayDate = new Date(wdStart);
-            dayDate.setHours(0,0,0,0);
-            const idx = Math.round((dayDate.getTime() - tStartMs) / 86400000);
-            if(idx >= 0 && idx < totalDays){
-              daily[idx] += (b - a);
-            }
-          }
-        }
-        wdStart += 86400000;
-      }
-    }
-  }
-  return daily;
-}
+/* v.041：日別稼働ヒートマップ関連の `renderEffortHeatmap` と `_shotDailyMaskedMs` は
+   信憑性が低いため撤去。ショット別稼働日数リスト（既存の effort-list）は温存。
+   関連ヘルパ（_workdayStartMs / _isWorkday / _clockToWorkdayOffset / _collectWorkerEvidenceEvents /
+   _getManhoursOptions）は他箇所（主に工数集計）でも使うので削除していない。 */
 
 /* =========== プロジェクト切替とフォルダ接続 =========== */
 function populateProjectPicker(){
@@ -3104,7 +3730,84 @@ function populateProjectPicker(){
   if(!reg.some(p=>p.id===target)) target = reg[0].id;
   sel.value = target;
 }
+/* v.064：ホーム画面（プロジェクト一覧カードグリッド）。
+   - 初期表示（?pid= 無しの場合）
+   - ヘッダ 🏠 ボタンから戻れる
+   クリックで switchToProject を呼び、ホームを閉じる。 */
+function renderHomeView(){
+  const host = document.getElementById('pmHomeView');
+  if(!host) return;
+  const reg = laycatRegistry();
+  const lastPid = pmboardLastPid();
+  if(!reg.length){
+    host.innerHTML = `
+      <div class="pm-home-head">
+        <div>
+          <div class="pm-home-title">プロジェクト一覧</div>
+          <div class="pm-home-sub">LayCAT に接続済みプロジェクトはまだありません。</div>
+        </div>
+      </div>
+      <div class="pm-home-body">
+        <div class="pm-home-empty">
+          🎬 LayCAT 側でプロジェクトを開いてフォルダを接続すると、ここに表示されます。<br><br>
+          <a href="./laycat.html" target="_blank">LayCAT を開く →</a>
+        </div>
+      </div>`;
+    return;
+  }
+  const cards = reg.map(p=>{
+    const isLast = (lastPid && p.id===lastPid);
+    const isR2   = (p.backend === 'r2');
+    const chips = [];
+    if(isLast) chips.push('<span class="pm-home-chip last">前回</span>');
+    if(isR2)   chips.push('<span class="pm-home-chip r2">R2</span>');
+    else if(p.folderName) chips.push('<span class="pm-home-chip">フォルダ</span>');
+    return `
+      <div class="pm-home-card" data-pid="${escapeHtml(p.id)}" tabindex="0" role="button">
+        <div class="pm-home-cname">${escapeHtml(p.name||'(無題)')}</div>
+        <div class="pm-home-cfolder">${escapeHtml(p.folderName||p.id||'')}</div>
+        <div class="pm-home-cmeta">${chips.join('')}</div>
+      </div>`;
+  }).join('');
+  host.innerHTML = `
+    <div class="pm-home-head">
+      <div>
+        <div class="pm-home-title">プロジェクト一覧</div>
+        <div class="pm-home-sub">クリックで PMB を開きます（${reg.length} 件）</div>
+      </div>
+    </div>
+    <div class="pm-home-body">${cards}</div>`;
+  host.querySelectorAll('.pm-home-card').forEach(card=>{
+    const pid = card.dataset.pid;
+    card.addEventListener('click', ()=>{
+      hideHomeView();
+      /* projSelect も合わせて反映しておくとドロップダウンと表示が一致する */
+      const sel = document.getElementById('projSelect');
+      if(sel && Array.from(sel.options).some(o=>o.value===pid)) sel.value = pid;
+      switchToProject(pid).then(updateLastUpdatedLabel);
+    });
+    card.addEventListener('keydown',(e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); card.click(); } });
+  });
+}
+function showHomeView(){
+  const host = document.getElementById('pmHomeView');
+  if(host){ renderHomeView(); host.classList.add('on'); }
+  const btn = document.getElementById('pmHomeBtn');
+  if(btn) btn.classList.remove('show'); /* ホーム表示中はボタン自身を隠す */
+  /* v.065：ホーム画面ではヘッダのプロジェクトプルダウンも隠す（カード選択に一本化） */
+  const pk = document.getElementById('projPicker');
+  if(pk) pk.style.display = 'none';
+}
+function hideHomeView(){
+  const host = document.getElementById('pmHomeView');
+  if(host) host.classList.remove('on');
+  const btn = document.getElementById('pmHomeBtn');
+  if(btn) btn.classList.add('show');
+  const pk = document.getElementById('projPicker');
+  if(pk) pk.style.display = '';
+}
 async function switchToProject(pid){
+  hideHomeView(); /* v.064：ホーム表示中なら閉じる */
   storage.pid = pid;
   savePmboardLastPid(pid); /* 更新時に復元するため即保存 */
   updateFolderUI(); /* まず未接続表示 */
@@ -3127,6 +3830,16 @@ async function switchToProject(pid){
       };
       return;
     }
+    if(r.needsAuth){
+      /* v.080：R2 プロジェクトなのに未ログイン */
+      body.innerHTML=`
+        <div class="empty-panel">
+          <div class="ep-ico">🔑</div>
+          <div class="ep-title">Google ログインが必要です</div>
+          <div class="ep-sub">このプロジェクトは R2（クラウド）に保存されています。アクセスするには Google ログインが必要です。<br>右上の「ログイン」ボタンからサインインしてください。</div>
+        </div>`;
+      return;
+    }
     body.innerHTML=`
       <div class="empty-panel">
         <div class="ep-ico">⚠</div>
@@ -3142,6 +3855,12 @@ async function switchToProject(pid){
 function updateFolderUI(){
   const fs = document.getElementById('folderStatus');
   const nm = document.getElementById('folderName');
+  /* v.080：R2 backend 時はフォルダ名の代わりに「☁ R2」を表示（dirHandle は常に null） */
+  if(storage.backend==='r2' && storage.pid){
+    fs.classList.add('connected'); fs.classList.remove('warn');
+    nm.textContent = '☁ R2';
+    return;
+  }
   if(storage.dirHandle){
     fs.classList.add('connected'); fs.classList.remove('warn');
     nm.textContent = storage.dirHandle.name || '接続済み';
@@ -3176,6 +3895,7 @@ function _pmIsMember(root){
   return false;
 }
 function _pmCheckMemberAccess(){
+  if(DEMO_MODE) return true; /* v.082：デモモードはメンバーチェックをスキップ */
   const nodes=(DATA.project&&Array.isArray(DATA.project.nodes))?DATA.project.nodes:[];
   const root=nodes.find(n=>n.id===(DATA.project&&DATA.project.id))||nodes.find(n=>!n.parentId);
   if(_pmIsMember(root))return true;
@@ -3185,13 +3905,18 @@ function _pmCheckMemberAccess(){
   body.innerHTML=`<div class="empty-panel" style="max-width:520px;margin:40px auto"><div class="ep-ico">🔒</div><div class="ep-title">アクセス権がありません</div><div class="ep-sub" style="line-height:1.6">「${escapeHtml(projName)}」のメンバーとして登録されていません。<br>現在のメール：<b>${escapeHtml(meNow)}</b><br><br>アクセスするには、LayCAT にログインしてプロジェクトのメンバーに登録されたメールと一致させ、このタブを再読み込みしてください。</div></div>`;
   return false;
 }
-/* v.0.2.0 (pmboard)：LayCAT のアクセス管理コンソール（access.json）を継承。
+/* v.0.2.0 (pmboard) → v.039 で LayCAT 本体のマルチテナント化（Phase M3b/M3c）に合わせて書き換え：
    `authRequired` かつ ogshaw03.github.io 上のときは、以下の何れにも該当しないアカウントを拒否：
-   - adminEmails / operatorEmails / allowedEmails に含まれる
-   - allowedDomains 配下のドメイン
-   さらに Firebase 側（招待リンク経由の invited）で許可されたメールも補完的に許可する。
-   LayCAT が既にログイン時に localStorage.laycat_userEmail を書いているので、その値で判定。 */
+   - operator（Firestore `laynaAccess/config.operatorEmails` に含まれる）
+   - 任意テナントの member/admin/owner（`findUserTenants` で非空 … owner は members 未登録でも補完）
+   - 任意テナントの allowDomainAutoJoin が真かつ domains にメールドメインが含まれる
+   - access.json の allowedEmails（静的、互換用）に含まれる
+   - 招待リンク（Firebase laynaAccess/invited）経由で許可されたメール
+   旧 `adminEmails` / 旧グローバル `allowedDomains` の判定は廃止（Phase M3b/M3c で廃止済み）。
+   副作用なし：ユーザー自動登録（tryJoinByDomain）は呼ばない。読取判定のみ。 */
 let _pmAccessCfg=null,_pmAuthOn=false,_pmAccessLoaded=false;
+let _pmUserTenants=[]; /* v.039：ログイン中ユーザーが所属する tenants [{tenantId, role}] */
+let _pmAllTenants=null; /* v.039：ドメイン自動参加判定用に全テナントをキャッシュ */
 async function _pmLoadAccess(){
   if(_pmAccessLoaded)return;
   _pmAccessLoaded=true;
@@ -3220,16 +3945,45 @@ async function _pmLoadAccess(){
     }
   }catch(_){}
   _pmAuthOn=!!(_pmAccessCfg&&_pmAccessCfg.authRequired)&&location.hostname==='ogshaw03.github.io';
+  /* v.039：ログイン中ユーザーの所属テナント・全テナントをマルチテナント判定用にプリロード。
+     operator 判定で通ればテナント照会は不要なので遅延評価。認証オフなら完全スキップ。 */
+  _pmUserTenants=[];_pmAllTenants=null;
+  if(!_pmAuthOn)return;
+  const em=_pmCurrentUserEmail();
+  if(!em)return;
+  /* operator は tenants 列挙前に即判定（頻出ケースを早く通す） */
+  const opList=(Array.isArray(_pmAccessCfg&&_pmAccessCfg.operatorEmails)?_pmAccessCfg.operatorEmails:[]).map(x=>String(x||'').toLowerCase());
+  if(opList.includes(em))return; /* operator は所属テナント照会不要 */
+  const allowList=(Array.isArray(_pmAccessCfg&&_pmAccessCfg.allowedEmails)?_pmAccessCfg.allowedEmails:[]).map(x=>String(x||'').toLowerCase());
+  if(allowList.includes(em))return; /* 招待・静的 allowedEmails も不要 */
+  /* マルチテナント本判定：所属テナント＋全テナント（ドメイン判定用）を並列読み */
+  try{
+    const [mems, all] = await Promise.all([
+      (window.__laynaFB&&window.__laynaFB.findUserTenants)?window.__laynaFB.findUserTenants(em):[],
+      (window.__laynaFB&&window.__laynaFB.loadAllTenants)?window.__laynaFB.loadAllTenants():null,
+    ]);
+    _pmUserTenants=Array.isArray(mems)?mems:[];
+    _pmAllTenants=Array.isArray(all)?all:null;
+  }catch(_){}
 }
 function _pmRoleFor(email){
   if(!_pmAccessCfg||!email)return null;
   const e=String(email).toLowerCase();
   const has=arr=>Array.isArray(arr)&&arr.map(x=>String(x||'').toLowerCase()).includes(e);
   if(has(_pmAccessCfg.operatorEmails))return 'operator';
-  if(has(_pmAccessCfg.adminEmails))return 'admin';
-  if(has(_pmAccessCfg.allowedEmails))return 'member';
+  if(has(_pmAccessCfg.allowedEmails))return 'member'; /* 招待・静的許可（互換） */
+  /* v.039：マルチテナント member／admin／owner */
+  if(Array.isArray(_pmUserTenants)&&_pmUserTenants.length)return 'member';
+  /* v.039：ドメイン自動参加（副作用なしで判定のみ）
+     どこかのテナントが allowDomainAutoJoin=true かつ domains にメールドメインを含めば通す。 */
   const dom=e.split('@')[1]||'';
-  if((_pmAccessCfg.allowedDomains||[]).some(d=>String(d).toLowerCase().replace(/^@/,'')===dom))return 'member';
+  if(dom && Array.isArray(_pmAllTenants)){
+    for(const t of _pmAllTenants){
+      if(!t||t.allowDomainAutoJoin!==true)continue;
+      const doms=Array.isArray(t.domains)?t.domains:[];
+      if(doms.some(d=>String(d||'').toLowerCase().replace(/^@/,'')===dom))return 'member';
+    }
+  }
   return null;
 }
 function _pmCheckOrgAccess(){
@@ -3243,7 +3997,7 @@ function _pmCheckOrgAccess(){
   const btnLabel=loggedIn?'別アカウントでログイン':'Google でログイン';
   const title=loggedIn?'このアプリを利用する権限がありません':'ログインが必要です';
   const desc=loggedIn
-    ? `アクセス管理コンソールで許可されていないアカウントです。<br>現在のメール：<b>${escapeHtml(meNow)}</b><br><br>管理者に allowedEmails への追加を依頼するか、別アカウントでログインし直してください。`
+    ? `どのテナントのメンバーにも登録されていません。<br>現在のメール：<b>${escapeHtml(meNow)}</b><br><br>テナント管理者に member として追加してもらうか、別アカウントでログインし直してください。<br><small style="color:var(--text3)">（運営 operator・テナント所属・テナントドメイン自動参加・招待リンクのいずれかで通過できます）</small>`
     : 'このアプリの利用にはログインが必要です。下のボタンから Google アカウントでログインしてください。';
   body.innerHTML=`<div class="empty-panel" style="max-width:520px;margin:40px auto"><div class="ep-ico">⛔</div><div class="ep-title">${escapeHtml(title)}</div><div class="ep-sub" style="line-height:1.6">${desc}</div><div style="margin-top:16px;display:flex;gap:8px;justify-content:center"><button id="pmLoginBtn" style="padding:8px 18px;border-radius:8px;background:#4da6ff;color:#111;border:0;font-weight:700;cursor:pointer">${escapeHtml(btnLabel)}</button>${loggedIn?'<button id="pmLogoutBtn" style="padding:8px 14px;border-radius:8px;background:transparent;border:1px solid #3a3a42;color:#c8c8d0;cursor:pointer">ログアウト</button>':''}</div></div>`;
   const lb=document.getElementById('pmLoginBtn');
@@ -3806,7 +4560,1147 @@ document.getElementById('tabs').addEventListener('click',e=>{
   document.querySelectorAll('.pane').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');
   document.querySelector(`[data-pane="${b.dataset.tab}"]`).classList.add('on');
+  /* v.042：資料タブは遅延初期化（最初に開いたときに 1 回だけビルド）。
+     content が display:none の状態で getBoundingClientRect すると幅 0 になるため。
+     v.046：_refInit は async（データロード含む）になったので fire-and-forget。 */
+  if(b.dataset.tab === 'reference' && !window._refInited){ _refInit().catch(e=>console.warn(e)); window._refInited=true; }
 });
+/* v.042：資料タブ（PureRef 風 無限キャンバス UI、モックデータ）。
+   LayCAT 本体の renderProjReference と同構造・同仕様（モックアイテム・虚像位置・pan/zoom/
+   目次クリックでパン・viewport virtualization）。
+   実データ連携・編集 UI は後続タスク。 */
+const REF_MOCK_ITEMS = []; /* v.095 (laycat) / v.047 (pmboard)：デモ用モック資料は撤去。空プロジェクトは本当に空の状態で表示する */
+/* 資料タブ：画像／動画の拡大モーダル（v.062）。LayCAT 本体 v.111 と同仕様。 */
+function openRefMediaModal(mediaRef, mediaType, label){
+  if(!mediaRef) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'ref-media-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;backdrop-filter:blur(6px)';
+  overlay.onclick = ()=>closeModal();
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = '×';
+  close.style.cssText = 'position:absolute;top:14px;right:20px;background:rgba(10,10,14,0.6);border:1px solid rgba(255,255,255,0.15);color:#fff;font-size:28px;line-height:1;cursor:pointer;padding:2px 14px;border-radius:8px;z-index:1';
+  close.onclick = (e)=>{ e.stopPropagation(); closeModal(); };
+  const media = (mediaType === 'video') ? document.createElement('video') : document.createElement('img');
+  media.style.cssText = 'max-width:92vw;max-height:92vh;object-fit:contain;box-shadow:0 20px 60px rgba(0,0,0,0.6);border-radius:6px;background:#0a0a0e';
+  if(mediaType === 'video'){ media.controls = true; media.autoplay = true; media.playsInline = true; }
+  else{ media.alt = label || ''; }
+  media.onclick = (e)=>e.stopPropagation();
+  /* v.074：動画はダブルクリックでフルスクリーン再生。 */
+  if(mediaType === 'video'){
+    media.addEventListener('dblclick',(e)=>{
+      e.stopPropagation();
+      try{
+        const r = media.requestFullscreen || media.webkitRequestFullscreen || media.msRequestFullscreen;
+        if(r) r.call(media);
+      }catch(_){}
+    });
+  }
+  overlay.appendChild(media);
+  overlay.appendChild(close);
+  document.body.appendChild(overlay);
+  const esc = (e)=>{ if(e.key === 'Escape'){ e.stopPropagation(); closeModal(); } };
+  window.addEventListener('keydown', esc, true);
+  function closeModal(){
+    try{ if(document.fullscreenElement){ document.exitFullscreen(); } }catch(_){}
+    try{ overlay.remove(); }catch(_){}
+    window.removeEventListener('keydown', esc, true);
+  }
+  storage.resolveMediaUrl(mediaRef).then(u=>{ if(u) media.src = u; }).catch(()=>{});
+}
+function _refBuildItem(it){
+  const n = document.createElement('div');
+  n.className = 'ref-item ref-'+it.type;
+  n.style.left   = it.x + 'px';
+  n.style.top    = it.y + 'px';
+  if(it.w) n.style.width  = it.w + 'px';
+  if(it.h) n.style.height = it.h + 'px';
+  if(it.type === 'title'){
+    n.textContent = it.text || '';
+    if(it.fontSize) n.style.fontSize = it.fontSize + 'px';
+    if(it.color)    n.style.color    = it.color;
+    if(it.bold)      n.style.fontWeight = '700';
+    if(it.underline) n.style.textDecoration = 'underline';
+  }else if(it.type === 'text'){
+    n.textContent = it.text || '';
+    n.style.fontSize = (it.fontSize || 16) + 'px';
+    if(it.color)     n.style.color = it.color;
+    if(it.bold)      n.style.fontWeight = '700';
+    if(it.underline) n.style.textDecoration = 'underline';
+    /* v.059／v.078：href 付きリンクアイテム。ハンドラは常に設置し、クリック時に editMode を見て分岐
+       （ノードキャッシュ下で edit→非 edit 切替時にハンドラ不在で不発になるのを防ぐ）。 */
+    if(it.href){
+      n.title = it.href;
+      n.onclick = (ev)=>{
+        if(_REF_STATE.editMode) return;
+        ev.stopPropagation();
+        try{ window.open(it.href, '_blank', 'noopener,noreferrer'); }catch(_){}
+      };
+    }
+  }else if(it.type === 'image'){
+    if(it.mediaRef){
+      const inner = (it.mediaType === 'video') ? document.createElement('video') : document.createElement('img');
+      inner.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:7px;display:block';
+      if(it.mediaType === 'video'){
+        /* v.074：キャンバス上では controls を付けず、静止サムネとして扱う。クリックでモーダル再生。 */
+        inner.muted = true; inner.playsInline = true;
+        if(it.thumbDataUrl) inner.poster = it.thumbDataUrl;
+        inner.preload = 'metadata';
+      }
+      else { inner.alt = it.label||''; inner.decoding = 'async'; inner.loading = 'lazy'; }
+      /* v.079：onerror フォールバックで blob URL 失効時に再取得（LayCAT v.144 と同仕様）。 */
+      let _mediaRetry = 0;
+      const _reloadMedia = ()=>{
+        storage.resolveMediaUrl(it.mediaRef).then(u=>{ if(u){ inner.src = u; } }).catch(()=>{});
+      };
+      inner.onerror = ()=>{ if(++_mediaRetry > 2) return; _reloadMedia(); };
+      _reloadMedia();
+      n.appendChild(inner);
+      /* v.074：動画も画像と同じ扱いに統一。編集 OFF＝シングルクリックでモーダル再生／編集 ON＝ダブルクリック。 */
+      let _down=null, _moved=false;
+      inner.addEventListener('mousedown',(ev)=>{ _down={x:ev.clientX,y:ev.clientY}; _moved=false; });
+      inner.addEventListener('mousemove',(ev)=>{ if(_down && (Math.abs(ev.clientX-_down.x)>3 || Math.abs(ev.clientY-_down.y)>3)) _moved=true; });
+      inner.addEventListener('click',(ev)=>{
+        if(_REF_STATE.editMode) return;
+        if(_moved){ _down=null; return; }
+        ev.stopPropagation();
+        openRefMediaModal(it.mediaRef, it.mediaType, it.label);
+        _down=null;
+      });
+      inner.style.cursor = _REF_STATE.editMode ? '' : 'zoom-in';
+      n.addEventListener('dblclick',(ev)=>{
+        ev.stopPropagation();
+        openRefMediaModal(it.mediaRef, it.mediaType, it.label);
+      });
+      /* v.074：動画タイルに ▶ 再生アイコン・オーバーレイ */
+      if(it.mediaType === 'video'){
+        const ov = document.createElement('div');
+        ov.innerHTML = '<svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true"><circle cx="24" cy="24" r="22" fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.6)" stroke-width="1.5"/><path d="M19 15 L35 24 L19 33 Z" fill="#fff"/></svg>';
+        ov.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;border-radius:7px';
+        n.appendChild(ov);
+      }
+    }else{
+      const ph = document.createElement('div'); ph.className='ref-image-ph';
+      const ic = document.createElement('div'); ic.className='ic'; ic.textContent='🖼';
+      const lb = document.createElement('div'); lb.className='lb'; lb.textContent=it.label||'';
+      ph.appendChild(ic); ph.appendChild(lb);
+      n.appendChild(ph);
+    }
+  }else if(it.type === 'shape'){
+    n.classList.add('shape-'+(it.shape||'rect'));
+    const col = it.color || '#4a9eff';
+    n.style.borderColor = col;
+    const alpha = (typeof it.opacity === 'number') ? Math.max(0, Math.min(1, it.opacity)) : 0.15;
+    const hex = String(col).replace('#','');
+    const r = parseInt(hex.slice(0,2),16)||74, g = parseInt(hex.slice(2,4),16)||158, b = parseInt(hex.slice(4,6),16)||255;
+    n.style.background = `rgba(${r},${g},${b},${alpha})`;
+  }else if(it.type === 'group'){
+    if(it.color){
+      n.style.borderColor = it.color;
+      const hex = String(it.color).replace('#','');
+      const r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+      n.style.background = `rgba(${r},${g},${b},0.04)`;
+    }
+    if(it.label){
+      const lbl = document.createElement('div'); lbl.className='ref-group-lbl'; lbl.textContent=it.label;
+      lbl.style.color = it.color||'var(--accent)';
+      lbl.style.border = '1px solid '+(it.color||'var(--border)');
+      n.appendChild(lbl);
+    }
+  }
+  return n;
+}
+/* v.046：編集モード対応版 _refInit。LayCAT 本体 v.093 と同構造。
+   モック (REF_MOCK_ITEMS) は空プロジェクト時のデモ用。実データは
+   storage.loadReferenceItems() で reference/items/*.json から読み込み。 */
+const _REF_STATE = { editMode:false, selection:new Set(), workingItems:[], clipboard:[], view:{tx:60,ty:60,scale:0.5}, editingId:null };
+async function _refInit(){
+  const vp = document.getElementById('refMain');
+  const canvas = document.getElementById('refCanvas');
+  const toc = document.getElementById('refToc');
+  const hud = document.getElementById('refHud');
+  const grid = document.getElementById('refGridBg');
+  const tb = document.getElementById('refToolbar');
+  const editBtn = document.getElementById('refEditBtn');
+  if(!vp || !canvas) return;
+  const view = _REF_STATE.view;
+  const workingItems = _REF_STATE.workingItems;
+  /* 実データロード（非同期で終わったら再描画） */
+  try{
+    const loaded = await storage.loadReferenceItems();
+    if(Array.isArray(loaded) && loaded.length){
+      workingItems.splice(0, workingItems.length, ...loaded);
+    }
+  }catch(_){}
+  let items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+  /* v.050：titleItems は rebuildToc 内で毎回動的計算（従来の外部キャプチャ版は廃止） */
+  const BUFFER = 400;
+  let handlesEl = null;
+  let ctxEl = null;
+  const applyTransform = ()=>{
+    canvas.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+    if(hud) hud.textContent = `pan: ${Math.round(view.tx)}, ${Math.round(view.ty)}   zoom: ${(view.scale*100).toFixed(0)}%`;
+    const g = 100 * view.scale;
+    if(grid){ grid.style.backgroundSize = `${g}px ${g}px`; grid.style.backgroundPosition = `${view.tx}px ${view.ty}px`; }
+    renderVisible();
+  };
+  /* v.071：LayCAT v.118 と同じ DOM ノードキャッシュを導入。pan/zoom の都度 remove→build する
+     従来実装では画像数十枚で毎回 img を復号し直して重かった。 */
+  const _refNodeCache = new Map();
+  const _refInvalidate = (id)=>{
+    if(!id) return;
+    const n = _refNodeCache.get(id);
+    if(n){ try{ n.remove(); }catch(_){} _refNodeCache.delete(id); }
+  };
+  const renderVisible = ()=>{
+    const rect = vp.getBoundingClientRect();
+    const vw = rect.width, vh = rect.height;
+    const vLeft   = -view.tx / view.scale - BUFFER;
+    const vTop    = -view.ty / view.scale - BUFFER;
+    const vRight  = vLeft + vw / view.scale + BUFFER * 2;
+    const vBottom = vTop  + vh / view.scale + BUFFER * 2;
+    const _sorted = items.map((it,i)=>({it, z:(it.z==null?i:it.z), i}))
+                         .sort((a,b)=> (a.z - b.z) || (a.i - b.i))
+                         .map(x=>x.it);
+    const visibleIds = new Set();
+    const existingIds = new Set(items.map(it=>it.id));
+    for(const it of _sorted){
+      const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
+      if(x2 < vLeft || x1 > vRight || y2 < vTop || y1 > vBottom) continue;
+      visibleIds.add(it.id);
+      let node = _refNodeCache.get(it.id);
+      if(!node){
+        node = _refBuildItem(it);
+        node.dataset.refId = it.id || '';
+        _refNodeCache.set(it.id, node);
+      }
+      node.style.left = it.x + 'px';
+      node.style.top  = it.y + 'px';
+      if(it.w != null) node.style.width  = it.w + 'px';
+      if(it.h != null) node.style.height = it.h + 'px';
+      if(_REF_STATE.editMode && it.id && _REF_STATE.selection.has(it.id)) node.classList.add('selected');
+      else node.classList.remove('selected');
+      /* v.075：非編集モードでも text/title はホバーだけで文字選択できるように
+         pointer-events:auto + user-select:text + cursor:text（LayCAT v.122 と同仕様）。
+         v.078：href 付きリンクは文字選択を無効化し cursor:pointer に（LayCAT v.125 と同仕様）。 */
+      if(_REF_STATE.editMode){
+        node.style.pointerEvents = 'auto';
+        node.style.userSelect = '';
+        if(!node.classList.contains('text-selectable')) node.style.cursor = '';
+      }else if(it.type === 'text' || it.type === 'title'){
+        node.style.pointerEvents = 'auto';
+        if(it.href){
+          node.style.userSelect = 'none';
+          node.style.cursor = 'pointer';
+        }else{
+          node.style.userSelect = 'text';
+          node.style.cursor = 'text';
+        }
+      }else{
+        node.style.pointerEvents = '';
+        node.style.userSelect = '';
+        node.style.cursor = '';
+      }
+      if(_REF_STATE.editingId !== it.id) canvas.appendChild(node);
+    }
+    for(const [id, node] of _refNodeCache){
+      if(id === _REF_STATE.editingId) continue;
+      if(!visibleIds.has(id) || !existingIds.has(id)){
+        try{ node.remove(); }catch(_){}
+        _refNodeCache.delete(id);
+      }
+    }
+    _syncToolbarFromSelection();
+    updateHandles();
+  };
+  /* v.077：選択中アイテムの属性をツールバーに反映（LayCAT v.124 と同仕様）。 */
+  const _isHex6 = (s)=> typeof s==='string' && /^#[0-9a-fA-F]{6}$/.test(s);
+  function _syncToolbarFromSelection(){
+    try{
+      const selIds = Array.from(_REF_STATE.selection);
+      if(selIds.length !== 1) return;
+      const it = workingItems.find(x=>x.id===selIds[0]);
+      if(!it) return;
+      const af = document.activeElement;
+      if(it.type==='text' || it.type==='title'){
+        if(af !== inpSize && typeof it.fontSize === 'number') inpSize.value = String(it.fontSize);
+        if(af !== inpTxtCol && _isHex6(it.color)) inpTxtCol.value = it.color;
+      }else if(it.type==='shape'){
+        if(af !== inpShapeCol && _isHex6(it.color)) inpShapeCol.value = it.color;
+        if(af !== inpOpacity && typeof it.opacity === 'number'){
+          inpOpacity.value = String(Math.round(it.opacity * 100));
+        }
+      }
+    }catch(_){}
+  }
+  const updateHandles = ()=>{
+    if(handlesEl){ try{ handlesEl.remove(); }catch(_){} handlesEl = null; }
+    if(!_REF_STATE.editMode || _REF_STATE.selection.size !== 1) return;
+    const id = Array.from(_REF_STATE.selection)[0];
+    const it = workingItems.find(x=>x.id===id);
+    if(!it) return;
+    /* v.066：text/title は w/h 未設定でも DOM 実寸でハンドルを出す（LayCAT v.113 と同仕様） */
+    let effW = it.w, effH = it.h;
+    if((it.type === 'text' || it.type === 'title') && (!effW || !effH)){
+      const node = canvas.querySelector('.ref-item[data-ref-id="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
+      if(node){
+        if(!effW) effW = node.offsetWidth  || 120;
+        if(!effH) effH = node.offsetHeight || 32;
+      }
+    }
+    if(!effW || !effH) return;
+    const sx = it.x * view.scale + view.tx;
+    const sy = it.y * view.scale + view.ty;
+    const sw = effW * view.scale;
+    const sh = effH * view.scale;
+    handlesEl = document.createElement('div');
+    handlesEl.className = 'ref-handles';
+    handlesEl.style.left = sx + 'px';
+    handlesEl.style.top  = sy + 'px';
+    handlesEl.style.width  = sw + 'px';
+    handlesEl.style.height = sh + 'px';
+    for(const c of ['nw','ne','sw','se']){
+      const h = document.createElement('div'); h.className = 'rh '+c;
+      h.addEventListener('mousedown',(e)=>{
+        if(e.button!==0) return;
+        e.stopPropagation(); e.preventDefault();
+        const startX = e.clientX, startY = e.clientY;
+        /* v.066：text/title が w/h 未設定の場合は effW/effH で補完して resize 開始。 */
+        const origin = {x:it.x, y:it.y, w: it.w || effW, h: it.h || effH};
+        /* v.059：画像は比率ロック（アスペクト維持）、Shift で解除可。 */
+        const lockAspect = (it.type === 'image') && origin.w>0 && origin.h>0;
+        const aspect = origin.w / origin.h;
+        const onMv = (ev)=>{
+          const dx = (ev.clientX - startX) / view.scale;
+          const dy = (ev.clientY - startY) / view.scale;
+          let nx=origin.x, ny=origin.y, nw=origin.w, nh=origin.h;
+          let dw, dh;
+          if(c==='se'){ dw=dx;  dh=dy;  }
+          else if(c==='sw'){ dw=-dx; dh=dy;  }
+          else if(c==='ne'){ dw=dx;  dh=-dy; }
+          else if(c==='nw'){ dw=-dx; dh=-dy; }
+          if(lockAspect && !ev.shiftKey){
+            const sW = (origin.w + dw) / origin.w;
+            const sH = (origin.h + dh) / origin.h;
+            const s = (Math.abs(sW-1) > Math.abs(sH-1)) ? sW : sH;
+            nw = Math.max(20, origin.w * s);
+            nh = Math.max(20, origin.h * s);
+            if(nw === 20) nh = Math.max(20, 20 / aspect);
+            if(nh === 20) nw = Math.max(20, 20 * aspect);
+          }else{
+            nw = Math.max(20, origin.w + dw);
+            nh = Math.max(20, origin.h + dh);
+          }
+          if(c==='sw'){ nx = origin.x + origin.w - nw; }
+          else if(c==='ne'){ ny = origin.y + origin.h - nh; }
+          else if(c==='nw'){ nx = origin.x + origin.w - nw; ny = origin.y + origin.h - nh; }
+          it.x = Math.round(nx); it.y = Math.round(ny);
+          it.w = Math.round(nw); it.h = Math.round(nh);
+          renderVisible();
+        };
+        const onUp = ()=>{
+          window.removeEventListener('mousemove', onMv);
+          window.removeEventListener('mouseup', onUp);
+          scheduleItemSave(it);
+        };
+        window.addEventListener('mousemove', onMv);
+        window.addEventListener('mouseup', onUp);
+      });
+      handlesEl.appendChild(h);
+    }
+    vp.appendChild(handlesEl);
+  };
+  /* アニメーション */
+  let _refAnimRaf = 0;
+  const easeInOutQuad = t => t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t;
+  const cancelAnim = ()=>{ if(_refAnimRaf){ cancelAnimationFrame(_refAnimRaf); _refAnimRaf=0; } };
+  const animateViewTo = (targetTx, targetTy, targetScale, duration)=>{
+    duration = duration || 250; cancelAnim();
+    const startTx = view.tx, startTy = view.ty, startSc = view.scale;
+    const dx = targetTx - startTx, dy = targetTy - startTy, ds = targetScale - startSc;
+    if(Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(ds) < 0.001){
+      view.tx = targetTx; view.ty = targetTy; view.scale = targetScale; applyTransform(); return;
+    }
+    const t0 = performance.now();
+    const step = (now)=>{
+      const t = Math.min(1, (now - t0) / duration);
+      const k = easeInOutQuad(t);
+      view.tx = startTx + dx * k; view.ty = startTy + dy * k; view.scale = startSc + ds * k;
+      applyTransform();
+      if(t < 1) _refAnimRaf = requestAnimationFrame(step); else _refAnimRaf = 0;
+    };
+    _refAnimRaf = requestAnimationFrame(step);
+  };
+  /* 目次 */
+  const rebuildToc = ()=>{
+    toc.innerHTML='';
+    const titleItems = items.filter(x=>x.type==='title');
+    for(const t of titleItems){
+      const row = document.createElement('div'); row.className='ref-toc-item';
+      const dot = document.createElement('span'); dot.className='ref-toc-dot'; dot.style.background=t.color||'var(--accent)';
+      row.appendChild(dot);
+      row.appendChild(document.createTextNode(t.text||''));
+      row.onclick = ()=>{
+        /* v.056／v.058：ユーザーが描いた shape（四角／円）がタイトルを含んでいれば
+           group と同等に扱う（＝「ここが 1 トピック」とユーザーが明示指定）。
+           無ければ Voronoi 風クラスタリングで最寄りアイテム群の bbox を使う。 */
+        let b;
+        const g = items.find(x => (x.type==='group' || x.type==='shape') && x.w && x.h
+          && t.x >= x.x && t.x <= x.x + x.w && t.y >= x.y && t.y <= x.y + x.h);
+        if(g){
+          b = { x:g.x, y:g.y, w:g.w, h:g.h };
+        }else{
+          const titles = items.filter(x=>x.type==='title');
+          const cx = x=> x.x + (x.w||100)/2;
+          const cy = x=> x.y + (x.h||40)/2;
+          let minX = t.x, minY = t.y, maxX = t.x + (t.w||300), maxY = t.y + (t.h||80);
+          for(const it of items){
+            if(it.type === 'title' || it.type === 'group') continue;
+            let nearest = null, nd = Infinity;
+            const ix = cx(it), iy = cy(it);
+            for(const tt of titles){
+              const dx = ix - cx(tt), dy = iy - cy(tt);
+              const d = dx*dx + dy*dy;
+              if(d < nd){ nd = d; nearest = tt; }
+            }
+            if(nearest === t){
+              const ix2 = it.x + (it.w||100), iy2 = it.y + (it.h||40);
+              if(it.x < minX) minX = it.x;
+              if(it.y < minY) minY = it.y;
+              if(ix2 > maxX) maxX = ix2;
+              if(iy2 > maxY) maxY = iy2;
+            }
+          }
+          const pad2 = 80;
+          b = { x: minX - pad2, y: minY - pad2, w: (maxX - minX) + pad2*2, h: (maxY - minY) + pad2*2 };
+        }
+        const rect = vp.getBoundingClientRect();
+        const pad = 40;
+        const targetScale = Math.max(0.08, Math.min((rect.width-pad*2)/b.w, (rect.height-pad*2)/b.h, 2));
+        const targetTx = -b.x * targetScale + (rect.width  - b.w * targetScale) / 2;
+        const targetTy = -b.y * targetScale + (rect.height - b.h * targetScale) / 2;
+        animateViewTo(targetTx, targetTy, targetScale);
+        toc.querySelectorAll('.ref-toc-item').forEach(x=>x.classList.remove('active'));
+        row.classList.add('active');
+      };
+      toc.appendChild(row);
+    }
+  };
+  rebuildToc();
+  /* 保存スケジューラ */
+  const _saveTimers = {};
+  const scheduleItemSave = (it)=>{
+    if(!it||!it.id) return;
+    clearTimeout(_saveTimers[it.id]);
+    _saveTimers[it.id] = setTimeout(()=>{ storage.saveReferenceItem(it).catch(()=>{}); delete _saveTimers[it.id]; }, 350);
+  };
+  /* ヘルパ */
+  const _nextId = ()=> 'r_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,7);
+  const _viewportCenterWorld = ()=>{ const r = vp.getBoundingClientRect(); return { x:(r.width/2 - view.tx)/view.scale, y:(r.height/2 - view.ty)/view.scale }; };
+  const screenToWorld = (sx, sy)=>{ const r = vp.getBoundingClientRect(); return { x:(sx - r.left - view.tx)/view.scale, y:(sy - r.top - view.ty)/view.scale }; };
+  const hitTestItem = (sx, sy)=>{
+    /* v.069：group / shape はクリック貫通優先（LayCAT v.116 と同仕様）。
+       - group：常に非ヒット
+       - shape：非 shape のアイテムが同位置に無ければヒット
+       レイヤー順（z）を尊重して最前面から当たり判定。 */
+    const w = screenToWorld(sx, sy);
+    const inBounds = (it)=>{
+      const x1=it.x, y1=it.y, x2=it.x+(it.w||400), y2=it.y+(it.h||100);
+      return (w.x >= x1 && w.x <= x2 && w.y >= y1 && w.y <= y2);
+    };
+    const _effZ = (it, i) => (it.z == null ? i : it.z);
+    const sorted = items.map((it,i)=>({it, z:_effZ(it,i), i}))
+                        .sort((a,b)=> (b.z - a.z) || (b.i - a.i))
+                        .map(x=>x.it);
+    for(const it of sorted){
+      if(it.type === 'group' || it.type === 'shape') continue;
+      if(inBounds(it)) return it;
+    }
+    for(const it of sorted){
+      if(it.type !== 'shape') continue;
+      if(inBounds(it)) return it;
+    }
+    return null;
+  };
+  /* v.069：非編集モードの文字選択モードを解除（LayCAT v.116 と同仕様）。 */
+  const _clearTextSelectable = (n)=>{
+    if(!n) return;
+    n.classList.remove('text-selectable');
+    n.style.userSelect = '';
+    n.style.pointerEvents = '';
+    n.style.cursor = '';
+    if(n._stopDown){
+      n.removeEventListener('mousedown', n._stopDown);
+      n._stopDown = null;
+    }
+    try{ const s=window.getSelection(); if(s) s.removeAllRanges(); }catch(_){}
+  };
+  /* v.048：追加系ボタンは「追加モード」の開始のみ。キャンバスクリックで実配置。
+     shape は click+drag でサイズ指定（単クリックならデフォルト 240x160）。 */
+  let _pendingInsert = null;
+  const _commitItem = (def)=>{
+    workingItems.push(def);
+    _REF_STATE.selection.clear(); _REF_STATE.selection.add(def.id);
+    scheduleItemSave(def);
+    items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    renderVisible();
+    try{ rebuildToc(); }catch(_){} /* v.050：目次を即更新 */
+    return def;
+  };
+  const insertItem = (partial)=>{
+    const c = _viewportCenterWorld();
+    const def = Object.assign({ id: _nextId(), x: Math.round(c.x - (partial.w||200)/2), y: Math.round(c.y - (partial.h||40)/2) }, partial);
+    return _commitItem(def);
+  };
+  const insertItemAt = (partial, x, y, w, h)=>{
+    const def = Object.assign({ id: _nextId(), x: Math.round(x), y: Math.round(y) }, partial);
+    if(w != null) def.w = Math.round(w);
+    if(h != null) def.h = Math.round(h);
+    return _commitItem(def);
+  };
+  const _startInsert = (def, drag, tbBtn)=>{
+    _pendingInsert = { def: def, drag: !!drag, tbBtn: tbBtn || null };
+    vp.style.cursor = 'crosshair';
+    if(tbBtn) tbBtn.classList.add('on');
+  };
+  const _cancelInsert = ()=>{
+    if(!_pendingInsert) return;
+    if(_pendingInsert.tbBtn) _pendingInsert.tbBtn.classList.remove('on');
+    _pendingInsert = null;
+    vp.style.cursor = '';
+  };
+  const applyToSelected = (fn)=>{
+    for(const id of _REF_STATE.selection){
+      const it = workingItems.find(x=>x.id===id);
+      if(it){ fn(it); _refInvalidate(id); scheduleItemSave(it); }
+    }
+    renderVisible();
+  };
+  /* ツールバー構築（LayCAT と同じ） */
+  tb.innerHTML = '';
+  const _tbEl = (tag, cls, text)=>{ const n=document.createElement(tag); if(cls) n.className=cls; if(text!=null) n.textContent=text; return n; };
+  const _tbGrp = ()=>{ const g = _tbEl('div','tb-grp'); tb.appendChild(g); return g; };
+  const _tbBtn = (p,l,t)=>{ const b=_tbEl('button',null,l); if(t) b.title=t; p.appendChild(b); return b; };
+  const grpAdd = _tbGrp();
+  const btnH1 = _tbBtn(grpAdd,'大','大タイトル追加');
+  const btnH2 = _tbBtn(grpAdd,'中','中タイトル追加');
+  const btnH3 = _tbBtn(grpAdd,'小','小タイトル追加');
+  const btnTxt= _tbBtn(grpAdd,'T','テキスト追加');
+  const grpShape = _tbGrp();
+  const selShape = document.createElement('select');
+  for(const [v,t] of [['rect','◼ 四角形'],['circle','● 円']]){ const o=document.createElement('option'); o.value=v; o.textContent=t; selShape.appendChild(o); }
+  grpShape.appendChild(selShape);
+  const btnShape = _tbBtn(grpShape,'＋図形','選択中の図形タイプを追加');
+  const grpMedia = _tbGrp();
+  const btnUpload = _tbBtn(grpMedia,'🖼 画像/動画','画像/動画をアップロード');
+  const inpFile = document.createElement('input'); inpFile.type='file'; inpFile.multiple=true; inpFile.accept='image/*,video/*'; inpFile.style.display='none';
+  grpMedia.appendChild(inpFile);
+  const grpText = _tbGrp();
+  const btnBold = _tbBtn(grpText,'B','太字'); btnBold.style.fontWeight='700';
+  const btnUline= _tbBtn(grpText,'U','アンダーライン'); btnUline.style.textDecoration='underline';
+  grpText.appendChild(_tbEl('span','tb-lbl','px'));
+  const inpSize = document.createElement('input'); inpSize.type='number'; inpSize.min='8'; inpSize.max='120'; inpSize.placeholder='--'; grpText.appendChild(inpSize);
+  grpText.appendChild(_tbEl('span','tb-lbl','文字'));
+  const inpTxtCol = document.createElement('input'); inpTxtCol.type='color'; inpTxtCol.value='#e8e8ec'; grpText.appendChild(inpTxtCol);
+  const grpShapeFmt = _tbGrp();
+  grpShapeFmt.appendChild(_tbEl('span','tb-lbl','図形色'));
+  const inpShapeCol = document.createElement('input'); inpShapeCol.type='color'; inpShapeCol.value='#4a9eff'; grpShapeFmt.appendChild(inpShapeCol);
+  grpShapeFmt.appendChild(_tbEl('span','tb-lbl','透明度'));
+  const inpOpacity = document.createElement('input'); inpOpacity.type='range'; inpOpacity.min='0'; inpOpacity.max='100'; inpOpacity.value='15'; grpShapeFmt.appendChild(inpOpacity);
+  /* 編集モードトグル */
+  const setEditMode = (on)=>{
+    _REF_STATE.editMode = !!on;
+    vp.classList.toggle('edit-mode', _REF_STATE.editMode);
+    editBtn.classList.toggle('on', _REF_STATE.editMode);
+    editBtn.textContent = _REF_STATE.editMode ? '📝 編集中' : '📝 編集モード';
+    if(!_REF_STATE.editMode){ _REF_STATE.selection.clear(); _REF_STATE.editingId = null; }
+    items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    applyTransform();
+  };
+  editBtn.onclick = ()=> setEditMode(!_REF_STATE.editMode);
+  /* ツールバー配線 */
+  /* v.048：ボタンは追加モード開始のみ。クリック配置（title/text）／drag 配置（shape）。 */
+  btnH1.onclick = ()=> _startInsert({type:'title', text:'大タイトル', fontSize:48, color:'#e8e8ec'}, false, btnH1);
+  btnH2.onclick = ()=> _startInsert({type:'title', text:'中タイトル', fontSize:32, color:'#e8e8ec'}, false, btnH2);
+  btnH3.onclick = ()=> _startInsert({type:'title', text:'小タイトル', fontSize:22, color:'#e8e8ec'}, false, btnH3);
+  btnTxt.onclick= ()=> _startInsert({type:'text',  text:'テキスト',   fontSize:16, color:'#e8e8ec', w:260}, false, btnTxt);
+  btnShape.onclick = ()=> _startInsert({type:'shape', shape:selShape.value||'rect', color:inpShapeCol.value, opacity:(parseInt(inpOpacity.value,10)||15)/100}, true, btnShape);
+  btnUpload.onclick = ()=> inpFile.click();
+  inpFile.onchange = async (e)=>{
+    const files = Array.from(e.target.files||[]);
+    if(!files.length) return;
+    inpFile.value = '';
+    const c0 = _viewportCenterWorld();
+    /* v.071：まとめアップロード最適化（LayCAT v.118 と同仕様）。
+       並列度 4 で寸法計測＋書き込みを並行、最後に一括 push + 単発 renderVisible。 */
+    const CONCURRENCY = 4;
+    const defs = new Array(files.length);
+    const _measureDim = (f)=>new Promise((res)=>{
+      if(f.type.startsWith('image/')){
+        const url = URL.createObjectURL(f);
+        const img = new Image();
+        img.onload = ()=>{ const w=img.naturalWidth||320, h=img.naturalHeight||240; URL.revokeObjectURL(url); const s=Math.min(1, 480/Math.max(w,h)); res({w:Math.round(w*s), h:Math.round(h*s), poster:null}); };
+        img.onerror = ()=>{ URL.revokeObjectURL(url); res({w:320,h:240,poster:null}); };
+        img.src = url;
+        return;
+      }
+      if(f.type.startsWith('video/')){
+        /* v.073：動画の最初のフレームをキャンバスに描画して data URL のポスターを生成。 */
+        const url = URL.createObjectURL(f);
+        const video = document.createElement('video');
+        video.muted = true; video.playsInline = true; video.preload = 'auto';
+        const done = (ret)=>{ try{URL.revokeObjectURL(url)}catch(_){} res(ret); };
+        const to = setTimeout(()=>done({w:320,h:240,poster:null}), 6000);
+        video.addEventListener('loadeddata', ()=>{
+          try{ video.currentTime = Math.min(0.5, (video.duration||1)*0.1); }
+          catch(_){ clearTimeout(to); done({w:320,h:240,poster:null}); }
+        });
+        video.addEventListener('seeked', ()=>{
+          clearTimeout(to);
+          try{
+            const vw = video.videoWidth||320, vh = video.videoHeight||240;
+            const s = Math.min(1, 480/Math.max(vw,vh));
+            const tw = Math.round(vw*s), th = Math.round(vh*s);
+            const can = document.createElement('canvas');
+            can.width = tw; can.height = th;
+            can.getContext('2d').drawImage(video, 0, 0, tw, th);
+            const poster = can.toDataURL('image/jpeg', 0.7);
+            done({w: tw, h: th, poster});
+          }catch(e){ done({w:320,h:240,poster:null}); }
+        });
+        video.addEventListener('error', ()=>{ clearTimeout(to); done({w:320,h:240,poster:null}); });
+        video.src = url;
+        return;
+      }
+      res({w:320,h:240,poster:null});
+    });
+    let next = 0;
+    const workers = Array.from({length: Math.min(CONCURRENCY, files.length)}, async ()=>{
+      while(true){
+        const i = next++;
+        if(i >= files.length) return;
+        const f = files[i];
+        try{
+          const ext = (f.name.match(/(\.[A-Za-z0-9]+)$/)||[])[1] || (f.type.startsWith('video/')?'.mp4':'.jpg');
+          const uid = _nextId();
+          const [ref, dim] = await Promise.all([
+            storage.putReferenceMedia(uid+ext, f),
+            _measureDim(f),
+          ]);
+          if(!ref) continue;
+          defs[i] = {
+            id: _nextId(),
+            type:'image',
+            mediaRef: ref,
+            mediaType: f.type.startsWith('video/')?'video':'image',
+            label: f.name,
+            w: dim.w, h: dim.h,
+            x: Math.round(c0.x + i*30 - dim.w/2),
+            y: Math.round(c0.y - dim.h/2),
+            ...(dim.poster ? { thumbDataUrl: dim.poster } : {}),
+          };
+        }catch(_){}
+      }
+    });
+    await Promise.all(workers);
+    const added = defs.filter(Boolean);
+    if(!added.length) return;
+    workingItems.push(...added);
+    _REF_STATE.selection.clear();
+    for(const d of added){ _REF_STATE.selection.add(d.id); scheduleItemSave(d); }
+    items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    renderVisible();
+    try{ rebuildToc(); }catch(_){}
+  };
+  btnBold.onclick  = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.bold = !it.bold; });
+  btnUline.onclick = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.underline = !it.underline; });
+  inpSize.oninput  = ()=>{ const v=parseInt(inpSize.value,10); if(!isNaN(v)&&v>=4&&v<=200) applyToSelected(it => { if(it.type==='text'||it.type==='title') it.fontSize = v; }); };
+  /* v.050：input と change 両方を拾う（Firefox の input[type=color] 対策） */
+  const _applyTxtColor = ()=> applyToSelected(it => { if(it.type==='text'||it.type==='title') it.color = inpTxtCol.value; });
+  inpTxtCol.oninput = _applyTxtColor; inpTxtCol.onchange = _applyTxtColor;
+  const _applyShapeColor = ()=> applyToSelected(it => { if(it.type==='shape') it.color = inpShapeCol.value; });
+  inpShapeCol.oninput = _applyShapeColor; inpShapeCol.onchange = _applyShapeColor;
+  const _applyOpacity  = ()=> applyToSelected(it => { if(it.type==='shape') it.opacity = (parseInt(inpOpacity.value,10)||0)/100; });
+  inpOpacity.oninput = _applyOpacity; inpOpacity.onchange = _applyOpacity;
+  /* 編集モード対応ハンドラ */
+  let mode = null, dragX=0, dragY=0, startTx=0, startTy=0;
+  let moveOrigin = {}, rubberEl = null, rubberStart = {x:0, y:0};
+  vp.addEventListener('mousedown',(e)=>{
+    /* v.051：マウス中ボタン（button===1）はいつでも pan に割り当て */
+    if(e.button === 1){
+      if(e.target.closest('.ref-toolbar, .ref-ctrls, .ref-handles, .ref-ctx')) return;
+      cancelAnim();
+      mode = 'pan'; dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+      vp.classList.add('panning');
+      e.preventDefault();
+      return;
+    }
+    if(e.button!==0) return;
+    /* v.050：ツールバー・コントロール類・リサイズハンドル・コンテキストメニューへのクリックは
+       pan / 選択 / rubber band などのキャンバス操作に横取りされないように、ここで早期 return。 */
+    if(e.target.closest('.ref-toolbar, .ref-ctrls, .ref-handles, .ref-ctx')) return;
+    /* v.075：非編集モードで text/title の上をクリックしたときは pan を開始しない。 */
+    if(!_REF_STATE.editMode && e.target.closest('.ref-item.ref-text, .ref-item.ref-title')) return;
+    cancelAnim();
+    const editMode = _REF_STATE.editMode;
+    /* v.048：追加モード中は配置を優先 */
+    if(editMode && _pendingInsert){
+      const w0 = screenToWorld(e.clientX, e.clientY);
+      if(_pendingInsert.drag){
+        mode = 'insert-drag';
+        rubberStart = w0;
+        rubberEl = document.createElement('div'); rubberEl.className = 'ref-rubber';
+        vp.appendChild(rubberEl);
+      }else{
+        const def = _pendingInsert.def;
+        insertItemAt(def, w0.x, w0.y);
+        _cancelInsert();
+      }
+      e.preventDefault();
+      return;
+    }
+    if(!editMode){
+      mode = 'pan'; dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+      vp.classList.add('panning'); e.preventDefault(); return;
+    }
+    if(e.altKey){
+      mode = 'pan'; dragX=e.clientX;dragY=e.clientY;startTx=view.tx;startTy=view.ty;
+      vp.classList.add('panning'); e.preventDefault(); return;
+    }
+    /* v.049：インライン編集中のアイテム上は contenteditable に委ねる */
+    if(_REF_STATE.editingId){
+      const hp = hitTestItem(e.clientX, e.clientY);
+      if(hp && hp.id === _REF_STATE.editingId){ return; }
+    }
+    const hit = hitTestItem(e.clientX, e.clientY);
+    if(hit){
+      /* v.054：選択変化を DOM 再構築ではなくクラス差分で反映して、dblclick が発火するように */
+      if(e.shiftKey){
+        if(_REF_STATE.selection.has(hit.id)) _REF_STATE.selection.delete(hit.id);
+        else _REF_STATE.selection.add(hit.id);
+      }else{
+        if(!_REF_STATE.selection.has(hit.id)){ _REF_STATE.selection.clear(); _REF_STATE.selection.add(hit.id); }
+      }
+      mode = 'move'; dragX=e.clientX; dragY=e.clientY;
+      moveOrigin = {};
+      for(const id of _REF_STATE.selection){
+        const it = workingItems.find(x=>x.id===id);
+        if(it) moveOrigin[id] = {x:it.x, y:it.y};
+      }
+      const _esc = (s)=> (window.CSS&&CSS.escape?CSS.escape(s):s);
+      for(const el of canvas.querySelectorAll('.ref-item.selected')){
+        if(!_REF_STATE.selection.has(el.dataset.refId)) el.classList.remove('selected');
+      }
+      for(const id of _REF_STATE.selection){
+        const el = canvas.querySelector('.ref-item[data-ref-id="'+_esc(id)+'"]');
+        if(el) el.classList.add('selected');
+      }
+      updateHandles();
+      _syncToolbarFromSelection();
+      e.preventDefault(); return;
+    }
+    if(!e.shiftKey) _REF_STATE.selection.clear();
+    mode = 'rubber';
+    rubberStart = screenToWorld(e.clientX, e.clientY);
+    rubberEl = document.createElement('div'); rubberEl.className = 'ref-rubber';
+    vp.appendChild(rubberEl); renderVisible(); e.preventDefault();
+  });
+  window.addEventListener('mousemove',(e)=>{
+    if(!mode) return;
+    if(mode==='pan'){
+      view.tx = startTx + (e.clientX - dragX);
+      view.ty = startTy + (e.clientY - dragY);
+      applyTransform();
+    }else if(mode==='move'){
+      const dx = (e.clientX - dragX) / view.scale;
+      const dy = (e.clientY - dragY) / view.scale;
+      for(const id of _REF_STATE.selection){
+        const it = workingItems.find(x=>x.id===id);
+        const org = moveOrigin[id];
+        if(it && org){ it.x = Math.round(org.x + dx); it.y = Math.round(org.y + dy); }
+      }
+      renderVisible();
+    }else if((mode==='rubber' || mode==='insert-drag') && rubberEl){
+      const w = screenToWorld(e.clientX, e.clientY);
+      const x1 = Math.min(rubberStart.x, w.x), y1 = Math.min(rubberStart.y, w.y);
+      const x2 = Math.max(rubberStart.x, w.x), y2 = Math.max(rubberStart.y, w.y);
+      rubberEl.style.left = (x1 * view.scale + view.tx) + 'px';
+      rubberEl.style.top  = (y1 * view.scale + view.ty) + 'px';
+      rubberEl.style.width  = ((x2-x1) * view.scale) + 'px';
+      rubberEl.style.height = ((y2-y1) * view.scale) + 'px';
+    }
+  });
+  window.addEventListener('mouseup',(e)=>{
+    if(!mode) return;
+    if(mode==='pan'){ vp.classList.remove('panning'); }
+    else if(mode==='move'){
+      for(const id of _REF_STATE.selection){
+        const it = workingItems.find(x=>x.id===id);
+        if(it) scheduleItemSave(it);
+      }
+    }else if(mode==='insert-drag' && rubberEl){
+      /* v.048：click+drag で指定した shape を確定（距離 10px 未満なら 240x160 デフォルト） */
+      const w = screenToWorld(e.clientX, e.clientY);
+      const x1 = Math.min(rubberStart.x, w.x), y1 = Math.min(rubberStart.y, w.y);
+      const x2 = Math.max(rubberStart.x, w.x), y2 = Math.max(rubberStart.y, w.y);
+      try{ rubberEl.remove(); }catch(_){} rubberEl = null;
+      const dw = (x2 - x1), dh = (y2 - y1);
+      const def = _pendingInsert && _pendingInsert.def;
+      if(def){
+        if(dw < 10 || dh < 10) insertItemAt(def, rubberStart.x - 120, rubberStart.y - 80, 240, 160);
+        else insertItemAt(def, x1, y1, dw, dh);
+      }
+      _cancelInsert();
+    }else if(mode==='rubber' && rubberEl){
+      const w = screenToWorld(e.clientX, e.clientY);
+      const x1 = Math.min(rubberStart.x, w.x), y1 = Math.min(rubberStart.y, w.y);
+      const x2 = Math.max(rubberStart.x, w.x), y2 = Math.max(rubberStart.y, w.y);
+      for(const it of workingItems){
+        if(it.type === 'group') continue;
+        const ix1=it.x, iy1=it.y, ix2=it.x+(it.w||400), iy2=it.y+(it.h||100);
+        if(ix2 < x1 || ix1 > x2 || iy2 < y1 || iy1 > y2) continue;
+        _REF_STATE.selection.add(it.id);
+      }
+      try{ rubberEl.remove(); }catch(_){}
+      rubberEl = null; renderVisible();
+    }
+    mode = null;
+  });
+  /* ズーム */
+  vp.addEventListener('wheel',(e)=>{
+    e.preventDefault(); cancelAnim();
+    const rect = vp.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const worldX = (mx - view.tx) / view.scale, worldY = (my - view.ty) / view.scale;
+    const factor = e.deltaY < 0 ? 1.12 : (1/1.12);
+    const nextScale = Math.min(4, Math.max(0.05, view.scale * factor));
+    view.scale = nextScale;
+    view.tx = mx - worldX * nextScale; view.ty = my - worldY * nextScale;
+    applyTransform();
+  }, { passive:false });
+  const zoomAt = (factor)=>{
+    cancelAnim();
+    const rect = vp.getBoundingClientRect();
+    const mx = rect.width/2, my = rect.height/2;
+    const worldX = (mx - view.tx) / view.scale, worldY = (my - view.ty) / view.scale;
+    view.scale = Math.min(4, Math.max(0.05, view.scale * factor));
+    view.tx = mx - worldX * view.scale; view.ty = my - worldY * view.scale;
+    applyTransform();
+  };
+  document.getElementById('refZoomIn').onclick  = ()=>zoomAt(1.25);
+  document.getElementById('refZoomOut').onclick = ()=>zoomAt(1/1.25);
+  document.getElementById('refZoomFit').onclick = ()=>{cancelAnim();view.scale=1;applyTransform();};
+  document.getElementById('refZoomAll').onclick = ()=>{
+    cancelAnim();
+    if(!items.length) return;
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    for(const it of items){const x1=it.x,y1=it.y,x2=it.x+(it.w||400),y2=it.y+(it.h||100);if(x1<minX)minX=x1;if(y1<minY)minY=y1;if(x2>maxX)maxX=x2;if(y2>maxY)maxY=y2;}
+    const rect=vp.getBoundingClientRect(); const pad=60;
+    const sx=(rect.width-pad*2)/(maxX-minX), sy=(rect.height-pad*2)/(maxY-minY);
+    const s=Math.min(sx,sy,1);
+    view.scale=s; view.tx = pad - minX*s; view.ty = pad - minY*s;
+    applyTransform();
+  };
+  /* キーボード */
+  const onRefKey = (e)=>{
+    if(!document.querySelector('.pane[data-pane="reference"]')?.classList.contains('on')) return;
+    const tag = (e.target && e.target.tagName) || '';
+    if(tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+    if(!_REF_STATE.editMode) return;
+    if((e.key === 'Delete' || e.key === 'Backspace') && _REF_STATE.selection.size){
+      e.preventDefault();
+      const ids = Array.from(_REF_STATE.selection);
+      _REF_STATE.selection.clear(); /* v.049：先にクリアして即座に反映 */
+      _REF_STATE.editingId = null;
+      for(const id of ids){
+        const idx = workingItems.findIndex(x=>x.id===id);
+        if(idx >= 0){ workingItems.splice(idx, 1); storage.deleteReferenceItem(id).catch(()=>{}); }
+      }
+      /* ツールバーボタンにフォーカスが残っていると視覚更新が遅延することがあるため blur */
+      try{ if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }catch(_){}
+      applyTransform();
+      try{ rebuildToc(); }catch(_){} /* v.050：タイトル削除時に目次更新 */
+    }else if(e.key === 'Escape'){
+      /* v.048：追加モード中の Esc は追加キャンセルを優先 */
+      if(_pendingInsert){ _cancelInsert(); return; }
+      if(_REF_STATE.editingId){ _REF_STATE.editingId = null; renderVisible(); return; }
+      _REF_STATE.selection.clear(); renderVisible();
+    }
+  };
+  window.addEventListener('keydown', onRefKey);
+  /* v.049／v.053：タイトル／テキストをダブルクリックでインライン編集。
+     既存 DOM ノードをその場で contenteditable 化（フォーカス維持）。
+     v.070：listener を canvas → vp に。canvas は幅 0x0 なので、非編集モードで text が
+     pointer-events:none のとき dblclick ターゲットが vp になり canvas までは bubble しない。 */
+  vp.addEventListener('dblclick', (e)=>{
+    /* v.069：編集 OFF でもダブルクリックで「文字選択モード」に入れるようにする（LayCAT v.116 と同仕様）。 */
+    if(!_REF_STATE.editMode){
+      const hit = hitTestItem(e.clientX, e.clientY);
+      if(!hit || (hit.type !== 'title' && hit.type !== 'text')) return;
+      const n = canvas.querySelector('.ref-item[data-ref-id="'+(window.CSS&&CSS.escape?CSS.escape(hit.id):hit.id)+'"]');
+      if(!n) return;
+      if(n.classList.contains('text-selectable')) return;
+      canvas.querySelectorAll('.ref-item.text-selectable').forEach(_clearTextSelectable);
+      const stopDown = (ev)=>{ ev.stopPropagation(); };
+      n._stopDown = stopDown;
+      n.addEventListener('mousedown', stopDown);
+      n.classList.add('text-selectable');
+      n.style.userSelect = 'text';
+      n.style.pointerEvents = 'auto';
+      n.style.cursor = 'text';
+      try{
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        const sel = window.getSelection();
+        sel.removeAllRanges(); sel.addRange(range);
+      }catch(_){}
+      const exit = (ev)=>{
+        if(!n.contains(ev.target)){
+          _clearTextSelectable(n);
+          window.removeEventListener('mousedown', exit, true);
+        }
+      };
+      setTimeout(()=>window.addEventListener('mousedown', exit, true), 0);
+      return;
+    }
+    const node = e.target.closest('.ref-item');
+    if(!node) return;
+    const id = node.dataset.refId;
+    const it = workingItems.find(x=>x.id===id);
+    if(!it || (it.type !== 'title' && it.type !== 'text')) return;
+    _REF_STATE.editingId = id;
+    _REF_STATE.selection.clear(); _REF_STATE.selection.add(id);
+    node.contentEditable = 'true';
+    node.classList.add('editing');
+    node.classList.remove('selected');
+    if(it.type === 'text' && it.w) node.style.width = it.w + 'px';
+    try{
+      node.focus();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    }catch(_){}
+    const finishEdit = ()=>{
+      /* v.068：複数の空行を保持できるよう `\n{2,}` の collapse を廃止。前後の空白のみトリム。 */
+      const newText = (node.innerText || node.textContent || '').replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, '');
+      const textChanged = (newText && newText !== it.text);
+      if(textChanged){ it.text = newText; scheduleItemSave(it); }
+      _REF_STATE.editingId = null;
+      node.contentEditable = 'false';
+      node.classList.remove('editing');
+      /* v.071：contenteditable の残骸をクリアするためノードを破棄→次回ビルドで textContent から再構築。 */
+      _refInvalidate(it.id);
+      renderVisible();
+      if(textChanged && it.type === 'title'){ try{ rebuildToc(); }catch(_){} }
+    };
+    node.addEventListener('blur', finishEdit, { once:true });
+    node.addEventListener('keydown', (ev)=>{
+      ev.stopPropagation();
+      /* v.066：Enter で確定（title / text 両方）。改行は Shift+Enter。 */
+      if(ev.key === 'Escape' || (ev.key === 'Enter' && !ev.shiftKey)){
+        ev.preventDefault();
+        node.blur();
+      }
+    });
+  });
+  /* 右クリックメニュー・コピー・貼付 */
+  const closeCtx = ()=>{ if(ctxEl){ try{ ctxEl.remove(); }catch(_){} ctxEl = null; } };
+  const alignSelected = (axis)=>{
+    const sels = Array.from(_REF_STATE.selection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean);
+    if(sels.length < 2) return;
+    if(axis==='left'){ const m=Math.min(...sels.map(s=>s.x)); for(const s of sels){ s.x = m; scheduleItemSave(s); } }
+    else if(axis==='right'){ const m=Math.max(...sels.map(s=>s.x+(s.w||0))); for(const s of sels){ s.x = m - (s.w||0); scheduleItemSave(s); } }
+    else if(axis==='top'){ const m=Math.min(...sels.map(s=>s.y)); for(const s of sels){ s.y = m; scheduleItemSave(s); } }
+    else if(axis==='bottom'){ const m=Math.max(...sels.map(s=>s.y+(s.h||0))); for(const s of sels){ s.y = m - (s.h||0); scheduleItemSave(s); } }
+    else if(axis==='cx'){ const m=sels.reduce((a,s)=>a + s.x + (s.w||0)/2, 0)/sels.length; for(const s of sels){ s.x = Math.round(m - (s.w||0)/2); scheduleItemSave(s); } }
+    else if(axis==='cy'){ const m=sels.reduce((a,s)=>a + s.y + (s.h||0)/2, 0)/sels.length; for(const s of sels){ s.y = Math.round(m - (s.h||0)/2); scheduleItemSave(s); } }
+    renderVisible();
+  };
+  const copySelected = ()=>{
+    _REF_STATE.clipboard = Array.from(_REF_STATE.selection).map(id=>{ const it = workingItems.find(x=>x.id===id); return it ? JSON.parse(JSON.stringify(it)) : null; }).filter(Boolean);
+  };
+  const pasteClipboard = (atX, atY)=>{
+    if(!_REF_STATE.clipboard.length) return;
+    const c = (atX!=null && atY!=null) ? {x:atX, y:atY} : _viewportCenterWorld();
+    const minX = Math.min(..._REF_STATE.clipboard.map(x=>x.x));
+    const minY = Math.min(..._REF_STATE.clipboard.map(x=>x.y));
+    _REF_STATE.selection.clear();
+    for(const src of _REF_STATE.clipboard){
+      const copy = JSON.parse(JSON.stringify(src));
+      copy.id = _nextId();
+      copy.x = Math.round(c.x + (src.x - minX));
+      copy.y = Math.round(c.y + (src.y - minY));
+      workingItems.push(copy); _REF_STATE.selection.add(copy.id);
+      scheduleItemSave(copy);
+    }
+    renderVisible();
+  };
+  const matchThumbSize = ()=>{
+    const sels = Array.from(_REF_STATE.selection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean).filter(x=>x.type==='image');
+    if(sels.length < 2) return;
+    const ref = sels[0];
+    for(const s of sels){ s.w = ref.w; s.h = ref.h; scheduleItemSave(s); }
+    renderVisible();
+  };
+  /* v.067：レイヤー順変更（it.z 更新。LayCAT v.114 と同仕様）。 */
+  const _effZ = (it, i) => (it.z == null ? i : it.z);
+  const bringSelectedToFront = ()=>{
+    const sels = Array.from(_REF_STATE.selection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean);
+    if(!sels.length) return;
+    const idxOf = new Map(workingItems.map((it,i)=>[it,i]));
+    sels.sort((a,b)=> _effZ(a, idxOf.get(a)) - _effZ(b, idxOf.get(b)));
+    let z = Math.max(0, ...workingItems.map((it,i)=>_effZ(it,i))) + 1;
+    for(const s of sels){ s.z = z++; scheduleItemSave(s); }
+    renderVisible();
+  };
+  const sendSelectedToBack = ()=>{
+    const sels = Array.from(_REF_STATE.selection).map(id=>workingItems.find(x=>x.id===id)).filter(Boolean);
+    if(!sels.length) return;
+    const idxOf = new Map(workingItems.map((it,i)=>[it,i]));
+    sels.sort((a,b)=> _effZ(a, idxOf.get(a)) - _effZ(b, idxOf.get(b)));
+    let z = Math.min(0, ...workingItems.map((it,i)=>_effZ(it,i))) - sels.length;
+    for(const s of sels){ s.z = z++; scheduleItemSave(s); }
+    renderVisible();
+  };
+  vp.addEventListener('contextmenu',(e)=>{
+    if(!_REF_STATE.editMode) return;
+    e.preventDefault(); closeCtx();
+    const hit = hitTestItem(e.clientX, e.clientY);
+    if(hit && !_REF_STATE.selection.has(hit.id)){
+      _REF_STATE.selection.clear(); _REF_STATE.selection.add(hit.id);
+      renderVisible();
+    }
+    const hasSel = _REF_STATE.selection.size > 0;
+    const multiSel = _REF_STATE.selection.size >= 2;
+    const w = screenToWorld(e.clientX, e.clientY);
+    ctxEl = document.createElement('div'); ctxEl.className = 'ref-ctx';
+    const r = vp.getBoundingClientRect();
+    ctxEl.style.left = (e.clientX - r.left + 4) + 'px';
+    ctxEl.style.top  = (e.clientY - r.top  + 4) + 'px';
+    const mk = (label, fn, disabled, hint)=>{
+      const it = document.createElement('div'); it.className = 'cx-item'+(disabled?' disabled':'');
+      it.appendChild(document.createTextNode(label));
+      if(hint){ const h=document.createElement('span'); h.className='cx-hint'; h.textContent=hint; it.appendChild(h); }
+      if(!disabled) it.onclick = ()=>{ closeCtx(); try{ fn(); }catch(err){ console.warn(err); } };
+      ctxEl.appendChild(it);
+    };
+    const sep = ()=>{ const s=document.createElement('div'); s.className='cx-sep'; ctxEl.appendChild(s); };
+    /* v.052：整列サブメニュー化 */
+    const alignParent = document.createElement('div');
+    alignParent.className = 'cx-item cx-has-sub' + (multiSel?'':' disabled');
+    alignParent.appendChild(document.createTextNode('整列'));
+    const alignArrow = document.createElement('span'); alignArrow.className='cx-arrow'; alignArrow.textContent='▶';
+    alignParent.appendChild(alignArrow);
+    const alignSub = document.createElement('div'); alignSub.className='cx-sub';
+    const mkSub = (label, axis)=>{
+      const si = document.createElement('div'); si.className='cx-item';
+      si.appendChild(document.createTextNode(label));
+      si.onclick = (ev)=>{ ev.stopPropagation(); closeCtx(); try{ alignSelected(axis); }catch(err){ console.warn(err); } };
+      alignSub.appendChild(si);
+    };
+    mkSub('左揃え', 'left');
+    mkSub('右揃え', 'right');
+    mkSub('上揃え', 'top');
+    mkSub('下揃え', 'bottom');
+    mkSub('横中央', 'cx');
+    mkSub('縦中央', 'cy');
+    alignParent.appendChild(alignSub);
+    ctxEl.appendChild(alignParent);
+    sep();
+    /* v.067：レイヤー順変更 */
+    mk('最前面へ', bringSelectedToFront, !hasSel);
+    mk('最背面へ', sendSelectedToBack,   !hasSel);
+    sep();
+    mk('コピー', copySelected, !hasSel, 'Ctrl+C');
+    mk('貼付', ()=>pasteClipboard(w.x, w.y), !_REF_STATE.clipboard.length, 'Ctrl+V');
+    sep();
+    mk('サイズ統一（画像/動画）', matchThumbSize, !multiSel);
+    vp.appendChild(ctxEl);
+    setTimeout(()=>{
+      const closer = (ev)=>{ if(!ctxEl || !ctxEl.contains(ev.target)){ closeCtx(); window.removeEventListener('mousedown', closer, true); } };
+      window.addEventListener('mousedown', closer, true);
+    }, 0);
+  });
+  const onPaste = async (e)=>{
+    if(!document.querySelector('.pane[data-pane="reference"]')?.classList.contains('on')) return;
+    if(!_REF_STATE.editMode) return;
+    const cd = e.clipboardData;
+    if(!cd) return;
+    const files = [];
+    for(const it of (cd.items||[])){
+      if(it.kind === 'file' && String(it.type||'').startsWith('image/')){
+        const f = it.getAsFile(); if(f) files.push(f);
+      }
+    }
+    if(files.length){
+      e.preventDefault();
+      const c0 = _viewportCenterWorld(); let dx=0;
+      for(const f of files){
+        try{
+          const ext = (f.type==='image/png'?'.png':f.type==='image/webp'?'.webp':'.jpg');
+          const uid = _nextId();
+          const ref = await storage.putReferenceMedia(uid+ext, f);
+          if(!ref) continue;
+          let w=320, h=240;
+          try{
+            const url = URL.createObjectURL(f);
+            await new Promise((res)=>{ const img=new Image(); img.onload=()=>{ w=img.naturalWidth; h=img.naturalHeight; URL.revokeObjectURL(url); res(); }; img.onerror=()=>{ URL.revokeObjectURL(url); res(); }; img.src=url; });
+            const scale = Math.min(1, 480/Math.max(w,h));
+            w = Math.round(w*scale); h = Math.round(h*scale);
+          }catch(_){}
+          insertItem({ type:'image', mediaRef:ref, mediaType:'image', label:'paste', w, h, x: Math.round(c0.x + dx - w/2), y: Math.round(c0.y - h/2) });
+          dx += 30;
+        }catch(_){}
+      }
+      return;
+    }
+    /* v.059：クリップボードに URL があればリンクアイテムとして挿入 */
+    const text = cd.getData && cd.getData('text/plain');
+    if(text){
+      const trimmed = text.trim();
+      if(/^https?:\/\/[^\s]+$/i.test(trimmed)){
+        e.preventDefault();
+        const c = _viewportCenterWorld();
+        insertItemAt({
+          type:'text',
+          text: trimmed,
+          href: trimmed,
+          color: '#6fa8dc',
+          underline: true,
+          fontSize: 14,
+          w: Math.min(460, Math.max(240, trimmed.length * 8)),
+        }, c.x - 180, c.y - 10);
+        return;
+      }
+      /* v.066／v.072：URL ではない単純なテキストもクリップボードから貼付可能に。
+         v.073：外部クリップボードのテキストは内部クリップボードより優先する。 */
+      e.preventDefault();
+      const c = _viewportCenterWorld();
+      const longest = trimmed.split(/\r?\n/).reduce((m,s)=>Math.max(m, s.length), 0);
+      const w = Math.min(560, Math.max(240, longest * 8));
+      insertItemAt({
+        type:'text',
+        text: trimmed,
+        fontSize: 16,
+        color: '#e8e8ec',
+        w,
+      }, c.x - w/2, c.y - 10);
+      return;
+    }
+    if(_REF_STATE.clipboard.length){ e.preventDefault(); pasteClipboard(); }
+  };
+  const onCopy = (e)=>{
+    if(!document.querySelector('.pane[data-pane="reference"]')?.classList.contains('on')) return;
+    if(!_REF_STATE.editMode) return;
+    if(!_REF_STATE.selection.size) return;
+    e.preventDefault(); copySelected();
+  };
+  document.addEventListener('paste', onPaste);
+  document.addEventListener('copy', onCopy);
+  requestAnimationFrame(()=>applyTransform());
+  window.addEventListener('resize', ()=>applyTransform());
+}
 /* v.028：スケール = スコープ（表示範囲）+ 密度。カレンダーアプリの日/週/月と同じ発想。
    - day:  今日 1 日を 1 時間単位で表示（24 コラム・50 px/hr = 1200 px/day）
    - week: 7 日を 1 日単位
@@ -4021,8 +5915,9 @@ function bindFilterEvents(){
   }
 }
 document.getElementById('folderStatus').addEventListener('click', ()=>{
-  /* 許可未取得時に押されたらプロジェクトへ再接続を試行（button re-render で許可ボタンが出る） */
-  if(!storage.dirHandle && storage.pid) switchToProject(storage.pid);
+  /* 許可未取得時（folder: dirHandle 無し／R2: 認証エラー等）に押されたらプロジェクトへ再接続を試行 */
+  if(storage.pid && !storage.dirHandle && storage.backend!=='r2') switchToProject(storage.pid);
+  else if(storage.pid && storage.backend==='r2') switchToProject(storage.pid);
 });
 
 /* =========== 空状態（プロジェクト未選択）UI =========== */
@@ -4148,17 +6043,67 @@ function updateLastUpdatedLabel(){
   if(el) el.textContent = '最終更新 ' + fmtJstDateTime(new Date()) + '（JST）';
 }
 async function hourlyRefresh(){
-  if(!storage.pid || !storage.dirHandle) return;
+  if(!storage.pid) return;
+  /* folder は dirHandle 必須、R2 は backend='r2' が立っていれば OK */
+  if(storage.backend==='folder' && !storage.dirHandle) return;
   try{ await loadAndRender(); updateLastUpdatedLabel(); }catch(e){ console.warn('hourly refresh failed', e); }
 }
 document.getElementById('refreshBtn').addEventListener('click', hourlyRefresh);
 setInterval(hourlyRefresh, 60*60*1000);
 updateLastUpdatedLabel();
 
-/* 初期プロジェクトへ自動接続を試行 */
-const initialPid = document.getElementById('projSelect').value;
-if(initialPid){ switchToProject(initialPid).then(updateLastUpdatedLabel); }
-else { showInitialEmptyState(); }
+/* v.064：ホームボタン */
+const homeBtn = document.getElementById('pmHomeBtn');
+if(homeBtn) homeBtn.addEventListener('click', showHomeView);
+
+/* 初期表示：?pid=<id> が URL に指定されていればそのプロジェクトを直接開く（ディープリンク維持）。
+   指定が無い場合はホーム（プロジェクト一覧）を表示し、ユーザーが選んだプロジェクトを開く。
+   v.082：?demo=1 なら強制的にデモプロジェクトを開く（picker/home は無視）。 */
+if(DEMO_MODE){
+  _showDemoBanner();
+  switchToProject('nd_demo_root').then(async ()=>{
+    updateLastUpdatedLabel();
+    /* ?tab=<X> で初期タブ切替。PMB の上部タブは data-tab 属性でクリック切替。 */
+    if(DEMO_TAB){
+      const tabMap = {
+        'schedule':'schedule', 'gantt':'schedule', 'ガント':'schedule', 'shots':'schedule',
+        'effort':'effort', 'efforts':'effort', '工数':'effort', 'check':'effort',
+        'reference':'reference', '資料':'reference', 'refs':'reference',
+        'retake':'retake', 'リテイク':'retake',
+        'activity':'activity', 'アクティビティ':'activity',
+        'log':'log', '操作ログ':'log',
+      };
+      const paneTab = tabMap[DEMO_TAB];
+      if(paneTab){
+        try{
+          const btn = document.querySelector('#tabs button[data-tab="'+paneTab+'"]');
+          if(btn) btn.click();
+        }catch(_){}
+      }
+    }
+  });
+}else{
+  const _paramPid = urlParam('pid');
+  if(_paramPid){
+    const sel = document.getElementById('projSelect');
+    if(sel && Array.from(sel.options).some(o=>o.value===_paramPid)) sel.value = _paramPid;
+    switchToProject(_paramPid).then(updateLastUpdatedLabel);
+  }else{
+    showHomeView();
+  }
+}
+/* v.082：デモバナー */
+function _showDemoBanner(){
+  try{
+    if(document.getElementById('pmbDemoBanner'))return;
+    const b = document.createElement('div');
+    b.id='pmbDemoBanner';
+    b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#F2986B,#F2C86B);color:#000;padding:6px 14px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,.3)';
+    b.innerHTML = '<span style="font-size:14px">🎬</span><span>PM Board デモ版 — 操作は反映されません。本番は <a href="pmboard_dev.html" style="color:#000;text-decoration:underline">こちら</a></span><button type="button" id="pmbDemoBannerClose" style="margin-left:auto;background:transparent;border:1px solid rgba(0,0,0,.4);color:#000;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px">閉じる ×</button>';
+    document.body.appendChild(b);
+    document.getElementById('pmbDemoBannerClose').onclick=()=>{b.remove();};
+  }catch(_){}
+}
 } /* end _pmAppInit */
 
 </script>
@@ -4178,6 +6123,21 @@ else { showInitialEmptyState(); }
     window.__laynaFB={
       login:()=>signInWithPopup(auth,provider),
       logout:()=>signOut(auth),
+      /* v.080：R2 プロキシ Worker 認証用。LayCAT 本体と同じ /api/r2/... リクエストで
+         Bearer トークンに載せる。期限切れ間近は Firebase SDK が自動更新するので毎回叩いて OK。 */
+      getIdToken:async()=>{try{const u=auth.currentUser;if(!u)return null;return await u.getIdToken(false)}catch(_){return null}},
+      /* v.080：R2 のプロジェクト作成時に tid を解決するためのヘルパ（PMB は通常使わないが整合性のため実装）。
+         laycatUsers/<emailKey>.tenantId を返す。 */
+      getUserTenantId:async(email)=>{try{
+        if(!email)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const snap=await m.getDoc(m.doc(fs,'laycatUsers',key));
+        if(!snap.exists())return null;
+        const d=snap.data()||{};
+        return (typeof d.tenantId==='string'&&d.tenantId)?d.tenantId:null;
+      }catch(e){return null}},
       loadAccess:async()=>{try{
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);const snap=await m.getDoc(m.doc(fs,'laynaAccess','config'));
@@ -4198,6 +6158,45 @@ else { showInitialEmptyState(); }
         const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         const snap=await m.getDoc(m.doc(fs,'laycatUsers',key));
         return snap.exists()?snap.data():null;
+      }catch(e){return null}},
+      /* v.036：テナントドキュメント 1 件取得（coreHours・name 等参照用） */
+      loadTenant:async(id)=>{try{
+        if(!id)return null;
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const snap=await m.getDoc(m.doc(fs,'tenants',String(id)));
+        return snap.exists()?{id:snap.id,...snap.data()}:null;
+      }catch(e){return null}},
+      /* v.039：マルチテナント対応のアクセス判定で使う。LayCAT 本体の
+         `findUserTenants` / `loadAllTenants` と同じ実装（副作用なし・読み取りのみ）。 */
+      findUserTenants:async(email)=>{try{
+        if(!email)return [];
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
+        const emailLc=String(email).toLowerCase();
+        const tsnap=await m.getDocs(m.collection(fs,'tenants'));
+        const results=[];
+        for(const td of tsnap.docs){
+          const data=td.data()||{};
+          let role=null;
+          try{
+            const msnap=await m.getDoc(m.doc(fs,'tenants',td.id,'members',key));
+            if(msnap.exists()){ role=msnap.data().role||'member'; }
+          }catch(_){}
+          /* 保険：ownerEmail 一致で admin 扱い（members 未登録でも通す） */
+          if(!role && String(data.ownerEmail||'').toLowerCase()===emailLc){ role='admin'; }
+          if(role) results.push({tenantId:td.id, role});
+        }
+        return results;
+      }catch(e){return []}},
+      loadAllTenants:async()=>{try{
+        const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        const fs=m.getFirestore(app);
+        const snap=await m.getDocs(m.collection(fs,'tenants'));
+        const rows=[];
+        snap.forEach(d=>rows.push({id:d.id,...d.data()}));
+        return rows;
       }catch(e){return null}},
       /* 【v.024】祝日カレンダー（Phase 5）：国の祝日 1 年分を読む。publicHolidays/JP/years/{year} */
       loadPublicHolidays:async(country,year)=>{try{

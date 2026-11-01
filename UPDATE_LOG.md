@@ -4096,6 +4096,8 @@ version.timeRemap = {
 
 <!-- 以降、コミット単位で `- (short-hash) 日本語要約` を追記していく -->
 
+## 反映済み pmboard v0.3.0（2026-11-01）
+
 - (intro) **intro.html にデモ導線追加（Phase C）**：
   - Hero：「🎬 デモを触ってみる」ボタン（`laycat_dev.html?demo=1`）を SOON バッジの代わりに配置
   - started セクション Step 1：「🎬 まずデモで触ってみる」リンク追加
