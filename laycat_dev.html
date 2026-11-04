@@ -4330,7 +4330,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.10.20.031';
+const APP_VERSION='2026.11.04.032';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6161,6 +6161,25 @@ function renderMainHead(){
 function rootOf(node){let n=node;while(n&&n.parentId){const p=getNode(n.parentId);if(!p)break;n=p}return n;}
 /* タスクが属するショット（＝直上のカテゴリ）の名前。直上がプロジェクトなら空 */
 function shotOf(node){if(!node||!node.parentId)return '';const p=getNode(node.parentId);return (p&&p.parentId)?p.name:'';}
+/* v.032：ノードが属する「ショットらしい祖先」の名前を解決。
+   旧 shotOf は「直上の親の名前」を返すだけなので、プロジェクト構造が
+   EP > SQ > sh > review のように深い場合、EP や SQ 名を返してしまい、
+   タブでどのショットか分からなくなる。祖先を遡って「kind:'shot' or
+   currentStage が入っている section」= ショット扱いのノードを探す。 */
+function shotNameOf(node){
+  if(!node)return '';
+  let p=node;
+  while(p&&p.parentId){
+    const par=getNode(p.parentId);
+    if(!par)break;
+    if(par.type==='section'&&(par.kind==='shot'||par.currentStage!=null)){
+      return par.name;
+    }
+    p=par;
+  }
+  /* フォールバック：旧 shotOf の挙動（直上親） */
+  return shotOf(node);
+}
 /* プロジェクトの上部タブ（常に表示）。タブクリックでプロジェクトのトップ＋該当タブへ */
 /* ヘッダ内のプロジェクトタブ（タイムライン / 進捗 / ショット） */
 function buildProjectTabsHead(root){
@@ -6238,7 +6257,16 @@ function buildTaskTabs(root){
     const n=getNode(id);if(!n)continue;
     const active=state.currentId===id;
     const tab=el('div','task-tab'+(active?' on':''));
-    tab.appendChild(el('span','tt-name',shotOf(n)||n.name));
+    /* v.032：タブタイトルを「ショット名 / 工程名」で表示。
+       shotOf（旧）は直上の親名を返すだけでプロジェクト構造によってはショット名が
+       取れず、タブで何のショットか分からなくなる問題の対策。shotNameOf で祖先を
+       遡ってショットらしいノード（kind:'shot' or currentStage 付き）の名前を解決し、
+       取れたらそれを頭に出す。review 自体の名前（工程名等）は従来通り末尾に。 */
+    {
+      const sn=shotNameOf(n);
+      const rn=n.name||'';
+      tab.appendChild(el('span','tt-name', sn && sn!==rn ? (sn+' / '+rn) : (sn||rn)));
+    }
     tab.dataset.tabId=id;
     /* pointer events ベースの並べ替え。HTML5 D&D はどう頑張っても dragstart から
        最初の dragover が preventDefault されるまでの数フレームでブラウザ標準の
