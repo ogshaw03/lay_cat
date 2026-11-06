@@ -4330,7 +4330,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.04.032';
+const APP_VERSION='2026.11.06.033';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5564,13 +5564,21 @@ async function createSubmitBlock(){
   for(const {b,v} of okd){
     v.submitId=subId;v.submitName=name; /* タイムラインでまとめて表示するため */
     /* サブミット全体コメント＋このショット個別コメントを 1 メッセージに統合して push（見出しで区別）。
-       どちらもない場合はメッセージを追加しない。 */
+       どちらもない場合はメッセージを追加しない。
+       v.033：ショットページでの「アップロード時コメント」と同じ扱いに統一。
+       - kind を 'submit'→'upload' に変更（アノテ窓・ショットページの提出時コメント欄に出す）
+       - `v.uploadCommentId` を紐付ける（アノテ窓最上部で版のアップロードメッセージとして表示）
+       - stage を付与（工程別フィルタ対応）
+       - `submitName` は引き続き保持（サブミット由来の識別チップ表示に使う） */
     const _bCmt=(b.comment||'').trim(),_sCmt=blockComment;
     if(_bCmt||_sCmt){
       const parts=[];
       if(_sCmt)parts.push('【サブミット「'+name+'」全体】\n'+_sCmt);
       if(_bCmt)parts.push('【このショット】\n'+_bCmt);
-      (b.node.comments=b.node.comments||[]).push({id:newId('sc'),author:currentUser(),text:parts.join('\n\n'),time:nowIso(),kind:'submit',submitName:name});
+      const _cm={id:newId('sc'),author:currentUser(),text:parts.join('\n\n'),time:nowIso(),kind:'upload',submitName:name};
+      const _st=getShotCurrentStage(b.node); if(_st) _cm.stage=_st;
+      (b.node.comments=b.node.comments||[]).push(_cm);
+      v.uploadCommentId=_cm.id;
     }
     items.push({nodeId:b.node.id,versionId:v.id,comment:b.comment||''});
     /* このショット工程のステータスを反映（v:5：setStatus 経由で status/{sid}.json も更新） */
@@ -11646,7 +11654,10 @@ function noteBlock(v,n,opts){
     m.appendChild(fc);
   }
   if(n.drawing&&n.drawing.length)m.appendChild(el('span','frame-chip','✎ 描画'));
-  if(n.kind==='submit')m.appendChild(el('span','frame-chip submit-chip','⧉ '+(n.submitName||'サブミット')));
+  /* v.033：サブミット由来の判定を kind='submit' から submitName の有無に変更（既存の
+     kind='submit' データとの後方互換も維持しつつ、新しい kind='upload' + submitName 付き
+     にも対応する）。 */
+  if(n.submitName||n.kind==='submit')m.appendChild(el('span','frame-chip submit-chip','⧉ '+(n.submitName||'サブミット')));
   const acts=el('span','note-acts');
   const ed=el('button','na','✎ 編集');
   const del=el('button','na','✕');del.title='削除';
