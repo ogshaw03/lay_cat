@@ -4600,7 +4600,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.25.041';
+const APP_VERSION='2026.11.25.042';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5606,7 +5606,9 @@ async function _syncShotRevAndCacheFromRemote(pid){
       const raw=await storage.loadSubmit(pid, s.id);
       if(raw&&raw._rev!=null){
         subBucket[s.id]=(raw._rev|0);
-        _saveCache.submit[pid][s.id]=JSON.stringify(s);
+        /* 【修正 v.042】保存側と同じ指紋（_rev を除く）で記録する。以前は _rev 込みの JSON だったため
+           次の保存で「変更あり」と判定され、中身が同じ提出ファイルを rev だけ上げて書き直していた */
+        _saveCache.submit[pid][s.id]=_submitFp(s);
       }
     }catch(_){}
   }));
