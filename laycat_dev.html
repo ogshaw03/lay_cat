@@ -3653,7 +3653,17 @@ async function _cleanupShotJsonStatuses(pid){
           if(n&&('status' in n)){delete n.status;hit=true;}
         }
         if(!hit)return;
+        /* 【修正 v.043】以前はロック無しで書き戻していたため、読んでから書くまでの間に他の人が保存した変更を消し得た
+           （rev も進めないので、相手側では変更として検知されなかった）。
+           書く直前に読み直して中身が同じときだけ、rev を 1 つ進めて書く（相手側は「更新あり」として 3-way マージする）。 */
+        const txt2=await (await (await dir.getFileHandle(name)).getFile()).text();
+        if(txt2!==txt)return;
+        const sid=name.replace(/\.json$/,'');
+        const oldRev=parsed._rev|0;
+        parsed._rev=oldRev+1;
         await storage._write(()=>dir,name,JSON.stringify(parsed,null,2));
+        /* 手元がこのファイルの旧 rev を読み込み済みなら手元の rev も進める（中身は status を除けば同じ＝無駄な 3-way を避ける） */
+        try{const sb=_revBucket(pid).shots;if((sb[sid]|0)===oldRev)sb[sid]=oldRev+1}catch(_){}
         cleaned++;
       }catch(_){}
     }));
@@ -3947,6 +3957,8 @@ function _mergeShotFile3(base, ours, theirs){
      外部で保持していた `v = node.versions[j]` 等のローカル参照が孤児化し、
      以後の書き込み（送信されたコメント push 等）が DB に届かず消失する不具合があった。
      これを避けるため、配列と入れ子オブジェクトを in-place で書き換える。 */
+/* キーの並び順に依存しない JSON 文字列（取り込みで新しいキーが末尾に付くため、内容の一致判定に使う） */
+function _canonJson(x){return JSON.stringify(x,(k,v)=>(v&&typeof v==='object'&&!Array.isArray(v))?Object.keys(v).sort().reduce((o,kk)=>(o[kk]=v[kk],o),{}):v)}
 function _applyShotFileIntoDB(pid,file){
   if(!file||!Array.isArray(file.nodes))return;
   for(const rn of file.nodes){
@@ -4600,7 +4612,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.25.042';
+const APP_VERSION='2026.11.25.043';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5467,11 +5479,37 @@ async function refreshFromFolders(){
           const kids2=DB.nodes.filter(n=>n&&n.parentId===sid);
           const memF={v:1,shotId:sid,nodes:[_stripS(shotNode),...kids2.map(_stripS)]};
           /* キーの並び順は取り込みで変わる（新しいキーは末尾に付く）ので、順序に依存しない形で比べる */
-          const _canon=x=>JSON.stringify(x,(k,v)=>(v&&typeof v==='object'&&!Array.isArray(v))?Object.keys(v).sort().reduce((o,kk)=>(o[kk]=v[kk],o),{}):v);
-          if(_canon(memF)===_canon(theirs)){_sb[sid]=rRev;_baseMap[sid]=JSON.stringify(memF);}
+          if(_canonJson(memF)===_canonJson(theirs)){_sb[sid]=rRev;_baseMap[sid]=JSON.stringify(memF);}
         }
         if(_applied){try{normalizeNodes();invalidateRoleMemo()}catch(_){}}
       }catch(err){try{console.warn('[laycat] refreshFromFolders: shot 3-way import failed',err)}catch(_){}}
+    }
+    /* 【修正 v.043】プロジェクト設定（ルートノード：工程テンプレート・工程色・ステータス・メンバー・名前など）も
+       同じ 3-way マージ（基準＝前回の保存/読み込み時の骨格）で取り込む。以前は stages/statuses/members/shotsParentIds を
+       未保存の変更が無いときだけ取り込み、工程テンプレート・工程色などはリロードするまで古い表示のままだった。
+       自分の保存と読み込みが重なった回・骨格の rev が手元の記録より古い回は見送る。書き込みなし（メモリと保存基準のみ）。 */
+    if(_persistGen===_genAtStart&&!_persistBusy&&((remote._rev|0)>=((_loadedRev[e.id]&&_loadedRev[e.id].project)|0))){
+      try{
+        const _blJ=_saveCache.proj[e.id];
+        const rRoot=(remote.nodes||[]).find(n=>n&&n.id===e.id);
+        const exRoot=getNode(e.id);
+        if(_blJ&&rRoot&&exRoot){
+          const bl=JSON.parse(_blJ);
+          const bi=(bl.nodes||[]).findIndex(n=>n&&n.id===e.id);
+          const _st=n=>{const c=JSON.parse(JSON.stringify(n));delete c.status;return c};
+          if(bi>=0&&_canonJson(_st(rRoot))!==_canonJson(_st(bl.nodes[bi]))){
+            const merged=_mergeNode3(_st(bl.nodes[bi]),_st(exRoot),_st(rRoot));
+            for(const k of new Set([...Object.keys(exRoot),...Object.keys(merged)])){
+              if(k==='status')continue;
+              if(!(k in merged)){delete exRoot[k];continue}
+              if(_canonJson(exRoot[k])!==_canonJson(merged[k]))exRoot[k]=JSON.parse(JSON.stringify(merged[k]));
+            }
+            /* 手元のルートが相手と一致したら、保存基準のルートも相手の内容に進める（次の保存で骨格を無駄に書かない） */
+            if(_canonJson(_st(exRoot))===_canonJson(_st(rRoot))){bl.nodes[bi]=JSON.parse(JSON.stringify(exRoot));_saveCache.proj[e.id]=JSON.stringify(bl);}
+            try{invalidateRoleMemo()}catch(_){}
+          }
+        }
+      }catch(err){try{console.warn('[laycat] refreshFromFolders: project settings import failed',err)}catch(_){}}
     }
     /* v.015 修正：他ユーザーが変更した status を DB に反映する。
        readProjectData 内で `_hydrateStatuses` が `remote.nodes[*].status` を最新 status.json で
@@ -24730,6 +24768,10 @@ async function onAuthChanged(u){
     if(window.__laynaFBError){renderLogin(_fbInitErrorMsg(),{reload:true});return}
     renderLogin();return;
   }
+  /* 【修正 v.043】ログアウトを挟まずに別のアカウントへ切り替わった場合（別タブでのログインなど）も、ログアウト時と同じく
+     ページを読み直して前のユーザーの状態（復号鍵・DB・通知など）を捨てる。以前は前のユーザーのデータを持ったまま
+     新しいユーザーとして動き続けていた。未保存の変更がある場合は既存の離脱警告（beforeunload）が出る。 */
+  if(authUser&&authUser.email&&String(u.email||'').toLowerCase()!==String(authUser.email).toLowerCase()){location.reload();return}
   /* 読み込み失敗（通信エラー等）と「該当なし（権限なし）」を区別する。
      以前は Firestore の読み込み失敗が null / [] で返り「権限なし」と同じ扱いになっていたため、
      許可済みメンバーでも一時的な通信エラーで拒否画面になっていた。
