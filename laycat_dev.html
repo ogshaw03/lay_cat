@@ -3410,20 +3410,89 @@ async function setStatus(node,newStatus,source){
   else node.status=nxt;
   /* 【監査ログ】setStatus 経由の変更は「source: ui/upload/submit/migrate」で記録 */
   _logStatusChange(pid,sid,prev,nxt,'setStatus:'+(source||'ui'));
-  /* status.json 更新（R2 では no-op） */
+  /* status.json 更新。R2 は status ファイル未対応（骨格 laycat.project.json の inline status のみ）、
+     フォルダ未設定のプロジェクトも書き先が無いので対象外（従来も saveStatus が false で何もしていなかった）。 */
+  if(storage._backend(pid)==='r2')return true;
+  try{if(!(await storage.hasFolderConfigured(pid)))return true}catch(_){return true}
+  /* v.035：保存失敗を黙って捨てない。失敗したら利用者に知らせ、status/{sid}.json だけを自動で再試行する。
+     再試行待ちの間は refreshFromFolders がこのショットの status を古いディスク値で上書きしない（_statusRetry ガード）。 */
+  const job={pid,sid,prev,nxt,source:source||'ui',ts:nowIso(),me:((authUser&&authUser.email)||'')||null,baseRev:null,tries:0};
+  const key=pid+':'+sid;
+  const r=await _writeStatusFile(job);
+  if(r===true){_statusRetry.delete(key);_v5StatusShots.add(key);}
+  else _queueStatusRetry(job);
+  return true;
+}
+/* v.035：status/{sid}.json の書き込み本体（setStatus と再試行で共用）。
+   戻り値：true＝保存できた／false＝失敗／'superseded'＝再試行までの間に他の人が同じショットの status を書いた
+   （その場合は自分の古い変更で上書きせず、相手の値を優先する）。
+   書き込み境界：status/{sid}.json のみ（persist は呼ばない）。 */
+async function _writeStatusFile(job){
   try{
-    const existing=await storage.loadStatus(pid,sid);
-    const nowTs=nowIso();
-    const me=((authUser&&authUser.email)||'')||null;
+    const existing=await storage.loadStatus(job.pid,job.sid);
+    if(!job.tries){
+      job.baseRev=existing?(existing._rev|0):null;
+    }else if(existing){
+      /* 前回の書き込みは実は届いていた（返答だけ失敗した）→ 成功扱い */
+      if(existing.updatedAt===job.ts&&existing.updatedBy===job.me&&(existing.status==null?null:existing.status)===job.nxt)return true;
+      /* 待っている間に他の人が書いた（_rev が進んでいる）→ 相手を優先 */
+      if(job.baseRev!=null&&(existing._rev|0)>job.baseRev)return 'superseded';
+    }
     const history=Array.isArray(existing&&existing.history)?existing.history.slice():[];
     /* 履歴は変化があった時だけ append（同値上書きは記録しない） */
-    if(prev!==nxt)history.push({ts:nowTs,by:me,from:prev,to:nxt,source:source||'ui'});
+    if(job.prev!==job.nxt)history.push({ts:job.ts,by:job.me,from:job.prev,to:job.nxt,source:job.source});
     const _rev=((existing&&existing._rev)|0)+1;
-    const file={v:1,shotId:sid,status:nxt,updatedAt:nowTs,updatedBy:me,source:source||'ui',history,_rev};
-    const ok=await storage.saveStatus(pid,sid,file);
-    if(ok!==false)_v5StatusShots.add(pid+':'+sid);
-  }catch(e){try{console.warn('[laycat] setStatus: saveStatus failed',{pid,sid,e})}catch(_){}}
-  return true;
+    const file={v:1,shotId:job.sid,status:job.nxt,updatedAt:job.ts,updatedBy:job.me,source:job.source,history,_rev};
+    const ok=await storage.saveStatus(job.pid,job.sid,file);
+    return ok!==false;
+  }catch(e){try{console.warn('[laycat] setStatus: saveStatus failed',{pid:job.pid,sid:job.sid,e})}catch(_){}return false}
+}
+/* v.035：保存に失敗した status の再試行キュー（key = pid:sid → job）。
+   同じショットに新しい setStatus が来たら job は置き換わる（古い変更は再試行しない）。 */
+const _statusRetry=new Map();
+let _statusRetryTimer=null,_statusFailToastTimer=null;
+const _statusFailNames=new Set();
+function _queueStatusRetry(job){
+  _statusRetry.set(job.pid+':'+job.sid,job);
+  /* 失敗の通知：連続失敗（一括変更・移行など）は 1 回のトーストにまとめる */
+  const n=getNode(job.sid);_statusFailNames.add((n&&n.name)||job.sid);
+  if(!_statusFailToastTimer){
+    _statusFailToastTimer=setTimeout(()=>{
+      _statusFailToastTimer=null;
+      const names=[..._statusFailNames];_statusFailNames.clear();
+      const list=names.slice(0,5).join('、')+(names.length>5?' ほか '+(names.length-5)+' 件':'');
+      toastIn(document,'⚠ ステータスを保存できませんでした（'+list+'）。自動で再試行します。続く場合はフォルダの接続を確認してください',7000);
+    },400);
+  }
+  _scheduleStatusRetry();
+}
+function _scheduleStatusRetry(){
+  if(_statusRetryTimer||!_statusRetry.size)return;
+  const minTries=Math.min(...[..._statusRetry.values()].map(j=>j.tries|0));
+  const delay=[3000,10000,30000][minTries]||60000;
+  _statusRetryTimer=setTimeout(_runStatusRetry,delay);
+}
+async function _runStatusRetry(){
+  _statusRetryTimer=null;
+  let saved=0;const superseded=[];
+  for(const [key,job] of [..._statusRetry]){
+    if(_statusRetry.get(key)!==job)continue;
+    const n=getNode(job.sid);
+    const cur=n?((n.status==null||n.status==='')?null:n.status):undefined;
+    /* ショットが消えた／画面の値がこの job と違う（別経路で変わった）→ この古い変更は再試行しない */
+    if(!n||cur!==job.nxt){_statusRetry.delete(key);continue}
+    job.tries=(job.tries|0)+1;
+    const r=await _writeStatusFile(job);
+    if(_statusRetry.get(key)!==job)continue; /* 待っている間に新しい変更が来た */
+    if(r===true){_statusRetry.delete(key);_v5StatusShots.add(key);saved++;}
+    else if(r==='superseded'){_statusRetry.delete(key);superseded.push(n.name||job.sid);}
+  }
+  if(saved)toast('ステータスを保存しました（再試行 '+saved+' 件）');
+  if(superseded.length){
+    toastIn(document,'保存を待っている間に他のメンバーがステータスを変更したため、そちらを優先しました（'+superseded.join('、')+'）',7000);
+    try{autoRefresh(true)}catch(_){}
+  }
+  _scheduleStatusRetry();
 }
 /* 【v:5 一括マイグレ】既存プロジェクトの全ショットに status/{sid}.json を作成する。
    起動時に 1 回だけ呼ぶ想定。normalizeNodes 後に実行することで、review.status からの
@@ -4354,7 +4423,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.25.034';
+const APP_VERSION='2026.11.25.035';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5118,6 +5187,9 @@ async function refreshFromFolders(){
       for(const ex of DB.nodes){
         if(rootOfId(ex)!==e.id)continue;
         const rn=remoteById.get(ex.id);if(!rn)continue;
+        /* v.035：status/{sid}.json の保存が失敗して再試行待ちのショットは、ディスクの古い値で戻さない
+           （戻すと利用者の変更が画面からもディスクからも消える）。再試行が済めば次回から通常どおり同期。 */
+        if(_statusRetry.has(e.id+':'+ex.id))continue;
         const rHas=Object.prototype.hasOwnProperty.call(rn,'status');
         const rs=(rn.status==null||rn.status==='')?null:rn.status;
         const ls=(ex.status==null||ex.status==='')?null:ex.status;
@@ -22228,7 +22300,8 @@ document.addEventListener('click',e=>{
 window.addEventListener('beforeunload',e=>{
   /* 【恒久対策 v072】_persistBusy>0 = バックグラウンドで shot/project 保存が進行中。
      ここで離脱するとステータス変更等が消える可能性があるので unload 警告。 */
-  if((_dirtyTaskNotes&&_dirtyTaskNotes.size>0)||_persistBusy>0){e.preventDefault();e.returnValue='';return ''}
+  /* v.035：ステータス保存の再試行待ち（_statusRetry）が残っている間も離脱を警告する */
+  if((_dirtyTaskNotes&&_dirtyTaskNotes.size>0)||_persistBusy>0||_statusRetry.size>0){e.preventDefault();e.returnValue='';return ''}
 });
 let dragDepth=0;
 /* レビューページ表示中のみ D&D アップロードを受け付ける。

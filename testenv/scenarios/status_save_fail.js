@@ -57,6 +57,14 @@ await autoRefresh(true);
 await T.sleep(300);
 const memAfterRefresh = (getNode(shot.id) || shot).status || null;
 
+/* v.035 以降：自動再試行で保存されるのを待つ（最大 15 秒） */
+let diskAfterRetry = diskAfterChange;
+try {
+  await T.waitFor(async () => (((await T.nas.readJson(statusPath)) || {}).status || null) === to, params.retryWaitMs || 15000, 500);
+} catch (_) {}
+diskAfterRetry = ((await T.nas.readJson(statusPath)) || {}).status || null;
+await T.sleep(300);
+
 /* リロードした場合に見える値：ディスクから読み直す（読み取りのみ・DB は変えない） */
 const remote = await storage.readProjectData(pid);
 const rn = remote && (remote.nodes || []).find(n => n.id === shot.id);
@@ -71,13 +79,15 @@ const result = {
   before, to, diskBefore,
   setStatusReturned: ret,
   memAfterChange, diskAfterChange,
-  memAfterRefresh, reloadWouldShow,
+  memAfterRefresh, diskAfterRetry, reloadWouldShow,
   toasts, warns: warns.filter(w => /status|ステータス/i.test(w)),
   reproduced: diskAfterChange !== to,
+  lost: reloadWouldShow !== to,
   verdict: (diskAfterChange !== to)
-    ? '再現：保存に失敗（ディスクは ' + diskAfterChange + ' のまま）。setStatus は ' + ret + ' を返し、トースト ' + (toasts.length ? 'あり' : 'なし') +
-      '。画面は変更直後 ' + memAfterChange + ' → 取り込み後 ' + memAfterRefresh + '、リロード後は ' + reloadWouldShow
-    : '再現せず：ディスクにも ' + to + ' が保存された',
+    ? '保存に 1 回失敗（ディスクは ' + diskAfterChange + ' のまま）。トースト ' + (toasts.length ? 'あり' : 'なし') +
+      '。画面は変更直後 ' + memAfterChange + ' → 取り込み後 ' + memAfterRefresh + '、再試行後のディスク ' + diskAfterRetry +
+      '、リロード後は ' + reloadWouldShow + (reloadWouldShow === to ? '（変更は残った）' : '（変更が失われた）')
+    : '失敗が起きず：ディスクにも ' + to + ' が保存された',
   writes: writes.map(e => e.op + ' ' + e.path + (e.fault ? ' [注入失敗 ' + e.status + ']' : '')),
 };
 console.log('[testenv] status_save_fail', result);
