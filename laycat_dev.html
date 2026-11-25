@@ -2712,8 +2712,13 @@ const storage={
     const recordRev=!(opts&&opts.recordRev===false);
     const bucket=recordRev?_revBucket(pid).shots:null;
     const _seedIds=[];
+    /* 読めたショットファイルの書き込み ID（_w）。同 rev 衝突の判定用に、列挙されない属性で parsed に添える
+       （JSON 化・比較には出ない）。_w の無いファイルは null。 */
+    const _wMap={};
+    try{Object.defineProperty(parsed,'_shotW',{value:_wMap,enumerable:false,configurable:true,writable:true})}catch(_){}
     for(const shot of shots){
       if(!shot||!Array.isArray(shot.nodes))continue;
+      if(shot.shotId)_wMap[shot.shotId]=(typeof shot._w==='string')?shot._w:null;
       /* Phase 3：ショットファイル毎の _rev（読込時点）を保持。recordRev=false なら再読時に上書きしない。 */
       if(bucket&&shot.shotId)bucket[shot.shotId]=(shot._rev|0);
       if(shot.shotId)_seedIds.push(shot.shotId);
@@ -3734,6 +3739,18 @@ let _migrationNeeded=new Set();
    構造：{ [pid]: { project: rev, shots: {[sid]: rev}, submits: {[subId]: rev} } } */
 const _loadedRev={};
 function _revBucket(pid){return _loadedRev[pid]=_loadedRev[pid]||{project:0,shots:{},submits:{}}}
+/* 【同 rev 衝突の検出】ショット／サブミットのファイルに、書くたびに新しい「書き込み ID」（_w）を付ける。
+   2 人がほぼ同時に同じファイルを保存すると、どちらも同じ rev で書くため、後から書いた方が先の変更を消し、
+   rev だけ見ていると次の保存でも気づけなかった。
+   自分が最後に書いたときの {rev, w, base（そのとき元にしたファイルの内容）} を覚えておき、
+   「同じ rev なのに _w が違う（または _w が無い＝ _w を付けない版の LayCAT が書いた）」ファイルを読んだら、
+   別の人と同時に書いた（衝突した）とみなし、base を基準に 3-way マージする（保存時・自動取り込み時）。 */
+const _myShotWrite={}; /* pid → sid → {rev, w, base:JSON文字列|null} */
+const _mySubWrite={};  /* pid → sid → {rev, w} */
+function _newWriteId(){
+  try{const a=new Uint8Array(8);crypto.getRandomValues(a);return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('')}
+  catch(_){return Date.now().toString(36)+Math.random().toString(36).slice(2,10)}
+}
 /* Phase 2 移行モーダル：ユーザーに変更を明示 → 実行 → persist で自動分割書き出し */
 async function offerPhase2Migration(){
   if(!_migrationNeeded||!_migrationNeeded.size)return;
@@ -4131,11 +4148,16 @@ async function _saveShotWithLock(pid,sid,fileBody){
     try{console.warn('[laycat] _saveShotWithLock: remote _rev regression, ignoring remote',{pid,sid,remoteRev,knownRev});}catch(_){}
     remote=null;remoteRev=0;
   }
+  /* 【同 rev 衝突】自分が前回書いたのと同じ rev なのに書き込み ID が違う → 相手と同時に書いていた */
+  const _mw=(_myShotWrite[pid]||{})[sid];
+  const collided=!!(remote&&_mw&&remoteRev===_mw.rev&&remote._w!==_mw.w);
+  if(collided){try{console.warn('[laycat] _saveShotWithLock: same-rev collision detected, 3-way merge',{pid,sid,rev:remoteRev})}catch(_){}}
   let outNodes=fileBody.nodes;let merged=false;
-  if(remote&&remoteRev>knownRev){
+  if(remote&&(remoteRev>knownRev||collided)){
     /* Phase 3+：proper 3-way マージ。baseline は最後に自分が観測した shot ファイル JSON。
-       これにより「自分は status を変え、相手は assignee を変えた」ケースで両方が保持される。 */
-    const baselineJs=(_saveCache.shot[pid]||{})[sid];
+       これにより「自分は status を変え、相手は assignee を変えた」ケースで両方が保持される。
+       同 rev 衝突のときは、自分の前回の書き込みが元にした内容（＝相手も元にした内容）を baseline にする。 */
+    const baselineJs=collided?_mw.base:(_saveCache.shot[pid]||{})[sid];
     const baseline=baselineJs?JSON.parse(baselineJs):null;
     /* 【監査ログ】3-way マージ前の status スナップショットを取り、_applyShotFileIntoDB 後に差分ログ */
     const _snap=_snapshotShotStatuses(pid);
@@ -4146,7 +4168,11 @@ async function _saveShotWithLock(pid,sid,fileBody){
     merged=true;
   }
   const nextRev=Math.max(knownRev,remoteRev)+1;
-  const out={v:1,shotId:sid,nodes:outNodes,_rev:nextRev};
+  const myW=_newWriteId();
+  const out={v:1,shotId:sid,nodes:outNodes,_rev:nextRev,_w:myW};
+  /* 次の衝突判定の基準：この書き込みが元にしたファイルの内容（status を除いた形） */
+  let _baseForNext=null;
+  try{if(remote&&Array.isArray(remote.nodes)){const _sS=n=>{const c=Object.assign({},n);if('status' in c)delete c.status;return c};_baseForNext=JSON.stringify({v:1,shotId:sid,nodes:remote.nodes.map(_sS)})}}catch(_){_baseForNext=null}
   /* v.033 ガード（A）：versions を潰す書込みは拒否。事故防止のフェイルセーフ。
      v.036：Simple B 変換など「意図的に子 review を削除する」処理中は
      `window._bypassShotGuard=true` を立ててガードをスルーする。 */
@@ -4163,8 +4189,8 @@ async function _saveShotWithLock(pid,sid,fileBody){
   /* v.033 バックアップ（B）：書込み直前の状態を shots/backup/{sid}.bak.json に退避 */
   try{await _shotSaveBackup(pid,sid)}catch(_){}
   const ok=await storage.saveShot(pid,sid,out);
-  if(ok!==false)bucket[sid]=nextRev;
-  return {ok:ok!==false,merged,body:{v:1,shotId:sid,nodes:outNodes}};
+  if(ok!==false){bucket[sid]=nextRev;(_myShotWrite[pid]=_myShotWrite[pid]||{})[sid]={rev:nextRev,w:myW,base:_baseForNext}}
+  return {ok:ok!==false,merged,collided,body:{v:1,shotId:sid,nodes:outNodes}};
 }
 /* Phase 3：楽観ロック付きサブミット保存。サブミットは通常 append-only なので相手優先＋自分の追加 items を注入。 */
 async function _saveSubmitWithLock(pid,sid,submit){
@@ -4178,17 +4204,22 @@ async function _saveSubmitWithLock(pid,sid,submit){
     return {ok:false,merged:false,readFailed:true};
   }
   const remoteRev=(remote&&remote._rev)|0;
+  /* 【同 rev 衝突】ショットと同じ判定（自分が前回書いた rev と同じなのに書き込み ID が違う） */
+  const _mw=(_mySubWrite[pid]||{})[sid];
+  const collided=!!(remote&&_mw&&remoteRev===_mw.rev&&remote._w!==_mw.w);
+  if(collided){try{console.warn('[laycat] _saveSubmitWithLock: same-rev collision detected, merge',{pid,sid,rev:remoteRev})}catch(_){}}
   let outSub=submit;let merged=false;
-  if(remote&&remoteRev>knownRev){
-    const base=JSON.parse(JSON.stringify(remote));delete base._rev;
+  if(remote&&(remoteRev>knownRev||collided)){
+    const base=JSON.parse(JSON.stringify(remote));delete base._rev;delete base._w;
     outSub=_mergeSubmitInto(base,submit); /* remote を基点、自分の未反映 items を union */
     _applySubmitFileIntoDB(pid,outSub);
     merged=true;
   }
   const nextRev=Math.max(knownRev,remoteRev)+1;
-  const out=Object.assign({},outSub,{_rev:nextRev});
+  const myW=_newWriteId();
+  const out=Object.assign({},outSub,{_rev:nextRev,_w:myW});
   const ok=await storage.saveSubmit(pid,sid,out);
-  if(ok!==false)bucket[sid]=nextRev;
+  if(ok!==false){bucket[sid]=nextRev;(_mySubWrite[pid]=_mySubWrite[pid]||{})[sid]={rev:nextRev,w:myW}}
   return {ok:ok!==false,merged,body:Object.assign({},outSub,{_rev:undefined})};
 }
 /* Phase 1+2：project.json を "meta（骨格 nodes + shotIds + submitIds）" と
@@ -4199,7 +4230,7 @@ async function _saveSubmitWithLock(pid,sid,submit){
 const _explicitSubmitDel=new Set();
 /* 【全解析修正】サブミットの変更判定用の指紋（_rev を除く）。以前は読み込んだサブミットが _rev を持ったまま比較され、
    保存のたびに「変更あり」と判定されて rev が増え続けていた。 */
-function _submitFp(s){if(!s)return '';const c=Object.assign({},s);delete c._rev;return JSON.stringify(c)}
+function _submitFp(s){if(!s)return '';const c=Object.assign({},s);delete c._rev;delete c._w;return JSON.stringify(c)}
 async function saveProjectSplit(pid,data){
   const allNodes=Array.isArray(data.nodes)?data.nodes:[];
   /* 【v.056 D-4】v:5 status 分離を書き込み側でも徹底：shot.json に書き出す各ノードから
@@ -4268,6 +4299,7 @@ async function saveProjectSplit(pid,data){
       try{_v5StatusShots.delete(pid+':'+oldId)}catch(_){}
       delete shotCache[oldId];
       try{delete _revBucket(pid).shots[oldId]}catch(_){}
+      try{if(_myShotWrite[pid])delete _myShotWrite[pid][oldId]}catch(_){}
     }
   }
   /* -------- Phase 1：サブミット分割 -------- */
@@ -4639,7 +4671,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.26.002';
+const APP_VERSION='2026.11.26.003';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5424,6 +5456,21 @@ async function refreshFromFolders(){
     }
     /* 読み込みで記録された相手側のショット rev（下で退避値に戻す前に控えておく） */
     const _remoteRevSnap=Object.assign({},(_revBucket(e.id)&&_revBucket(e.id).shots)||{});
+    /* 【同 rev 衝突】自分が最後に書いたショットが、同じ rev のまま別の書き込み ID になっている
+       （＝ほぼ同時に別の人が書き、どちらかの変更がファイルから消えた）ものを集める。
+       自分より後に誰かが書いた（rev が進んだ）ショットは通常の取り込みで足りるので記録を捨てる。 */
+    const _collided=new Set();
+    try{
+      const _mwMap=_myShotWrite[e.id]||{};
+      const _rw=remote._shotW||{};
+      for(const sid of Object.keys(_mwMap)){
+        const mw=_mwMap[sid];if(!mw||!(sid in _rw))continue; /* 今回読めていないショットは判定しない */
+        const rRev=_remoteRevSnap[sid]|0;
+        if(rRev>mw.rev){delete _mwMap[sid];continue}
+        if(rRev===mw.rev&&_rw[sid]!==mw.w)_collided.add(sid);
+      }
+      if(_collided.size){try{console.warn('[laycat] refreshFromFolders: same-rev collision detected',{pid:e.id,shots:[..._collided]})}catch(_){}}
+    }catch(_){}
     const before=JSON.stringify(projectData(e.id));
     /* 未保存変更が無ければ preferRemote：他ユーザーが変更した status / assignee / reviewer 等
        を確実に反映。未保存変更が残っていれば従来通り union のみで保守的に取り込む。 */
@@ -5456,9 +5503,11 @@ async function refreshFromFolders(){
        ・読み込み中に自分の保存が完了した（世代が進んだ）／保存中 … 読み込んだ remote は自分の保存より古い可能性がある。
          以前はこの競合で、直前に変えたステータス等が古い値に戻ったり、作ったばかりのノードが削除扱いになっていた。
        ・読めなかったショットファイルがある … そのショットは骨格の古い値しか持たない。 */
-    if(clean&&(_persistGen!==_genAtStart||_persistBusy>0||storage._hasReadErr(e.id))){
+    /* 同 rev 衝突があるときも「相手を正」とはしない（相手のファイルには自分の変更が入っていないため、
+       相手を正にすると手元に残っている自分の変更まで消える）。衝突したショットは下の 3-way 取り込みで両方を残す。 */
+    if(clean&&(_persistGen!==_genAtStart||_persistBusy>0||storage._hasReadErr(e.id)||_collided.size)){
       clean=false;
-      try{console.info('[laycat] refreshFromFolders: skip preferRemote (concurrent save or unreadable file)',{pid:e.id})}catch(_){}
+      try{console.info('[laycat] refreshFromFolders: skip preferRemote (concurrent save, unreadable file or same-rev collision)',{pid:e.id})}catch(_){}
     }
     /* 【全解析修正】ショットの rev 記録は常に退避値に戻す。取り込み（_unionRemoteIntoDB）は一部の項目しか反映しないため、
        記録だけ相手の rev に進めると、次の保存で 3-way マージが走らず相手の変更（工程・移動・コメント編集など）を
@@ -5486,11 +5535,15 @@ async function refreshFromFolders(){
         let _applied=0;
         for(const sid of Object.keys(_remoteRevSnap)){
           const rRev=_remoteRevSnap[sid]|0;
-          if(!(rRev>(_sb[sid]|0))||!_baseMap[sid]||storage._readFailed(e.id,'shot',sid))continue;
+          /* 同 rev 衝突のショットは、自分の前回の書き込みが元にした内容（相手も元にした内容）を基準にする */
+          const _isCol=_collided.has(sid);
+          const _mwC=_isCol?((_myShotWrite[e.id]||{})[sid]):null;
+          if(!(_isCol||rRev>(_sb[sid]|0))||storage._readFailed(e.id,'shot',sid))continue;
+          if(!_isCol&&!_baseMap[sid])continue;
           const shotNode=DB.nodes.find(n=>n&&n.id===sid),rShot=_rById.get(sid);
           if(!shotNode||!rShot||rootOfId(shotNode)!==e.id)continue;
-          let base=null;try{base=JSON.parse(_baseMap[sid])}catch(_){base=null}
-          if(!base)continue;
+          let base=null;try{base=JSON.parse(_isCol?_mwC.base:_baseMap[sid])}catch(_){base=null}
+          if(!base&&!_isCol)continue;
           const kids=DB.nodes.filter(n=>n&&n.parentId===sid);
           const ours=JSON.parse(JSON.stringify({v:1,shotId:sid,nodes:[_stripS(shotNode),...kids.map(_stripS)]}));
           const theirs={v:1,shotId:sid,nodes:[_stripS(rShot),...(remote.nodes||[]).filter(n=>n&&n.parentId===sid).map(_stripS)]};
@@ -5506,7 +5559,13 @@ async function refreshFromFolders(){
           const kids2=DB.nodes.filter(n=>n&&n.parentId===sid);
           const memF={v:1,shotId:sid,nodes:[_stripS(shotNode),...kids2.map(_stripS)]};
           /* キーの並び順は取り込みで変わる（新しいキーは末尾に付く）ので、順序に依存しない形で比べる */
-          if(_canonJson(memF)===_canonJson(theirs)){_sb[sid]=rRev;_baseMap[sid]=JSON.stringify(memF);}
+          if(_canonJson(memF)===_canonJson(theirs)){
+            _sb[sid]=rRev;_baseMap[sid]=JSON.stringify(memF);
+            if(_isCol){try{delete _myShotWrite[e.id][sid]}catch(_){}} /* 相手のファイルに自分の変更も入っていた＝解消 */
+          }
+          /* 衝突して手元が相手のファイルと違うまま（＝自分の変更がファイルから消えている）なら、
+             保存基準は自分の前回の書き込みのまま残す → 次の保存でこのショットが「変更あり」になり、
+             保存時の衝突判定で 3-way マージした内容が書き込まれる */
         }
         if(_applied){try{normalizeNodes();invalidateRoleMemo()}catch(_){}}
       }catch(err){try{console.warn('[laycat] refreshFromFolders: shot 3-way import failed',err)}catch(_){}}
@@ -6370,6 +6429,7 @@ async function disconnectProject(id){
   /* 【全解析修正】ショット・サブミットのキャッシュと rev 記録も破棄（残っていると、同じセッションで再接続したときに
      「読み込み済み」と誤認した保存経路に入り、未読込のサブミットを削除する原因になっていた） */
   delete _saveCache.shot[id];delete _saveCache.submit[id];delete _saveCache.access[id];delete _loadedRev[id];
+  delete _myShotWrite[id];delete _mySubWrite[id];
   storage.projHandles.delete(id);
   /* REG から外した後の保存は registry だけ（このプロジェクトのフォルダには書かない） */
   await persist();
