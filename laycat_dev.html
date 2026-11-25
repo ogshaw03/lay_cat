@@ -2615,8 +2615,35 @@ const storage={
   },
   async loadLocal(){return this._ls('layna_local')||(await idbGet('kv','local'))||null},
   async saveLocal(obj){if(!this._lsSet('layna_local',obj))toast('設定の保存に失敗しました（localStorage容量超過の可能性）')},
-  async loadRegistry(){const v=this._ls('layna_registry');if(v)return v;return (await idbGet('kv','registry'))||null},
-  async saveRegistry(arr){this._lsSet('layna_registry',arr)},
+  /* 接続プロジェクト一覧（layna_registry）は同じブラウザの全タブ・Beta/Dev で共有している。
+     以前は各タブが「自分が起動したときの一覧」で丸ごと上書きしていたため、別タブで参加したプロジェクトが
+     古いタブの保存で一覧から消え、次に開くと「接続が切れた」状態になっていた。
+     → このタブが最後に読んだ／書いたときの一覧（_regBaseIds）を基準に、保存直前の一覧と 3-way でまとめる：
+        ・このタブで追加したもの → 足す　・このタブで解除したもの → 外す
+        ・他のタブが追加したもの → 残す　・他のタブが解除したもの → 外したまま（このタブの古い一覧で復活させない） */
+  _regBaseIds:null,
+  async loadRegistry(){let v=this._ls('layna_registry');if(!v)v=(await idbGet('kv','registry'))||null;if(Array.isArray(v)){try{this._regBaseIds=new Set(v.map(e=>e&&e.id).filter(Boolean))}catch(_){}}return v},
+  async saveRegistry(arr){
+    let out=arr;
+    try{
+      const cur=this._ls('layna_registry');
+      if(Array.isArray(cur)&&Array.isArray(arr)){
+        const base=this._regBaseIds||new Set();
+        const mine=new Set(arr.map(e=>e&&e.id).filter(Boolean));
+        const curMap=new Map();for(const e of cur)if(e&&e.id)curMap.set(e.id,e);
+        out=[];
+        for(const e of arr){
+          if(!e||!e.id)continue;
+          const c=curMap.get(e.id);
+          if(!c&&base.has(e.id))continue; /* 他のタブで解除済み */
+          out.push(c?Object.assign({},c,e):e);
+        }
+        for(const [id,c] of curMap){if(!mine.has(id)&&!base.has(id))out.push(c)} /* 他のタブで追加されたもの */
+      }
+      if(Array.isArray(arr))this._regBaseIds=new Set(arr.map(e=>e&&e.id).filter(Boolean));
+    }catch(_){out=arr}
+    this._lsSet('layna_registry',out)
+  },
   _projFileName:'laycat.project.json',
   _projFileNameOld:'layna.project.json', /* 旧名（読込は後方互換、保存時に新名へ自動移行） */
   async _readProjFile(ph){this._lastReadErrors=[];this._lastReadWarns=[];for(const fn of [this._projFileName,this._projFileNameOld]){try{const fh=await ph.getFileHandle(fn);const txt=await (await fh.getFile()).text();try{return JSON.parse(txt)}catch(pe){const rec=this._tryRecoverJSON(txt);if(rec){this._lastReadWarns.push(fn+': JSON末尾に余計な内容があったため先頭の完全なオブジェクトのみで復旧しました（保存で末尾は掃除されます）');return rec}this._lastReadErrors.push(fn+': JSON形式エラー ('+((pe&&pe.message)||'').slice(0,120)+')')}}catch(e){if(e&&e.name&&e.name!=='NotFoundError')this._lastReadErrors.push(fn+': '+e.name+' '+((e&&e.message)||'').slice(0,120))}}return null;},
@@ -4612,7 +4639,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.26.001';
+const APP_VERSION='2026.11.26.002';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
