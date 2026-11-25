@@ -3186,7 +3186,31 @@ const storage={
   _parseRef(ref){if(ref.startsWith('r2:')){const i=ref.indexOf('|');return{proj:ref.slice(3,i),path:ref.slice(i+1),backend:'r2'}}if(ref.startsWith('p:')){const i=ref.indexOf('|');return{proj:ref.slice(2,i),path:ref.slice(i+1),backend:'folder'}}return{proj:null,path:ref,backend:'folder'}},
   async _fileHandle(ref,create){const {proj,path}=this._parseRef(ref);const parts=path.split('/');const fn=parts.pop();let root=this.rootHandle;if(proj){root=await this.projRoot(proj);if(!root)return null}if(!root)return null;let dir=root;for(const p of parts)if(p)dir=await dir.getDirectoryHandle(p,{create:create===true});return{dir,fn};},
   async delMedia(ref){if(!ref)return;try{if(ref.startsWith('idb:'))await idbDel('blobs',ref.slice(4));else if(ref.startsWith('r2:')){const {proj,path}=this._parseRef(ref);await this._r2.del('projects/'+proj+'/'+path)}else{const h=await this._fileHandle(ref);if(h)await h.dir.removeEntry(h.fn)}}catch(e){}const u=this.urlCache.get(ref);if(u){URL.revokeObjectURL(u);this.urlCache.delete(ref)}},
-  async getURL(ref){if(!ref)return null;if(this.urlCache.has(ref)){const u=this.urlCache.get(ref);this.urlCache.delete(ref);this.urlCache.set(ref,u);return u}let blob=null;try{if(ref.startsWith('idb:'))blob=await idbGet('blobs',ref.slice(4));else if(ref.startsWith('r2:')){const {proj,path}=this._parseRef(ref);blob=await this._r2.getBlob('projects/'+proj+'/'+path)}else{const h=await this._fileHandle(ref);if(h)blob=await (await h.dir.getFileHandle(h.fn)).getFile()}}catch(e){return null}if(!blob)return null;const url=URL.createObjectURL(blob);this.urlCache.set(ref,url);const LIM=this._urlCacheLimit||250;while(this.urlCache.size>LIM){const k=this.urlCache.keys().next().value;if(k===ref)break;const ou=this.urlCache.get(k);this.urlCache.delete(k);try{URL.revokeObjectURL(ou)}catch(_){}}return url},
+  async getURL(ref){if(!ref)return null;if(this.urlCache.has(ref)){const u=this.urlCache.get(ref);this.urlCache.delete(ref);this.urlCache.set(ref,u);return u}let blob=null;try{if(ref.startsWith('idb:'))blob=await idbGet('blobs',ref.slice(4));else if(ref.startsWith('r2:')){const {proj,path}=this._parseRef(ref);blob=await this._r2.getBlob('projects/'+proj+'/'+path)}else{const h=await this._fileHandle(ref);if(h)blob=await (await h.dir.getFileHandle(h.fn)).getFile()}}catch(e){return null}if(!blob)return null;const url=URL.createObjectURL(blob);this.urlCache.set(ref,url);this._evictUrlCache(ref);return url},
+  /* v.034：URL キャッシュの LRU 追い出し。画面上の <video>（REEL の iframe 含む）や REEL クリップが
+     参照中の blob URL は revoke しない。ショットページ／アノテ窓は urlCache.get() の同期参照で
+     LRU 順が更新されないため、表示中の動画 URL ほど古い扱いになり、読み込み待ち（ブラウザが
+     動画の同時ロード数を絞る）や再生中に revoke されて「再生できません」になっていた。
+     使用中のものは上限を超えても残す（ソフトリミット）。 */
+  _evictUrlCache(keep){
+    const LIM=this._urlCacheLimit||250;
+    if(this.urlCache.size<=LIM)return;
+    const inUse=this._liveMediaUrls();
+    for(const [k,ou] of this.urlCache){
+      if(this.urlCache.size<=LIM)break;
+      if(k===keep||inUse.has(ou))continue;
+      this.urlCache.delete(k);
+      try{URL.revokeObjectURL(ou)}catch(_){}
+    }
+  },
+  _liveMediaUrls(){
+    const s=new Set();
+    const scan=d=>{try{for(const v of d.querySelectorAll('video')){if(v.src)s.add(v.src);if(v.currentSrc)s.add(v.currentSrc)}}catch(_){}};
+    scan(document);
+    try{if(typeof reelWin!=='undefined'&&reelWin&&reelWin.document&&reelWin.document!==document)scan(reelWin.document)}catch(_){}
+    try{if(typeof reelUI!=='undefined'&&reelUI&&Array.isArray(reelUI.clips))for(const c of reelUI.clips)if(c&&c.url)s.add(c.url)}catch(_){}
+    return s;
+  },
   /* 共有フォルダの同期遅延・オンラインオンリー対策：数回リトライして取得を試みる */
   async getURLRetry(ref,tries){tries=tries||4;for(let i=0;i<tries;i++){const u=await this.getURL(ref);if(u)return u;if(i<tries-1)await new Promise(r=>setTimeout(r,500*(i+1)))}return null;},
 };
@@ -4330,7 +4354,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.06.033';
+const APP_VERSION='2026.11.25.034';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4447,6 +4471,16 @@ function attachCodecWarn(vid,host){
     const er=vid.error;if(!(er&&(er.code===3||er.code===4)))return;
     if(!vid.getAttribute('src')&&!vid.currentSrc)return; /* src 未確定は無視 */
     if(vid._codecOk)return;                              /* 一度でも読めていれば誤爆 */
+    /* v.034：blob URL が無効化されていた等の一過性の失敗に備え、元参照（data-vref）から
+       URL を取り直して 1 回だけ再試行する。本当にコーデック非対応なら再試行も失敗して警告が出る。 */
+    const _ref=vid.dataset&&vid.dataset.vref;
+    if(_ref&&!vid._codecRetried){
+      vid._codecRetried=true;
+      const _bad=vid.currentSrc||vid.getAttribute('src')||'';
+      if(storage.urlCache.get(_ref)===_bad)storage.urlCache.delete(_ref);
+      storage.getURLRetry(_ref,3).then(u=>{if(u&&u!==_bad){vid.src=u;try{vid.load()}catch(_){}}else addBadge()}).catch(()=>addBadge());
+      return;
+    }
     setTimeout(()=>{
       if(vid._codecOk)return;                             /* 猶予中にロード成功 → 出さない */
       const er2=vid.error;if(!(er2&&(er2.code===3||er2.code===4)))return;
@@ -15485,6 +15519,7 @@ function openReview(nodeId,versionId,opts){
   /* URL キャッシュ済みなら同期で src を設定：src 未確定の一瞬に error が発火してコーデック警告が誤爆するのを回避。
      アップロード直後は urlCache に元 File 由来の blob URL が投入済み（uploadVersion 内）なので、ここでヒットする。 */
   {const _isExrPre=!isVideo&&(v.exr||isExrRef(v.file));const _srcRefPre=_isExrPre?(v.thumb||v.file):v.file;
+   if(isVideo)media.dataset.vref=_srcRefPre; /* v.034：読み込み失敗時に attachCodecWarn が URL を取り直すための元参照 */
    const _cu=storage.urlCache.get(_srcRefPre);if(_cu)media.src=_cu;}
   /* ズーム/トラック用ラッパー（media/トレペ/キャンバスをまとめて変形） */
   const rotEl=el('div');rotEl.style.cssText='position:absolute;inset:0;transform-origin:center center';/* 画面回転用（クリスタ風 Shift+Space+ドラッグ） */
