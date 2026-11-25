@@ -4584,7 +4584,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.25.037';
+const APP_VERSION='2026.11.25.038';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -6059,14 +6059,31 @@ function makeSubmitLinkBtn(sb){
 }
 let _hashLock=false;
 function syncHash(){const h=hashOf();if(location.hash!==h){_hashLock=true;location.hash=h;setTimeout(()=>{_hashLock=false},0)}}
-function closeReviewOverlay(){if(_fbCleanup){try{_fbCleanup()}catch(_){}}const ov=$('#fbOverlay');if(ov)ov.remove();const bd=$('#fbBackdrop');if(bd)bd.remove();state.reviewOpen=null}
+/* #11：ブラウザの「戻る」等（ハッシュ遷移）で閉じる場合も、アノテ窓の close() と同じく
+   未送信のコメント・添付・下書き・画像版の未送信描画があれば確認を出す（opts.confirm=true のときだけ）。
+   キャンセルされたら false を返す（呼び出し側でハッシュを戻す）。既定（引数なし）は従来どおり確認なしで閉じる。 */
+function closeReviewOverlay(opts){
+  if(_fbCleanup){
+    if(opts&&opts.confirm){
+      let unsaved=false;try{unsaved=typeof _fbCleanup.hasUnsaved==='function'&&_fbCleanup.hasUnsaved()}catch(_){}
+      if(unsaved&&!confirm('未送信のコメント・添付画像・描画があります。閉じると失われます。よろしいですか？'))return false;
+    }
+    try{_fbCleanup()}catch(_){}
+  }
+  const ov=$('#fbOverlay');if(ov)ov.remove();const bd=$('#fbBackdrop');if(bd)bd.remove();state.reviewOpen=null;return true}
 /* ハッシュを解釈して画面を復元。initial=起動時（該当なしなら false を返し localStorage 復元に委譲） */
 function applyHash(initial){
   const raw=(location.hash||'').replace(/^#\/?/,'');
   const parts=raw.split('/').filter(x=>x!=='');
   if(parts[0]==='r'&&parts[1]){
     const n=getNode(parts[1]);
-    if(n){state.currentId=n.id;state.search='';state.projTab='browse';for(const x of pathOf(n.id))state.expanded.add(x.id);render();resolveThumbs();
+    if(n){
+      /* #11：開いているレビューに未送信があれば先に確認（キャンセル時はハッシュを元に戻して何もしない） */
+      if(!closeReviewOverlay({confirm:true})){syncHash();return true}
+      state.currentId=n.id;state.search='';state.projTab='browse';for(const x of pathOf(n.id))state.expanded.add(x.id);render();resolveThumbs();
+      /* #24：パスワード保護（passHash 方式）でロック中のプロジェクトは、直リンクでもレビューを開かない
+         （render() がロック画面を出すので、解錠後に改めて開いてもらう） */
+      {const _rt=rootOf(n);if(_rt&&projectLocked(_rt))return true}
       const v=(n.versions||[]).find(x=>x.id===parts[2])||(n.versions||[])[(n.versions||[]).length-1];
       if(v)openReview(n.id,v.id);return true}
     return false;
@@ -6074,12 +6091,14 @@ function applyHash(initial){
   /* サブミット直リンク（提出連絡に同封しやすい短い形式） #/submit/<submitId> */
   if(parts[0]==='submit'&&parts[1]){
     const sb=(DB.submits||[]).find(s=>s.id===parts[1]);
-    if(sb){const root=getNode(sb.projectId);if(root){closeReviewOverlay();state.currentId=root.id;state.search='';state.projTab='submit';state.pmPick=null;for(const x of pathOf(root.id))state.expanded.add(x.id);render();resolveThumbs();openSubmitDrawer(sb.id);if(parts[2]){state.drawer.detailId=parts[2];fillSubmitDrawer()}return true}}
+    /* #11：未送信があれば確認。キャンセル時はハッシュを戻して開いているレビューを維持 */
+    if(sb){const root=getNode(sb.projectId);if(root){if(!closeReviewOverlay({confirm:true})){syncHash();return true}state.currentId=root.id;state.search='';state.projTab='submit';state.pmPick=null;for(const x of pathOf(root.id))state.expanded.add(x.id);render();resolveThumbs();openSubmitDrawer(sb.id);if(parts[2]){state.drawer.detailId=parts[2];fillSubmitDrawer()}return true}}
     return false;
   }
   if(parts[0]==='n'&&parts[1]){
     const n=getNode(parts[1]);
-    if(n){closeReviewOverlay();state.currentId=n.id;state.search='';state.projTab=VALID_TABS.includes(parts[2])?parts[2]:'timeline';state.pmPick=null;for(const x of pathOf(n.id))state.expanded.add(x.id);
+    /* #11：未送信があれば確認。キャンセル時はハッシュを戻して開いているレビューを維持 */
+    if(n){if(!closeReviewOverlay({confirm:true})){syncHash();return true}state.currentId=n.id;state.search='';state.projTab=VALID_TABS.includes(parts[2])?parts[2]:'timeline';state.pmPick=null;for(const x of pathOf(n.id))state.expanded.add(x.id);
       /* URLにドロワー指定（/s/ or /t/）が無ければ、そのタブに記憶されたドロワーを閉じてから描画（戻る操作で表示が残らないように） */
       const hasDrawer=(parts[3]==='s'&&parts[4])||(parts[3]==='t'&&parts[5]);
       if(!hasDrawer){const dk=activeTabKey();if(dk&&state.tabDrawers)delete state.tabDrawers[dk];}
@@ -6090,7 +6109,8 @@ function applyHash(initial){
       return true}
     return false;
   }
-  if(!parts.length){if(initial)return false;closeReviewOverlay();state.currentId=null;state.projTab='timeline';state.reviewOpen=null;render();resolveThumbs();return true}
+  /* #11：未送信があれば確認。キャンセル時はハッシュを戻して開いているレビューを維持 */
+  if(!parts.length){if(initial)return false;if(!closeReviewOverlay({confirm:true})){syncHash();return true}state.currentId=null;state.projTab='timeline';state.reviewOpen=null;render();resolveThumbs();return true}
   return false;
 }
 window.addEventListener('hashchange',()=>{if(_hashLock)return;applyHash(false)});
@@ -15554,6 +15574,21 @@ function genThumb(file){return new Promise(resolve=>{const isVideo=isVideoFile(f
    ============================================================ */
 let fbFullscreen=false; /* アノテーションウィンドウの表示モード：既定はモーダル。ユーザー操作で全画面に切替（セッション内で記憶） */
 let _fbCleanup=null; /* 現在開いているレビュー窓の後始末関数（リスナー/Observer/rAF/タイマー解除）。再オープンや外部クローズで確実に呼ぶ */
+/* #1：埋め込みノート（anno_emb_ / reel_emb_）同期用の「あるフレームの描画アイテム列」の内容署名。
+   ハイドレート時・自分の同期時の署名と比べて、実際に自分が編集したフレームだけを書き戻すために使う
+   （他ユーザー・他タブが描いたフレームや、開いて閉じただけのフレームには触らない）。
+   マネキン画像（dataURL）は長いので長さ＋末尾だけを署名に含める。 */
+function _embItemsSig(items){
+  if(!items||!items.length)return '';
+  try{
+    return JSON.stringify(items.map(p=>{
+      const c=cloneDrawItem(p);
+      if(typeof c.img==='string')c.img=c.img.length+':'+c.img.slice(-64);
+      c.dur=(p.dur==null)?null:(parseInt(p.dur)||1);
+      return c;
+    }));
+  }catch(_){return 'x'+Math.random()} /* 署名できなければ「変更あり」扱い（従来どおり書き戻す） */
+}
 function openReview(nodeId,versionId,opts){
   opts=opts||{};
   const node=getNode(nodeId);const v=node.versions.find(x=>x.id===versionId);
@@ -15562,6 +15597,12 @@ function openReview(nodeId,versionId,opts){
      ショートショットキー判定より前に必要。const は TDZ があるので早めに宣言） */
   const isSeq=isExrSeqVersion(v);
   const isPlayable=isVideo||isSeq;
+  /* #11：別のレビューを開く操作でも、開いている窓に未送信（入力中コメント・添付・下書き・画像版の描画）があれば確認。
+     キャンセル時は今の窓を残し、ハッシュも元に戻す。 */
+  if(_fbCleanup){
+    let _unsaved=false;try{_unsaved=typeof _fbCleanup.hasUnsaved==='function'&&_fbCleanup.hasUnsaved()}catch(_){}
+    if(_unsaved&&!confirm('未送信のコメント・添付画像・描画があります。閉じると失われます。よろしいですか？')){try{syncHash()}catch(_){}return}
+  }
   /* 旧インスタンスの後始末（DOM を消すだけでは document のキーリスナーや rAF ループが残るため必ず cleanup を通す） */
   if(_fbCleanup){try{_fbCleanup()}catch(_){}}
   let alive=true;      /* この窓が生存中か（rAF ループ・遅延コールバックの継続判定に使用） */
@@ -15581,6 +15622,11 @@ function openReview(nodeId,versionId,opts){
      再オープン時は annoHydratePending が embed ノートから pending を復元する。
      コメント欄には出さない（noteEmbedOnly で除外される）。 */
   const _annoEmbPfx='anno_emb_'+v.id+'_';
+  /* #1：フレームごとの「最後にハイドレート／自分が同期した時点」の内容署名。
+     ここと現在の pending の署名が違うフレーム（＝この窓で実際に編集したフレーム）だけを書き戻す。
+     それ以外のフレームの anno_emb_ ノート（他ユーザー・他タブが後から描いたもの等）には一切触らない。 */
+  const _annoEmbSig=new Map();
+  const _annoItemsAt=fr=>pending.filter(p=>p.f===fr);
   function annoSyncEmbedFrame(frame){
     if(!isVideo)return;
     const key=_annoEmbPfx+frame;
@@ -15594,12 +15640,20 @@ function openReview(nodeId,versionId,opts){
       drawing:items.map(cloneDrawItem),noShot:true
     });
   }
+  /* 編集されたフレームだけ同期。何か書き換えたら true を返す（保存予約の要否判定に使う） */
   function annoSyncEmbedAll(){
-    if(!isVideo)return;
-    const frames=new Set();
-    for(const n of v.review.notes)if(n.id&&n.id.startsWith(_annoEmbPfx))frames.add(n.frame);
+    if(!isVideo)return false;
+    const frames=new Set(_annoEmbSig.keys());
     for(const p of pending)if(p.f!=null)frames.add(p.f);
-    for(const fr of frames)annoSyncEmbedFrame(fr);
+    let changed=false;
+    for(const fr of frames){
+      const sig=_embItemsSig(_annoItemsAt(fr));
+      if(sig===(_annoEmbSig.get(fr)||''))continue; /* 自分は触っていないフレーム → 書き換えない */
+      annoSyncEmbedFrame(fr);
+      if(sig)_annoEmbSig.set(fr,sig);else _annoEmbSig.delete(fr);
+      changed=true;
+    }
+    return changed;
   }
   function annoHydratePending(){
     if(!isVideo)return;
@@ -15611,19 +15665,23 @@ function openReview(nodeId,versionId,opts){
       for(const s of n.drawing){const cl=cloneDrawItem(s);cl.f=n.frame;if(cl.dur==null)cl.dur=itemDur;arr.push(cl)}
     }
     pending=arr;
+    /* #1：ハイドレート直後の状態を「同期済み」として記録（開いて閉じるだけでは書き戻さない） */
+    _annoEmbSig.clear();
+    for(const fr of new Set(arr.map(p=>p.f)))_annoEmbSig.set(fr,_embItemsSig(_annoItemsAt(fr)));
   }
   let _annoPersistTimer=null;
   function annoSchedulePersist(){
     if(_annoPersistTimer)clearTimeout(_annoPersistTimer);
     _annoPersistTimer=setTimeout(()=>{_annoPersistTimer=null;persist().catch(()=>{})},400);
   }
-  function annoAfterEdit(frames){
-    if(!isVideo)return;
+  /* #1：編集後の同期。実際に書き換えたフレームがあったときだけ保存を予約する（開くだけ・空振り操作では保存しない） */
+  function annoAfterEdit(){
+    if(!isVideo)return false;
     const curPdur=(typeof durSel!=='undefined'&&durSel)?(parseInt(durSel.value)||1):1;
     for(const p of pending)if(p.dur==null)p.dur=curPdur;
-    if(!frames)annoSyncEmbedAll();
-    else{const set=frames instanceof Set?frames:new Set(frames);for(const fr of set)annoSyncEmbedFrame(fr)}
-    annoSchedulePersist();
+    const changed=annoSyncEmbedAll();
+    if(changed)annoSchedulePersist();
+    return changed;
   }
   annoHydratePending();
   /* 顔の向きガイド（ヘッドジンバル）操作状態 */
@@ -15640,10 +15698,27 @@ function openReview(nodeId,versionId,opts){
   /* 未送信の描画に対する undo/redo（Ctrl+Z / Ctrl+Y）— snapshot 履歴で描画・消しゴム両方を復元可能 */
   let redoStack=[];
   let _hist=[],_histIdx=-1,_eraseChanged=false;
-  const _snap=()=>({pending:JSON.parse(JSON.stringify(pending)),notes:v.review.notes.filter(n=>n.drawing&&n.drawing.length).map(n=>({id:n.id,drawing:JSON.parse(JSON.stringify(n.drawing))}))});
+  /* #8：送信済みノートはオブジェクト参照で保持して照合する（id 無しノート同士の取り違えを防ぐ）。
+     描画が空になったノートも Redo で戻せるよう drawing 配列を持つものは空でも記録する。 */
+  const _snap=()=>({pending:JSON.parse(JSON.stringify(pending)),notes:v.review.notes.filter(n=>Array.isArray(n.drawing)).map(n=>({ref:n,id:n.id,drawing:JSON.parse(JSON.stringify(n.drawing))}))});
   const _restore=s=>{
     pending=JSON.parse(JSON.stringify(s.pending));
-    for(const b of s.notes){const n=v.review.notes.find(x=>x.id===b.id);if(n){n.drawing=JSON.parse(JSON.stringify(b.drawing));n.edited=true;committedDirty=true}}
+    /* #8：参照で照合（参照が差し替わっていれば id があるときだけ id で再検索）。中身に差分があるノートだけ戻し、
+       そのノートにだけ edited を付ける（触っていない送信済みノートに「編集済」を付けない）。 */
+    for(const b of s.notes){
+      let n=v.review.notes.indexOf(b.ref)>=0?b.ref:null;
+      if(!n&&b.id)n=v.review.notes.find(x=>x.id===b.id)||null;
+      if(!n)continue;
+      /* この窓の pending が受け持つフレームの anno_emb_ ノートは、直後の同期（annoAfterEdit）で pending から作り直すので触らない */
+      if(n.id&&String(n.id).indexOf(_annoEmbPfx)===0&&(_annoEmbSig.has(n.frame)||pending.some(p=>p.f===n.frame)))continue;
+      const cur=JSON.stringify(Array.isArray(n.drawing)?n.drawing:[]);
+      const nxt=JSON.stringify(b.drawing);
+      if(cur===nxt)continue;
+      n.drawing=JSON.parse(nxt);
+      /* 埋め込み専用ノート（anno_emb_ 等）は pending 側の同期で作り直されるので「編集済」は付けない */
+      if(!noteEmbedOnly(n)&&!(n.id&&String(n.id).indexOf(_annoEmbPfx)===0))n.edited=true;
+      committedDirty=true;
+    }
     headActive=null;stroke=null;
     /* undo/redo 時は各ツールのドラッグ状態も全リセット（ドラフト・選択枠のゾンビ化を防ぐ） */
     try{if(typeof shapeDraft!=='undefined')shapeDraft=null}catch(_){}
@@ -15651,18 +15726,44 @@ function openReview(nodeId,versionId,opts){
     try{if(typeof headDrag!=='undefined')headDrag=null}catch(_){}
     try{if(typeof mannDrag!=='undefined'){mannDrag=null;selectedMann=null;mannHoverAxis=null}}catch(_){}
   };
-  const _pushHist=()=>{_hist=_hist.slice(0,_histIdx+1);_hist.push(_snap());_histIdx=_hist.length-1;if(_hist.length>50){_hist=_hist.slice(-50);_histIdx=_hist.length-1}try{annoAfterEdit()}catch(_){}};
+  /* #1/#8：先に埋め込み同期してからスナップショットを取る（履歴に同期前の古い埋め込みが入らないように） */
+  const _pushHist=()=>{try{annoAfterEdit()}catch(_){}_hist=_hist.slice(0,_histIdx+1);_hist.push(_snap());_histIdx=_hist.length-1;if(_hist.length>50){_hist=_hist.slice(-50);_histIdx=_hist.length-1}};
+  /* #8：送信直後に履歴をリセット（送信前の pending に Undo で戻って二重送信・送信済みノートの巻き戻しが起きないように） */
+  const _resetHist=()=>{_hist=[_snap()];_histIdx=0};
   _pushHist(); /* 初期状態を履歴の起点として保存 */
   /* 比較再生（A/B）：B は同じウィンドウ内で横並び表示・A に同期。アノテーションは A（開いている版）に描く */
   let cmpOn=false,bVid=null,paneB=null,cmpBtn=null,bSeekBusy=false,_bSeekGuard=null;
+  let _cmpGen=0; /* #23：比較 B の URL 解決の世代番号 */
   /* 記入（下書き）：記入ボタンで積む。送信ボタンを押すまでレビューページ(v.review.notes)には反映しない */
   let drafts=[];
   const shownNotes=()=>v.review.notes.concat(drafts);
 
   /* リスナー/Observer/rAF/タイマーの後始末のみ（DOM や画面遷移は触らない）。close も外部クローズも再オープンも必ずここを通す */
+  /* #2/#11：閉じると失われる未送信があるか（入力中コメント・添付画像・記入下書き・画像/EXR 版の未送信描画）。
+     動画版の pending は anno_emb_ として自動保存されるので対象外。close()・ハッシュ遷移・別レビューを開く操作で共通に使う。 */
+  function hasUnsaved(){
+    try{
+      if(drafts.length)return true;
+      if(ta&&ta.value.trim())return true;
+      if(fbAttach&&fbAttach.attached())return true;
+      if(!isVideo&&(pending.length||stroke))return true;
+    }catch(_){}
+    return false;
+  }
+  /* #11：beforeunload（別担当）から参照できるよう公開。保存待ち（埋め込み同期の保存予約・送信済み描画の編集）も含める */
+  const _annoUnsavedFn=()=>{
+    if(!alive)return false;
+    let waiting=false;try{waiting=!!_annoPersistTimer||!!committedDirty}catch(_){}
+    return hasUnsaved()||waiting;
+  };
+  window._annoUnsaved=_annoUnsavedFn;
   function cleanup(){
     alive=false;
-    /* 動画埋め込みの最終同期＋確実な persist（外部クローズや再オープンでも pending を失わない） */
+    if(window._annoUnsaved===_annoUnsavedFn)window._annoUnsaved=null;
+    /* #5：3D マネキン別窓の message リスナーを解除（閉じた窓に適用が飛んでこないように） */
+    try{if(_mannActiveHandler){window.removeEventListener('message',_mannActiveHandler);_mannActiveHandler=null}}catch(_){}
+    /* 動画埋め込みの最終同期＋確実な persist（外部クローズや再オープンでも pending を失わない）。
+       #1：同期は自分が編集したフレームだけ（開いて閉じただけなら何も書き換えない） */
     try{annoSyncEmbedAll()}catch(_){}
     /* v.004：pointerup で自動 flush しなくなった分、cleanup でも保険として flush（close() 経由でなく
        外部からインスタンスを強制終了するパス対策。close() 側でも呼ばれるが committedDirty=false 後は no-op）。 */
@@ -15680,12 +15781,12 @@ function openReview(nodeId,versionId,opts){
     try{if(typeof _mannCb==='function')_mannRedrawCbs.delete(_mannCb)}catch(_){}
     if(_fbCleanup===cleanup)_fbCleanup=null;
   }
+  cleanup.hasUnsaved=hasUnsaved;
   _fbCleanup=cleanup;
   function close(){
-    /* pending の描画は annoSyncEmbedAll で v.review.notes に「動画埋め込み」として自動同期されるので未保存扱いしない。
-       確認ダイアログは記入下書き（drafts）または入力中コメント（ta）が残っている場合のみ。 */
-    const unsent=drafts.length||(ta&&ta.value.trim());
-    if(unsent&&!confirm('未保存の記入・コメントがあります。閉じると失われます。よろしいですか？'))return;
+    /* 動画版の pending の描画は annoSyncEmbedAll で v.review.notes に「動画埋め込み」として自動同期されるので未保存扱いしない。
+       #2/#11：確認ダイアログは記入下書き・入力中コメント・添付画像・画像/EXR 版の未送信描画が残っている場合。 */
+    if(hasUnsaved()&&!confirm('未送信のコメント・添付画像・描画があります。閉じると失われます。よろしいですか？'))return;
     /* 閉じる前に pending を最終同期＋確実に永続化（debounce タイマーが未発火の場合の保険） */
     try{annoSyncEmbedAll()}catch(_){}
     if(_annoPersistTimer){clearTimeout(_annoPersistTimer);_annoPersistTimer=null;try{persist()}catch(_){}}
@@ -15781,6 +15882,8 @@ function openReview(nodeId,versionId,opts){
         vv.value=fmt(n);
         inp.value=String(n);
         inp.dispatchEvent(new Event('input',{bubbles:true}));
+        /* #15：数値入力の確定は「操作完了」なので change も発火（保存は change 側でだけ行う） */
+        inp.dispatchEvent(new Event('change',{bubbles:true}));
       });
       return {wrap:w,inp,vv};
     };
@@ -15886,10 +15989,14 @@ function openReview(nodeId,versionId,opts){
         const dResetBtn=el('button','btn btn-ghost btn-sm','↺');dResetBtn.title='Depth を初期値に戻す（Auto p1/p99・反転OFF）';dResetBtn.style.padding='4px 8px';
         depthWrap.appendChild(bpS.wrap);depthWrap.appendChild(wpS.wrap);depthWrap.appendChild(invBtn);depthWrap.appendChild(dResetBtn);
         depthWrap.style.display='';
-        const onDepthChange=async(k,val)=>{settings.depth[k]=val;v.exrView=v.exrView||{};v.exrView.depth=settings.depth;try{await persist()}catch(_){}drawTo(laySel.value)};
-        bpS.inp.addEventListener('input',()=>onDepthChange('black',+bpS.inp.value));
-        wpS.inp.addEventListener('input',()=>onDepthChange('white',+wpS.inp.value));
-        invBtn.onclick=()=>{settings.depth.invert=!settings.depth.invert;invBtn.classList.toggle('active',settings.depth.invert);onDepthChange('invert',settings.depth.invert)};
+        /* #15：スライダのドラッグ中（input）は表示だけ更新し、保存は操作完了（change：離した時／数値確定時）だけにする。
+           描画は保存を待たない。 */
+        const onDepthChange=async(k,val,save)=>{settings.depth[k]=val;v.exrView=v.exrView||{};v.exrView.depth=settings.depth;drawTo(laySel.value);if(save){try{await persist()}catch(_){}}};
+        bpS.inp.addEventListener('input',()=>onDepthChange('black',+bpS.inp.value,false));
+        wpS.inp.addEventListener('input',()=>onDepthChange('white',+wpS.inp.value,false));
+        bpS.inp.addEventListener('change',()=>onDepthChange('black',+bpS.inp.value,true));
+        wpS.inp.addEventListener('change',()=>onDepthChange('white',+wpS.inp.value,true));
+        invBtn.onclick=()=>{settings.depth.invert=!settings.depth.invert;invBtn.classList.toggle('active',settings.depth.invert);onDepthChange('invert',settings.depth.invert,true)};
         dResetBtn.onclick=async()=>{
           settings.depth={black:stats.p1,white:stats.p99,invert:false};
           bpS.inp.value=String(stats.p1);bpS.vv.value=stats.p1.toFixed(2);
@@ -15918,8 +16025,10 @@ function openReview(nodeId,versionId,opts){
         drawTo(nm);
       };
       /* 露出/ガンマ変更で永続化＋再描画（デバウンスなし：小画像なら十分速い） */
-      const onEG=async()=>{settings.exposure=+expS.inp.value;settings.gamma=+gamS.inp.value;v.exrView=v.exrView||{};v.exrView.exposure=settings.exposure;v.exrView.gamma=settings.gamma;try{await persist()}catch(_){}drawTo(laySel.value)};
-      expS.inp.addEventListener('input',onEG);gamS.inp.addEventListener('input',onEG);
+      /* #15：input ごとの persist をやめ、ドラッグ中は表示のみ更新。保存は change（離した時／数値確定時）だけ。描画は保存を待たない */
+      const onEG=async(save)=>{settings.exposure=+expS.inp.value;settings.gamma=+gamS.inp.value;v.exrView=v.exrView||{};v.exrView.exposure=settings.exposure;v.exrView.gamma=settings.gamma;drawTo(laySel.value);if(save===true){try{await persist()}catch(_){}}};
+      expS.inp.addEventListener('input',()=>onEG(false));gamS.inp.addEventListener('input',()=>onEG(false));
+      expS.inp.addEventListener('change',()=>onEG(true));gamS.inp.addEventListener('change',()=>onEG(true));
       /* 露出/ガンマ リセット：露出=0、ガンマは現在のレイヤーに応じたデフォルト（データ系=1.0／それ以外=2.2） */
       egResetBtn.onclick=async()=>{
         const curNm=laySel.value;const curLay=hdr.layers[curNm];
@@ -16122,6 +16231,18 @@ function openReview(nodeId,versionId,opts){
   const rangeClrBtn=el('button','btn btn-ghost btn-sm','⌫');rangeClrBtn.title='再生範囲を解除（ショートショット: X）';
   const frameLab=el('span','fb-frame','F 0 / 0');
   const fpsSel=el('select');[12,24,25,30,60].forEach(n=>fpsSel.appendChild(new Option(n+' fps',n)));fpsSel.value=String(FPS);
+  /* #9：fps 変更の確認。フォーカスが残ったまま ← → を押すとプルダウン自体の値が変わってしまうため、
+     変更のたびにフォーカスを外す。アノテ（フレーム付きのコメント・描画・未送信描画）がある版では
+     フレーム位置の対応が変わるので確認を出し、キャンセルなら元の fps に戻す。 */
+  const fpsChangeOk=()=>{
+    const nv=parseInt(fpsSel.value)||24;
+    try{fpsSel.blur()}catch(_){}
+    if(nv===FPS)return false;
+    let hasAnno=false;
+    try{hasAnno=pending.length>0||drafts.length>0||(v.review.notes||[]).some(n=>n&&(n.frame!=null||(n.drawing&&n.drawing.length)))}catch(_){}
+    if(hasAnno&&!confirm('この版にはフレーム位置付きのコメント・描画があります。fps を '+FPS+' → '+nv+' に変えると表示されるフレーム位置がずれます。変更しますか？')){fpsSel.value=String(FPS);return false}
+    return true;
+  };
   /* 描画／消しゴムを 1 つのトグルボタンに統合（OFF → 描画 → 消しゴム → OFF … と循環） */
   const BRUSH_SIZES=[2,4,6,10,16,24];
   const ERASE_SIZES=[8,16,28,44,64];
@@ -16266,8 +16387,9 @@ function openReview(nodeId,versionId,opts){
   /* クリスタ風：Space+ドラッグ=パン、Shift+Space+ドラッグ=回転、Ctrl+Space+ドラッグ=ズーム */
   let spaceDown=false,spaceDrag=false;
   const fbCur=e=>e&&e.shiftKey?'alias':(e&&(e.ctrlKey||e.metaKey)?'zoom-in':'grab');
-  function fbKeyDownSpin(e){const t=e.target&&e.target.tagName;if(t==='TEXTAREA'||t==='INPUT'||t==='SELECT')return;if(e.code==='Space'){if(!spaceDown)spaceDrag=false;spaceDown=true;wrap.style.cursor=fbCur(e);e.preventDefault()}}
-  function fbKeyUpSpin(e){const t=e.target&&e.target.tagName;if(t==='TEXTAREA'||t==='INPUT'||t==='SELECT')return;if(e.code==='Space'){spaceDown=false;if(!spaceDrag&&isPlayable&&alive&&!stroke&&!erasing&&!headDrag){try{playBtn.onclick()}catch(_){}}wrap.style.cursor=Zm.hand?'grab':''}} /* Spaceタップ=再生／Space+ドラッグ=パン等（再生しない）。描画・消しゴム・顔ガイド操作中は再生しない */
+  /* #10：リタイム窓が開いている間は Space（再生／パン）もアノテ窓では処理しない */
+  function fbKeyDownSpin(e){if(_retimerActive)return;const t=e.target&&e.target.tagName;if(t==='TEXTAREA'||t==='INPUT'||t==='SELECT')return;if(e.code==='Space'){if(!spaceDown)spaceDrag=false;spaceDown=true;wrap.style.cursor=fbCur(e);e.preventDefault()}}
+  function fbKeyUpSpin(e){if(_retimerActive){spaceDown=false;return}const t=e.target&&e.target.tagName;if(t==='TEXTAREA'||t==='INPUT'||t==='SELECT')return;if(e.code==='Space'){spaceDown=false;if(!spaceDrag&&isPlayable&&alive&&!stroke&&!erasing&&!headDrag){try{playBtn.onclick()}catch(_){}}wrap.style.cursor=Zm.hand?'grab':''}} /* Spaceタップ=再生／Space+ドラッグ=パン等（再生しない）。描画・消しゴム・顔ガイド操作中は再生しない */
   document.addEventListener('keydown',fbKeyDownSpin);document.addEventListener('keyup',fbKeyUpSpin);
   wrap.addEventListener('contextmenu',e=>e.preventDefault()); /* 右ドラッグズーム中にメニューを出さない */
   /* スクリーン座標→回転前(zoomEl)座標系のwrパローカルへ（ズーム中心用） */
@@ -16442,7 +16564,7 @@ function openReview(nodeId,versionId,opts){
     media.addEventListener('pause',()=>{playBtn.textContent='▶';if(cmpOn&&bVid){try{bVid.pause()}catch(_){}syncBToA(true)}snapToFrame();if(_rangeRaf){cancelAnimationFrame(_rangeRaf);_rangeRaf=0}});
     prevBtn.onclick=()=>seekFrame(dispFrame()-1);
     nextBtn.onclick=()=>seekFrame(dispFrame()+1);
-    fpsSel.onchange=async()=>{FPS=parseInt(fpsSel.value);v.fps=FPS;await persist();setupDuration();sync(true)};
+    fpsSel.onchange=async()=>{if(!fpsChangeOk())return;FPS=parseInt(fpsSel.value);v.fps=FPS;await persist();setupDuration();sync(true)}; /* #9：確認＋フォーカス解除 */
     /* タイムラインでのスクラブ（押下即シーク・ドラッグ追従） */
     const frameFromX=e=>{const r=tl.getBoundingClientRect();return Math.max(0,Math.min(totalFrames-1,Math.floor((e.clientX-r.left)/r.width*totalFrames)))};
     tl.onpointerdown=e=>{scrubbing=true;tl.setPointerCapture(e.pointerId);media.pause();scrubTarget=frameFromX(e);seekRT(scrubTarget);refreshView()};
@@ -16486,7 +16608,7 @@ function openReview(nodeId,versionId,opts){
     rangeClrBtn.onclick=()=>{rangeIn=null;rangeOut=null;drawTimeline()};
     prevBtn.onclick=()=>seekFrame(dispFrame()-1);
     nextBtn.onclick=()=>seekFrame(dispFrame()+1);
-    fpsSel.onchange=async()=>{FPS=parseInt(fpsSel.value)||24;v.fps=FPS;try{await persist()}catch(_){}if(seqPlayTimer){_stopSeqPlay();_startSeqPlay()}fmtFrame();drawTimeline()};
+    fpsSel.onchange=async()=>{if(!fpsChangeOk())return;FPS=parseInt(fpsSel.value)||24;v.fps=FPS;try{await persist()}catch(_){}if(seqPlayTimer){_stopSeqPlay();_startSeqPlay()}fmtFrame();drawTimeline()}; /* #9：確認＋フォーカス解除 */
     const frameFromX=e=>{const r=tl.getBoundingClientRect();return Math.max(0,Math.min(totalFrames-1,Math.floor((e.clientX-r.left)/r.width*totalFrames)))};
     tl.onpointerdown=e=>{scrubbing=true;tl.setPointerCapture(e.pointerId);if(seqPlayTimer)_stopSeqPlay();scrubTarget=frameFromX(e);seekRT(scrubTarget);refreshView()};
     tl.onpointermove=e=>{if(!scrubbing)return;const f=frameFromX(e);if(f!==scrubTarget){scrubTarget=f;seekRT(f);refreshView()}};
@@ -16604,11 +16726,17 @@ function openReview(nodeId,versionId,opts){
       if(!wrap.querySelector('.fb-pane-lab')){const la=el('div','fb-pane-lab a');la.textContent='A  '+node.name+'  '+v.name;wrap.appendChild(la)}
     }else{const lab=paneB.querySelector('.fb-pane-lab');if(lab)lab.textContent=blab}
     cmpOn=true;if(cmpBtn){cmpBtn.classList.add('active');cmpBtn.textContent='⇄ 比較中'}
-    storage.getURLRetry(bv.file).then(u=>{if(u&&bVid){bVid.src=u;bVid.addEventListener('loadedmetadata',()=>syncBToA(true),{once:true})}else if(!u){try{toast('比較する動画を読み込めませんでした（フォルダの同期待ち・接続を確認してください）')}catch(_){}}});
+    /* #23：B を続けて選び直したとき、先に選んだ方の URL 解決が後から返ってきて取り違えないよう世代番号で古い結果を捨てる */
+    const _gen=++_cmpGen;
+    storage.getURLRetry(bv.file).then(u=>{
+      if(_gen!==_cmpGen||!alive||!cmpOn)return;
+      if(u&&bVid){bVid.src=u;bVid.addEventListener('loadedmetadata',()=>syncBToA(true),{once:true})}else if(!u){try{toast('比較する動画を読み込めませんでした（フォルダの同期待ち・接続を確認してください）')}catch(_){}}
+    });
     fit();
   }
   function exitCompare(){
     if(!cmpOn)return;cmpOn=false;bSeekBusy=false;
+    _cmpGen++; /* #23：読み込み中の B があれば結果を破棄 */
     if(bVid){try{bVid.pause()}catch(_){}}
     if(paneB){paneB.remove();paneB=null}bVid=null;
     const la=wrap.querySelector('.fb-pane-lab');if(la)la.remove();
@@ -16682,14 +16810,18 @@ function openReview(nodeId,versionId,opts){
     drafts=drafts.filter(dn=>(dn.text&&String(dn.text).trim())||(dn.drawing&&dn.drawing.length));
     /* 保存済みの描画も同じレイヤーを除去・繰り下げ（変更があれば保存する） */
     let committed=false;
+    const touched=new Set(); /* #3：この操作で描画を減らしたノートだけを掃除対象にする */
     for(const n of v.review.notes){
       if(!n.drawing||!n.drawing.length)continue;
       const before=n.drawing.length;
       n.drawing=n.drawing.filter(s=>(s.layer||1)!==i);
       let shifted=false;for(const s of n.drawing){const L=s.layer||1;if(L>i){s.layer=L-1;shifted=true}}
+      if(n.drawing.length!==before)touched.add(n);
       if(n.drawing.length!==before||shifted)committed=true;
     }
-    if(committed)v.review.notes=v.review.notes.filter(n=>n.kind||(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length));
+    /* #3：描画が空になったノートの掃除は「今回編集したノート」だけ。添付画像（attachImg）や
+       画像スクショ（imgShot）を持つノートはコメントとして残す（添付画像だけのコメントが消えないように） */
+    if(committed)v.review.notes=v.review.notes.filter(n=>!touched.has(n)||n.kind||(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length)||n.attachImg||n.imgShot);
     layerVis.splice(i-1,1);layerVis.push(true);
     if(layerCount>1)layerCount--;
     if(activeLayer>layerCount)activeLayer=layerCount;if(activeLayer<1)activeLayer=1;
@@ -16949,7 +17081,11 @@ function openReview(nodeId,versionId,opts){
        apply 時は pending ではなく v.review.notes 側の note を dirty マーク＋persist する。 */
     const committedNoteRef = (opts && opts.noteRef) || null;
     try{if(prev&&prev.pose)localStorage.setItem(poseKey,JSON.stringify(prev.pose))}catch(_){}
+    let win=null; /* #5：このエディタ窓（message の送信元確認用） */
     const onMsg=(ev)=>{
+      /* #5：アノテ窓が閉じていたらリスナーを外して何もしない。送信元がこのエディタ窓でなければ無視 */
+      if(!alive){window.removeEventListener('message',onMsg);if(_mannActiveHandler===onMsg)_mannActiveHandler=null;return}
+      if(!win||ev.source!==win)return;
       const d=ev.data;
       if(!d||d.source!=='laycat_mannequin')return;
       if(d.action==='cancel'){
@@ -16997,7 +17133,7 @@ function openReview(nodeId,versionId,opts){
     window.addEventListener('message',onMsg);
     /* mannequin_3d.html 更新をブラウザキャッシュで見落とさないよう APP_VERSION を必ず付ける */
     const url='mannequin_3d.html?v='+encodeURIComponent(APP_VERSION)+'&mv='+MANN_VERSION+(prev?'&poseKey='+encodeURIComponent(poseKey):'');
-    const win=window.open(url,'laycat_mannequin_'+Date.now(),'width=980,height=760');
+    win=window.open(url,'laycat_mannequin_'+Date.now(),'width=980,height=760');
     if(!win){toast('ポップアップがブロックされました。ブラウザ設定で許可してください。');window.removeEventListener('message',onMsg);_mannActiveHandler=null;return}
     _mannActiveEditor=win;
   }
@@ -17577,14 +17713,16 @@ function openReview(nodeId,versionId,opts){
     const res=eraseFromList(cand,x,y,r,aspect,activeLayer);
     if(res){pending=rest.concat(res);any=true}
     /* 送信済みの描画もその場で編集（消しゴムで部分消し）— モーダルを開いたらそのまま編集できる */
+    const erasedNow=new Set(); /* #3：今回の消しゴム操作で編集したノート */
     for(const n of v.review.notes){
       if(!n.drawing||!n.drawing.length)continue;
       if(isVideo&&!(n.frame!=null&&f>=n.frame&&f<n.frame+durOf(n)))continue;
       const r2=eraseFromList(n.drawing,x,y,r,aspect,activeLayer);
-      if(r2){n.drawing=r2;n.edited=true;any=true;committedDirty=true}
+      if(r2){n.drawing=r2;n.edited=true;any=true;committedDirty=true;erasedNow.add(n)}
     }
-    /* 描画もテキストも無くなった送信済みノートは掃除（アップロード等の kind 付きは残す） */
-    if(committedDirty)v.review.notes=v.review.notes.filter(n=>n.kind||(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length));
+    /* 描画もテキストも無くなった送信済みノートは掃除（アップロード等の kind 付きは残す）。
+       #3：対象は今回編集したノートだけ。添付画像（attachImg）・画像スクショ（imgShot）を持つノートは残す */
+    if(erasedNow.size)v.review.notes=v.review.notes.filter(n=>!erasedNow.has(n)||n.kind||(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length)||n.attachImg||n.imgShot);
     if(any){drawAll();drawTimeline();_eraseChanged=true}
   }
   /* 顔の向きガイド：ドラッグ操作。既存ガイドの本体をヒットすれば編集、無ければ新規配置 */
@@ -17679,8 +17817,9 @@ function openReview(nodeId,versionId,opts){
   canvas.addEventListener('pointerdown',e=>{if(e.button!==2||!e.altKey||!tool)return;e.preventDefault();canvas.setPointerCapture(e.pointerId);const r=wrap.getBoundingClientRect();szAdj={x:e.clientX,rl:e.clientX-r.left,rt:e.clientY-r.top,start:tool==='erase'?eraseW:brushW,tool};fbShowRing()});
   canvas.addEventListener('pointermove',e=>{if(!szAdj)return;const ns=Math.max(1,Math.min(200,szAdj.start+(e.clientX-szAdj.x)*0.4));if(szAdj.tool==='erase'){eraseW=ns;setSizeSel(sizeSel,ns,'消し ')}else{brushW=ns;setSizeSel(sizeSel,ns,'ブラシ ')}fbShowRing()});
   canvas.addEventListener('pointerup',()=>{if(szAdj){szAdj=null;sizeRing.style.display='none'}});
-  function doUndo(){if(_histIdx<=0)return;_histIdx--;_restore(_hist[_histIdx]);drawAll();drawTimeline();updSubmit();}
-  function doRedo(){if(_histIdx>=_hist.length-1)return;_histIdx++;_restore(_hist[_histIdx]);drawAll();drawTimeline();updSubmit();}
+  /* #8：Undo/Redo 後も埋め込み同期と保存予約を走らせる（戻した状態が動画埋め込みに反映されないまま閉じる/リロードで失われるのを防ぐ） */
+  function doUndo(){if(_histIdx<=0)return;_histIdx--;_restore(_hist[_histIdx]);try{annoAfterEdit()}catch(_){}drawAll();drawTimeline();updSubmit();}
+  function doRedo(){if(_histIdx>=_hist.length-1)return;_histIdx++;_restore(_hist[_histIdx]);try{annoAfterEdit()}catch(_){}drawAll();drawTimeline();updSubmit();}
   undoBtn.onclick=doUndo;redoBtn.onclick=doRedo;
   clearBtn.onclick=()=>{
     /* 現在フレームのアノテをクリア（pending＋現在フレームの動画埋め込み専用ノート）。他フレームは保持。
@@ -17705,7 +17844,17 @@ function openReview(nodeId,versionId,opts){
       if(removed.length){
         v._ntomb=Array.isArray(v._ntomb)?v._ntomb:[];
         const nk=x=>x.id||((x.time||'')+'|'+(x.text||'')+'|'+(x.frame!=null?x.frame:''));
-        for(const n of removed){const tk=nk(n);if(!v._ntomb.some(t=>t&&t.k===tk))v._ntomb.push({k:tk,at:nowIso()})}
+        /* #4：固定 ID の埋め込みノート（anno_emb_ / reel_emb_）は tombstone にしない。
+           同じフレームに描き直すと同じ ID になるため、tombstone があると描き直しが保存時に消されてしまう。
+           配列から外すだけにする。 */
+        const _isFixedEmb=x=>x&&x.id&&(String(x.id).indexOf('anno_emb_')===0||String(x.id).indexOf('reel_emb_')===0);
+        for(const n of removed){
+          if(_isFixedEmb(n))continue;
+          const tk=nk(n);if(!v._ntomb.some(t=>t&&t.k===tk))v._ntomb.push({k:tk,at:nowIso()});
+        }
+        /* #1：この窓の anno_emb_ を外したフレームにまだ pending が残っていれば、同期状態を「未同期」に戻して
+           直後の同期で従来どおり作り直す（pending が空のフレームは同期で削除として扱われ保存予約される） */
+        for(const n of removed){if(n.id&&String(n.id).indexOf(_annoEmbPfx)===0&&pending.some(p=>p.f===n.frame))_annoEmbSig.delete(n.frame)}
         committedDirty=true;
       }
     }else{pending=[];stroke=null}
@@ -17810,6 +17959,10 @@ function openReview(nodeId,versionId,opts){
       return;
     }
     for(const n of notes){n._draft=true;if(auto&&n.drawing&&n.drawing.length&&!(n.text&&String(n.text).trim()))n.noShot=true;}
+    /* #12：スクショ生成（await）の前に中身を取り出して入力・pending を空にする（待っている間の二重送信で同じ内容が 2 件にならないように） */
+    drafts.push(...notes);pending=rest;stroke=null;headActive=null;redoStack=[];
+    ta.value='';ta._mentions=[];fbAttach.clear(); /* v.042：添付画像もクリア */
+    _resetHist(); /* #8：送信した pending に Undo で戻れないよう履歴をリセット */
     /* 画像アイテムのスクショは「描画がある notes」にのみ焼き込む。
        テキストのみのノートにビューをスクショ添付すると、コメントに勝手にスクショが付く見た目になる。 */
     if(!isVideo){
@@ -17821,19 +17974,25 @@ function openReview(nodeId,versionId,opts){
         }
       }
     }
-    drafts.push(...notes);pending=rest;stroke=null;headActive=null;redoStack=[];
-    ta.value='';ta._mentions=[];fbAttach.clear(); /* v.042：添付画像もクリア */
     if(!silent){renderNotes();drawAll();drawTimeline();updSubmit();}
   };
   /* 保存：送信済みの下書きに加え、まだ送信していない全フレームの pending・入力中コメントも
      まとめて（＝フレームを問わず全部）レビューページ(v.review.notes)へ反映する。
      ※「送信」は現在フレームのみ、「保存」は全フレーム一括、という2段構え。 */
+  /* #12：送信中フラグ（画像版はスクショ生成の await 中に再度押されると同じ内容が二重に送信されていた） */
+  let _sending=false;
   async function submit(){
+    if(_sending)return;
+    _sending=true;
+    try{
     /* v.004：消しゴム等で送信済み drawing を編集した committedDirty をここで flush（送信ボタンと統一）。 */
     try{flushCommitted()}catch(_){}
     if(pending.length||ta.value.trim()||fbAttach.attached()){ /* v.042：添付画像だけでも submit を通す */
       const notes=buildFrameNotes(pending,{text:ta.value,curFrame:isVideo?dispFrame():null,dur:parseInt(durSel.value)||1,isVideo,mentions:ta._mentions,root:rootOf(node),attachImg:fbAttach.attached()});
       for(const n of notes){n._draft=true;if(n.drawing&&n.drawing.length&&!(n.text&&String(n.text).trim()))n.noShot=true;}
+      /* #12：await の前に中身を取り出して入力・pending を空にする */
+      drafts.push(...notes);pending=[];stroke=null;headActive=null;redoStack=[];ta.value='';ta._mentions=[];fbAttach.clear();
+      _resetHist(); /* #8：送信した pending に Undo で戻れないよう履歴をリセット */
       /* 画像アイテムは「描画があるノートにのみ」ビューを焼き込む（テキストのみノートに勝手にスクショが付くのを防ぐ） */
       if(!isVideo){
         for(const n of notes){
@@ -17844,25 +18003,30 @@ function openReview(nodeId,versionId,opts){
           }
         }
       }
-      drafts.push(...notes);pending=[];stroke=null;headActive=null;redoStack=[];ta.value='';ta._mentions=[];fbAttach.clear();
     }
     if(!drafts.length)return;
     for(const n of drafts){delete n._draft;v.review.notes.push(n)}
     drafts=[];
     /* 送信で pending 由来の描画がコメント付きノートに昇格。対応フレームの embed ノート（重複）を掃除 */
     try{annoSyncEmbedAll()}catch(_){}
+    _resetHist(); /* #8：送信後の状態を履歴の起点にする */
     renderNotes(true);drawAll();drawTimeline();updSubmit();
     persist().then(()=>{try{renderBody();resolveThumbs()}catch(_){}}).catch(e=>{try{console.warn('persist(submit) failed',e);toast('保存に失敗しました')}catch(_){}});
+    }finally{_sending=false}
   }
   /* 送信 = 「現在フレームのコメント+アノテだけ」を即ショットページに反映（他フレームの pending は残す）。
      保存 = 全フレームまとめて反映（従来 submit）。他フレームの未送信 pending が残ってる時のみ表示。
      UI は先に更新して見た目上の遅延をゼロにし、persist は _persistChain 経由でバックグラウンド直列化。 */
   async function sendCurrent(){
+    if(_sending)return; /* #12：送信中の二重押し・Ctrl+Enter 連打を無視 */
+    _sending=true;
+    try{
     /* v.004：消しゴム等で送信済み drawing を編集した commitedDirty をここで flush。
        pointerup では自動反映しなくなったので、送信ボタン押下で初めて UI にも反映される。 */
     try{flushCommitted()}catch(_){}
     await record(false, true); /* silent：途中の updSubmit を抑制 */
     if(!drafts.length)return;
+    const _me=currentUser();
     /* v.149：書き足し送信の merge。
        同じフレームに既に送信済みの drawing 付き note がある場合、
        新しい draft の drawing をその既存 note に append する（新 note は作らない）。
@@ -17883,6 +18047,10 @@ function openReview(nodeId,versionId,opts){
           if(frame==null&&n.frame!=null)continue;
           if(frame!=null&&n.frame==null)continue;
           if(frame!=null&&n.frame!==frame)continue;
+          /* #13：他の人のコメントには合流させない（自分が書いたノートにだけ書き足す） */
+          if(n.author!==_me)continue;
+          /* #13：既存ノートの添付画像を上書きしない（両方に添付があるときは別ノートとして送る） */
+          if(nd.attachImg&&n.attachImg)continue;
           /* 既存送信済み note にマージ */
           n.drawing=n.drawing.concat(nd.drawing);
           if(nd.text&&nd.text!=='（描画のみ）'){
@@ -17918,10 +18086,12 @@ function openReview(nodeId,versionId,opts){
     drafts=[];
     /* 送信で pending 由来の描画がコメント付きノートに昇格。対応フレームの embed ノート（重複）を掃除 */
     try{annoSyncEmbedAll()}catch(_){}
+    _resetHist(); /* #8：送信後（書き足しマージ後）の状態を履歴の起点にする */
     /* UI を先に更新（送信の体感速度をゼロレイテンシに） */
     renderNotes(true);drawAll();drawTimeline();updSubmit();
     /* 保存はバックグラウンド。_persistChain で直列化されるので連続送信も安全 */
     persist().then(()=>{try{renderBody();resolveThumbs()}catch(_){}}).catch(e=>{try{console.warn('persist(sendCurrent) failed',e);toast('保存に失敗しました')}catch(_){}});
+    }finally{_sending=false}
   }
   sb.onclick=sendCurrent;
   submitBtn.onclick=submit;
@@ -17930,6 +18100,7 @@ function openReview(nodeId,versionId,opts){
 
   /* --- キーボード --- */
   function onKey(e){
+    if(_retimerActive)return; /* #10：リタイム窓が上に開いている間のキー操作はリタイム窓だけが受ける（← → や Esc・Delete がアノテ窓にも効いていた） */
     if(e.target.tagName==='TEXTAREA'||e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return; /* SELECT フォーカス中も抑制（fpsSel などに合わせて V/,/./X/Space/Arrow/Delete が暴発するのを防ぐ・REEL 側と統一） */
     const k=(e.key||'').toLowerCase();
     if((e.ctrlKey||e.metaKey)&&k==='z'&&!e.shiftKey){e.preventDefault();doUndo();return}   /* 元に戻す */
@@ -18536,6 +18707,8 @@ function _mkReelShim(shell,ifr,cbtn,onMove,onUp){
     close(){
       if(this.closed)return;this.closed=true;
       try{window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp)}catch(_){}
+      /* #16：_buildReelFloat で付けた blur / mouseleave も解除（onUp===endDrag。開閉のたびにリスナーが溜まらないように） */
+      try{window.removeEventListener('blur',onUp);document.removeEventListener('mouseleave',onUp)}catch(_){}
       try{ifw.dispatchEvent(new Event('beforeunload'))}catch(_){}
       try{ifw.dispatchEvent(new Event('unload'))}catch(_){}
       try{shell.remove()}catch(_){}
@@ -18595,6 +18768,7 @@ function _rmDisplayToSource(v,D){
   return kf[kf.length-1].s;
 }
 let _retimerActive=null;
+let _retimerOpenSeq=0; /* #22：openRetimer の呼び出しトークン（await 中に再度開かれたら古い方は破棄する） */
 function closeRetimer(){
   if(!_retimerActive)return;
   try{_retimerActive.cleanup()}catch(_){}
@@ -18640,7 +18814,8 @@ async function exportAnnotated(clipList,exportOpts){
   const activeVid=()=>videos[activeIdx];
   /* 最初のクリップを 1 本目に、2 本目のクリップがあれば予備バッファに先読み */
   videos[0].src=clips[0].url;
-  await new Promise((res,rej)=>{videos[0].onloadedmetadata=res;videos[0].onerror=()=>rej(new Error('load failed'));setTimeout(()=>rej(new Error('timeout')),15000)}).catch(e=>{toast('動画の読み込みに失敗しました');throw e});
+  /* #21：読み込み失敗時も video の src を解除してから抜ける */
+  await new Promise((res,rej)=>{videos[0].onloadedmetadata=res;videos[0].onerror=()=>rej(new Error('load failed'));setTimeout(()=>rej(new Error('timeout')),15000)}).catch(e=>{toast('動画の読み込みに失敗しました');for(const vid of videos){try{vid.removeAttribute('src');vid.load()}catch(_){}}throw e});
   const W=videos[0].videoWidth||1280,H=videos[0].videoHeight||720;
   const FPS=(clips[0].v.fps||24);
   if(clips.length>1){try{videos[1].src=clips[1].url;videos[1].load()}catch(_){}}
@@ -18669,14 +18844,24 @@ async function exportAnnotated(clipList,exportOpts){
   /* v.052：既定ビットレートを 12M → 4M に軽量化。呼び出し側で opts.videoBitsPerSecond を渡して上書き可能。
      4 Mbps は 1080p レビュー用途で十分な画質を保ちつつファイルサイズを 1/3 に。 */
   const _vbps=(exportOpts&&Number.isFinite(exportOpts.videoBitsPerSecond))?exportOpts.videoBitsPerSecond:4_000_000;
-  const recorder=new MediaRecorder(canvasStream,{mimeType,videoBitsPerSecond:_vbps,audioBitsPerSecond:128_000});
+  let recorder;
+  try{recorder=new MediaRecorder(canvasStream,{mimeType,videoBitsPerSecond:_vbps,audioBitsPerSecond:128_000})}
+  catch(e){
+    /* #21：録画器の作成に失敗した場合も AudioContext・トラック・video を片付けてから抜ける */
+    toast('録画の準備に失敗しました：'+(e&&e.message||''));
+    try{for(const t of canvasStream.getTracks())t.stop()}catch(_){}
+    try{if(audioCtx)audioCtx.close()}catch(_){}
+    for(const vid of videos){try{vid.removeAttribute('src');vid.load()}catch(_){}}
+    return;
+  }
   const chunks=[];
   recorder.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data)};
   /* v.008：アノテを含めるかどうかのフラグ（既定 true）。false のときは焼き込みをスキップし素の動画を REC。 */
   const withAnnotations=!(exportOpts&&exportOpts.annotations===false);
-  /* 進捗 UI */
+  /* 進捗 UI
+     #21：REEL フロート窓（z-index:9999）より手前に出す。裏に隠れると進捗も中断ボタンも見えなくなるため */
   const ov=el('div');
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9600;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;gap:16px;padding:24px';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:10050;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;gap:16px;padding:24px';
   const title=el('div');title.style.cssText='font-size:16px;font-weight:700';
   title.textContent='⬇ 書き出し中'+(withAnnotations?'（アノテ込み）':'（アノテ無し）')+' — '+(exportOpts.title||'');
   const status=el('div');status.style.cssText='font-size:13px;color:#aaa;font-family:var(--font-code)';
@@ -18765,6 +18950,9 @@ async function exportAnnotated(clipList,exportOpts){
     /* 次バッファがまだ readyState<2（HAVE_CURRENT_DATA）なら短く待つ */
     if(nextVid.readyState<2){
       await new Promise((res)=>{const t=setTimeout(res,3000);nextVid.onloadeddata=()=>{clearTimeout(t);res()};nextVid.onerror=()=>{clearTimeout(t);res()}});
+      /* #21：待機用ハンドラを外す。待っている間に中断・エラーで終わっていたら次クリップを再生しない */
+      nextVid.onloadeddata=null;nextVid.onerror=null;
+      if(cancelled)return;
     }
     try{nextVid.currentTime=0}catch(_){}
     activeIdx=nextIdx;
@@ -18773,6 +18961,7 @@ async function exportAnnotated(clipList,exportOpts){
     /* rvfc を新 active に切替（旧 gen は破棄） */
     if(useRvfc)scheduleRvfc();
     try{await nextVid.play()}catch(_){}
+    if(cancelled){try{nextVid.pause()}catch(_){}return} /* #21：play 待ちの間に終了していたら止めて抜ける */
     /* v.011：クリップ境界でも初回フレーム（frame 0）が rvfc に届かないケースがあり、
        次クリップの 1F 目のアノテが飛ぶ。ここでも play 直後に draw(0) を明示的に呼んで
        確実に塗る（draw は activeVid()=nextVid を見るので新クリップの frame 0 が対象）。 */
@@ -18787,40 +18976,50 @@ async function exportAnnotated(clipList,exportOpts){
     }
   };
   videos[0].onended=()=>{if(!cancelled)nextClip()};
-  cancelBtn.onclick=()=>{
+  /* #21：後始末を 1 つの関数にまとめ、中断・完了・録画エラー・開始失敗のすべての終了経路で通す。
+     recorder 停止・rAF / rvfc 停止・video の停止と src 解除・キャプチャトラック停止・AudioContext close・進捗 UI 除去。 */
+  let _expCleaned=false;
+  const finishExport=()=>{
     cancelled=true;
-    try{recorder.stop()}catch(_){}
-    for(const vid of videos){try{vid.pause()}catch(_){}}
-    if(rafId)cancelAnimationFrame(rafId);
-    try{if(audioCtx)audioCtx.close()}catch(_){}
+    if(_expCleaned)return;_expCleaned=true;
+    _rvfcGen++;
+    if(rafId){try{cancelAnimationFrame(rafId)}catch(_){}rafId=0}
+    try{if(recorder.state!=='inactive')recorder.stop()}catch(_){}
+    for(const vid of videos){
+      try{vid.pause()}catch(_){}
+      try{vid.onended=null;vid.onloadeddata=null;vid.onerror=null;vid.removeAttribute('src');vid.load()}catch(_){}
+    }
+    try{for(const t of canvasStream.getTracks())t.stop()}catch(_){}
+    try{if(audioCtx&&audioCtx.state!=='closed')audioCtx.close()}catch(_){}
     try{ov.remove()}catch(_){}
+  };
+  cancelBtn.onclick=()=>{
+    finishExport();
     toast('書き出しを中断しました');
   };
   recorder.onstop=()=>{
-    if(cancelled)return;
-    if(rafId)cancelAnimationFrame(rafId);
-    try{if(audioCtx)audioCtx.close()}catch(_){}
-    for(const vid of videos){try{vid.pause()}catch(_){}}
-    if(!chunks.length){try{ov.remove()}catch(_){}toast('書き出しデータがありません（録画失敗）');return}
+    if(cancelled)return; /* 中断・エラー経路では finishExport 済み */
+    if(!chunks.length){finishExport();toast('書き出しデータがありません（録画失敗）');return}
     const blob=new Blob(chunks,{type:mimeType});
+    finishExport();
     const dlUrl=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=dlUrl;
     a.download=(exportOpts.filename||'annotated')+'_'+Date.now()+'.'+ext;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(dlUrl),8000);
-    try{ov.remove()}catch(_){}
     toast('書き出し完了: '+a.download+'（'+(Math.round(blob.size/1024/1024*10)/10)+' MB）');
   };
   recorder.onerror=(e)=>{
     try{console.warn('MediaRecorder error',e)}catch(_){}
     toast('録画エラーが発生しました');
-    cancelled=true;try{ov.remove()}catch(_){}
+    finishExport();
   };
   /* 開始 */
-  try{recorder.start(1000);}catch(e){toast('録画開始に失敗しました：'+(e&&e.message||''));try{ov.remove()}catch(_){}return}
+  try{recorder.start(1000);}catch(e){toast('録画開始に失敗しました：'+(e&&e.message||''));finishExport();return}
   try{videos[0].currentTime=0}catch(_){}
-  try{await videos[0].play()}catch(e){toast('再生開始に失敗しました：'+(e&&e.message||''));cancelled=true;try{ov.remove()}catch(_){}return}
+  try{await videos[0].play()}catch(e){toast('再生開始に失敗しました：'+(e&&e.message||''));finishExport();return}
+  if(cancelled)return; /* play 待ちの間に中断された */
   /* v.011：クリップ開始直後のフレーム 0 は rvfc の初回発火に間に合わないことが多く、その 1F 目に
      置かれたアノテが焼き込まれない不具合があった。play 直後に明示的に draw(0) を 1 回呼び、
      canvas 上でフレーム 0 のアノテを確実に塗ってから rvfc に引き渡す。 */
@@ -18996,32 +19195,48 @@ async function exportAnnotatedReelClips(reelClips,opts){
 async function openRetimer(node,v){
   if(!v||v.type!=='video'){toast('リタイムは動画のみ対応です');return}
   closeRetimer();
+  const _openTok=++_retimerOpenSeq; /* #22 */
   /* v.035 A-2 修正：ここでの eager 初期化を廃止。
      以前は `v.timeRemap=v.timeRemap||{...}` を無条件に付与していたが、
      ユーザーが「覗いただけ」で version が dirty 化し cleanup の persist で書き込みが走っていた。
      さらに A-1 のマージ欠落と組み合わさると、覗いた瞬間に他人の timeRemap を上書きするリスクがあった。
-     以降は _ensureTR() を通じて「ユーザーが実際に何か操作した瞬間だけ」オブジェクトを作る。 */
+     以降は _ensureTR() を通じて「ユーザーが実際に何か操作した瞬間だけ」オブジェクトを作る。
+     #6：表示（起動時の対角 2 キー・読み込み後の補正）は v.timeRemap ではなく表示用ローカルコピー _trLocal で行い、
+     利用者が実際に編集したとき（_ensureTR / _markDirty）に初めて v.timeRemap へ書く。
+     描画・計算は vw（timeRemap をローカルコピーとして見せる薄いラッパ）経由で行う。 */
+  let _trLocal=null;
+  try{_trLocal=(v.timeRemap&&typeof v.timeRemap==='object')?JSON.parse(JSON.stringify(v.timeRemap)):null}catch(_){_trLocal=null}
+  const vw={get timeRemap(){return _trLocal}};
+  /* 編集が入った時点の表示用コピーを実データへ反映（同じオブジェクトを指すので以降の編集もそのまま反映される） */
+  const _commitTR=()=>{if(_trLocal&&v.timeRemap!==_trLocal)v.timeRemap=_trLocal};
   const _ensureTR=()=>{
-    if(!v.timeRemap)v.timeRemap={enabled:false,keyframes:[]};
-    if(!Array.isArray(v.timeRemap.keyframes))v.timeRemap.keyframes=[];
-    return v.timeRemap;
+    if(!_trLocal)_trLocal={enabled:false,keyframes:[]};
+    if(!Array.isArray(_trLocal.keyframes))_trLocal.keyframes=[];
+    _commitTR();
+    return _trLocal;
   };
   /* cleanup 時の persist を必要な時だけに絞るための dirty フラグ。
      mutation 経路（remapCb / addKF / delete / reset / commitKfEdit / drag）で立てる。 */
   let _dirty=false;
-  const _markDirty=()=>{_dirty=true};
+  const _markDirty=()=>{_dirty=true;_commitTR()};
   const FPS=v.fps||24;
-  const url=await storage.getURL(v.file);if(!url){toast('動画ファイルが読み込めません');return}
+  const url=await storage.getURL(v.file);
+  /* #22：URL 取得を待っている間に別の openRetimer が走っていたら、こちらは開かずに破棄（閉じられないオーバーレイを残さない） */
+  if(_openTok!==_retimerOpenSeq)return;
+  if(!url){toast('動画ファイルが読み込めません');return}
+  closeRetimer(); /* 念のため：待機中に開かれたものがあれば閉じる */
   const ov=el('div');
   ov.style.cssText='position:fixed;inset:0;background:rgba(10,10,13,.96);z-index:9500;display:flex;flex-direction:column;padding:16px;gap:12px';
   document.body.appendChild(ov);
   /* ヘッダ */
   const head=el('div');head.style.cssText='display:flex;align-items:center;gap:10px';
   const ttl=el('div');ttl.style.cssText='font-family:var(--font-head);font-weight:700;font-size:15px;color:var(--text);flex:1';
-  ttl.innerHTML='<span style="opacity:.6;margin-right:6px">⧗</span>タイムリマップ — '+((v.name||'')+'  '+(node&&node.name?('（'+node.name+'）'):''));
+  /* #7：版名・ショット名は利用者入力なので innerHTML に連結しない（XSS 対策）。textContent で組み立てる */
+  {const _ic=el('span');_ic.style.cssText='opacity:.6;margin-right:6px';_ic.textContent='⧗';ttl.appendChild(_ic);
+   ttl.appendChild(document.createTextNode('タイムリマップ — '+((v.name||'')+'  '+(node&&node.name?('（'+node.name+'）'):''))))}
   head.appendChild(ttl);
   const remapWrap=el('label');remapWrap.style.cssText='display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:4px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-size:12px';
-  const remapCb=el('input');remapCb.type='checkbox';remapCb.checked=!!(v.timeRemap&&v.timeRemap.enabled);remapCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
+  const remapCb=el('input');remapCb.type='checkbox';remapCb.checked=!!(vw.timeRemap&&vw.timeRemap.enabled);remapCb.style.cssText='width:auto;margin:0;flex:0 0 auto';
   remapWrap.appendChild(remapCb);remapWrap.appendChild(document.createTextNode('リタイム ON'));
   head.appendChild(remapWrap);
   /* v.049：アノテ表示 ON/OFF トグル（ビューアで確認しながら参考にできるように） */
@@ -19123,8 +19338,8 @@ async function openRetimer(node,v){
   let videoReady=false;/* loadedmetadata 済みか */
   let pendingPlay=false;/* 読込前に再生ボタンを押した場合、ready で自動再生 */
 
-  const totalDisp=()=>_rmDisplayTotal(v,srcTotal);
-  const isRemap=()=>!!(v.timeRemap&&v.timeRemap.enabled&&Array.isArray(v.timeRemap.keyframes)&&v.timeRemap.keyframes.length>=2);
+  const totalDisp=()=>_rmDisplayTotal(vw,srcTotal);
+  const isRemap=()=>!!(vw.timeRemap&&vw.timeRemap.enabled&&Array.isArray(vw.timeRemap.keyframes)&&vw.timeRemap.keyframes.length>=2);
   const seekSourceFrame=(sf)=>{try{video.currentTime=Math.max(0,Math.min(srcTotal-1,sf))/FPS}catch(_){}};
   const drawTL=()=>{
     const ctx=tlCanvas.getContext('2d');
@@ -19140,7 +19355,7 @@ async function openRetimer(node,v){
     for(let f=0;f<tot;f+=step){const x=Math.round(f*fw)+.5;ctx.fillStyle='rgba(255,255,255,.55)';ctx.fillText(String(f),x+2,ch-30);ctx.strokeStyle='rgba(255,255,255,.15)';ctx.beginPath();ctx.moveTo(x,ch-20);ctx.lineTo(x,ch-14);ctx.stroke()}
     /* リタイム ON の場合はセグメント別に速度で色分け（オレンジ＝タメ or 逆再生、シアン＝ツメ、白＝等倍近い） */
     if(isRemap()){
-      const kf=_rmKeyframes(v);
+      const kf=_rmKeyframes(vw);
       for(let i=0;i<kf.length-1;i++){
         const a=kf[i],b=kf[i+1];const dt=b.t-a.t;const ds=b.s-a.s;
         if(dt<=0)continue;
@@ -19154,7 +19369,7 @@ async function openRetimer(node,v){
       }
     }
     /* キーフレーム（ダイヤ） */
-    const kf=_rmKeyframes(v);
+    const kf=_rmKeyframes(vw);
     for(let i=0;i<kf.length;i++){
       const k=kf[i];const cx=k.t*fw;const cy=ch-24;
       ctx.fillStyle=(i===selectedKF)?'#ffd66e':'#e0b23a';
@@ -19166,11 +19381,11 @@ async function openRetimer(node,v){
     ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(phX,0);ctx.lineTo(phX,ch);ctx.stroke();
   };
   const updInfo=()=>{
-    const src=isRemap()?_rmDisplayToSource(v,displayF):displayF;
+    const src=isRemap()?_rmDisplayToSource(vw,displayF):displayF;
     infoDisp.textContent='表示 F'+Math.round(displayF);
     infoSrc.textContent='元 F'+Math.round(src);
     if(isRemap()){
-      const kf=_rmKeyframes(v);
+      const kf=_rmKeyframes(vw);
       let rate=1;
       for(let i=0;i<kf.length-1;i++){const a=kf[i],b=kf[i+1];if(displayF>=a.t&&displayF<=b.t){const dt=b.t-a.t;if(dt>0)rate=(b.s-a.s)/dt;break}}
       infoRate.textContent='速度 '+(rate.toFixed(2))+'x';
@@ -19204,7 +19419,7 @@ async function openRetimer(node,v){
     ctx.beginPath();ctx.moveTo(x(0),y(0));ctx.lineTo(x(Math.min(tot-1,smax)),y(Math.min(tot-1,smax)));ctx.stroke();
     ctx.setLineDash([]);
     /* キーフレーム折線（v.031：AE/Maya 挙動化で起動直後に 2 点キーが入るため、常に描画される） */
-    const kf=_rmKeyframes(v);
+    const kf=_rmKeyframes(vw);
     if(kf.length>=2){
       ctx.strokeStyle='#e0b23a';ctx.lineWidth=1.5;
       ctx.beginPath();
@@ -19217,7 +19432,7 @@ async function openRetimer(node,v){
     ctx.beginPath();ctx.moveTo(phX,pad.t);ctx.lineTo(phX,pad.t+plotH);ctx.stroke();
     /* 現在の displayF に対応する source を横線で示す（リタイム ON 時のみ意味あり） */
     if(isRemap()){
-      const cs=_rmDisplayToSource(v,displayF);const phY=y(cs);
+      const cs=_rmDisplayToSource(vw,displayF);const phY=y(cs);
       ctx.strokeStyle='rgba(92,199,239,.4)';ctx.setLineDash([3,3]);
       ctx.beginPath();ctx.moveTo(pad.l,phY);ctx.lineTo(pad.l+plotW,phY);ctx.stroke();ctx.setLineDash([]);
       /* 交点マーカー */
@@ -19226,7 +19441,7 @@ async function openRetimer(node,v){
     /* キーフレームドット（選択強調） */
     for(let i=0;i<kf.length;i++){
       const px=x(kf[i].t),py=y(kf[i].s);
-      const isSel=(v.timeRemap.keyframes.indexOf(kf[i])===selectedKF);
+      const isSel=(vw.timeRemap.keyframes.indexOf(kf[i])===selectedKF);
       ctx.fillStyle=isSel?'#ffd66e':'#e0b23a';
       ctx.beginPath();ctx.arc(px,py,isSel?6:5,0,2*Math.PI);ctx.fill();
       ctx.strokeStyle='rgba(0,0,0,.6)';ctx.lineWidth=1;ctx.stroke();
@@ -19245,7 +19460,7 @@ async function openRetimer(node,v){
   const gToT=(px)=>{const cw=gCanvas.clientWidth||600;const plotW=cw-gPad.l-gPad.r;const tot=totalDisp();return Math.max(0,Math.min(tot-1,(px-gPad.l)/plotW*(tot-1)))};
   const gToS=(py)=>{const ch=200;const plotH=ch-gPad.t-gPad.b;const smax=Math.max(1,srcTotal-1);return Math.max(0,Math.min(smax,smax-(py-gPad.t)/plotH*smax))};
   const gHitKF=(px,py)=>{
-    const kf=_rmKeyframes(v);
+    const kf=_rmKeyframes(vw);
     const cw=gCanvas.clientWidth||600;const ch=200;const plotW=cw-gPad.l-gPad.r,plotH=ch-gPad.t-gPad.b;
     const tot=totalDisp();const smax=Math.max(1,srcTotal-1);
     for(let i=0;i<kf.length;i++){
@@ -19277,8 +19492,8 @@ async function openRetimer(node,v){
       return;
     }
     /* ソート後の配列 kf の hit と、実配列 v.timeRemap.keyframes の index を対応させる */
-    const kf=_rmKeyframes(v);const target=kf[hit];
-    selectedKF=v.timeRemap.keyframes.indexOf(target);
+    const kf=_rmKeyframes(vw);const target=kf[hit];
+    selectedKF=vw.timeRemap.keyframes.indexOf(target);
     drawGraph();drawTL();syncKfEdit();
     /* ドラッグ準備：隣接キーの t で制約 */
     const prevT=hit>0?kf[hit-1].t:0;
@@ -19290,8 +19505,13 @@ async function openRetimer(node,v){
       /* 端点（先頭・末尾）は t を動かせない設計（AE ライク） */
       if(hit===0)nt=0;
       else if(hit===kf.length-1)nt=target.t; /* 末尾は t 固定 */
-      /* 中間キー：隣接 t の間にクランプ */
-      else nt=Math.max(prevT+0.5,Math.min(nextT-0.5,nt));
+      /* 中間キー：隣接 t の間にクランプ。
+         #14：丸めた後に prevT+1 .. nextT-1 へクランプする（丸める前に ±0.5 で挟むだけだと、
+         丸めで隣接キーと同じ t になって重複することがあった）。隙間が無ければ t は動かさない。 */
+      else{
+        const lo=Math.round(prevT)+1,hi=Math.round(nextT)-1;
+        nt=(lo<=hi)?Math.max(lo,Math.min(hi,Math.round(nt))):target.t;
+      }
       target.t=Math.round(nt);
       target.s=Math.round(ns);
       _markDirty();drawGraph();drawTL();updInfo();syncKfEdit();
@@ -19302,7 +19522,7 @@ async function openRetimer(node,v){
   /* 選択キーフレーム編集行の同期：バーは常時表示。未選択時は入力欄を空＋disabled にする（画面が動かないよう UX 一定）。
      入力中（focus 中）のフィールドは上書きしない（typing を邪魔しないため）。 */
   const syncKfEdit=()=>{
-    const kfAll=v.timeRemap&&Array.isArray(v.timeRemap.keyframes)?v.timeRemap.keyframes:[];
+    const kfAll=vw.timeRemap&&Array.isArray(vw.timeRemap.keyframes)?vw.timeRemap.keyframes:[];
     if(selectedKF<0||selectedKF>=kfAll.length){
       kfIdxLabel.textContent='（未選択）';
       if(document.activeElement!==kfT.inp)kfT.inp.value='';
@@ -19312,7 +19532,7 @@ async function openRetimer(node,v){
       return;
     }
     const k=kfAll[selectedKF];
-    const kfSorted=_rmKeyframes(v);
+    const kfSorted=_rmKeyframes(vw);
     const sortedIdx=kfSorted.indexOf(k);
     kfIdxLabel.textContent='#'+(sortedIdx+1);
     if(document.activeElement!==kfT.inp)kfT.inp.value=Math.round(k.t);
@@ -19325,9 +19545,9 @@ async function openRetimer(node,v){
   /* 入力コミット：整数化＋隣接キー間クランプ（t のみ）／s は [0, srcTotal-1] にクランプ */
   const commitKfEdit=(which)=>{
     if(selectedKF<0)return;
-    const kfAll=v.timeRemap.keyframes;
+    const kfAll=vw.timeRemap.keyframes;
     const k=kfAll[selectedKF];if(!k)return;
-    const kfSorted=_rmKeyframes(v);
+    const kfSorted=_rmKeyframes(vw);
     const sortedIdx=kfSorted.indexOf(k);
     if(which==='t'){
       const isEndpoint=(sortedIdx===0||sortedIdx===kfSorted.length-1);
@@ -19349,7 +19569,7 @@ async function openRetimer(node,v){
   kfT.inp.onkeydown=(e)=>{if(e.key==='Enter'){e.preventDefault();kfT.inp.blur()}};
   kfS.inp.onkeydown=(e)=>{if(e.key==='Enter'){e.preventDefault();kfS.inp.blur()}};
   const applyFrame=()=>{
-    const src=isRemap()?_rmDisplayToSource(v,displayF):displayF;
+    const src=isRemap()?_rmDisplayToSource(vw,displayF):displayF;
     seekSourceFrame(src);
     updInfo();drawTL();drawGraph();syncKfEdit();
     /* v.049：seek 完了後の seeked イベントでも drawAnno 呼ばれるが、seek しない場合や連続 seek で
@@ -19367,7 +19587,7 @@ async function openRetimer(node,v){
   const _clampRate=(r)=>Math.max(0.0625,Math.min(16,r));
   const _segRateAt=(D)=>{
     if(!isRemap())return 1;
-    const kf=_rmKeyframes(v);
+    const kf=_rmKeyframes(vw);
     for(let i=0;i<kf.length-1;i++){const a=kf[i],b=kf[i+1];if(D>=a.t&&D<=b.t){const dt=b.t-a.t;return dt>0?(b.s-a.s)/dt:0}}
     return 1;
   };
@@ -19381,7 +19601,7 @@ async function openRetimer(node,v){
     const tot=totalDisp();
     if(f>=tot-0.001){f=tot-1;displayF=f;applyFrame();stopPlay();return}
     displayF=f;
-    const expectedSrc=isRemap()?_rmDisplayToSource(v,f):f;
+    const expectedSrc=isRemap()?_rmDisplayToSource(vw,f):f;
     const rate=_segRateAt(f);
     if(rate>0){
       const nr=_clampRate(rate);
@@ -19424,15 +19644,15 @@ async function openRetimer(node,v){
   btnNext.onclick=()=>{stopPlay();displayF=Math.min(totalDisp()-1,Math.round(displayF)+1);applyFrame()};
   btnKF.onclick=()=>{addKFAtCurrent();};
   btnDel.onclick=()=>{deleteSelectedKF()};
-  btnReset.onclick=()=>{if(!confirm('全キーフレームを削除して初期化しますか？'))return;_ensureTR();const _sm=Math.max(1,srcTotal-1);v.timeRemap.keyframes=[{t:0,s:0},{t:_sm,s:_sm}];selectedKF=-1;_markDirty();applyFrame();persist()};
+  btnReset.onclick=()=>{if(!confirm('全キーフレームを削除して初期化しますか？'))return;_ensureTR();const _sm=Math.max(1,srcTotal-1);vw.timeRemap.keyframes=[{t:0,s:0},{t:_sm,s:_sm}];selectedKF=-1;_markDirty();applyFrame();persist()};
   remapCb.onchange=()=>{
     _ensureTR();
-    v.timeRemap.enabled=remapCb.checked;
+    vw.timeRemap.enabled=remapCb.checked;
     /* リタイム ON にした瞬間、キーフレームが無ければ初期化。
        v.035 H-1 修正：videoReady 前は srcTotal=1 なので、init を loadedmetadata まで遅延させる。
        loadedmetadata 側のサニタイザが 2 点未満の状態を検知して補正する。 */
-    if(v.timeRemap.enabled&&v.timeRemap.keyframes.length<2&&videoReady&&srcTotal>=2){
-      v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];
+    if(vw.timeRemap.enabled&&vw.timeRemap.keyframes.length<2&&videoReady&&srcTotal>=2){
+      vw.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];
     }
     displayF=Math.min(displayF,totalDisp()-1);
     _markDirty();applyFrame();persist();
@@ -19440,19 +19660,19 @@ async function openRetimer(node,v){
   const addKFAtCurrent=()=>{
     _ensureTR();
     const D=Math.round(displayF);
-    const S=Math.round(isRemap()?_rmDisplayToSource(v,D):D);
+    const S=Math.round(isRemap()?_rmDisplayToSource(vw,D):D);
     /* 同じ t のキーフレームがあれば置換、無ければ追加 */
-    const kf=v.timeRemap.keyframes;
+    const kf=vw.timeRemap.keyframes;
     const idx=kf.findIndex(k=>Math.round(k.t)===D);
     if(idx>=0)kf[idx].s=S;else kf.push({t:D,s:S});
     kf.sort((a,b)=>a.t-b.t);
     /* 自動で ON に */
-    if(!v.timeRemap.enabled&&kf.length>=2){v.timeRemap.enabled=true;remapCb.checked=true}
+    if(!vw.timeRemap.enabled&&kf.length>=2){vw.timeRemap.enabled=true;remapCb.checked=true}
     _markDirty();applyFrame();persist();
   };
   const deleteSelectedKF=()=>{
-    if(!v.timeRemap||!Array.isArray(v.timeRemap.keyframes))return;
-    const kf=v.timeRemap.keyframes;
+    if(!vw.timeRemap||!Array.isArray(vw.timeRemap.keyframes))return;
+    const kf=vw.timeRemap.keyframes;
     if(selectedKF<0||selectedKF>=kf.length)return; /* v.035 H-5 修正：範囲外は no-op */
     if(kf.length<=2){toast('最低 2 つのキーフレームが必要です（リセットで初期化）');return}
     kf.splice(selectedKF,1);selectedKF=-1;_markDirty();applyFrame();persist();
@@ -19465,12 +19685,12 @@ async function openRetimer(node,v){
     const cw=tlCanvas.clientWidth;
     const tot=totalDisp();const fw=cw/Math.max(1,tot);
     /* ヒットテスト：キーフレームダイヤ（±7px） */
-    const kf=_rmKeyframes(v);
+    const kf=_rmKeyframes(vw);
     let hit=-1;for(let i=0;i<kf.length;i++){if(Math.abs(kf[i].t*fw-x)<=7){hit=i;break}}
     if(hit>=0){
       /* v.timeRemap.keyframes は sort されているので index 一致でよい */
       const target=kf[hit];
-      selectedKF=v.timeRemap.keyframes.indexOf(target);
+      selectedKF=vw.timeRemap.keyframes.indexOf(target);
       drawTL();drawGraph();syncKfEdit();
       /* タイムライン上でも t（タイミング）をドラッグで編集できる。s（ソースF）は変えない。
          端点（先頭・末尾）は t 固定（グラフエディタと同じ AE ライクな挙動）。
@@ -19545,39 +19765,47 @@ async function openRetimer(node,v){
   annoCb.addEventListener('change',drawAnno);
   /* 動画メタデータ読込完了で総フレームを確定 */
   video.addEventListener('loadedmetadata',()=>{
-    const dur=(isFinite(video.duration)&&video.duration>0)?video.duration:1;
+    /* #6：duration が Infinity / NaN（尺情報の無い webm 等）のときは尺が分からないので、
+       既存キーをその仮の尺で潰さない（クランプ・再初期化をしない）。仮の総フレームは既存キーの最大値から推定。 */
+    const durKnown=isFinite(video.duration)&&video.duration>0;
+    const dur=durKnown?video.duration:1;
     srcTotal=Math.max(1,Math.round(dur*FPS));
+    if(!durKnown){
+      const ks=(_trLocal&&Array.isArray(_trLocal.keyframes))?_trLocal.keyframes:[];
+      for(const k of ks){const m=Math.max(Math.round(+k.s||0),Math.round(+k.t||0))+1;if(m>srcTotal)srcTotal=m}
+    }
     /* v.049：アノテキャンバスの内部解像度を動画の intrinsic size に合わせる（letterbox は object-fit:contain に任せる） */
     annoCv.width=video.videoWidth||1280;
     annoCv.height=video.videoHeight||720;
-    /* v.035 H-1/H-3 修正：既存 v.timeRemap を新しい srcTotal に合わせてサニタイズ。
+    /* v.035 H-1/H-3 修正：既存 timeRemap を新しい srcTotal に合わせてサニタイズ。
        - videoReady 前にトグル ON された場合の [{0,0},{0,0}] のような破綻状態を検知して再初期化
        - 動画差し替え・fps 変更で範囲外化したキーは clamp
        ここでは silent in-memory 修正のみ（persist は呼ばない・_markDirty も立てない）。
-       ユーザーが次に何か操作したときに一緒にディスクへ書き戻る。 */
-    if(v.timeRemap&&Array.isArray(v.timeRemap.keyframes)&&v.timeRemap.keyframes.length){
+       #6：補正は表示用コピー _trLocal にだけ行う（開いただけでは v.timeRemap を作らない・変えない）。
+       利用者が編集したときに補正済みの値ごと v.timeRemap へ書き戻る。 */
+    if(durKnown&&_trLocal&&Array.isArray(_trLocal.keyframes)&&_trLocal.keyframes.length){
       const smax=Math.max(0,srcTotal-1);
-      for(const k of v.timeRemap.keyframes){
+      for(const k of _trLocal.keyframes){
         k.t=Math.max(0,Math.round(k.t));
         k.s=Math.max(0,Math.min(smax,Math.round(k.s)));
       }
       /* 破綻検知：2 点未満 or 全キー同 t（＝表示長 0）→ 再初期化 */
-      const kf=v.timeRemap.keyframes;
+      const kf=_trLocal.keyframes;
       const bad=kf.length<2||kf[0].t===kf[kf.length-1].t;
       if(bad&&srcTotal>=2){
-        v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];
+        _trLocal.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];
       }
     }
     /* v.031：AE / Maya 流に、起動直後でも対角線上に 2 点キーフレーム（始点・終点）が
        入っている状態にする。v.035 A-2 で廃止していた挙動を復活。
        dirty 化はしない（_markDirty を呼ばない＋ enabled は false のまま）＝ユーザーが
        実際にリタイム ON にする／キーを動かす／キーを追加・削除するまで persist は走らない。
-       v.timeRemap 自体が無い版なら _ensureTR 相当で初期化してから 2 点を入れる。 */
+       #6：対角 2 キーは表示用コピー _trLocal に入れる（v.timeRemap は編集されるまで作らない）。 */
     if(srcTotal>=2){
-      if(!v.timeRemap)v.timeRemap={enabled:false,keyframes:[]};
-      if(!Array.isArray(v.timeRemap.keyframes))v.timeRemap.keyframes=[];
-      if(v.timeRemap.keyframes.length<2){
-        v.timeRemap.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];
+      if(!_trLocal)_trLocal={enabled:false,keyframes:[]};
+      if(!Array.isArray(_trLocal.keyframes))_trLocal.keyframes=[];
+      if(_trLocal.keyframes.length<2){
+        _trLocal.keyframes=[{t:0,s:0},{t:srcTotal-1,s:srcTotal-1}];
       }
     }
     videoReady=true;
@@ -19660,7 +19888,7 @@ async function openRetimer(node,v){
 function openReel(){
   if(reelAlive()){reelWin.focus();return}
   /* 閉じて開き直したときは常に「空の新規リール」から（前回の作業内容は引き継がない） */
-  reelUI.clips=[];reelUI.cur=0;reelUI.reelId=null;
+  reelUI.clips=[];reelUI.cur=0;reelUI.reelId=null;reelUI.missingRefs=[]; /* #19：読み込めなかった参照の保持もリセット */
   /* REEL は1プロジェクト内に限定：開いた時点のプロジェクトに束縛する（データはプロジェクトごとに完全分離） */
   reelUI.projectId=(curRoot()&&curRoot().id)||null;
   /* 別ウィンドウではなくメインドキュメント内のフローティング iframe として起動（about:blank アドレスバー回避） */
@@ -20020,6 +20248,7 @@ function openReel(){
   RV._rangeRaf=0;
   const _rangeWatchR=()=>{
     RV._rangeRaf=0;
+    if(!reelAlive())return; /* #16：REEL を閉じた後は監視ループを続けない */
     if(!_hasRangeR()||RV.scrub||video.paused)return;
     const gf=_gCur();
     if(gf>=RV.rangeOut){
@@ -20370,11 +20599,17 @@ function openReel(){
         }
       }
       /* 削除ボタンは親 window の button なので REEL ポップアップ内では click / confirm が届かない。
-         reelWin の document で作り直し、confirm 抜きでその場で削除する（未保存扱いなので確認不要）。 */
+         reelWin の document で作り直す。
+         #18：送信済みコメントは tombstone 付きの完全削除で Undo でも戻せないため、noteBlock と同じ確認を reelWin.confirm で出す。 */
       const oldDel=bl.querySelector('.na[title="削除"]');
       if(oldDel){
         const nd=ce(d,'button','na','✕');nd.title='削除';
         nd.onclick=async()=>{
+          const hasContent=(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length);
+          const msg=hasContent
+            ? 'このコメントを削除しますか？\n描画・テキストも一緒に消え、Undoでも復元できません。'
+            : 'このコメントを削除しますか？';
+          if(!reelWin.confirm(msg))return;
           const nk=x=>x.id||((x.time||'')+'|'+(x.text||'')+'|'+(x.frame!=null?x.frame:''));
           const tk=nk(n);
           dt.v.review.notes=dt.v.review.notes.filter(x=>nk(x)!==tk);
@@ -20428,9 +20663,12 @@ function openReel(){
   clampReelSize();
   /* 未送信はすべて動画埋め込み扱いなので閉じる時の確認ダイアログは出さない。
      ただし残った pending は「動画埋め込み専用ノート」として同期反映してから閉じる（save race を避けるため beforeunload で state 書き込み＋persist）。 */
+  /* #1：閉じる時は「この REEL で編集したフレーム」だけ同期し、書き換えがあった／保存予約が残っている時だけ保存する
+     （以前は pending があるだけで全フレームを自分名義・現在時刻で作り直して保存していた） */
   reelWin.addEventListener('beforeunload',()=>{
     let dirty=false;
     for(const c of reelUI.clips)if(reelEmbedPending(c)>0)dirty=true;
+    try{if(_reelPersistTimer){clearTimeout(_reelPersistTimer);_reelPersistTimer=null;dirty=true}}catch(_){}
     if(dirty){try{persist().catch(()=>{})}catch(_){}}
   });
   function drawAnno(){
@@ -20824,7 +21062,9 @@ function openReel(){
   const _reelMannCb=()=>{try{drawAnno()}catch(_){}};
   _mannRedrawCbs.add(_reelMannCb);
   /* REEL ポップアップが閉じられたら再描画コールバックとエディタも掃除 */
-  reelWin.addEventListener('unload',()=>{try{_mannRedrawCbs.delete(_reelMannCb)}catch(_){}try{if(_reelMannActiveEditor)_reelMannActiveEditor.close()}catch(_){}try{if(_reelMannActiveHandler)window.removeEventListener('message',_reelMannActiveHandler)}catch(_){}});
+  reelWin.addEventListener('unload',()=>{try{_mannRedrawCbs.delete(_reelMannCb)}catch(_){}try{if(_reelMannActiveEditor)_reelMannActiveEditor.close()}catch(_){}try{if(_reelMannActiveHandler)window.removeEventListener('message',_reelMannActiveHandler)}catch(_){}
+    /* #16：範囲再生の監視 rAF も止める */
+    try{if(RV._rangeRaf){cancelAnimationFrame(RV._rangeRaf);RV._rangeRaf=0}}catch(_){}});
   drawB.onclick=()=>setRTool(RV.tool==='draw'?null:'draw');
   eraseB.onclick=()=>setRTool(RV.tool==='erase'?null:'erase');
   headB.onclick=()=>{
@@ -20851,30 +21091,42 @@ function openReel(){
     /* A2 修正：opts.noteRef が渡された場合 = 送信済みマネキンの再編集。
        apply 時は RV.pending / _pushHistR を触らず、note を dirty マーク＋persist する。 */
     const committedNoteRef=(opts&&opts.noteRef)||null;
+    /* #5：開いた時点のクリップを保持（エディタを開いたままクリップを切り替えても、元のクリップ・フレームに反映する） */
+    const clip0=reelUI.clips[reelUI.cur]||null;
     try{if(prev&&prev.pose)localStorage.setItem(poseKey,JSON.stringify(prev.pose))}catch(_){}
+    let win=null; /* #5：このエディタ窓（message の送信元確認用） */
     const onMsg=ev=>{
+      /* #5：REEL が閉じていたらリスナーを外す。送信元がこのエディタ窓でなければ無視 */
+      if(!reelAlive()){window.removeEventListener('message',onMsg);if(_reelMannActiveHandler===onMsg)_reelMannActiveHandler=null;return}
+      if(!win||ev.source!==win)return;
       const dd=ev.data;if(!dd||dd.source!=='laycat_mannequin')return;
       if(dd.action==='cancel'){window.removeEventListener('message',onMsg);if(_reelMannActiveHandler===onMsg)_reelMannActiveHandler=null;if(_reelMannActiveEditor&&_reelMannActiveEditor.closed)_reelMannActiveEditor=null;try{localStorage.removeItem(poseKey)}catch(_){}return}
       if(!dd.img)return;
       _mannLoadAsync(dd.img).then(()=>{
+        if(!reelAlive())return;
         let target;
         if(prev){prev.pose=dd.pose;_mannEnsureQuat(prev);prev.img=dd.img;_reelMannScheduleRender(prev);target=prev}
         else{
           const cx=(placeAt&&placeAt[0]!=null)?Math.max(0.1,Math.min(0.9,placeAt[0])):0.5;
           const cy=(placeAt&&placeAt[1]!=null)?Math.max(0.1,Math.min(0.9,placeAt[1])):0.5;
           target={kind:'mannequin',cx,cy,w:0.32,img:dd.img,pose:dd.pose,viewQuat:[0,0,0,1],f,layer:RV.activeLayer};
-          RV.pending.push(target);
+          /* #5：今表示中のクリップ（RV.pending）ではなく、開いた時点のクリップの pending に追加する */
+          const arr=clip0?(clip0.pending||(clip0.pending=[])):RV.pending;
+          arr.push(target);
           _reelMannScheduleRender(target);
           prev=target;
         }
-        reelSelectedMann=target;setRTool('mann');
+        const isCurClip=!clip0||reelUI.clips[reelUI.cur]===clip0;
+        if(isCurClip){reelSelectedMann=target;setRTool('mann')}
         if(committedNoteRef){
           /* A2 修正：送信済みマネキンの再編集 → note を dirty マーク＋persist（履歴は使わない） */
           committedNoteRef.edited=true;
           try{scheduleReelPersist()}catch(_){}
           drawAnno();drawFTL();updUnsent();
         }else{
-          drawAnno();drawFTL();updUnsent();_pushHistR();
+          drawAnno();drawFTL();updUnsent();if(isCurClip)_pushHistR();
+          /* #5：埋め込みノート（reel_emb_）へ同期して保存予約（以前はここで同期されず、次の操作まで保存されなかった） */
+          if(clip0){try{reelAfterEdit(clip0,[f])}catch(_){}}
         }
       }).catch(()=>{try{toast('マネキン画像の読み込みに失敗しました')}catch(_){}});
       try{localStorage.removeItem(poseKey)}catch(_){}
@@ -20882,7 +21134,7 @@ function openReel(){
     _reelMannActiveHandler=onMsg;
     window.addEventListener('message',onMsg);
     const url='mannequin_3d.html?v='+encodeURIComponent(APP_VERSION)+'&mv='+MANN_VERSION+(prev?'&poseKey='+encodeURIComponent(poseKey):'');
-    const win=window.open(url,'laycat_mannequin_'+Date.now(),'width=980,height=760');
+    win=window.open(url,'laycat_mannequin_'+Date.now(),'width=980,height=760');
     if(!win){try{toast('ポップアップがブロックされました。ブラウザ設定で許可してください。')}catch(_){}window.removeEventListener('message',onMsg);_reelMannActiveHandler=null;return}
     _reelMannActiveEditor=win;
   }
@@ -21454,14 +21706,30 @@ function openReel(){
     vv.review.notes=vv.review.notes.filter(n=>!(n.id&&n.id.startsWith(pfx)));
     return vv.review.notes.length!==before;
   }
+  /* #1：REEL もアノテ窓と同じ方針。クリップごとに「ハイドレート時／自分が同期した時点」のフレーム別署名（c._embSig）を持ち、
+     現在の pending と署名が違うフレーム（＝この REEL で実際に編集したフレーム）だけを書き戻す。
+     他ユーザー・他タブの reel_emb_ ノートや、開いて閉じただけのフレームには触らない。何か書き換えたら true。 */
   function reelSyncEmbedAll(c){
-    if(!c)return;
-    const frames=new Set();
-    /* 既存 embed ノートのフレームも対象（そのフレームの pending が空になっていれば削除される） */
-    const vv=vOf(c);
-    if(vv){const pfx=_reelEmbPrefix(c);for(const n of vv.review.notes)if(n.id&&n.id.startsWith(pfx))frames.add(n.frame)}
+    if(!c)return false;
+    const sigs=(c._embSig instanceof Map)?c._embSig:(c._embSig=new Map());
+    const frames=new Set(sigs.keys());
     for(const p of (c.pending||[]))if(p.f!=null)frames.add(p.f);
-    for(const fr of frames)reelSyncEmbedFrame(c,fr);
+    let changed=false;
+    for(const fr of frames){
+      const sig=_embItemsSig((c.pending||[]).filter(p=>p.f===fr));
+      if(sig===(sigs.get(fr)||''))continue; /* 自分は触っていないフレーム → 書き換えない */
+      reelSyncEmbedFrame(c,fr);
+      if(sig)sigs.set(fr,sig);else sigs.delete(fr);
+      changed=true;
+    }
+    return changed;
+  }
+  /* #17：このクリップの版に保存されている REEL 描画（reel_emb_）ノートの件数（未表示クリップでも数える） */
+  function reelEmbCountFor(c){
+    if(!c||!c.nodeId||!c.vId)return 0;
+    const vv=vOf(c);if(!vv||!vv.review||!Array.isArray(vv.review.notes))return 0;
+    const pfx=_reelEmbPrefix(c);
+    return vv.review.notes.filter(n=>n&&n.id&&String(n.id).startsWith(pfx)&&n.drawing&&n.drawing.length).length;
   }
   /* v.review.notes 内の REEL embed ノートから pending を復元（REEL 開き直し時） */
   function reelHydratePending(c){
@@ -21476,6 +21744,9 @@ function openReel(){
       for(const s of n.drawing){const cl=cloneDrawItem(s);cl.f=n.frame;if(cl.dur==null)cl.dur=itemDur;arr.push(cl)}
     }
     c.pending=arr;
+    /* #1：ハイドレート直後の状態を「同期済み」として記録（開いて閉じるだけでは書き戻さない） */
+    c._embSig=new Map();
+    for(const fr of new Set(arr.map(p=>p.f)))c._embSig.set(fr,_embItemsSig(arr.filter(p=>p.f===fr)));
   }
   /* debounce で持続的な persist（同期後の書き込みを 400ms 集約） */
   let _reelPersistTimer=null;
@@ -21483,6 +21754,10 @@ function openReel(){
     if(_reelPersistTimer)clearTimeout(_reelPersistTimer);
     _reelPersistTimer=setTimeout(()=>{_reelPersistTimer=null;persist().catch(e=>{try{console.warn('persist(reel sync) failed',e)}catch(_){}})},400);
   }
+  /* #17：トップレベルの reelRender（クリップの「外す ✕」）から使う関数を reelUI に公開 */
+  reelUI.reelEmbCountFor=reelEmbCountFor;
+  reelUI.purgeEmbFor=reelPurgeEmbFor;
+  reelUI.schedulePersist=scheduleReelPersist;
   /* 変更後に呼ぶユーティリティ（対象フレームだけ or 全体同期）。
      drawAnno を末尾で呼ぶ：pointerup 直後は pending は空、v.review.notes 側もまだ embed 追加前で
      drawAnno を先に呼ぶと一瞬「何も描画されない」状態になり、書いた直後にアノテが消える現象になる。
@@ -21494,19 +21769,20 @@ function openReel(){
        reelSyncEmbedFrame は「その描画が保存された時の dur」で embed を作る。 */
     const curPdur=parseInt(durS.value)||1;
     for(const p of (c.pending||[])){if(p.dur==null)p.dur=curPdur}
-    if(!frames){reelSyncEmbedAll(c)}
-    else{const set=frames instanceof Set?frames:new Set(frames);for(const fr of set)reelSyncEmbedFrame(c,fr)}
-    scheduleReelPersist();
+    /* #1：frames の指定に関わらず、署名が変わった（＝実際に編集した）フレームだけを同期する。
+       何も書き換えなかった場合（クリックだけの pointerup 等）は保存も予約しない。 */
+    const changed=reelSyncEmbedAll(c);
+    if(changed)scheduleReelPersist();
     /* コメント欄再構築（reelNotes）は撤去：`reel_emb_` ノートは常にコメント欄に出さない設計なので、
        描画編集ごとに `clist.innerHTML=''` → 全 note append し直しが走ってチカチカする原因になっていた。
        nt_ ノートを新規生成する `reelSendCur` は自身で reelNotes(true) を呼ぶので影響なし。 */
     try{drawAnno();drawFTL()}catch(_){}
   }
   /* 旧 reelEmbedPending：beforeunload 救済用にシンプル化（全同期＋即 persist）。以前の noShot=true 汎用生成は不要に。 */
+  /* #1：編集されたフレームだけ同期し、書き換えがあれば 1、無ければ 0 を返す（開いて閉じただけなら保存しない） */
   function reelEmbedPending(c){
-    if(!c||!c.pending||!c.pending.length)return 0;
-    reelSyncEmbedAll(c);
-    return c.pending.length;
+    if(!c)return 0;
+    return reelSyncEmbedAll(c)?1:0;
   }
   /* 送信＝「現在フレーム範囲の embed ノートをコメント付きノートに昇格」する。
      - 描画は既に自動同期で v.review.notes に embed ノート（noShot=true, id=reel_emb_...）として入っているので、
@@ -21545,49 +21821,67 @@ function openReel(){
     }
     const vv=vOf(c);if(!vv)return;
     const nd=c.nodeId?getNode(c.nodeId):null;const root=nd?rootOf(nd):curRoot();
-    const drawings=cur.map(cloneDrawItem);
     const now=nowIso();const who=currentUser();
-    const newN={id:'nt_'+Math.random().toString(36).slice(2,10),author:who,time:now,frame:cf,dur:pdur};
-    if(drawings.length)newN.drawing=drawings;
-    if(txt){newN.text=txt;const mns=extractMentions(txt,root,c._mentions||[]);if(mns&&mns.length)newN.mentions=mns}
-    /* v.042：REEL コメント欄で貼り付け／ファイル選択された画像を添付として保存 */
-    {const _att=reelAttach.attached();if(_att)newN.attachImg=_att}
+    const _newNid=()=>'nt_'+Math.random().toString(36).slice(2,10);
+    /* #13：表示中に見えている描画が複数フレームにまたがる場合、以前は全部を 1 ノート（frame=現在フレーム・dur=表示X）に
+       まとめていたため、元の描画フレームと表示尺が失われていた。描いたフレーム（p.f）ごとにノートを分け、
+       表示尺は各描画に焼き付けた p.dur（無ければ表示X）を保持する。 */
+    const byF=new Map();for(const p of cur){if(!byF.has(p.f))byF.set(p.f,[]);byF.get(p.f).push(p)}
+    const newNotes=[...byF.keys()].sort((a,b)=>a-b).map(fr=>{
+      const items=byF.get(fr);
+      return {id:_newNid(),author:who,time:now,frame:fr,dur:Math.max(1,...items.map(p=>parseInt(p.dur)||pdur)),drawing:items.map(cloneDrawItem)};
+    });
+    /* コメント・メンション・添付は「現在フレームのノート」、無ければ現在フレームに最も近い（最後の）描画ノートに付ける。
+       描画が無ければ従来どおり現在フレームのコメント単独ノートを作る。 */
+    const _att=reelAttach.attached();
+    let carrier=newNotes.find(n=>n.frame===cf)||newNotes[newNotes.length-1]||null;
+    if(!carrier&&(txt||_att)){carrier={id:_newNid(),author:who,time:now,frame:cf,dur:pdur};newNotes.push(carrier)}
+    if(carrier){
+      if(txt){carrier.text=txt;const mns=extractMentions(txt,root,c._mentions||[]);if(mns&&mns.length)carrier.mentions=mns}
+      /* v.042：REEL コメント欄で貼り付け／ファイル選択された画像を添付として保存 */
+      if(_att)carrier.attachImg=_att;
+    }
     /* 旧仕様は「描画のみで送信＝noShot=true でコメント欄に出さない」だったが、ユーザーが
        スライダーを描画済フレームに合わせて送信ボタンを押した意図＝「サムネ付きで送信したい」
        と解釈する方が自然。noShot は付けず、通常のコメントとして扱いサムネ生成させる。
        （自動同期の reel_emb_ ノートは別経路で常に noShot=true のまま埋め込み専用） */
     /* v.149：書き足し送信の merge（アノテ窓と統一）。
-       同じフレーム cf に既に送信済みの drawing 付き note (reel_emb_ でない) があれば、
+       同じフレームに既に送信済みの drawing 付き note (reel_emb_ でない) があれば、
        新しい drawings/text/mentions/attachImg をそれに追記する（新 note は作らない）。
-       「書き足した部分だけが別 note になる」症状を解消。 */
-    let mergedN=null;
-    if(newN.drawing&&newN.drawing.length){
-      const isReelEmbN=n=>n&&n.id&&n.id.indexOf('reel_emb_')===0;
-      for(const n of (vv.review.notes||[])){
-        if(!n||isReelEmbN(n))continue;
-        if(!n.drawing||!n.drawing.length)continue;
-        if(n.frame==null)continue;
-        if(n.frame!==cf)continue;
-        n.drawing=n.drawing.concat(newN.drawing);
-        if(newN.text){
-          const oldT=String(n.text||'').trim();
-          const newT=String(newN.text||'').trim();
-          if(oldT&&newT)n.text=oldT+'\n'+newT;
-          else if(newT)n.text=newT;
+       「書き足した部分だけが別 note になる」症状を解消。
+       #13：追記先は自分が書いたノートだけ（他人のコメントに合流させない）。両方に添付画像があるときは上書きせず別ノートにする。 */
+    const isReelEmbN=n=>n&&n.id&&n.id.indexOf('reel_emb_')===0;
+    for(const newN of newNotes){
+      let mergedN=null;
+      if(newN.drawing&&newN.drawing.length){
+        for(const n of (vv.review.notes||[])){
+          if(!n||isReelEmbN(n))continue;
+          if(!n.drawing||!n.drawing.length)continue;
+          if(n.frame==null)continue;
+          if(n.frame!==newN.frame)continue;
+          if(n.author!==who)continue;
+          if(newN.attachImg&&n.attachImg)continue;
+          n.drawing=n.drawing.concat(newN.drawing);
+          if(newN.text){
+            const oldT=String(n.text||'').trim();
+            const newT=String(newN.text||'').trim();
+            if(oldT&&newT)n.text=oldT+'\n'+newT;
+            else if(newT)n.text=newT;
+          }
+          if(newN.mentions&&newN.mentions.length){
+            n.mentions=(n.mentions||[]).concat(newN.mentions);
+          }
+          if(newN.attachImg)n.attachImg=newN.attachImg; /* ここに来るのは既存ノートに添付が無い場合だけ */
+          /* annotShotInto のサムネキャッシュを無効化（fileRef|time|frame キー）。
+             無効化しないとコメント欄に merge 前 drawing のサムネが残って「反映されない」ように見える。 */
+          n.edited=true;
+          try{if(typeof shotCache!=='undefined')shotCache.delete(vv.file+'|'+(n.time||'')+'|'+(n.frame||0))}catch(_){}
+          mergedN=n;
+          break;
         }
-        if(newN.mentions&&newN.mentions.length){
-          n.mentions=(n.mentions||[]).concat(newN.mentions);
-        }
-        if(newN.attachImg)n.attachImg=newN.attachImg;
-        /* annotShotInto のサムネキャッシュを無効化（fileRef|time|frame キー）。
-           無効化しないとコメント欄に merge 前 drawing のサムネが残って「反映されない」ように見える。 */
-        n.edited=true;
-        try{if(typeof shotCache!=='undefined')shotCache.delete(vv.file+'|'+(n.time||'')+'|'+(n.frame||0))}catch(_){}
-        mergedN=n;
-        break;
       }
+      if(!mergedN)vv.review.notes.push(newN);
     }
-    if(!mergedN)vv.review.notes.push(newN);
     /* 現在フレーム分の pending を除去 → reelAfterEdit で該当フレームの embed ノートも同期削除。
        **重要**：c.pending は RV.pending と同一参照（loadCur で RV.pending = c.pending にバインド済み）。
        filter で新配列を返して代入すると参照が剥がれ、以降 RV.pending は stale な古い配列を指すことになる：
@@ -21854,11 +22148,17 @@ function openReel(){
   function closeMenu(){fileMi.classList.remove('open');fileDD.classList.remove('show');shotMi.classList.remove('open');shotDD.classList.remove('show')} /* ドロップダウンのみ閉じる */
   function closeOpenOv(){const ov=d.getElementById('reelOpenOv');if(ov)ov.remove()}
   function doNew(){
-    if(hasUnsent()&&!reelWin.confirm('未保存の内容があります。新規リールを作ると動画側の REEL 描画も削除されます。続けますか？'))return;
+    /* #17：未表示のクリップも含め、動画側に保存済みの REEL 描画（reel_emb_）が 1 件以上あれば必ず確認する
+       （以前は「未送信」がある時しか確認せず、保存済みの REEL 描画を黙って全部消していた） */
+    const embTotal=(reelUI.clips||[]).reduce((a,c)=>a+reelEmbCountFor(c),0);
+    const _newMsg=embTotal>0
+      ? '新規リールを作ると、今のクリップの動画に保存されている REEL 描画（'+embTotal+' フレーム分・他の人が描いたものも含む）が動画側から削除されます。未送信の内容も失われます。続けますか？'
+      : '未保存の内容があります。新規リールを作ると失われます。続けますか？';
+    if((hasUnsent()||embTotal>0)&&!reelWin.confirm(_newMsg))return;
     /* R1 修正：新規リール作成でも clips=[] するので同じく reel_emb_ を掃除する必要がある。 */
     let anyPurged=false;
     for(const c of (reelUI.clips||[])){if(reelPurgeEmbFor(c))anyPurged=true}
-    reelUI.clips=[];reelUI.cur=0;reelUI.reelId=null;clearPool();resetView();reelRender();updReelTitle();updUnsent();
+    reelUI.clips=[];reelUI.cur=0;reelUI.reelId=null;reelUI.missingRefs=[];clearPool();resetView();reelRender();updReelTitle();updUnsent();
     /* コメント欄・アノテ描画・タイムライン装飾も初期化（旧リールのコメントが残る問題への対処） */
     try{drawAnno();drawFTL();reelNotes()}catch(_){}
     if(anyPurged)scheduleReelPersist();
@@ -21866,24 +22166,40 @@ function openReel(){
   /* リール保存（File メニュー / Ctrl+S から）。ヘッダのボタンは廃止済み */
   async function doSave(forceNew){
     const clips=reelUI.clips.filter(c=>c.nodeId).map(c=>({nodeId:c.nodeId,vId:c.vId}));
+    /* #19：開いた時に読み込めなかったクリップ参照を元の位置に戻して保存する（保存で黙って消えないように） */
+    const _miss=Array.isArray(reelUI.missingRefs)?reelUI.missingRefs.slice().sort((a,b)=>a.pos-b.pos):[];
+    for(const m of _miss){if(m&&m.ref)clips.splice(Math.min(Math.max(0,m.pos|0),clips.length),0,{nodeId:m.ref.nodeId,vId:m.ref.vId})}
     if(!clips.length){reelWin.alert('保存するクリップがありません');return}
     let r=(!forceNew&&reelUI.reelId)?DB.reels.find(x=>x.id===reelUI.reelId):null;
     if(r){r.clips=clips}
     else{const name=reelWin.prompt('リール名',forceNew?'':('Reel '+((DB.reels.length||0)+1)));if(!name)return;r={id:newId('reel'),name:name.trim(),clips,createdAt:nowIso()};DB.reels.push(r);reelUI.reelId=r.id}
-    r.projectId=reelProjectId(r);
+    /* #19：先頭が読み込めなかったクリップでもプロジェクトを見失わないよう、解決できるクリップから求める */
+    r.projectId=reelProjectId({clips:clips.filter(c=>getNode(c.nodeId))})||r.projectId||reelUI.projectId||null;
     if(!r.projectId)reelWin.alert('保存先プロジェクトが特定できませんでした（クリップの動画が接続中のプロジェクトに属している必要があります）');
     await persist();updReelTitle();try{render();resolveThumbs()}catch(_){}
     const orig=fileMi.textContent;fileMi.textContent='保存済 ✓';setTimeout(()=>{fileMi.textContent=orig},900);
   }
   async function openReelHere(reelId){
     const r=DB.reels.find(x=>x.id===reelId);if(!r)return;
+    /* #20：別プロジェクトのリールは開かない（開いて保存すると、追加できなかったクリップが抜けてリールが分裂していた） */
+    const rpid=r.projectId||reelProjectId(r)||null;
+    if(reelUI.projectId&&rpid&&rpid!==reelUI.projectId){reelWin.alert('このリールは別のプロジェクトのものです。そのプロジェクトを開いてから REEL を開き直してください。');return}
     if(hasUnsent()&&!reelWin.confirm('未保存の内容があります。別のリールを開くと失われます。続けますか？'))return;
-    reelUI.clips=[];reelUI.cur=0;reelUI.reelId=reelId;clearPool();resetView();reelRender();
+    reelUI.clips=[];reelUI.cur=0;reelUI.reelId=reelId;reelUI.missingRefs=[];clearPool();resetView();reelRender();
+    if(!reelUI.projectId&&rpid)reelUI.projectId=rpid; /* #20：未束縛の REEL は開いたリールのプロジェクトに束縛 */
     let miss=0;
-    for(const ref of (r.clips||[])){const n=getNode(ref.nodeId);const vv=n&&n.versions.find(x=>x.id===ref.vId);if(n&&vv)await reelAddClip(n,vv,true);else miss++}
+    /* #19：読み込めなかった参照（動画の削除・未接続・URL 取得失敗など）は元の位置と一緒に保持し、保存時に戻す */
+    const refs=r.clips||[];
+    for(let pos=0;pos<refs.length;pos++){
+      const ref=refs[pos];if(!ref)continue;
+      const n=getNode(ref.nodeId);const vv=n&&n.versions.find(x=>x.id===ref.vId);
+      let ok=false;
+      if(n&&vv)ok=await reelAddClip(n,vv,true);
+      if(!ok){miss++;reelUI.missingRefs.push({pos,ref:{nodeId:ref.nodeId,vId:ref.vId}})}
+    }
     if(reelUI.loadCur)reelUI.loadCur(false);
     reelRender();updReelTitle();updUnsent();
-    if(miss)reelWin.alert(miss+' 件のクリップを読み込めませんでした（動画が削除されたか、プロジェクトが未接続の可能性があります）');
+    if(miss)reelWin.alert(refs.length+' 件中 '+miss+' 件のクリップを読み込めませんでした（動画が削除されたか、プロジェクトが未接続・同期待ちの可能性があります）。\n読み込めなかったクリップは保存してもリールから消えません。');
   }
   function doOpen(){
     closeMenu();closeOpenOv();
@@ -21891,7 +22207,9 @@ function openReel(){
     const box=ce(d,'div','reel-open-box');
     const bh=ce(d,'div');bh.style.cssText='padding:12px 14px;border-bottom:1px solid #2a2a2f;font-weight:600';bh.textContent='リールを開く';box.appendChild(bh);
     const list=ce(d,'div');list.style.cssText='overflow-y:auto;padding:8px';
-    const reels=(DB.reels||[]).slice().reverse();
+    /* #20：一覧は今の REEL が束縛されているプロジェクトのリールだけに絞る（未束縛なら全件。所属が判定できない古いリールは残す） */
+    const _rp=reelUI.projectId||null;
+    const reels=(DB.reels||[]).filter(r=>{const p=r.projectId||reelProjectId(r)||null;return !_rp||!p||p===_rp}).slice().reverse();
     if(!reels.length){const e=ce(d,'div',null,'保存されたリールがありません');e.style.cssText='color:#5a5a6a;padding:24px;text-align:center';list.appendChild(e)}
     for(const r of reels){
       const it=ce(d,'div','reel-open-it');
@@ -22222,11 +22540,16 @@ function reelRender(){
          「未保存でも即外す」の従来挙動は動画にゴミが残るのでダメ。 */
       const target=cs[i];
       const hasPending=target&&target.pending&&target.pending.length>0;
-      if(hasPending&&!reelWin.confirm('このクリップの未保存描画は動画側からも削除されます。続けますか？'))return;
-      if(target)reelPurgeEmbFor(target);
+      /* #17：表示していないクリップは pending が空でも、動画側には保存済みの REEL 描画（reel_emb_）が残っている。
+         件数を数えて 1 件以上あれば必ず確認を出す（他の人が描いたものも消える）。 */
+      const embN=(target&&typeof reelUI.reelEmbCountFor==='function')?reelUI.reelEmbCountFor(target):0;
+      if((hasPending||embN>0)&&!reelWin.confirm('このクリップの動画には REEL で描いた描画が '+Math.max(embN,hasPending?1:0)+' フレーム分保存されています（他の人が描いたものも含みます）。\n外すと動画側からも削除されます。続けますか？'))return;
+      /* reelPurgeEmbFor / scheduleReelPersist は openReel 内のローカル関数で、トップレベルの reelRender からは
+         直接呼べない（ReferenceError になっていた）。reelUI 経由で呼ぶ。 */
+      if(target&&typeof reelUI.purgeEmbFor==='function')reelUI.purgeEmbFor(target);
       cs.splice(i,1);if(reelUI.cur>=cs.length)reelUI.cur=Math.max(0,cs.length-1);
       reelUI.loadCur(false);reelRender();
-      if(target)scheduleReelPersist();
+      if(target&&typeof reelUI.schedulePersist==='function')reelUI.schedulePersist();
     },'外す');
     b.appendChild(ops);
     b.onclick=()=>{reelUI.cur=i;reelUI.loadCur(true)};
@@ -22289,18 +22612,21 @@ function reelRender(){
   if(reelUI.drawFTL)reelUI.drawFTL();
 }
 
+/* #19：追加できたら true、追加しなかった（読み込めない・別プロジェクト・重複など）ら false を返す。
+   保存リールを開くときに「読み込めなかった参照」を数えて保持するために使う。 */
 async function reelAddClip(node,v,noDedup){
-  if(!reelAlive())return;
-  if(v.type!=='video')return;
+  if(!reelAlive())return false;
+  if(v.type!=='video')return false;
   /* REEL は1プロジェクト内に限定：別プロジェクト・ロック中プロジェクトのクリップは追加しない */
   const proot=rootOf(node);const pid=proot?proot.id:null;
-  if(proot&&projectLocked(proot)){toast('ロック中のプロジェクトのクリップは REEL に追加できません');return}
+  if(proot&&projectLocked(proot)){toast('ロック中のプロジェクトのクリップは REEL に追加できません');return false}
   if(reelUI.projectId==null)reelUI.projectId=pid;
-  else if(pid!==reelUI.projectId){toast('REEL には同じプロジェクト内のクリップのみ追加できます');return}
+  else if(pid!==reelUI.projectId){toast('REEL には同じプロジェクト内のクリップのみ追加できます');return false}
   /* 同じ動画（同ノード・同バージョン）の重複追加を防ぐ（保存リールの復元時は noDedup で許可） */
-  if(!noDedup&&reelUI.clips.some(c=>c.nodeId===node.id&&c.vId===v.id)){reelWin.focus();return}
-  const url=await storage.getURLRetry(v.file);if(!url){try{toast('リールのクリップ動画を読み込めませんでした（フォルダの同期待ち・接続を確認してください）')}catch(_){}return}
-  if(!noDedup&&reelUI.clips.some(c=>c.nodeId===node.id&&c.vId===v.id)){reelWin.focus();return} /* C1: await(getURLRetry)待ちの間に同一クリップが二重追加されるのを防ぐため、push直前に再チェック */
+  if(!noDedup&&reelUI.clips.some(c=>c.nodeId===node.id&&c.vId===v.id)){reelWin.focus();return false}
+  const url=await storage.getURLRetry(v.file);if(!url){try{toast('リールのクリップ動画を読み込めませんでした（フォルダの同期待ち・接続を確認してください）')}catch(_){}return false}
+  if(!reelAlive())return false;
+  if(!noDedup&&reelUI.clips.some(c=>c.nodeId===node.id&&c.vId===v.id)){reelWin.focus();return false} /* C1: await(getURLRetry)待ちの間に同一クリップが二重追加されるのを防ぐため、push直前に再チェック */
   const clip={name:node.name+' '+v.name,url,dur:0,nodeId:node.id,vId:v.id};
   reelUI.clips.push(clip);
   if(reelUI.clips.length===1&&reelUI.loadCur)reelUI.loadCur(false); // 最初のクリップは即ロード
@@ -22311,6 +22637,7 @@ async function reelAddClip(node,v,noDedup){
   probe.onloadedmetadata=()=>{clip.dur=probe.duration||0;cleanup();reelRender();if(reelUI.drawFTL)reelUI.drawFTL()};
   probe.onerror=cleanup;
   reelRender();
+  return true;
 }
 /* ============================================================
    比較再生（A/B）— 2つの動画を横並びで同期再生（MVP）
@@ -22555,18 +22882,26 @@ async function openReelFromSaved(reelId){
   const r=DB.reels.find(x=>x.id===reelId);if(!r)return;
   openReel();if(!reelAlive())return;
   reelUI.clips=[];reelUI.cur=0;reelUI.reelId=reelId;
+  /* #19：読み込めなかった参照は元の位置と一緒に保持し、保存時に戻す（保存で消えないように） */
+  reelUI.missingRefs=[];
   /* 保存リールのプロジェクトに束縛（クリップは全て同一プロジェクトのはず。念のため他プロジェクト・ロック中はスキップ） */
   reelUI.projectId=r.projectId||reelProjectId(r)||null;
-  for(const ref of r.clips){
+  const refs=r.clips||[];
+  for(let pos=0;pos<refs.length;pos++){
+    const ref=refs[pos];if(!ref)continue;
     const n=getNode(ref.nodeId);const vv=n&&n.versions.find(x=>x.id===ref.vId);
-    if(!n||!vv)continue;
-    const pr=rootOf(n);
-    if(pr&&projectLocked(pr))continue;
-    if(reelUI.projectId&&pr&&pr.id!==reelUI.projectId)continue;
-    await reelAddClip(n,vv);
+    let ok=false;
+    if(n&&vv){
+      const pr=rootOf(n);
+      /* 保存リールの復元なので重複クリップも許可（openReelHere と同じ。重複が「読み込めなかった」扱いにならないように） */
+      if(!(pr&&projectLocked(pr))&&!(reelUI.projectId&&pr&&pr.id!==reelUI.projectId))ok=await reelAddClip(n,vv,true);
+    }
+    if(!ok)reelUI.missingRefs.push({pos,ref:{nodeId:ref.nodeId,vId:ref.vId}});
   }
   if(reelUI.loadCur)reelUI.loadCur(false);
   if(reelUI.updTitle)reelUI.updTitle();
+  /* #19：一部しか読めなかったときは開いた時点で件数を知らせる */
+  if(reelUI.missingRefs.length&&reelAlive()){try{reelWin.alert(refs.length+' 件中 '+reelUI.missingRefs.length+' 件のクリップを読み込めませんでした（動画が削除されたか、プロジェクトが未接続・同期待ち・ロック中の可能性があります）。\n読み込めなかったクリップは保存してもリールから消えません。')}catch(_){}}
 }
 
 /* ============================================================
@@ -22724,7 +23059,7 @@ window.addEventListener('beforeunload',e=>{
   /* 【恒久対策 v072】_persistBusy>0 = バックグラウンドで shot/project 保存が進行中。
      ここで離脱するとステータス変更等が消える可能性があるので unload 警告。 */
   /* v.035：ステータス保存の再試行待ち（_statusRetry）が残っている間も離脱を警告する */
-  if((_dirtyTaskNotes&&_dirtyTaskNotes.size>0)||_persistBusy>0||_statusRetry.size>0||_unsavedProj.size>0){e.preventDefault();e.returnValue='';return ''}
+  if((_dirtyTaskNotes&&_dirtyTaskNotes.size>0)||_persistBusy>0||_statusRetry.size>0||_unsavedProj.size>0||(typeof window._annoUnsaved==='function'&&window._annoUnsaved())){e.preventDefault();e.returnValue='';return ''}
 });
 let dragDepth=0;
 /* レビューページ表示中のみ D&D アップロードを受け付ける。
