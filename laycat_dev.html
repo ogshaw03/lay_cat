@@ -2438,8 +2438,19 @@ const storage={
       try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return null;return await r.json()}catch(_){return null}
     },
     async putJson(key,obj,opts){return this.put(key,JSON.stringify(obj,null,2),'application/json',opts)},
+    /* getJson の区別版：{ok:true,missing:true}＝無い（404）／{ok:true,data}＝読めた／{ok:false}＝読めなかった（通信・権限・5xx・JSON 破損） */
+    async getJsonEx(key,opts){
+      try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('GET',url);
+        if(r.status===404)return {ok:true,missing:true,data:null};
+        if(!r.ok)return {ok:false,status:r.status};
+        return {ok:true,missing:false,data:await r.json()};
+      }catch(e){return {ok:false,error:String(e&&e.message||e)}}
+    },
     async listByPrefix(prefix,opts){
-      try{const url=await this._urlFor('list',prefix,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>o.key):[]}catch(_){return []}
+      /* 運営 Worker は `tenants/<tid>/projects/<pid>/...` の完全キーを返すが、呼び出し側（getJson など）は
+         `projects/<pid>/...` 形式を前提にしている。以前はそのまま返していたため tid が解決できず、
+         R2 プロジェクトの資料（reference items）が保存できるのに一切読み込めなかった。先頭の tenants/<tid>/ を外す。 */
+      try{const url=await this._urlFor('list',prefix,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return [];const j=await r.json();return Array.isArray(j&&j.objects)?j.objects.map(o=>String(o.key||'').replace(/^tenants\/[^/]+\//,'')):[]}catch(_){return []}
     },
     async purge(pid,opts){
       try{const url=await this._urlFor('purge','projects/'+pid+'/',{pid,...(opts||{})});const r=await this._fetchUrl('DELETE',url);return r.ok}catch(_){return false}
@@ -2806,7 +2817,7 @@ const storage={
   /* backend は削除前に外から明示的に渡すのが望ましい（DB/REG から node/entry が消えた後だと _backend が folder に戻ってしまい R2 purge が呼ばれない）。
      省略時は _backend で判定するが、フォールバック扱い。 */
   async delProject(id,backend){try{localStorage.removeItem('layna_proj_'+id)}catch(_){}try{localStorage.removeItem('layna_reels_'+id)}catch(_){}try{await idbDel('kv','proj_'+id)}catch(_){}try{const ph=await this.projRoot(id);if(ph){try{await ph.removeEntry(this._projFileName)}catch(_){}try{await ph.removeEntry(this._projFileNameOld)}catch(_){}/* Phase 1/2: 個別サブミット / ショット JSON も掃除（残しても実害は無いが混乱防止） */try{await ph.removeEntry('submits',{recursive:true})}catch(_){}try{await ph.removeEntry('shots',{recursive:true})}catch(_){}try{await ph.removeEntry('status',{recursive:true})}catch(_){}try{await ph.removeEntry('schedule',{recursive:true})}catch(_){}try{await ph.removeEntry('notes',{recursive:true})}catch(_){}/* リールも共有フォルダから削除（reels/reels.json） */try{await ph.removeEntry('reels',{recursive:true})}catch(_){}/* v.090：資料タブのサブフォルダ reference/ も掃除 */try{await ph.removeEntry('reference',{recursive:true})}catch(_){}/* v.146：サムネイル／メディア本体の格納フォルダも掃除。
-     残っていたサムネ orphan のせいでフォルダ削除が引っかかる事象を解消。 */try{await ph.removeEntry('thumbnails',{recursive:true})}catch(_){}try{await ph.removeEntry('media',{recursive:true})}catch(_){}try{await ph.removeEntry('publish',{recursive:true})}catch(_){}try{await ph.removeEntry('_audit',{recursive:true})}catch(_){}}}catch(_){}const be=backend||this._backend(id);if(be==='r2'){try{await this._r2.purge(id)}catch(_){}}/* 変更検知キャッシュも破棄 */try{delete _saveCache.submit[id];delete _saveCache.shot[id];delete _saveCache.proj[id];delete _saveCache.reels[id]}catch(_){}},
+     残っていたサムネ orphan のせいでフォルダ削除が引っかかる事象を解消。 */try{await ph.removeEntry('thumbnails',{recursive:true})}catch(_){}try{await ph.removeEntry('media',{recursive:true})}catch(_){}try{await ph.removeEntry('publish',{recursive:true})}catch(_){}try{await ph.removeEntry('audit',{recursive:true})}catch(_){}}}catch(_){}const be=backend||this._backend(id);if(be==='r2'){try{await this._r2.purge(id)}catch(_){}}/* 変更検知キャッシュも破棄 */try{delete _saveCache.submit[id];delete _saveCache.shot[id];delete _saveCache.proj[id];delete _saveCache.reels[id]}catch(_){}},
   /* リール：プロジェクトフォルダ内 reels/reels.json に格納（共有可能）。フォルダ未設定なら localStorage */
   async loadReels(id){
     if(this._backend(id)==='r2'){
@@ -2942,21 +2953,48 @@ const storage={
      submits/<subId>.json に 1 サブミット = 1 ファイルで保存し、
      project.json 側は submitIds のインデックスのみ持つ方式（R2 の LIST を
      使わず、フォルダ・R2 で同じ処理経路で動くように）。 */
-  async loadSubmit(pid,sid){
+  /* 【全解析修正】shots/ submits/ の読み込みで「ファイルが無い」と「読めなかった」を区別する。
+     以前はどちらも null で、読めなかった（JSON 破損・I/O エラー・R2 の 5xx/429・復号失敗）ショットを
+     「無い」と同じ扱いにしてマージせずに骨格（版・コメント無し）で上書きしていた。
+     読めなかったものは _readErr に記録し、保存側（_saveShotWithLock / _saveSubmitWithLock）が書き込みを止める。 */
+  _readErr:new Map(),
+  _markRead(pid,kind,id,failed){const k=pid+':'+kind+':'+id;if(failed)this._readErr.set(k,Date.now());else this._readErr.delete(k)},
+  _readFailed(pid,kind,id){return this._readErr.has(pid+':'+kind+':'+id)},
+  _hasReadErr(pid){const p=pid+':';for(const k of this._readErr.keys())if(k.startsWith(p))return true;return false},
+  async _loadSplitFile(pid,dirName,id,kind,decryptFn){
+    const mark=f=>this._markRead(pid,kind,id,f);
+    const dec=async j=>{
+      if(!(j&&j.enc)){mark(false);return j}
+      try{const d=await decryptFn(pid,j);if(!d){mark(true);return null}if(j._rev!=null)d._rev=j._rev;mark(false);return d}catch(_){mark(true);return null}
+    };
     if(this._backend(pid)==='r2'){
-      const key='projects/'+pid+'/submits/'+sid+'.json';
-      const j=await this._r2.getJson(key);
-      if(j&&j.enc)try{const d=await decryptSubmit(pid,j);if(d&&j._rev!=null)d._rev=j._rev;return d}catch(_){return null}
-      return j;
+      const rr=await this._r2.getJsonEx('projects/'+pid+'/'+dirName+'/'+id+'.json');
+      if(!rr.ok){mark(true);return null}
+      if(rr.missing||!rr.data){mark(false);return null}
+      return await dec(rr.data);
     }
-    const ph=await this.projRoot(pid);if(!ph)return null;
+    const ph=await this.projRoot(pid);if(!ph){mark(true);return null}
+    let txt;
     try{
-      const dir=await ph.getDirectoryHandle('submits');
-      const fh=await dir.getFileHandle(sid+'.json');
-      const parsed=JSON.parse(await (await fh.getFile()).text());
-      if(parsed&&parsed.enc)try{const d=await decryptSubmit(pid,parsed);if(d&&parsed._rev!=null)d._rev=parsed._rev;return d}catch(_){return null}
-      return parsed;
-    }catch(_){return null}
+      const dir=await ph.getDirectoryHandle(dirName);
+      const fh=await dir.getFileHandle(id+'.json');
+      txt=await (await fh.getFile()).text();
+    }catch(e){
+      if(e&&(e.name==='NotFoundError'||e.name==='TypeMismatchError')){mark(false);return null}
+      mark(true);return null;
+    }
+    if(!String(txt||'').trim()){mark(false);return null} /* 空ファイル（作成直後に中断など）は「無い」扱い */
+    let parsed=null;
+    try{parsed=JSON.parse(txt)}catch(_){
+      /* project.json と同じく、末尾に余計な内容がある壊れ方なら先頭の完全なオブジェクトで復旧 */
+      parsed=this._tryRecoverJSON(txt);
+      if(parsed){try{console.warn('[laycat] '+dirName+'/'+id+'.json: JSON を自動修復して読み込みました')}catch(_){}}
+      else{mark(true);return null}
+    }
+    return await dec(parsed);
+  },
+  async loadSubmit(pid,sid){
+    return await this._loadSplitFile(pid,'submits',sid,'submit',decryptSubmit);
   },
   async saveSubmit(pid,sid,data){
     /* 暗号化プロジェクトのサブミットも暗号化。_rev は封筒の外に露出（楽観ロックのため） */
@@ -2991,19 +3029,7 @@ const storage={
      ショット単位で 1 ファイル。中身は shot ノード自身 + 直接の review 子（task）の
      フルデータをまとめる。project.json 側は骨格のみで shotIds でインデックス。 */
   async loadShot(pid,sid){
-    if(this._backend(pid)==='r2'){
-      const j=await this._r2.getJson('projects/'+pid+'/shots/'+sid+'.json');
-      if(j&&j.enc)try{const d=await decryptShot(pid,j);if(d&&j._rev!=null)d._rev=j._rev;return d}catch(_){return null}
-      return j;
-    }
-    const ph=await this.projRoot(pid);if(!ph)return null;
-    try{
-      const dir=await ph.getDirectoryHandle('shots');
-      const fh=await dir.getFileHandle(sid+'.json');
-      const parsed=JSON.parse(await (await fh.getFile()).text());
-      if(parsed&&parsed.enc)try{const d=await decryptShot(pid,parsed);if(d&&parsed._rev!=null)d._rev=parsed._rev;return d}catch(_){return null}
-      return parsed;
-    }catch(_){return null}
+    return await this._loadSplitFile(pid,'shots',sid,'shot',decryptShot);
   },
   async saveShot(pid,sid,data){
     let out=data;const rev=(data&&data._rev)|0;
@@ -3208,6 +3234,9 @@ const storage={
     const scan=d=>{try{for(const v of d.querySelectorAll('video')){if(v.src)s.add(v.src);if(v.currentSrc)s.add(v.currentSrc)}}catch(_){}};
     scan(document);
     try{if(typeof reelWin!=='undefined'&&reelWin&&reelWin.document&&reelWin.document!==document)scan(reelWin.document)}catch(_){}
+    /* 【全解析修正】ショットリスト・進捗管理の別窓で再生中の動画も使用中扱い（以前は上限超過時に revoke されて止まり得た） */
+    try{if(typeof slWin!=='undefined'&&slWin&&!slWin.closed&&slWin.document)scan(slWin.document)}catch(_){}
+    try{if(typeof pgWin!=='undefined'&&pgWin&&!pgWin.closed&&pgWin.document)scan(pgWin.document)}catch(_){}
     try{if(typeof reelUI!=='undefined'&&reelUI&&Array.isArray(reelUI.clips))for(const c of reelUI.clips)if(c&&c.url)s.add(c.url)}catch(_){}
     return s;
   },
@@ -3664,10 +3693,14 @@ async function offerPhase2Migration(){
       ok.onclick=async()=>{
         ok.disabled=true;skip.disabled=true;ok.textContent='移行中...';
         try{
-          /* 変更検知キャッシュを空にして「全プロジェクトを再保存」を強制 */
-          _saveCache.proj={};_saveCache.shot={};_saveCache.submit={};
+          /* 【全解析修正】変更検知キャッシュを消すのは移行対象のプロジェクトだけ。以前は全プロジェクト分を消していたため、
+             対象外（移行済み）のプロジェクトまで全ショット・全サブミットを書き直していた。
+             また persist() は失敗しても例外を出さないので、保存できたかを確かめてから「移行しました」と出す。 */
+          for(const pid of targets){delete _saveCache.proj[pid];delete _saveCache.shot[pid];delete _saveCache.submit[pid];}
           await persist();
-          _migrationNeeded.clear();
+          const failed=targets.filter(pid=>!_saveCache.proj[pid]||_unsavedProj.has(pid));
+          for(const pid of targets)if(!failed.includes(pid))_migrationNeeded.delete(pid);
+          if(failed.length)throw new Error(failed.length+' 個のプロジェクトを保存できませんでした（フォルダの接続を確認してください。次回起動時に再確認します）');
           closeModal();
           toast(targets.length+' 個のプロジェクトを新形式に移行しました');
         }catch(e){
@@ -3954,6 +3987,16 @@ function _applySubmitFileIntoDB(pid,submit){
 /* v.033：shot.json 保存時のデータ損失防止ガード（A）と自動バックアップ（B）。
    v.029/v.030 の「参加する」フローで persist が空 versions で shot.json を上書きし、
    全動画メタが失われた事故の再発防止。両方とも既存の書込みフローに透過的に挿入する。 */
+/* 【全解析修正】読めないファイルのために保存を保留したことを利用者に知らせる（連続発生は 1 回にまとめる）。 */
+let _unreadableToastAt=0;
+function _noteUnreadableFile(pid,kind,id){
+  const now=Date.now();
+  if(now-_unreadableToastAt<20000)return;
+  _unreadableToastAt=now;
+  /* 同じ原因の汎用トースト（ショット保存失敗・未保存）を重ねて出さない */
+  try{_lastShotFailToastAt=now;_unsavedToastAt=now}catch(_){}
+  try{toastIn(document,'⚠ 一部の'+(kind==='submit'?'サブミット':'ショット')+'ファイルを読み込めなかったため、保存を保留しました（自動で再試行します）。続く場合はフォルダ・接続を確認してください',7000)}catch(_){}
+}
 async function _shotSaveGuardWarn(pid,sid,newFile){
   /* A：既存 shot.json に versions がある review が、新ペイロードで空／消失している場合を検出。
      戻り値：{ok:true} なら通す、{ok:false, warnings:[...]} なら書込みを拒否する。
@@ -4004,6 +4047,13 @@ async function _saveShotWithLock(pid,sid,fileBody){
   const bucket=_revBucket(pid).shots;
   const knownRev=bucket[sid]|0;
   let remote=null;try{remote=await storage.loadShot(pid,sid)}catch(_){}
+  /* 【全解析修正】既存の shot ファイルが「読めなかった」ときは書かない（マージできないまま骨格で上書きしないため）。
+     saveProjectSplit はこれを失敗として扱い、project.json と baseline も更新しない。次回の保存で再試行される。 */
+  if(!remote&&storage._readFailed(pid,'shot',sid)){
+    try{console.warn('[laycat] _saveShotWithLock: shot file unreadable, save postponed',{pid,sid})}catch(_){}
+    _noteUnreadableFile(pid,'shot',sid);
+    return {ok:false,merged:false,body:null,readFailed:true};
+  }
   let remoteRev=(remote&&remote._rev)|0;
   /* 【v.048 恒久対策】rev 逆行ガード。remote の _rev が既知 rev より小さい場合、disk 側が
      何らかの理由で古い状態に戻っている（他タブの部分失敗・R2 eventual consistency・FS 同期遅延 等）。
@@ -4054,6 +4104,12 @@ async function _saveSubmitWithLock(pid,sid,submit){
   const bucket=_revBucket(pid).submits;
   const knownRev=bucket[sid]|0;
   let remote=null;try{remote=await storage.loadSubmit(pid,sid)}catch(_){}
+  /* 【全解析修正】既存の submit ファイルが読めなかったときは書かない（ショットと同じ理由） */
+  if(!remote&&storage._readFailed(pid,'submit',sid)){
+    try{console.warn('[laycat] _saveSubmitWithLock: submit file unreadable, save postponed',{pid,sid})}catch(_){}
+    _noteUnreadableFile(pid,'submit',sid);
+    return {ok:false,merged:false,readFailed:true};
+  }
   const remoteRev=(remote&&remote._rev)|0;
   let outSub=submit;let merged=false;
   if(remote&&remoteRev>knownRev){
@@ -4072,6 +4128,11 @@ async function _saveSubmitWithLock(pid,sid,submit){
    "shots/<id>.json（ショット + task 群のフルデータ）" と "submits/<id>.json" に分割保存。
    別ショット・別サブミットの並行編集は完全にゼロ衝突になる。
    Phase 3：ショット・サブミット単位でも _rev による楽観ロックを掛け、同一ショット同時編集も 3-way マージで両立。 */
+/* 【全解析修正】利用者がノード削除で明示的に外したサブミット（pid:subId）。saveProjectSplit がファイルを消してよいのはこれだけ。 */
+const _explicitSubmitDel=new Set();
+/* 【全解析修正】サブミットの変更判定用の指紋（_rev を除く）。以前は読み込んだサブミットが _rev を持ったまま比較され、
+   保存のたびに「変更あり」と判定されて rev が増え続けていた。 */
+function _submitFp(s){if(!s)return '';const c=Object.assign({},s);delete c._rev;return JSON.stringify(c)}
 async function saveProjectSplit(pid,data){
   const allNodes=Array.isArray(data.nodes)?data.nodes:[];
   /* 【v.056 D-4】v:5 status 分離を書き込み側でも徹底：shot.json に書き出す各ノードから
@@ -4124,11 +4185,19 @@ async function saveProjectSplit(pid,data){
       else{shotFailed++;try{console.warn('saveProjectSplit: shot save failed',{pid,sid})}catch(_){}}
     }
   }
-  /* メモリから消えたショットは個別ファイルも削除（v:5 では status/{sid}.json も削除） */
+  /* メモリから消えたショットは個別ファイルも削除（v:5 では status/{sid}.json も削除）。
+     【全解析修正】ファイルを消すのは削除記録（root._tomb）に載っている＝利用者が消したショットだけ。
+     以前は「メモリに無い」だけで消していたため、読み込み途中・接続し直し・取り込みの誤判定で
+     メモリから外れたショットのファイル（動画・FB）まで物理削除し得た。記録の無いものはキャッシュから外すだけ。 */
+  const _tombIds=_collectTombIds();
   for(const oldId of Object.keys(shotCache)){
     if(!seenShots.has(oldId)){
-      try{await storage.delShot(pid,oldId)}catch(_){}
-      try{await storage.delStatus(pid,oldId)}catch(_){}
+      if(_tombIds.has(oldId)){
+        try{await storage.delShot(pid,oldId)}catch(_){}
+        try{await storage.delStatus(pid,oldId)}catch(_){}
+      }else{
+        try{console.warn('[laycat] saveProjectSplit: shot missing from memory without tombstone, file kept',{pid,sid:oldId})}catch(_){}
+      }
       try{_v5StatusShots.delete(pid+':'+oldId)}catch(_){}
       delete shotCache[oldId];
       try{delete _revBucket(pid).shots[oldId]}catch(_){}
@@ -4143,15 +4212,27 @@ async function saveProjectSplit(pid,data){
   for(const s of submits){
     if(!s||!s.id)continue;
     submitIds.push(s.id);seenSubs.add(s.id);
-    const j=JSON.stringify(s);
+    const j=_submitFp(s);
     if(subCache[s.id]!==j){
       const r=await _saveSubmitWithLock(pid,s.id,s);
-      if(r&&r.ok){subCache[s.id]=JSON.stringify(r.body);if(r.merged)anySubMerged=true}
+      if(r&&r.ok){subCache[s.id]=_submitFp(r.body);if(r.merged)anySubMerged=true}
     }
   }
+  /* 【全解析修正】サブミットのファイルを消すのは、ノード削除で利用者が明示的に外したもの（_explicitSubmitDel）だけ。
+     以前は「メモリに無い」だけで消していたため、接続済みプロジェクトを「接続」で開き直すなど
+     サブミット未読み込みの状態で保存が走ると、submits/*.json が全部削除されていた。 */
   for(const oldId of Object.keys(subCache)){
     if(!seenSubs.has(oldId)){
-      try{await storage.delSubmit(pid,oldId)}catch(_){}
+      const _ek=pid+':'+oldId;
+      if(_explicitSubmitDel.has(_ek)){
+        try{await storage.delSubmit(pid,oldId)}catch(_){}
+        _explicitSubmitDel.delete(_ek);
+      }else{
+        /* 明示削除でないものはファイルも索引（submitIds）も残す（全員の一覧から消えないように） */
+        try{console.warn('[laycat] saveProjectSplit: submit missing from memory without explicit delete, kept',{pid,id:oldId})}catch(_){}
+        submitIds.push(oldId);
+        continue;
+      }
       delete subCache[oldId];
       try{delete _revBucket(pid).submits[oldId]}catch(_){}
     }
@@ -4202,13 +4283,58 @@ let _persistChain=Promise.resolve();
    従来は _dirtyTaskNotes だけ見ていたが、ステータス変更直後にリロード／タブ閉じで
    バックグラウンドの shot 保存が消えるケースがあった。 */
 let _persistBusy=0;
+/* 【全解析修正】persist が 1 回終わるごとに進む世代番号（refreshFromFolders の競合検知用） */
+let _persistGen=0;
 function persist(){
   /* v.016：DEMO_MODE は書込一切なし（IndexedDB も触らない）。
      デモデータは in-memory のみでリロードで消える。これはデモの意図通り。 */
   if(DEMO_MODE) return Promise.resolve();
   _persistBusy++;
-  _persistChain=_persistChain.then(()=>_persistNow()).catch(e=>{try{console.warn('persist failed',e)}catch(_){}}).finally(()=>{_persistBusy=Math.max(0,_persistBusy-1)});
+  _persistChain=_persistChain.then(()=>_persistNow()).catch(e=>{try{console.warn('persist failed',e)}catch(_){}}).finally(()=>{_persistBusy=Math.max(0,_persistBusy-1);_persistGen++});
   return _persistChain;
+}
+/* 【全解析修正】id を持つ要素の配列の 3-way マージ（base＝前回保存/読込時、local＝手元、remote＝ディスクの最新）。
+   自分が変えた要素だけ手元を採用し、それ以外は remote（他の人の追加・変更・削除）を残す。 */
+function _mergeById3(base,local,remote){
+  const js=x=>JSON.stringify(x);
+  const bm=new Map((base||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+  const lm=new Map((local||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+  const out=[],seen=new Set();
+  for(const r of (remote||[])){
+    if(!r||!r.id)continue;seen.add(r.id);
+    const l=lm.get(r.id),b=bm.get(r.id);
+    if(!l){if(b)continue;out.push(r);continue}            /* 自分が削除 → 消す／他人の新規 → 残す */
+    if(b&&js(l)===js(b)){out.push(r);continue}             /* 自分は未変更 → 相手の最新 */
+    out.push(l);                                           /* 自分が変更（または新規）→ 自分 */
+  }
+  for(const l of (local||[])){
+    if(!l||!l.id||seen.has(l.id))continue;
+    const b=bm.get(l.id);
+    if(b&&js(l)===js(b))continue;                          /* 他人が削除・自分は未変更 → 消す */
+    out.push(l);                                           /* 自分の新規 → 残す */
+  }
+  return out;
+}
+/* このプロジェクトのリールだけをメモリ上で入れ替える（REEL 画面はリール id で引き直すので参照が変わっても問題ない） */
+function _replaceProjReels(pid,list){
+  const others=(DB.reels||[]).filter(r=>(r.projectId||reelProjectId(r))!==pid);
+  for(const r of (list||[]))if(r&&!r.projectId)r.projectId=pid;
+  DB.reels=others.concat(list||[]);
+}
+/* 【全解析修正】保存できていないプロジェクト（フォルダ・接続が読めず保存を見送った／ショット保存の失敗）。
+   以前は見送りが無通知で、画面上は正常なまま以降の編集が保存されず、タブを閉じると消えていた。
+   ・トーストで知らせる（30 秒に 1 回まで）・30 秒後に自動で再試行・離脱時に警告（beforeunload）。 */
+const _unsavedProj=new Set();
+let _unsavedToastAt=0,_unsavedRetryTimer=null;
+function _markProjUnsaved(pid){
+  _unsavedProj.add(pid);
+  const now=Date.now();
+  if(now-_unsavedToastAt>30000){
+    _unsavedToastAt=now;
+    const nm=(getNode(pid)&&getNode(pid).name)||pid;
+    try{toastIn(document,'⚠ 「'+nm+'」の変更をまだ保存できていません（フォルダ・接続を読み込めないため保留中）。自動で再試行します。続く場合は接続を確認してください',8000)}catch(_){}
+  }
+  if(!_unsavedRetryTimer)_unsavedRetryTimer=setTimeout(()=>{_unsavedRetryTimer=null;if(_unsavedProj.size)persist().catch(()=>{})},30000);
 }
 /* 保存：グローバル(local=通知のみ)＋registry＋各プロジェクト（データ・リール、変更分のみ） */
 async function _persistNow(){
@@ -4273,8 +4399,10 @@ async function _persistNow(){
           }
         }
       }
+      if(_skipSave){_markProjUnsaved(e.id);}
       if(!_skipSave){
         const ok=await saveProjectSplit(e.id,data);
+        if(ok===false)_markProjUnsaved(e.id);else _unsavedProj.delete(e.id);
         if(ok!==false){
           /* v.045 #2 修正：`saveProjectSplit` 内で `_saveShotWithLock` → `_applyShotFileIntoDB` により
              DB が書き換わっている可能性があるため、凍結した `ps` ではなく、保存完了時点の DB から
@@ -4288,9 +4416,21 @@ async function _persistNow(){
     }
     const rls=reelsByProj[e.id]||[];const rk=JSON.stringify(rls);
     if(_saveCache.reels[e.id]!==rk){
-      /* #3: フォルダ側に他者が追加した未知リールがあれば、丸ごと上書きで消さないよう保存前にidでunionする */
-      try{const remoteReels=await storage.loadReels(e.id);if(Array.isArray(remoteReels)){const have=new Set(rls.map(r=>r&&r.id));for(const rr of remoteReels)if(rr&&rr.id&&!have.has(rr.id)){rls.push(rr);have.add(rr.id)}}}catch(_){}
-      const ok=await storage.saveReels(e.id,rls);if(ok!==false)_saveCache.reels[e.id]=JSON.stringify(rls)
+      /* 【全解析修正】reels.json は前回保存（読み込み）時の内容を基準に id 単位の 3-way マージで保存する。
+         以前は「相手にしか無いリールを足すだけ」で、同じ id のリールは手元の古い版が勝っていたため、
+         他の人が更新したリール（クリップの追加・並べ替え）を、自分の別リールの保存で古い内容に戻していた。
+         マージ結果はメモリ（DB.reels）にも反映し、保存した内容と手元を一致させる。 */
+      let out=rls;
+      try{
+        const remoteReels=await storage.loadReels(e.id);
+        if(Array.isArray(remoteReels)){
+          let base=null;try{base=_saveCache.reels[e.id]?JSON.parse(_saveCache.reels[e.id]):null}catch(_){base=null}
+          if(Array.isArray(base))out=_mergeById3(base,rls,remoteReels);
+          else{const have=new Set(rls.map(r=>r&&r.id));out=rls.slice();for(const rr of remoteReels)if(rr&&rr.id&&!have.has(rr.id)){out.push(rr);have.add(rr.id)}}
+        }
+      }catch(_){}
+      _replaceProjReels(e.id,out);
+      const ok=await storage.saveReels(e.id,out);if(ok!==false)_saveCache.reels[e.id]=JSON.stringify(out)
     }
     /* R2 プロジェクトの _access.json 同期：owner または members が変わったら R2 側にも反映
        （フォルダ運用プロジェクトはスキップ。R2 の Worker 認可のためだけの機構） */
@@ -4423,7 +4563,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.25.035';
+const APP_VERSION='2026.11.25.036';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5136,8 +5276,14 @@ async function refreshFromFolders(){
        書き込むので、比較用の値が実際に更新される。 */
     const localShotRev={};
     try{const b=(_revBucket(e.id)&&_revBucket(e.id).shots)||{};for(const sid of Object.keys(b))localShotRev[sid]=b[sid]|0}catch(_){}
+    /* 【全解析修正】読み込み中に自分の保存が完了したかを見るための世代番号（persist ごとに進む） */
+    const _genAtStart=_persistGen;
     let remote=null;try{remote=await storage.readProjectData(e.id,{recordShotRev:true})}catch(_){}
-    if(!remote||!Array.isArray(remote.nodes))continue;
+    if(!remote||!Array.isArray(remote.nodes)){
+      /* 読めなかった回も rev の記録は退避値に戻す */
+      try{const sb=_revBucket(e.id).shots;for(const rsid of Object.keys(localShotRev))sb[rsid]=localShotRev[rsid]|0;}catch(_){}
+      continue;
+    }
     const before=JSON.stringify(projectData(e.id));
     /* 未保存変更が無ければ preferRemote：他ユーザーが変更した status / assignee / reviewer 等
        を確実に反映。未保存変更が残っていれば従来通り union のみで保守的に取り込む。 */
@@ -5166,6 +5312,18 @@ async function refreshFromFolders(){
         }
       }
     }
+    /* 【全解析修正】次のどれかに当たる回は「相手を正」とする同期（status 同期・削除同期）を行わない：
+       ・読み込み中に自分の保存が完了した（世代が進んだ）／保存中 … 読み込んだ remote は自分の保存より古い可能性がある。
+         以前はこの競合で、直前に変えたステータス等が古い値に戻ったり、作ったばかりのノードが削除扱いになっていた。
+       ・読めなかったショットファイルがある … そのショットは骨格の古い値しか持たない。 */
+    if(clean&&(_persistGen!==_genAtStart||_persistBusy>0||storage._hasReadErr(e.id))){
+      clean=false;
+      try{console.info('[laycat] refreshFromFolders: skip preferRemote (concurrent save or unreadable file)',{pid:e.id})}catch(_){}
+    }
+    /* 【全解析修正】ショットの rev 記録は常に退避値に戻す。取り込み（_unionRemoteIntoDB）は一部の項目しか反映しないため、
+       記録だけ相手の rev に進めると、次の保存で 3-way マージが走らず相手の変更（工程・移動・コメント編集など）を
+       手元の古い値で上書きしていた。完全に一致したショットだけ、後段の _syncShotRevAndCacheFromRemote が rev と基準を進める。 */
+    try{const sb=_revBucket(e.id).shots;for(const rsid of Object.keys(localShotRev))sb[rsid]=localShotRev[rsid]|0;}catch(_){}
     /* 【v074 追加】remoteAuthoritative フラグを opts に含める。
        clean=true = shot._rev ガードを通過＝「remote は本当に新しい／同値」と検証済みなので、
        この時だけ _mergeNodeInto 側で v071 の _stateKeys 除外を無効化して state 系も remote 採用する。
@@ -5214,11 +5372,17 @@ async function refreshFromFolders(){
         if(bl&&Array.isArray(bl.nodes)) baselineIds=new Set(bl.nodes.map(n=>n&&n.id).filter(Boolean));
       }catch(_){}
       const removed=[];
+      /* 【全解析修正】相手に無いノードを消すのは、削除記録（root._tomb）があるときだけ。
+         以前は「相手の骨格に無い＝削除」とみなしていたため、他の人の保存が自分の追加を取りこぼしただけ
+         （骨格の読み書きの競合）で、自分が作ったショットが動画・FB ごと消えていた。記録の無いものは残し、次の保存で骨格に戻す。 */
+      const _deadIds=_collectTombIds();
+      try{const _rr=(remote.nodes||[]).find(n=>n&&n.id===e.id);if(_rr&&Array.isArray(_rr._tomb))for(const t of _rr._tomb)if(t&&t.id)_deadIds.add(t.id)}catch(_){}
       DB.nodes=DB.nodes.filter(n=>{
         if(rootOfId(n)!==e.id) return true;
         if(n.id===e.id) return true;
         if(remoteIds.has(n.id)) return true;
         if(baselineIds && !baselineIds.has(n.id)) return true; /* 自分の未伝播追加は残す */
+        if(!_deadIds.has(n.id)) return true; /* 削除記録が無い → 残す */
         removed.push(n.id); return false;
       });
       if(removed.length){
@@ -5228,6 +5392,20 @@ async function refreshFromFolders(){
         }
       }
     }
+    /* 【全解析修正】リールも取り込む（以前は起動時と再接続時しか読み直さず、他の人が作ったリールが見えなかった）。
+       手元に未保存のリール変更がある場合は手元を優先し、保存基準は進めない（次の保存で 3-way マージ）。 */
+    try{
+      const _rr=await storage.loadReels(e.id);
+      if(Array.isArray(_rr)){
+        const _local=(DB.reels||[]).filter(r=>(r.projectId||reelProjectId(r))===e.id);
+        let _base=null;try{_base=_saveCache.reels[e.id]?JSON.parse(_saveCache.reels[e.id]):null}catch(_){_base=null}
+        if(Array.isArray(_base)){
+          const _merged=_mergeById3(_base,_local,_rr);
+          if(JSON.stringify(_merged)!==JSON.stringify(_local)){_replaceProjReels(e.id,_merged);changed=true}
+          if(JSON.stringify(_local)===JSON.stringify(_base))_saveCache.reels[e.id]=JSON.stringify(_merged);
+        }
+      }
+    }catch(_){}
     const after=JSON.stringify(projectData(e.id));
     if(after!==before){
       changed=true;
@@ -5263,13 +5441,16 @@ async function _syncShotRevAndCacheFromRemote(pid){
         const nr=raw._rev|0;
         const cur=shotBucket[sid]|0;
         if(nr>cur){
-          shotBucket[sid]=nr;
+          /* 【全解析修正】メモリの内容が remote のショットファイルと完全に一致したときだけ、rev と保存基準を進める。
+             一致しない（取り込みきれていない項目がある）ときは進めず、次の保存の 3-way マージに任せる。 */
           const shotNode=allNodes.find(n=>n.id===sid);
           if(shotNode){
             const kids=allNodes.filter(n=>n.parentId===sid);
             /* 【v.056 D-4】書き込み側 v:5 分離：baseline fingerprint も status キー除去に統一 */
             const _stripS=n=>{const c=Object.assign({},n);if('status' in c)delete c.status;return c;};
-            _saveCache.shot[pid][sid]=JSON.stringify({v:1,shotId:sid,nodes:[_stripS(shotNode),...kids.map(_stripS)]});
+            const memJ=JSON.stringify({v:1,shotId:sid,nodes:[_stripS(shotNode),...kids.map(_stripS)]});
+            const rawJ=JSON.stringify({v:1,shotId:sid,nodes:(Array.isArray(raw.nodes)?raw.nodes:[]).map(_stripS)});
+            if(memJ===rawJ){shotBucket[sid]=nr;_saveCache.shot[pid][sid]=memJ;}
           }
         }else if(nr<cur){
           try{console.warn('[laycat] _syncShotRev: skip rev regression',{pid,sid,remote:nr,local:cur});}catch(_){}
@@ -5300,6 +5481,8 @@ function _editingNow(){
      これが無いと autoRefresh が割り込んで、リマップ編集中に他ユーザーの更新が in-place で流れ込む。 */
   if(typeof _retimerActive!=='undefined'&&_retimerActive)return true;
   const a=document.activeElement;if(a&&/^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName)&&a.type!=='checkbox'&&a.type!=='button')return true;
+  /* 【全解析修正】NOTE・資料タイトルなど contenteditable の編集中も対象（以前は再描画でキャレットが飛んでいた） */
+  if(a&&a.isContentEditable)return true;
   return false;
 }
 async function autoRefresh(force){
@@ -5310,7 +5493,9 @@ async function autoRefresh(force){
      remote の古い status で埋め戻される事故が起きる（Alt-Tab／focus/visibilitychange 経由で頻発）。
      persist が終わってから改めて refresh すれば十分。 */
   if(typeof _persistBusy!=='undefined'&&_persistBusy>0)return;
-  if(!force&&_editingNow())return;
+  /* 【全解析修正】force（タブ復帰・フォーカス時）でも編集中は割り込まない。force が省くのは 5 秒の間引きだけ。
+     以前は最も頻繁な復帰経路で編集中判定が効かず、アノテ窓・リマップ編集中に他人の更新が流れ込んでいた。 */
+  if(_editingNow())return;
   let now=0;try{now=Date.now()}catch(_){}
   if(!force&&now-_autoRefreshAt<5000)return;
   _autoRefreshAt=now;_autoRefreshBusy=true;
@@ -5647,7 +5832,10 @@ async function createSubmitBlock(){
     const before=b.node.versions.length;
     /* C: サブミットの動画も通常アップロードと同じ media/ に保存（従来は submitblock/ に分散していた）。
        comment は uploadVersion に渡さない（後段でサブミット全体コメントと統合して 1 メッセージにまとめる） */
-    await uploadVersion(b.node,b.file,stub,{projectId:pid});
+    /* 【全解析修正】submitId / submitName を最初の保存から版に載せる。以前は版を submitId なしで保存し、
+       全ブロック完了後に付け足して再保存していたため、その間に取り込んだチェック担当に
+       「版の依頼」と「サブミットの依頼」が二重に届いていた。 */
+    await uploadVersion(b.node,b.file,stub,{projectId:pid,submitId:subId,submitName:name});
     const v=b.node.versions[b.node.versions.length-1];
     if(v&&b.node.versions.length>before){
       okd.push({b,v});
@@ -5660,6 +5848,8 @@ async function createSubmitBlock(){
   }
   /* B: 1つでも保存に失敗したら、壊れたサブミットは作らず中断（成功した動画は通常アップロードとして残す）。 */
   if(failed){
+    /* サブミットは作らないので、先に保存した版から submitId の紐付けを外す（存在しないサブミットを指さないように） */
+    for(const {v} of okd){try{delete v.submitId;delete v.submitName}catch(_){}}
     await persist();
     toast(failed+'件の動画を保存できませんでした（フォルダの接続・権限・空き容量を確認してください）。サブミットは作成していません。保存できた動画はアップロード済みです。');
     try{render();resolveThumbs()}catch(_){}
@@ -5883,20 +6073,36 @@ async function connectProjectFlow(){
   }
   /* Drive等の競合コピー（layna (1).project.json 等）があれば統合して復旧 */
   const _abs=await absorbConflictCopies(handle,data);data=_abs.data;
-  /* 既に接続済みなら古いデータを入れ替え */
+  /* 【全解析修正】参加は「REG に足すだけ・プロジェクトのファイルは書かない」（CLAUDE.md の書き込み境界）。
+     以前は読み込み前の骨格（版・コメント・サブミットを含まない）を DB に入れて persist() していたため、
+       ・初めての参加：全ショット・全サブミット・バックアップを書き直し、競合退避ファイルも毎回作っていた
+       ・接続済みの再接続：サブミット未読込のまま保存して submits/*.json を全部削除していた
+       ・他の人の保存で復活した削除済みショットのファイルまで作り直していた
+     R2 参加（connectR2ProjectById）と同じく、ショット・サブミット・ステータスまで読み込んだデータを DB に入れ、
+     baseline を種付けして REG だけ保存する（次の通常保存は「変更なし」として何も書かない）。 */
+  /* 同じプロジェクトを開き直す場合に備え、古いキャッシュ・rev 記録を捨ててから読み直す */
+  try{delete _saveCache.proj[data.id];delete _saveCache.shot[data.id];delete _saveCache.submit[data.id];delete _saveCache.reels[data.id];delete _loadedRev[data.id];}catch(_){}
+  let full=null;try{full=await storage.loadProject(data.id)}catch(_){full=null}
+  if(!full||!Array.isArray(full.nodes)){
+    toast('プロジェクトのデータを読み込めませんでした。フォルダの接続を確認してから、もう一度お試しください。');
+    return;
+  }
   const oldIds=new Set([data.id,...DB.nodes.filter(n=>rootOfId(n)===data.id).map(n=>n.id)]);
   DB.nodes=DB.nodes.filter(n=>!oldIds.has(n.id)&&n.id!==data.id);
   DB.submits=(DB.submits||[]).filter(s=>s.projectId!==data.id);
   DB.reels=(DB.reels||[]).filter(r=>r.projectId!==data.id);
-  for(const n of data.nodes)if(!DB.nodes.some(x=>x.id===n.id))DB.nodes.push(n);
-  if(Array.isArray(data.submits))for(const s of data.submits)if(!DB.submits.some(x=>x.id===s.id))DB.submits.push(s);
+  for(const n of full.nodes)if(!DB.nodes.some(x=>x.id===n.id))DB.nodes.push(n);
+  if(Array.isArray(full.submits))for(const s of full.submits)if(!DB.submits.some(x=>x.id===s.id))DB.submits.push(s);
   /* このプロジェクトのリール（フォルダ内 reels/）も取り込み */
   const rls=await storage.loadReels(data.id);
   if(Array.isArray(rls))for(const r of rls)if(!DB.reels.some(x=>x.id===r.id))DB.reels.push(r);
   const root=getNode(data.id);if(root)root.folderName=handle.name;
   normalizeNodes();
-  if(!REG.some(e=>e.id===data.id))REG.push({id:data.id,name:data.name||(root&&root.name)||'project',folderName:handle.name});
-  await persist();
+  if(!REG.some(e=>e.id===data.id))REG.push({id:data.id,name:full.name||data.name||(root&&root.name)||'project',folderName:handle.name});
+  seedProjBaseline(data.id);
+  try{_saveCache.reels[data.id]=JSON.stringify((DB.reels||[]).filter(r=>(r.projectId||reelProjectId(r))===data.id))}catch(_){}
+  await storage.saveRegistry(REG);
+  try{_saveCache.reg=JSON.stringify(REG)}catch(_){}
   /* v.126：Firestore に NAS 参加履歴を暗号化同期（他端末からも「参加可能プロジェクト」として見える）。
      laycatUserPrivate/{emailKey}.folderProjects に書き込み。失敗時は静かに無視（接続自体は成立）。
      v.130：root.pathHint があれば一緒に同期（オーナー手入力の NAS パス道案内メモ）。
@@ -5931,7 +6137,11 @@ async function disconnectProject(id){
   DB.nodes=DB.nodes.filter(n=>!ids.has(n.id));
   DB.submits=(DB.submits||[]).filter(s=>s.projectId!==id);
   REG=REG.filter(e=>e.id!==id);delete _saveCache.proj[id];delete _saveCache.reels[id];
+  /* 【全解析修正】ショット・サブミットのキャッシュと rev 記録も破棄（残っていると、同じセッションで再接続したときに
+     「読み込み済み」と誤認した保存経路に入り、未読込のサブミットを削除する原因になっていた） */
+  delete _saveCache.shot[id];delete _saveCache.submit[id];delete _saveCache.access[id];delete _loadedRev[id];
   storage.projHandles.delete(id);
+  /* REG から外した後の保存は registry だけ（このプロジェクトのフォルダには書かない） */
   await persist();
   toast('接続を解除しました');
   go(null);
@@ -5991,11 +6201,17 @@ function renderSidebar(){
   ctrls.appendChild(add);
   lab.appendChild(ctrls);sb.appendChild(lab);
   /* サイドバーの空白部分をクリックでルート選択（＝どのアイテムも選択しない状態） */
-  sb.addEventListener('mousedown',ev=>{
-    if(ev.target===sb||ev.target.classList&&(ev.target.classList.contains('tree')||ev.target.classList.contains('tree-empty'))){
-      if(state.currentId!==root.id)go(root.id);
-    }
-  });
+  /* 【全解析修正】以前は render のたびに #sidebar（常設要素）へリスナーを追加して増え続け、空白クリックで
+     過去の root へ順に go() する往復が起きていた。1 回だけ登録し、クリック時点の root を引く。 */
+  if(!sb._rootClickWired){
+    sb._rootClickWired=true;
+    sb.addEventListener('mousedown',ev=>{
+      if(ev.target===sb||ev.target.classList&&(ev.target.classList.contains('tree')||ev.target.classList.contains('tree-empty'))){
+        const _c=state.currentId?getNode(state.currentId):null;const _r=_c?rootOf(_c):null;
+        if(_r&&state.currentId!==_r.id)go(_r.id);
+      }
+    });
+  }
   /* ── サイドバー内 検索＋作業者フィルタ ── */
   const fbar=el('div','side-filter');
   const si=el('input','side-search');si.type='text';si.placeholder='🔍 ショット・工程を検索';si.value=state.sideSearch||'';
@@ -6594,7 +6810,10 @@ function folderWarnBanner(root){
   b.appendChild(tx);
   if(storage.supportsFolder()){
     const set=el('button','btn btn-primary btn-sm','保存先フォルダを設定');
-    set.onclick=async()=>{try{const h=await window.showDirectoryPicker({mode:'readwrite'});await storage.setProjRoot(root.id,h);root.folderName=h.name;await persist();updateFolderStatus();toast('保存先フォルダを設定しました');render();resolveThumbs()}catch(e){if(e&&e.name!=='AbortError')toast(pickerFailMsg(e))}};
+    set.onclick=async()=>{try{const h=await window.showDirectoryPicker({mode:'readwrite'});
+      /* 【全解析修正】選んだフォルダが別プロジェクトのフォルダなら拒否（以前はそのまま設定し、相手の laycat.project.json を上書きしていた） */
+      try{const _ex=await storage._readProjFile(h);if(_ex&&_ex.id&&_ex.id!==root.id){toast('このフォルダには別のプロジェクト（'+(_ex.name||_ex.id)+'）が保存されています。空のフォルダか、このプロジェクトのフォルダを選んでください');return}}catch(_){}
+      await storage.setProjRoot(root.id,h);root.folderName=h.name;await persist();updateFolderStatus();toast('保存先フォルダを設定しました');render();resolveThumbs()}catch(e){if(e&&e.name!=='AbortError')toast(pickerFailMsg(e))}};
     b.appendChild(set);
   }
   return b;
@@ -14194,7 +14413,8 @@ function _mergeNode3(base,ours,theirs){
     /* 【v.056 D-5】status は v:5 で status.json に分離済み。マージスカラーからは物理除外し、
        shot.json 側の inline status が仮にあってもマージ処理で触らない。
        これで shot.json の書き込み経路（saveProjectSplit）が status を書き出さない状態と整合。 */
-    for(const k of ['assignee','reviewer','name','description','thumbnail','thumbCrop']){
+    const _legacyKeys=['assignee','reviewer','name','description','thumbnail','thumbCrop'];
+    for(const k of _legacyKeys){
       /* v.027 修正：theirs は「そのキーに明示的に言及したか」で変更検知する。
          キー自体が無い場合は「言及なし＝維持」であり、削除意図（null）とは区別する。 */
       const oursChanged=js(ours[k])!==js(base[k]);
@@ -14205,6 +14425,45 @@ function _mergeNode3(base,ours,theirs){
         m[k]=_empty(theirs[k])?null:theirs[k];
       }
     }
+    /* 【全解析修正】上の 6 項目以外のノード項目（currentStage・kind・tags・parentId（移動）・note・priority・
+       root の stages/statuses/members/stageColors/stageTemplates など）も同じ 3-way 規則で判定する。
+       以前は対象外だったため、他の人が変えた工程・タグ・移動・設定を、自分の別作業の保存で古い値に巻き戻していた。
+       配列・オブジェクトも値として丸ごと比較（自分が変えていなければ相手の値を採用）。
+       版・コメント・tombstone・status（v:5 で分離）・stageHistory（下で和集合）は対象外。 */
+    const _skipKeys=new Set(['id','versions','comments','_vtomb','_ctomb','_ntomb','_tomb','status','stageHistory',..._legacyKeys]);
+    const _allKeys=new Set([...Object.keys(base||{}),...Object.keys(ours||{}),...Object.keys(theirs||{})]);
+    for(const k of _allKeys){
+      if(_skipKeys.has(k))continue;
+      const oursChanged=js(ours[k])!==js(base[k]);
+      const theirsChanged=js(theirs?theirs[k]:undefined)!==js(base[k]);
+      if(oursChanged){
+        if(ours[k]===undefined)delete m[k];else m[k]=JSON.parse(JSON.stringify(ours[k]));
+      }else if(theirsChanged){
+        if(!theirs||theirs[k]===undefined)delete m[k];else m[k]=JSON.parse(JSON.stringify(theirs[k]));
+      }
+    }
+    /* stageHistory は双方の記録を残す（ts+from+to で重複除去し時刻順） */
+    if(Array.isArray(ours.stageHistory)||Array.isArray(theirs&&theirs.stageHistory)){
+      const _hk=h=>(h&&h.ts||'')+'|'+(h&&h.from||'')+'|'+(h&&h.to||'');
+      const _hm=new Map();
+      for(const h of [...(ours.stageHistory||[]),...((theirs&&theirs.stageHistory)||[])])if(h)_hm.set(_hk(h),h);
+      m.stageHistory=[..._hm.values()].sort((a,b)=>String(a.ts||'').localeCompare(String(b.ts||'')));
+    }
+    /* コメント・アノテ（review.notes）の「同じ id の編集」も 3-way：自分が触っていなくて相手が編集していたら相手を採用。
+       以前は同じ id なら常に手元が勝ち、他の人の文言修正・消しゴムが古い内容で上書きされていた。 */
+    const _m3ById=(bArr,oArr,mArr,tArr)=>{
+      if(!Array.isArray(mArr))return;
+      const bm=new Map((bArr||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+      const om=new Map((oArr||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+      const tm=new Map((tArr||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+      for(let i=0;i<mArr.length;i++){
+        const x=mArr[i];if(!x||!x.id)continue;
+        const b=bm.get(x.id),o=om.get(x.id),t=tm.get(x.id);
+        if(!b||!o||!t)continue;
+        if(js(o)===js(b)&&js(t)!==js(b))mArr[i]=JSON.parse(JSON.stringify(t));
+      }
+    };
+    _m3ById(base.comments,ours.comments,m.comments,theirs&&theirs.comments);
     /* v.038 M1 修正：version 単位の scalar 3-way マージ（timeRemap 等の版レベル字段の巻き戻り防止）。
        上のスカラー 3-way は node（ショット）レベルの `status`/`assignee` 等が対象で、版レベルの `timeRemap` はスコープ外だった。
        ここでは各 version.id を base / ours / theirs で突き合わせて、`timeRemap` に同じ判定を適用：
@@ -14216,7 +14475,9 @@ function _mergeNode3(base,ours,theirs){
       const _bvMap=new Map((base.versions||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
       const _ovMap=new Map((ours.versions||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
       const _tvMap=new Map(((theirs&&theirs.versions)||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
-      const _vScalarKeys=['timeRemap'];
+      /* 【全解析修正】版レベルの項目も追加（提出の紐付け・版名・優先・EXR 表示設定・工程タグ）。
+         以前は timeRemap だけで、他の人が付けた submitId などを自分の保存で消していた。 */
+      const _vScalarKeys=['timeRemap','name','submitId','submitName','uploadCommentId','priority','exrView','stage','fps'];
       for(const mv of m.versions){
         if(!mv||!mv.id)continue;
         const bv=_bvMap.get(mv.id);
@@ -14236,6 +14497,10 @@ function _mergeNode3(base,ours,theirs){
             if(_empty(tk))delete mv[k];
             else mv[k]=tk;
           }
+        }
+        /* 版内のアノテ（review.notes）の同一 id 編集も 3-way */
+        if(mv.review&&Array.isArray(mv.review.notes)){
+          _m3ById(bv&&bv.review&&bv.review.notes,ov&&ov.review&&ov.review.notes,mv.review.notes,tv&&tv.review&&tv.review.notes);
         }
       }
     }
@@ -14263,14 +14528,30 @@ function applyMergedIntoDB(id,merged){
 function _unionSkeletonIntoDB(pid,remote){
   if(!remote||!Array.isArray(remote.nodes))return 0;
   let added=0;
+  /* 【全解析修正】相手の削除記録（root._tomb）も取り込んで適用する。以前は取り込まなかったため、
+     削除をまだ知らない人が何か保存すると、削除済みのショットが骨格に復活していた（中身は空の状態で全員に見える）。 */
+  let tombAdded=0;
+  try{
+    const rroot=remote.nodes.find(n=>n&&n.id===pid);
+    const lroot=getNode(pid);
+    if(rroot&&lroot&&Array.isArray(rroot._tomb)&&rroot._tomb.length){
+      lroot._tomb=Array.isArray(lroot._tomb)?lroot._tomb:[];
+      const _tk=t=>((t&&t.id)||'')+'|'+((t&&t.at)||'');
+      const seen=new Set(lroot._tomb.map(_tk));
+      for(const t of rroot._tomb){if(t&&t.id&&!seen.has(_tk(t))){lroot._tomb.push(t);seen.add(_tk(t));tombAdded++}}
+    }
+  }catch(_){}
+  const dead=_collectTombIds();
   const have=new Set(DB.nodes.map(n=>n.id));
   for(const rn of remote.nodes){
     if(!rn||!rn.id)continue;
     if(have.has(rn.id))continue;
+    if(dead.has(rn.id))continue; /* 削除記録のあるノードは取り込まない */
     DB.nodes.push(rn);have.add(rn.id);added++;
   }
-  if(added>0)normalizeNodes();
-  return added;
+  if(tombAdded>0)_applyTombstones();
+  if(added>0||tombAdded>0)normalizeNodes();
+  return added+tombAdded;
 }
 /* フォルダ側(remote)の内容を DB に「union」で取り込む（損失防止優先・削除は反映しない）。
    ・remote にしか無いノード → 追加／・共通ノード → 版・アノテ(review.notes)・コメントを統合（_mergeNodeInto）
@@ -14305,13 +14586,27 @@ function seedProjBaseline(id){
     /* 【v.056 D-4】書き込み側 v:5 分離：baseline fingerprint も status キー除去 */
     const _stripS=n=>{const c=Object.assign({},n);if('status' in c)delete c.status;return c;};
     for(const n of allNodes){
-      if(_isShotNodeForSave(n, allNodes)){
+      /* 【全解析修正】このプロジェクトのショットだけを種付け（以前は他プロジェクトのショットまで入り、
+         初回保存で存在しないファイルへの delShot/delStatus を大量に投げていた） */
+      if(_isShotNodeForSave(n, allNodes)&&rootOfId(n)===id){
         const kids=allNodes.filter(x=>x.parentId===n.id);
         _saveCache.shot[id][n.id]=JSON.stringify({v:1,shotId:n.id,nodes:[_stripS(n),...kids.map(_stripS)]});
       }
     }
     for(const s of (DB.submits||[])){
-      if(s&&s.projectId===id) _saveCache.submit[id][s.id]=JSON.stringify(s);
+      if(s&&s.projectId===id) _saveCache.submit[id][s.id]=_submitFp(s);
+    }
+    /* 【全解析修正】リールの基準も種付け（以前は無く、起動後最初の保存で全プロジェクトの reels.json を書き直していた） */
+    const _rl=(DB.reels||[]).filter(r=>{const p=r.projectId||reelProjectId(r);if(p===id&&!r.projectId)r.projectId=p;return p===id});
+    _saveCache.reels[id]=JSON.stringify(_rl);
+    /* 【全解析修正】R2 の _access.json の基準も種付け（以前は無く、起動後最初の保存で全 R2 プロジェクトの
+       _access.json を手元の名簿で書き直していた＝他の人が外したメンバーを戻し得た） */
+    if(storage._backend(id)==='r2'){
+      const root=getNode(id);
+      if(root){
+        const memberEmails=(root.members||[]).map(m=>m&&m.id).filter(Boolean);
+        _saveCache.access[id]=(root.owner||'').toLowerCase()+'|'+memberEmails.map(x=>String(x||'').toLowerCase()).sort().join(',');
+      }
     }
   }catch(_){}
 }
@@ -14442,6 +14737,8 @@ function mergeRecoverDatas(datas){
 /* 正規ファイルと同フォルダ内の競合コピーを統合し、正規ファイルに書き戻す。統合したら data を差し替えて返す。 */
 async function absorbConflictCopies(ph,data){
   if(!ph||!data||data.enc||!data.id)return {data,merged:false,count:0};
+  /* 暗号化プロジェクトのスタブ（ノードに enc:1）は中身が無いので統合しない（暗号化された封筒を平文で上書きしないため） */
+  if(Array.isArray(data.nodes)&&data.nodes.some(n=>n&&n.enc))return {data,merged:false,count:0};
   let names=[];
   try{
     for await(const [name,entry] of ph.entries()){
@@ -14456,7 +14753,29 @@ async function absorbConflictCopies(ph,data){
   for(const name of names){try{const fh=await ph.getFileHandle(name);const p=JSON.parse(await (await fh.getFile()).text());if(p&&Array.isArray(p.nodes)&&p.id===data.id&&!p.enc)datas.push(p)}catch(_){}}
   if(datas.length<2)return {data,merged:false,count:0};
   const merged=mergeRecoverDatas(datas);
-  try{await storage._write(()=>ph,storage._projFileName,JSON.stringify(merged,null,2))}catch(_){return {data,merged:false,count:0}}
+  /* 【全解析修正】以前は mergeRecoverDatas の {v:3,id,name,nodes,submits} だけを正規ファイルに書き戻していたため、
+     v:4 の shotIds / submitIds / _rev が落ち、全ショット・全サブミットが索引から消えていた。また書き戻す前の正規ファイルを退避していなかった。
+     ・書き戻す前に正規ファイルを退避（laycat.project.conflict-<日時>-orig.bak.json）
+     ・v:4 は骨格形式（ショット系ノードは _skeletonNode）で書き、shotIds / submitIds は全コピーの和集合、_rev は最大値を保持
+     ・呼び出し元のメモリには統合済みの完全なデータを返す（ファイルの骨格とは分ける） */
+  const _uni=key=>{const st=new Set();for(const d of datas)for(const x of (Array.isArray(d[key])?d[key]:[]))if(x)st.add(x);return [...st]};
+  const _isV4=(data.v|0)>=4||Array.isArray(data.shotIds);
+  let out;
+  if(_isV4){
+    const all=merged.nodes;
+    const inShot=new Set();
+    for(const n of all){if(_isShotNodeForSave(n,all)){inShot.add(n.id);for(const k of all)if(k.parentId===n.id)inShot.add(k.id)}}
+    const shotIds=_uni('shotIds');for(const n of all)if(_isShotNodeForSave(n,all)&&!shotIds.includes(n.id))shotIds.push(n.id);
+    const submitIds=_uni('submitIds');for(const sb of (merged.submits||[]))if(sb&&sb.id&&!submitIds.includes(sb.id))submitIds.push(sb.id);
+    out=Object.assign({},data,{v:Math.max(4,data.v|0),id:data.id,name:merged.name||data.name,
+      nodes:all.map(n=>inShot.has(n.id)?_skeletonNode(n):n),shotIds,submits:[],submitIds,
+      _rev:Math.max(...datas.map(d=>d&&d._rev|0))});
+  }else{
+    out=Object.assign({},data,merged);
+  }
+  try{const fh0=await ph.getFileHandle(storage._projFileName);const t0=await (await fh0.getFile()).text();
+    await storage._write(()=>ph,'laycat.project.conflict-'+nowIso().replace(/[:.]/g,'-')+'-orig.bak.json',t0)}catch(_){}
+  try{await storage._write(()=>ph,storage._projFileName,JSON.stringify(out,null,2))}catch(_){return {data,merged:false,count:0}}
   /* 競合コピーはバックアップ名に退避して除去（再検知を防ぐ） */
   let idx=0;
   for(const name of names){try{
@@ -14464,7 +14783,10 @@ async function absorbConflictCopies(ph,data){
     await storage._write(()=>ph,'laycat.project.conflict-'+nowIso().replace(/[:.]/g,'-')+'-'+(idx++)+'.bak.json',t);
     await ph.removeEntry(name);
   }catch(_){}}
-  return {data:merged,merged:true,count:datas.length-1};
+  /* メモリ用：統合済みの完全なノード・サブミット（v:4 でも骨格化しない）＋元データのトップレベル項目 */
+  const memData=Object.assign({},data,{nodes:merged.nodes,submits:merged.submits});
+  if(out.shotIds)memData.shotIds=out.shotIds;if(out.submitIds)memData.submitIds=out.submitIds;if(out._rev!=null)memData._rev=out._rev;
+  return {data:memData,merged:true,count:datas.length-1};
 }
 
 /* 復号したプロジェクトデータを DB に展開（スタブを実データで置換） */
@@ -14900,6 +15222,8 @@ async function _doDeleteNode(node,opts){
   }
   if(!isProject){const _root=rootOf(node);if(_root){_root._tomb=Array.isArray(_root._tomb)?_root._tomb:[];const _at=nowIso();for(const _id of ids)_root._tomb.push({id:_id,at:_at});}}
   DB.nodes=DB.nodes.filter(n=>!ids.has(n.id));
+  /* 【全解析修正】利用者が明示的に消したサブミットを記録（saveProjectSplit はこれに載ったものだけファイルを消す） */
+  try{for(const _s of (DB.submits||[])){if(_s&&_s.id&&(ids.has(_s.nodeId||_s.projectId)||_s.projectId===node.id))_explicitSubmitDel.add((_s.projectId||node.id)+':'+_s.id)}}catch(_){}
   DB.submits=(DB.submits||[]).filter(s=>!ids.has(s.nodeId||s.projectId)&&s.projectId!==node.id);
   if(isProject){
     REG=REG.filter(e=>e.id!==node.id);delete _saveCache.proj[node.id];delete _saveCache.reels[node.id];
@@ -14922,6 +15246,7 @@ async function _doDeleteNode(node,opts){
    ============================================================ */
 async function uploadVersion(node,file,ui,opts){
   opts=opts||{};
+  const _uvSaved=[];let _uvCommitted=false;
   ui.prog.classList.remove('hidden');ui.pct.textContent='サムネイル生成中...';ui.bi.style.width='30%';
   const isVideo=isVideoFile(file);
   const isExr=isExrFile(file);
@@ -14954,13 +15279,14 @@ async function uploadVersion(node,file,ui,opts){
     const sub=opts.sub||'media';const thumbSub=opts.sub?opts.sub+'/thumbnails':'thumbnails';const pm={projectId:opts.projectId};
     const mediaRef=await storage.putMedia(sub,id+ext,file,pm);
     if(!mediaRef){ui.prog.classList.add('hidden');toast('保存できませんでした。保存先フォルダの設定・接続・空き容量・書き込み権限を確認してください');return}
+    _uvSaved.push(mediaRef);
     /* アップロード直後のレンダリングで storage.getURL が R2 から再ダウンロードし直すのを回避するため、
        元 File からその場で blob URL を作って urlCache に投入する。
        これで直後の resolveThumbs はネットワーク往復ゼロでキャッシュ URL を返し、
        video 要素の src が「アップロード完了時点で確定 → 変わらない」状態になる。
        結果、コーデック警告オーバーレイの一過性誤爆が根本的に発生しなくなる。 */
     try{const bu=URL.createObjectURL(file);storage.urlCache.set(mediaRef,bu)}catch(_){}
-    let thumbRef=null;if(thumbDataUrl){const blob=await(await fetch(thumbDataUrl)).blob();thumbRef=await storage.putMedia(thumbSub,id+'.jpg',blob,pm);if(thumbRef){try{const tu=URL.createObjectURL(blob);storage.urlCache.set(thumbRef,tu)}catch(_){}}}else if(!isVideo)thumbRef=mediaRef;
+    let thumbRef=null;if(thumbDataUrl){const blob=await(await fetch(thumbDataUrl)).blob();thumbRef=await storage.putMedia(thumbSub,id+'.jpg',blob,pm);if(thumbRef)_uvSaved.push(thumbRef);if(thumbRef){try{const tu=URL.createObjectURL(blob);storage.urlCache.set(thumbRef,tu)}catch(_){}}}else if(!isVideo)thumbRef=mediaRef;
     /* 名前：入力があればそれ、空欄なら動画のタイトル（拡張子なしのファイル名） */
     const vname=(opts.name&&opts.name.trim())||file.name.replace(/\.[^.]+$/,'');
     const version={id:newId('ver'),name:vname,type:isVideo?'video':'image',file:mediaRef,thumb:thumbRef,uploadedBy:currentUser(),uploadedAt:nowIso(),review:{status:'pending',notes:[]}};
@@ -14972,17 +15298,21 @@ async function uploadVersion(node,file,ui,opts){
     if(opts.notify===false)version.noNotify=true;
     /* v.023：優先（急ぎ）フラグ。担当者にモーダル通知を出すためのマーカー */
     if(opts.priority===true)version.priority=true;
+    /* 【全解析修正】サブミット経由のアップロードは最初から提出の紐付けを持たせる（createSubmitBlock 参照） */
+    if(opts.submitId){version.submitId=opts.submitId;version.submitName=opts.submitName||''}
     /* EXR の場合はフラグを立てておく（レビュー画面で「EXR 表示調整」ボタンを出すため） */
     if(isExr){version.exr=true;version.exrView={exposure:0,gamma:2.2}}
     /* アップロード時のコメントは「メッセージ」（node.comments）として記録（ショット全体コメントは廃止） */
     if(opts.comment&&opts.comment.trim()){
       const _cm={id:newId('sc'),author:currentUser(),text:opts.comment.trim(),time:nowIso(),kind:'upload'};
-      const _st=getShotCurrentStage(node); if(_st) _cm.stage=_st;
+      /* 【全解析修正】版の工程タグ（getShotStageForTag）と同じ解決方法にそろえる（旧マルチ工程で食い違っていた） */
+      const _st=getShotStageForTag(node); if(_st) _cm.stage=_st;
       (node.comments=node.comments||[]).push(_cm);
       /* v.022：アノテ窓のコメント欄でこのアップロード時コメントを一番上に表示するため id を版に紐付け */
       version.uploadCommentId=_cm.id;
     }
     node.versions.push(version);if(thumbRef)node.thumbnail=thumbRef;
+    _uvCommitted=true;
     /* アップロード時に自動でステータスを「チェック待ち」（プロジェクトの先頭ステータス）に設定。
        新しい版が来たので既存の判定はリセットして再チェックに戻す。サブミット経由の場合は
        このあと呼び出し側で b.status によって上書きされる（ユーザー指定を優先）。
@@ -14990,7 +15320,11 @@ async function uploadVersion(node,file,ui,opts){
        「チェック依頼を出さない = 現状ステータスを維持したい」意図とセットで扱う。 */
     if(opts.notify!==false){const sts=projStatuses(node);if(sts&&sts.length)await setStatus(node,sts[0].id,'upload')}
     await persist();ui.bi.style.width='100%';render();resolveThumbs();toast('アップロード完了: '+version.name);
-  }catch(e){ui.prog.classList.add('hidden');toast('アップロード失敗: '+e.message)}
+  }catch(e){
+    ui.prog.classList.add('hidden');toast('アップロード失敗: '+e.message);
+    /* 【全解析修正】版を登録する前に失敗したら、保存済みの動画・サムネを消す（孤立ファイルを残さない／再試行で重複しない） */
+    if(!_uvCommitted){for(const r of _uvSaved){try{await storage.delMedia(r)}catch(_){}}}
+  }
 }
 /* ==== EXR 連番シーケンスのアップロード ============================
    ・ローカルフォルダ運用のみ対応（呼び出し側でチェック済み）
@@ -22301,7 +22635,7 @@ window.addEventListener('beforeunload',e=>{
   /* 【恒久対策 v072】_persistBusy>0 = バックグラウンドで shot/project 保存が進行中。
      ここで離脱するとステータス変更等が消える可能性があるので unload 警告。 */
   /* v.035：ステータス保存の再試行待ち（_statusRetry）が残っている間も離脱を警告する */
-  if((_dirtyTaskNotes&&_dirtyTaskNotes.size>0)||_persistBusy>0||_statusRetry.size>0){e.preventDefault();e.returnValue='';return ''}
+  if((_dirtyTaskNotes&&_dirtyTaskNotes.size>0)||_persistBusy>0||_statusRetry.size>0||_unsavedProj.size>0){e.preventDefault();e.returnValue='';return ''}
 });
 let dragDepth=0;
 /* レビューページ表示中のみ D&D アップロードを受け付ける。
