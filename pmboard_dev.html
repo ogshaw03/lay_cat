@@ -617,12 +617,12 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 <!-- MAIN -->
 <main class="main">
   <nav class="head-tabs" id="tabs">
-    <button class="ptab on" data-tab="schedule">スケジュール<span class="cnt">32</span></button>
+    <button class="ptab on" data-tab="schedule">スケジュール<span class="cnt" id="ptabSchedCnt" style="display:none"></span></button>
     <button class="ptab" data-tab="effort">工数<span class="cnt">A/B</span></button>
     <button class="ptab" data-tab="reference">資料</button>
-    <button class="ptab" data-tab="retake">リテイク<span class="cnt">73</span></button>
-    <button class="ptab" data-tab="activity">アクティビティ<span class="cnt">30d</span></button>
-    <button class="ptab" data-tab="log">操作ログ<span class="cnt">1.2k</span></button>
+    <button class="ptab" data-tab="retake">リテイク</button>
+    <button class="ptab" data-tab="activity">アクティビティ</button>
+    <button class="ptab" data-tab="log">操作ログ</button>
   </nav>
 
   <div class="content">
@@ -764,7 +764,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.10.15.085';
+const APP_VERSION='2026.11.25.001';
 /* v.082：デモモード（?demo=1） — LayCAT と同じ URL パラメータで PMB も試用可能に。
    ?tab=<X> で初期タブ（gantt / efforts / reference 等）に遷移。 */
 const DEMO_MODE = (()=>{try{return new URLSearchParams(location.search).get('demo')==='1'}catch(_){return false}})();
@@ -786,6 +786,25 @@ const STAGE_COLORS = {
   comp:'var(--st-comp)', paint:'var(--st-paint)',
 };
 const STAGE_LABELS = {layout:'Layout', anim:'Anim', fx:'FX', comp:'Comp', paint:'Paint'};
+/* LayCAT 本体 laycat_dev.html の DEFAULT_STATUSES と同じ値（root.statuses 未設定のプロジェクトで使う）。
+   本体側を変えたらここも合わせること。 */
+const PM_DEFAULT_STATUSES = [
+  {id:'pending',label:'チェック待ち',color:'#9a9ab0'},
+  {id:'approved',label:'OK',color:'#5affa0'},
+  {id:'retake',label:'リテイク',color:'#ffb85a'},
+  {id:'rejected',label:'NG',color:'#ff5a5a'},
+  {id:'omit',label:'オミット',color:'#6b6b74'},
+];
+/* 色の値を CSS に埋め込む前の検査（#hex / rgb() / var(--x) のみ許可）。JSON 由来の色で style 属性を壊されないように。 */
+function pmSafeColor(c, fallback){
+  const s = String(c==null?'':c).trim();
+  if(/^#[0-9a-fA-F]{3,8}$/.test(s)) return s;
+  if(/^rgba?\(\s*[\d.\s,%]+\)$/.test(s)) return s;
+  if(/^var\(--[a-zA-Z0-9_-]+\)$/.test(s)) return s;
+  return fallback || '#5a5a6a';
+}
+/* inline onclick の JS 文字列に入れる ID の検査（英数字・_・- のみ）。HTML エスケープでは JS 文字列の脱出を防げないため。 */
+function pmSafeId(id){ const s=String(id==null?'':id); return /^[A-Za-z0-9_-]+$/.test(s) ? s : ''; }
 /* プロジェクト定義の工程順に対応する 5 色パレット（Layout→Anim→FX→Comp→Paint 相当） */
 const STAGE_ORDER_COLORS = ['var(--st-layout)','var(--st-anim)','var(--st-fx)','var(--st-comp)','var(--st-paint)'];
 const STAGE_FALLBACK_COLORS = ['#9ba3ad','#a89aab','#9baba1','#aba99a','#9ba7ad'];
@@ -854,14 +873,14 @@ function stageColor(kind, name, projectStages){
   if(!name) return LC_STAGE_GRAY;
   /* Priority 1：LayCAT プロジェクト設定の stageColors[name]（手動） */
   const root = DATA.project && (DATA.project.nodes||[]).find(n=>n.id===DATA.project.id);
-  if(root && root.stageColors && root.stageColors[name]) return root.stageColors[name];
+  if(root && root.stageColors && root.stageColors[name]) return pmSafeColor(root.stageColors[name], LC_STAGE_GRAY);
   /* Priority 2：LC_STAGE_COLOR_MAP（lay_pri 等の固定キー） */
   const key = name.toLowerCase().split('/').pop();
   if(LC_STAGE_COLOR_MAP[key]) return LC_STAGE_COLOR_MAP[key];
   /* Priority 3：プロジェクト内の工程色マップから引く（LayCAT 全タブで色が揃う） */
   if(root){
     const m = projStageColorMap(root);
-    if(m.has(name)) return m.get(name);
+    if(m.has(name)) return pmSafeColor(m.get(name), LC_STAGE_GRAY);
   }
   /* Priority 4：名前 char code 和 % PALETTE でフォールバック */
   let h = 0; for(const c of name.toLowerCase()) h += c.charCodeAt(0);
@@ -890,7 +909,8 @@ function isStatusDone(statusId, projStatuses){
   return /完了|承認|上がり|フィックス|オミット|ok\b|omit|done|fix|approve|complete/i.test(st.label||'');
 }
 function isStatusPending(statusId, projStatuses){
-  if(!statusId) return true;
+  /* 'empty'（未着手を明示したステータス）も未着手扱い。作業中として工数・実績バーに数えない。 */
+  if(!statusId || statusId==='empty') return true;
   if(!Array.isArray(projStatuses)) return false;
   const st = projStatuses.find(x=>x&&x.id===statusId);
   if(!st) return false;
@@ -1062,6 +1082,8 @@ const storage = {
       return await fetch(url,{method,headers,body});
     },
     async getJson(key,opts){try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('GET',url);if(!r.ok)return null;return await r.json()}catch(_){return null}},
+    /* 「無い（404）」と「読めなかった（通信・権限・JSON 破損）」を区別して返す：{ok, missing, data} */
+    async getJsonEx(key,opts){try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('GET',url);if(r.status===404)return {ok:true,missing:true,data:null};if(!r.ok)return {ok:false};return {ok:true,missing:false,data:await r.json()}}catch(_){return {ok:false}}},
     async putJson(key,obj,opts){return this.put(key,JSON.stringify(obj,null,2),'application/json',opts)},
     async put(key,body,contentType,opts){try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('PUT',url,body,contentType||'application/octet-stream');return r.ok}catch(_){return false}},
     async del(key,opts){try{const url=await this._urlFor('object',key,opts);const r=await this._fetchUrl('DELETE',url);return r.ok||r.status===404}catch(_){return false}},
@@ -1405,6 +1427,27 @@ const storage = {
       return JSON.parse(txt);
     }catch(_){return null;}
   },
+  /* readJson の区別版：{ok:true, missing:true}＝ファイル無し／{ok:true, data}＝読めた／{ok:false}＝読めなかった。
+     読めなかった時に「無い」とみなして上書きすると既存の内容（status の履歴など）を消してしまうので、書き込み前の読み込みに使う。 */
+  async readJsonEx(path){
+    if(this.backend==='demo'){
+      const v = this._demoFiles && this._demoFiles.get(path);
+      return v ? {ok:true, missing:false, data:JSON.parse(JSON.stringify(v))} : {ok:true, missing:true, data:null};
+    }
+    if(this.backend==='r2') return await this._r2.getJsonEx('projects/'+this.pid+'/'+path, {pid:this.pid});
+    if(!this.dirHandle) return {ok:false};
+    try{
+      const parts = path.split('/');
+      let cur = this.dirHandle;
+      for(let i=0;i<parts.length-1;i++){cur=await cur.getDirectoryHandle(parts[i])}
+      const fh = await cur.getFileHandle(parts[parts.length-1]);
+      const txt = await (await fh.getFile()).text();
+      return {ok:true, missing:false, data:JSON.parse(txt)};
+    }catch(e){
+      if(e && (e.name==='NotFoundError' || e.name==='TypeMismatchError')) return {ok:true, missing:true, data:null};
+      return {ok:false};
+    }
+  },
   async writeJson(path, data){
     if(this.backend==='demo'){
       /* v.082：デモモードは書込 no-op（成功を返して UI 側を破綻させない） */
@@ -1565,15 +1608,23 @@ const storage = {
     }
     return items;
   },
+  /* 資料タブが読み込んだプロジェクトと、いま接続しているプロジェクトが違うときは書かない
+     （プロジェクト切替後に前のプロジェクトの資料を新しい方へ保存してしまう事故の防止）。 */
+  _refPidMismatch(){
+    try{ return !!(typeof _REF_STATE!=='undefined' && _REF_STATE.pid && _REF_STATE.pid!==this.pid); }catch(_){ return false; }
+  },
   async saveReferenceItem(item){
     if(!item || !item.id) return false;
+    if(this._refPidMismatch()){ console.warn('[pmboard] reference save skipped: project switched', {loaded:_REF_STATE.pid, now:this.pid}); return false; }
     return await this.writeJson('reference/items/'+item.id+'.json', item);
   },
   async deleteReferenceItem(itemId){
     if(!itemId) return false;
+    if(this._refPidMismatch()){ console.warn('[pmboard] reference delete skipped: project switched'); return false; }
     return await this.removeFile('reference/items/'+itemId+'.json');
   },
   async putReferenceMedia(filename, blob){
+    if(this._refPidMismatch()){ console.warn('[pmboard] reference media skipped: project switched'); return null; }
     const ok = await this.writeBlob('reference/Media/'+filename, blob);
     if(!ok) return null;
     /* v.062：LayCAT 本体と相互運用するため、mediaRef を "p:<pid>|reference/Media/<fn>" 形式で返す。
@@ -1627,7 +1678,10 @@ async function loadProjectData(){
   const allNodes = Array.isArray(proj.nodes)?proj.nodes:[];
   const nodeById = new Map(allNodes.map(n=>[n.id,n]));
   const root = nodeById.get(proj.id) || allNodes.find(n=>!n.parentId);
-  const projStatuses = (root&&Array.isArray(root.statuses)&&root.statuses.length)?root.statuses:[];
+  /* LayCAT 本体と同じく、root.statuses 未設定（プロジェクト設定を一度も保存していない）なら
+     本体の既定ステータス一覧 DEFAULT_STATUSES を使う。空のままだと全ショットが「未着手」・完了率 0% になっていた。 */
+  const projStatuses = ((root&&Array.isArray(root.statuses)&&root.statuses.length)?root.statuses:PM_DEFAULT_STATUSES)
+    .filter(s=>s&&s.id).map(s=>Object.assign({},s,{color:pmSafeColor(s.color,'#5a5a6a')}));
   DATA.project.statuses = projStatuses;
 
   /* Shot 判定：
@@ -1636,18 +1690,23 @@ async function loadProjectData(){
        かつ親が旧モデルショット（section+review 子）ではない単体レビュー。
        この最後の条件を入れないと、旧モデルショットの review 子が二重集計されて、pmboard の
        グラフから工程が「消えたように」見える。 */
-  const kidsOf = id => allNodes.filter(n=>n.parentId===id);
+  /* 子ノードの索引（ノード数の 2 乗の走査を避ける） */
+  const _kidsMap = new Map();
+  for(const n of allNodes){ if(n && n.parentId){ if(!_kidsMap.has(n.parentId)) _kidsMap.set(n.parentId, []); _kidsMap.get(n.parentId).push(n); } }
+  const kidsOf = id => _kidsMap.get(id) || [];
+  /* ショット判定は LayCAT 本体の _isShotNodeForSave と同じ規則にそろえる（v.039 の kind:'shot' マーカーを含む）。
+     以前は currentStage の有無だけで見ていたため、工程未設定で作ったショット（kind:'shot' のみ）を含むフォルダを
+     「旧型ショット」と取り違え、そのフォルダ ID で status を書いてしまうことがあった。 */
   const isLegacyShot = n => {
     if(!n || n.type!=='section' || !n.parentId) return false;
     const kids = kidsOf(n.id);
     if(!kids.length || !kids.every(x=>x.type==='review')) return false;
-    /* v.011：子が Simple B ショット（currentStage 持ち）で埋まっている section はフォルダなのでレガシー扱いしない */
-    if(kids.some(x=>x.currentStage!=null)) return false;
+    if(kids.some(x=>x.currentStage!=null || x.kind==='shot')) return false;
     return true;
   };
   const isSimpleShot = n => {
     if(!n || n.type!=='review' || !n.parentId) return false;
-    if(n.currentStage===undefined && !(Array.isArray(n.stageHistory) && n.stageHistory.length)) return false;
+    if(n.kind==='shot') return true;
     const parent = nodeById.get(n.parentId);
     if(parent && isLegacyShot(parent)) return false; /* 旧モデルショットの工程子は Simple B と見なさない */
     return true;
@@ -1896,45 +1955,108 @@ async function loadHolidaysForTimeline(){
 /* 独自の工程セット。ショットではなく案件全体のワークフロー（モデリング/アニメーション/etc）を
    ユーザーが自由に定義してスケジュール管理できる。
    ストレージ：projects/{pid}/pmboard/customSchedules.json */
-async function loadCustomSchedules(){
-  const f = await storage.readJson('pmboard/customSchedules.json');
-  if(!f || !Array.isArray(f.schedules)){ DATA.customSchedules=[]; return; }
-  /* Date に復元 */
-  DATA.customSchedules = f.schedules.map(sch=>({
+/* ファイル形式（日付は ISO 文字列）⇔ メモリ形式（Date）の変換 */
+function _custFromFile(schedules){
+  return (Array.isArray(schedules)?schedules:[]).filter(sch=>sch&&sch.id).map(sch=>({
     id: sch.id, name: sch.name,
-    items: (Array.isArray(sch.items)?sch.items:[]).map(it=>({
-      id: it.id, name: it.name, color: it.color||'var(--st-anim)',
+    items: (Array.isArray(sch.items)?sch.items:[]).filter(it=>it&&it.id).map(it=>({
+      id: it.id, name: it.name, color: pmSafeColor(it.color,'var(--st-anim)'),
       plannedStart: it.plannedStart ? parseIsoDateJst(it.plannedStart) : null,
       plannedEnd: it.plannedEnd ? parseIsoDateJst(it.plannedEnd) : null,
     })),
   }));
 }
-async function saveCustomSchedules(){
-  const file = {
-    v: 1,
-    schedules: DATA.customSchedules.map(sch=>({
-      id: sch.id, name: sch.name,
-      items: sch.items.map(it=>({
-        id: it.id, name: it.name, color: it.color,
-        plannedStart: it.plannedStart ? isoDate(it.plannedStart) : null,
-        plannedEnd: it.plannedEnd ? isoDate(it.plannedEnd) : null,
-      })),
+function _custToFile(schedules){
+  return (schedules||[]).map(sch=>({
+    id: sch.id, name: sch.name,
+    items: (sch.items||[]).map(it=>({
+      id: it.id, name: it.name, color: it.color,
+      plannedStart: it.plannedStart ? isoDate(it.plannedStart) : null,
+      plannedEnd: it.plannedEnd ? isoDate(it.plannedEnd) : null,
     })),
-    updatedAt: new Date().toISOString(),
-  };
-  return await storage.writeJson('pmboard/customSchedules.json', file);
+  }));
+}
+/* id 単位の 3-way マージ：base＝前回読み込み／保存した内容、local＝手元、remote＝ディスクの最新。
+   自分が変えたものだけ手元を採用し、それ以外は remote（他の PM の追加・変更・削除）を残す。
+   itemMerge が渡されたら、両方に残る要素どうしを再帰的にマージする。 */
+function _pmMergeById(base, local, remote, itemMerge){
+  const ser = x=>JSON.stringify(x);
+  const bm = new Map((base||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+  const lm = new Map((local||[]).filter(x=>x&&x.id).map(x=>[x.id,x]));
+  const out = [], seen = new Set();
+  for(const r of (remote||[])){
+    if(!r||!r.id) continue; seen.add(r.id);
+    const l = lm.get(r.id), b = bm.get(r.id);
+    if(!l){ if(b) continue; out.push(r); continue; }            /* 自分が削除 → 消す／他人が新規 → 残す */
+    if(b && ser(l)===ser(b)){ out.push(r); continue; }           /* 自分は未変更 → 他人の最新 */
+    out.push(itemMerge ? itemMerge(b, l, r) : l);                /* 自分が変更 → 自分（要素は再帰マージ） */
+  }
+  for(const l of (local||[])){
+    if(!l||!l.id||seen.has(l.id)) continue;
+    const b = bm.get(l.id);
+    if(b && ser(l)===ser(b)) continue;                           /* 他人が削除し、自分は未変更 → 消す */
+    out.push(l);                                                 /* 自分の新規（または削除と衝突した変更）→ 残す */
+  }
+  return out;
+}
+async function loadCustomSchedules(){
+  const f = await storage.readJson('pmboard/customSchedules.json');
+  if(!f || !Array.isArray(f.schedules)){ DATA.customSchedules=[]; DATA._custBase=[]; return; }
+  DATA.customSchedules = _custFromFile(f.schedules);
+  DATA._custBase = _custToFile(DATA.customSchedules);
+}
+/* 書き込み境界：pmboard/customSchedules.json のみ。保存直前にディスクの最新を読み、
+   前回読み込み時からの自分の変更だけを当てる（以前は手元の配列で丸ごと上書きしていた）。 */
+async function saveCustomSchedules(){
+  const local = _custToFile(DATA.customSchedules);
+  let remote = null; try{ remote = await storage.readJson('pmboard/customSchedules.json'); }catch(_){ remote = null; }
+  let schedules = local;
+  if(remote && Array.isArray(remote.schedules) && Array.isArray(DATA._custBase)){
+    schedules = _pmMergeById(DATA._custBase, local, remote.schedules, (b,l,r)=>({
+      id: l.id, name: l.name,
+      items: _pmMergeById(b?b.items:[], l.items, r.items),
+    }));
+  }
+  const file = { v: 1, schedules, updatedAt: new Date().toISOString() };
+  const ok = await storage.writeJson('pmboard/customSchedules.json', file);
+  if(ok!==false){
+    /* 他の PM の変更を取り込んだ結果を画面にも反映（オブジェクト参照は id で引き直す） */
+    DATA.customSchedules = _custFromFile(schedules);
+    DATA._custBase = _custToFile(DATA.customSchedules);
+  }
+  return ok;
 }
 function newId(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,10); }
 function customById(id){ return DATA.customSchedules.find(s=>s.id===id); }
 
-async function saveShotSchedule(shot){
-  const stages = shot.stages.map(st=>({
+/* changed：今回変更した工程（shot.stages の要素）の配列。省略時は全工程。
+   書き込み境界：schedule/{shotId}.json のみ。保存直前にディスクの最新を読み、変更した工程だけを差し替える。
+   以前はメモリ（最大 1 時間前の読み込み）で全工程を作り直していたため、他の PM が別工程に入れた予定を
+   古い値で上書きしていた。 */
+async function saveShotSchedule(shot, changed){
+  const toEntry = st=>({
     stageId: st.reviewNode.id,
     stageName: st.reviewNode.name,
     plannedStart: st.plannedStart ? isoDate(st.plannedStart) : null,
     plannedEnd: st.plannedEnd ? isoDate(st.plannedEnd) : null,
-  }));
+  });
+  const changedIds = new Set((Array.isArray(changed)&&changed.length?changed:shot.stages).map(st=>st.reviewNode.id));
   const existing = await storage.readJson(`schedule/${shot.sectionNode.id}.json`);
+  let stages;
+  if(existing && Array.isArray(existing.stages)){
+    const byId = new Map(existing.stages.filter(x=>x&&x.stageId).map(x=>[x.stageId, x]));
+    for(const st of shot.stages){ if(changedIds.has(st.reviewNode.id)) byId.set(st.reviewNode.id, toEntry(st)); }
+    stages = [...byId.values()];
+    /* 変更していない工程はディスクの最新値を画面にも反映（他の PM の変更を取り込む） */
+    for(const st of shot.stages){
+      if(changedIds.has(st.reviewNode.id)) continue;
+      const e = byId.get(st.reviewNode.id); if(!e) continue;
+      st.plannedStart = e.plannedStart ? parseIsoDateJst(e.plannedStart) : null;
+      st.plannedEnd = e.plannedEnd ? parseIsoDateJst(e.plannedEnd) : null;
+    }
+  }else{
+    stages = shot.stages.map(toEntry);
+  }
   const rev = (existing&&existing._rev|0) || 0;
   const file = {
     v:1,
@@ -2418,7 +2540,7 @@ function buildGantt(){
             asgSet.add(key);
             const m = memberMap.get(key);
             const nm = m ? (m.name||m.id) : st.assignee;
-            const col = m && m.color ? m.color : 'var(--green)';
+            const col = m && m.color ? pmSafeColor(m.color, 'var(--green)') : 'var(--green)';
             asgBadges.push(`<span class="asg-badge" style="border-color:${col}55;background:${col}22;color:${col}" title="担当：${escapeHtml(nm)}">${escapeHtml((nm||'?').charAt(0))}</span>`);
           }
         }
@@ -2437,7 +2559,7 @@ function buildGantt(){
         const p2 = dayIdx(st.plannedEnd);
         if(p2<0||p1>days) continue;
         const w = Math.max(px, (p2-p1)*px);
-        track.push(`<div class="seg-plan" data-shot="${shot.sectionNode.id}" data-stage="${st.reviewNode.id}" style="left:${p1*px}%;width:${w}%;border-color:${st.color};background:${st.color}"><span class="seg-lbl" style="color:${st.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${escapeHtml(st.label)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
+        track.push(`<div class="seg-plan" data-shot="${escapeHtml(shot.sectionNode.id)}" data-stage="${escapeHtml(st.reviewNode.id)}" style="left:${p1*px}%;width:${w}%;border-color:${st.color};background:${st.color}"><span class="seg-lbl" style="color:${st.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${escapeHtml(st.label)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
       }
       /* Actual bars — workSegments を 1 セグメントずつ描画。
          クライアントチェック待ち期間はセグメント間の隙間として自然に「除外」される。
@@ -2515,7 +2637,7 @@ function buildGantt(){
       /* 未予定の工程が残っていれば「＋」ボタンを表示（クリックでメニュー） */
       const unplannedCount = stages.filter(st=>!(st.plannedStart && st.plannedEnd)).length;
       const addBtn = unplannedCount>0
-        ? `<button class="add-plan-btn" data-shot="${shot.sectionNode.id}" title="未予定の工程を追加（残り ${unplannedCount}）">＋</button>`
+        ? `<button class="add-plan-btn" data-shot="${escapeHtml(shot.sectionNode.id)}" title="未予定の工程を追加（残り ${unplannedCount}）">＋</button>`
         : '';
 
       const row = document.createElement('div');
@@ -2530,16 +2652,16 @@ function buildGantt(){
       let statusChip = '';
       const shotEffStatus = (shot.shotStatus != null) ? shot.shotStatus : (curStage ? curStage.currentStatus : null);
       const projStatuses = (DATA.project && Array.isArray(DATA.project.statuses)) ? DATA.project.statuses : [];
-      const stageIdAttr = (curStage && curStage.reviewNode) ? curStage.reviewNode.id : shot.sectionNode.id;
+      const stageIdAttr = escapeHtml((curStage && curStage.reviewNode) ? curStage.reviewNode.id : shot.sectionNode.id);
       if(shotEffStatus){
         const curSt = projStatuses.find(s=>s.id===shotEffStatus);
         if(curSt){
-          statusChip = `<span class="shot-status" data-shot="${shot.sectionNode.id}" data-stage="${stageIdAttr}" style="background:${resolveColor(curSt.color||'#5a5a6a')}" title="ステータスを変更">${escapeHtml(curSt.label||curSt.id)}</span>`;
+          statusChip = `<span class="shot-status" data-shot="${escapeHtml(shot.sectionNode.id)}" data-stage="${stageIdAttr}" style="background:${resolveColor(curSt.color||'#5a5a6a')}" title="ステータスを変更">${escapeHtml(curSt.label||curSt.id)}</span>`;
         }else{
-          statusChip = `<span class="shot-status empty" data-shot="${shot.sectionNode.id}" data-stage="${stageIdAttr}" title="ステータスを設定">未設定</span>`;
+          statusChip = `<span class="shot-status empty" data-shot="${escapeHtml(shot.sectionNode.id)}" data-stage="${stageIdAttr}" title="ステータスを設定">未設定</span>`;
         }
       }else if(curStage || shot.sectionNode){
-        statusChip = `<span class="shot-status empty" data-shot="${shot.sectionNode.id}" data-stage="${stageIdAttr}" title="ステータスを設定">未設定</span>`;
+        statusChip = `<span class="shot-status empty" data-shot="${escapeHtml(shot.sectionNode.id)}" data-stage="${stageIdAttr}" title="ステータスを設定">未設定</span>`;
       }
       /* v.026／v.028／v.033：SHOT 列の「メモ」。ショット名の直後に inline 配置（1 行）。
          はみ出せば末尾 …、クリックで contentEditable 編集。空時は CSS :empty::before で「メモ…」を表示。 */
@@ -2547,7 +2669,7 @@ function buildGantt(){
       row.innerHTML = `
         <div class="shot" title="${escapeHtml(tt)}">
           <div class="id">${escapeHtml(shot.sectionNode.name||shot.sectionNode.id.slice(-8))}</div>
-          <div class="shot-memo" data-shot="${shot.sectionNode.id}" title="${escapeHtml(memoText||'クリックでメモを追加')}">${escapeHtml(memoText)}</div>
+          <div class="shot-memo" data-shot="${escapeHtml(shot.sectionNode.id)}" title="${escapeHtml(memoText||'クリックでメモを追加')}">${escapeHtml(memoText)}</div>
           <div class="cur-stage"><span class="dot" style="background:${curColor}"></span>${escapeHtml(curLabel)}</div>
           ${statusChip}
           ${addBtn}
@@ -2585,7 +2707,8 @@ function drawGanttMilestones(wrapper){
   const days=DATA.timeline.days;
   for(const m of items){
     if(!m||!m.date)continue;
-    let idx;try{idx=dayIdx(m.date)}catch(_){continue}
+    /* m.date は "YYYY-MM-DD" 文字列。日スケール（hourly）では dayIdx が Date 前提で TypeError になり縦線が消えていた */
+    let idx;try{const _d=(m.date instanceof Date)?m.date:parseIsoDateJst(String(m.date));if(!_d||isNaN(_d))continue;idx=dayIdx(_d)}catch(_){continue}
     if(idx<0||idx>days)continue;
     const line=document.createElement('div');
     line.className='gantt-milestone';
@@ -2604,9 +2727,15 @@ function drawGanttMilestones(wrapper){
 }
 /* v.007：milestones.json を書き込みつつ DATA.milestones を更新して再描画。
    書込境界：`milestones.json` のみ。shot.json / laycat.project.json は触らない。 */
-async function _pmSaveMilestones(){
+/* op：{upsert:item} 追加・変更 ／ {remove:id} 削除。保存直前にディスクの最新を読み、この 1 件だけを当てる。
+   以前は手元の配列で丸ごと上書きしていたため、他の PM が後から追加・削除したマイルストーンを消していた。
+   ディスクが読めない（未作成・失敗）ときは手元の一覧を基準にする。 */
+async function _pmSaveMilestones(op){
   try{
-    const items=Array.isArray(DATA.milestones)?DATA.milestones.slice():[];
+    let remote=null;try{remote=await storage.readJson('milestones.json')}catch(_){remote=null}
+    let items=(remote&&Array.isArray(remote.items))?remote.items.slice():(Array.isArray(DATA.milestones)?DATA.milestones.slice():[]);
+    if(op&&op.upsert){const i=items.findIndex(x=>x&&x.id===op.upsert.id);if(i>=0)items[i]=op.upsert;else items.push(op.upsert)}
+    if(op&&op.remove){items=items.filter(x=>x&&x.id!==op.remove)}
     items.sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
     DATA.milestones=items;
     await storage.writeJson('milestones.json',{v:1,items,updatedAt:new Date().toISOString()});
@@ -2635,13 +2764,12 @@ function openMilestoneAddPopup(iso,anchor){
   const save=document.createElement('button');save.textContent='追加';save.style.cssText='padding:4px 10px;border-radius:6px;background:#4da6ff;border:0;color:#111;cursor:pointer;font-size:12px;font-weight:700';
   save.onclick=async()=>{
     const t=(inp.value||'').trim();if(!t)return;
-    if(!Array.isArray(DATA.milestones))DATA.milestones=[];
-    DATA.milestones.push({
+    const _nm={
       id:'ms_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
       text:t,date:iso,
       createdBy:_pmCurrentUserEmailSafe(),createdAt:new Date().toISOString()
-    });
-    await _pmSaveMilestones();_msRedraw();_msCloseAny();
+    };
+    await _pmSaveMilestones({upsert:_nm});_msRedraw();_msCloseAny();
   };
   inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();save.click()}else if(e.key==='Escape'){_msCloseAny()}});
   btns.appendChild(cancel);btns.appendChild(save);pop.appendChild(btns);
@@ -2665,8 +2793,7 @@ function openMilestoneEditPopup(m,anchor){
   const del=document.createElement('button');del.textContent='削除';del.style.cssText='padding:4px 10px;border-radius:6px;background:transparent;border:1px solid #e06a6a;color:#e06a6a;cursor:pointer;font-size:12px';
   del.onclick=async()=>{
     if(!confirm('このマイルストーンを削除しますか？'))return;
-    DATA.milestones=(DATA.milestones||[]).filter(x=>x.id!==m.id);
-    await _pmSaveMilestones();_msRedraw();_msCloseAny();
+    await _pmSaveMilestones({remove:m.id});_msRedraw();_msCloseAny();
   };
   const right=document.createElement('div');right.style.cssText='display:flex;gap:6px';
   const cancel=document.createElement('button');cancel.textContent='キャンセル';cancel.style.cssText='padding:4px 10px;border-radius:6px;background:transparent;border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:12px';
@@ -2675,7 +2802,7 @@ function openMilestoneEditPopup(m,anchor){
   save.onclick=async()=>{
     m.date=dIn.value||null;m.text=(inp.value||'').trim();
     m.updatedBy=_pmCurrentUserEmailSafe();m.updatedAt=new Date().toISOString();
-    await _pmSaveMilestones();_msRedraw();_msCloseAny();
+    await _pmSaveMilestones({upsert:Object.assign({},m)});_msRedraw();_msCloseAny();
   };
   inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();save.click()}else if(e.key==='Escape'){_msCloseAny()}});
   right.appendChild(cancel);right.appendChild(save);
@@ -2718,7 +2845,7 @@ function buildCustomGantt(scheduleId){
         <div class="ep-ico">📋</div>
         <div class="ep-title">「${escapeHtml(sch.name)}」に工程がありません</div>
         <div class="ep-sub">案件全体のワークフロー（例：キャラクターモデリング／背景モデリング／リギング／アニメーション／コンポジット 等）を工程として追加してください。<br>各工程はガント上でドラッグして期間を設定できます。</div>
-        <button class="btn btn-primary" onclick="onAddCustomItem('${sch.id}')">＋ 工程を追加</button>
+        <button class="btn btn-primary" onclick="onAddCustomItem('${pmSafeId(sch.id)}')">＋ 工程を追加</button>
       </div>`;
     return;
   }
@@ -2745,11 +2872,11 @@ function buildCustomGantt(scheduleId){
     if(it.plannedStart && it.plannedEnd){
       const p1 = dayIdx(it.plannedStart), p2 = dayIdx(it.plannedEnd);
       const w = Math.max(px, (p2-p1)*px);
-      track.push(`<div class="seg-plan" data-cust-sch="${sch.id}" data-cust-item="${it.id}" style="left:${p1*px}%;width:${w}%;border-color:${it.color};background:${it.color}"><span class="seg-lbl" style="color:${it.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${escapeHtml(it.name)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
+      track.push(`<div class="seg-plan" data-cust-sch="${escapeHtml(sch.id)}" data-cust-item="${escapeHtml(it.id)}" style="left:${p1*px}%;width:${w}%;border-color:${it.color};background:${it.color}"><span class="seg-lbl" style="color:${it.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">${escapeHtml(it.name)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
     }else{
       const p1 = todayIdx, p2 = todayIdx+3;
       const w = (p2-p1)*px;
-      track.push(`<div class="seg-plan seg-placeholder" data-cust-sch="${sch.id}" data-cust-item="${it.id}" style="left:${p1*px}%;width:${w}%;border-color:${it.color};background:transparent;opacity:.55" title="ドラッグして「${escapeHtml(it.name)}」の予定を設定"><span class="seg-lbl" style="color:${it.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">+ ${escapeHtml(it.name)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
+      track.push(`<div class="seg-plan seg-placeholder" data-cust-sch="${escapeHtml(sch.id)}" data-cust-item="${escapeHtml(it.id)}" style="left:${p1*px}%;width:${w}%;border-color:${it.color};background:transparent;opacity:.55" title="ドラッグして「${escapeHtml(it.name)}」の予定を設定"><span class="seg-lbl" style="color:${it.color};background:linear-gradient(90deg,var(--bg2) 60%,transparent);padding-right:6px">+ ${escapeHtml(it.name)}</span><div class="handle l"></div><div class="handle r"></div></div>`);
     }
     /* v.025／v.026：土日祝オーバーレイ（バーに重ねる半透明） */
     for(const h of _trackOffDayOverlayHtml(start, days, px, _pubSet2, _coSet2, _getProjectRoot())) track.push(h);
@@ -2758,7 +2885,7 @@ function buildCustomGantt(scheduleId){
       <div class="shot">
         <div class="id">${escapeHtml(it.name)}</div>
         <div class="meta">${rollup}
-          <button class="chip-del" data-cust-sch="${sch.id}" data-cust-item="${it.id}" title="この工程を削除" style="background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px;cursor:pointer">×</button>
+          <button class="chip-del" data-cust-sch="${escapeHtml(sch.id)}" data-cust-item="${escapeHtml(it.id)}" title="この工程を削除" style="background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px;cursor:pointer">×</button>
         </div>
       </div>
       <div class="track">${track.join('')}</div>
@@ -2779,7 +2906,7 @@ function buildCustomGantt(scheduleId){
   /* 「工程を追加」ボタン */
   const addRow = document.createElement('div');
   addRow.style.cssText='padding:10px 14px;background:var(--bg2);border-top:1px solid var(--border);text-align:center';
-  addRow.innerHTML = `<button class="custom-add-item" onclick="onAddCustomItem('${sch.id}')">＋ 工程を追加</button>`;
+  addRow.innerHTML = `<button class="custom-add-item" onclick="onAddCustomItem('${pmSafeId(sch.id)}')">＋ 工程を追加</button>`;
   body.appendChild(addRow);
 
   /* Today marker */
@@ -2846,7 +2973,7 @@ function showAddPlanMenu(btn){
   menu.className = 'plan-menu';
   menu.dataset.shot = shotId;
   const hdr = `<div class="hdr">予定を追加する工程を選択</div>`;
-  const items = unplanned.map(st=>`<div class="item" data-stage="${st.reviewNode.id}"><span class="dot" style="background:${st.color}"></span><span class="lbl">${escapeHtml(st.label)}</span></div>`).join('');
+  const items = unplanned.map(st=>`<div class="item" data-stage="${escapeHtml(st.reviewNode.id)}"><span class="dot" style="background:${st.color}"></span><span class="lbl">${escapeHtml(st.label)}</span></div>`).join('');
   menu.innerHTML = hdr + items;
   document.body.appendChild(menu);
   const rect = btn.getBoundingClientRect();
@@ -2872,7 +2999,7 @@ async function addPlanForStage(shotId, stageId){
   const end = new Date(start.getTime() + 3*86400000);
   st.plannedStart = start;
   st.plannedEnd = end;
-  await saveShotSchedule(shot);
+  await saveShotSchedule(shot,[st]);
   closePlanMenu();
   buildGantt();
 }
@@ -2932,22 +3059,31 @@ async function applyStatusChange(item){
      `status/{shotSectionId}.json` に書く（Simple B なら section.id === review.id で従来どおり）。
      旧 `status/{reviewId}.json` は残置。 */
   const sid = shot.sectionNode.id;
+  let _prevForHist = prev;
   try{
-    const existing = await storage.readJson(`status/${sid}.json`);
+    /* 読めなかった（通信・権限・JSON 破損）ときは書かない。以前は「ファイル無し」とみなして
+       history=[]・_rev=1 で上書きし、既存の履歴（実績バー・工数・本体の履歴表示の元データ）を消していた。 */
+    const rd = await storage.readJsonEx(`status/${sid}.json`);
+    if(!rd.ok){ alert('ステータスを読み込めなかったため変更を保存しませんでした。接続を確認して再度お試しください。'); closeStatusMenu(); return; }
+    const existing = rd.data;
+    /* 変更前の値はディスク側を正とする（LayCAT 本体で変わっていた場合に履歴の from がずれないように） */
+    if(existing) _prevForHist = (existing.status==null||existing.status==='') ? null : existing.status;
+    if(_prevForHist === newStatus){ shot.shotStatus = newStatus; closeStatusMenu(); buildGantt(); updateSidebar(); return; }
     const nowTs = new Date().toISOString();
-    const me = null; /* pmboard は現ユーザー特定情報を持たないので null */
+    const me = _pmCurrentUserEmailSafe() || null;
     const history = Array.isArray(existing && existing.history) ? existing.history.slice() : [];
-    history.push({ts:nowTs, by:me, from:prev, to:newStatus, source:'pmboard'});
+    history.push({ts:nowTs, by:me, from:_prevForHist, to:newStatus, source:'pmboard'});
     const rev = ((existing && existing._rev)|0) + 1;
     const file = {v:1, shotId:sid, status:newStatus, updatedAt:nowTs, updatedBy:me, source:'pmboard', history, _rev:rev};
-    await storage.writeJson(`status/${sid}.json`, file);
-  }catch(e){ console.warn('[pmboard] status write failed', e); }
+    const ok = await storage.writeJson(`status/${sid}.json`, file);
+    if(ok===false){ alert('ステータスを保存できませんでした。接続を確認して再度お試しください。'); closeStatusMenu(); return; }
+  }catch(e){ console.warn('[pmboard] status write failed', e); alert('ステータスを保存できませんでした：'+(e&&e.message||e)); closeStatusMenu(); return; }
   /* メモリ側も更新（shot 単位の値のみ。stage 単位は残置＝旧ファイルとの整合のため。） */
   const projStatuses = (DATA.project && DATA.project.statuses) || [];
   shot.shotStatus = newStatus;
   shot.shotIsDone = newStatus ? isStatusDone(newStatus, projStatuses) : false;
   shot.shotStatusHistory = shot.shotStatusHistory || [];
-  shot.shotStatusHistory.push({ts:new Date().toISOString(), from:prev, to:newStatus, source:'pmboard'});
+  shot.shotStatusHistory.push({ts:new Date().toISOString(), from:_prevForHist, to:newStatus, source:'pmboard'});
   closeStatusMenu();
   /* 再描画：ガント + サイドバー */
   buildGantt();
@@ -3119,9 +3255,8 @@ function initScheduleDrag(){
     if(drag.mode==='move'){p1+=dayShift; p2+=dayShift;}
     else if(drag.mode==='resize-l') p1 = Math.min(drag.origP2-1, drag.origP1+dayShift);
     else if(drag.mode==='resize-r') p2 = Math.max(drag.origP1+1, drag.origP2+dayShift);
-    if(p1<0){const s=-p1; p1=0; if(drag.mode==='move') p2+=s;}
-    if(p2>days-1){const s=p2-(days-1); p2=days-1; if(drag.mode==='move') p1-=s;}
-    if(p1<0)p1=0; if(p2>days-1)p2=days-1;
+    /* 以前はここで p1/p2 を「表示中の範囲（週表示なら 7 日）」に押し込んでいたため、表示範囲より長い予定を
+       少し動かすだけで今週分に切り詰められて保存されていた。ずらした日数だけを反映し、範囲外はそのまま残す。 */
     const s1=new Date(DATA.timeline.start.getTime()+p1*86400000);
     const s2=new Date(DATA.timeline.start.getTime()+p2*86400000);
     drag.target.plannedStart=s1;
@@ -3162,7 +3297,7 @@ function initScheduleDrag(){
         buildCustomGantt(d.custSchId);
       }else{
         const shot = DATA.shots.find(s=>s.stages.some(x=>x===d.target));
-        if(shot){ await saveShotSchedule(shot); }
+        if(shot){ await saveShotSchedule(shot,[d.target]); }
         buildGantt();
       }
     }catch(e){console.warn(e);}
@@ -3219,6 +3354,9 @@ function initScheduleDrag(){
     /* 入力欄フォーカス中は無視 */
     const t = e.target;
     if(t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable)) return;
+    /* スケジュールタブ以外（工数・資料など）を表示中は、選択が残っていても予定を消したり貼ったりしない */
+    const _schedPane = document.querySelector('.pane[data-pane="schedule"]');
+    if(_schedPane && !_schedPane.classList.contains('on')) return;
     const isCtrl = e.ctrlKey||e.metaKey;
     if(e.key==='Delete'||e.key==='Backspace'){
       if(!DATA.selectedPlan) return;
@@ -3249,7 +3387,7 @@ function initScheduleDrag(){
       const shot = DATA.shots.find(s=>s.sectionNode.id===sel.shotId); if(!shot) return;
       const st = shot.stages.find(x=>x.reviewNode.id===sel.stageId); if(!st) return;
       st.plannedStart=null; st.plannedEnd=null;
-      await saveShotSchedule(shot);
+      await saveShotSchedule(shot,[st]);
       DATA.selectedPlan=null;
       buildGantt();
     }
@@ -3318,7 +3456,7 @@ function initScheduleDrag(){
       }
       st.plannedStart = new Date(clip.plannedStart.getTime());
       st.plannedEnd = new Date(clip.plannedEnd.getTime());
-      await saveShotSchedule(shot);
+      await saveShotSchedule(shot,[st]);
       /* 貼付後は「そのバー」を選択状態に切替 */
       DATA.selectedPlan = {shotId: shot.sectionNode.id, stageId: st.reviewNode.id, custSchId:null, custItemId:null};
       buildGantt();
@@ -3808,6 +3946,13 @@ function hideHomeView(){
 }
 async function switchToProject(pid){
   hideHomeView(); /* v.064：ホーム表示中なら閉じる */
+  /* 前のプロジェクトのデータを先に破棄する。切替に失敗しても、古いマイルストーン・カスタムスケジュール・
+     資料を新しいプロジェクトへ書き込めないようにする。 */
+  try{
+    DATA.shots=[]; DATA.milestones=[]; DATA.customSchedules=[]; DATA._custBase=[];
+    DATA.selectedPlan=null; DATA.currentSubTab='shots';
+    if(typeof _REF_STATE!=='undefined'){ _REF_STATE.pid=null; _REF_STATE.workingItems.splice(0); _REF_STATE.selection.clear(); }
+  }catch(_){}
   storage.pid = pid;
   savePmboardLastPid(pid); /* 更新時に復元するため即保存 */
   updateFolderUI(); /* まず未接続表示 */
@@ -3851,6 +3996,8 @@ async function switchToProject(pid){
   }
   updateFolderUI();
   await loadAndRender();
+  /* 資料タブを一度でも開いていたら、新しいプロジェクトの資料に読み直す */
+  try{ if(window._refInited && typeof _REF_STATE!=='undefined' && _REF_STATE.reload) await _REF_STATE.reload(); }catch(e){ console.warn(e); }
 }
 function updateFolderUI(){
   const fs = document.getElementById('folderStatus');
@@ -3899,6 +4046,12 @@ function _pmCheckMemberAccess(){
   const nodes=(DATA.project&&Array.isArray(DATA.project.nodes))?DATA.project.nodes:[];
   const root=nodes.find(n=>n.id===(DATA.project&&DATA.project.id))||nodes.find(n=>!n.parentId);
   if(_pmIsMember(root))return true;
+  /* 拒否したのにデータがメモリに残っていると、検索欄・スケール切替・資料タブなどの操作で表示・編集できてしまっていた。
+     読み込んだショット・予定・マイルストーン・資料を破棄する。 */
+  try{
+    DATA.shots=[]; DATA.milestones=[]; DATA.customSchedules=[]; DATA._custBase=[]; DATA.selectedPlan=null;
+    if(typeof _REF_STATE!=='undefined'){ _REF_STATE.pid='__denied__'; _REF_STATE.workingItems.splice(0); _REF_STATE.selection.clear(); }
+  }catch(_){}
   const body=document.getElementById('ganttBody');
   const meNow=_pmCurrentUserEmail()||'（未ログイン）';
   const projName=(DATA.project&&(DATA.project.name||DATA.project.id))||'このプロジェクト';
@@ -3927,8 +4080,15 @@ async function _pmLoadAccess(){
     const r=await fetch('./access.json',{cache:'no-store'});
     _pmAccessCfg=await r.json();
   }catch(_){_pmAccessCfg=null}
-  /* Firebase の onAuthStateChanged が初回発火するまで最大 6s 待つ（ログイン状態が判るまで） */
-  try{if(window.__pmFBReady)await Promise.race([window.__pmFBReady,new Promise(r=>setTimeout(r,6000))])}catch(_){}
+  /* Firebase の onAuthStateChanged が初回発火するまで最大 6s 待つ（ログイン状態が判るまで）。
+     __pmFBReady は module script で作られるので、access.json の読み込みが先に終わると未定義のことがある。
+     以前はその場合に待たずに判定し、拒否画面→onAuthStateChanged で再読み込み→また拒否…のループになっていた
+     （Firebase の読み込みが遅い環境で発生）。定義されるまで待ってから判定する。 */
+  try{
+    const _t0=Date.now();
+    while(!window.__pmFBReady && Date.now()-_t0<6000){ await new Promise(r=>setTimeout(r,50)); }
+    if(window.__pmFBReady)await Promise.race([window.__pmFBReady,new Promise(r=>setTimeout(r,6000))]);
+  }catch(_){}
   /* Firestore の laynaAccess/config を上書きマージ */
   try{
     if(window.__laynaFB&&window.__laynaFB.loadAccess){
@@ -4040,6 +4200,8 @@ async function loadAndRender(){
   updateSidebar();
   if(typeof renderEffortPane==='function') renderEffortPane();
   if(typeof updateLastUpdatedLabel==='function') updateLastUpdatedLabel();
+  /* タブの件数：以前は見本の固定値（32 など）が出ていた。スケジュールは実際のショット数を表示 */
+  try{const c=document.getElementById('ptabSchedCnt');if(c){const n=(DATA.shots||[]).length;c.textContent=String(n);c.style.display=n?'':'none';}}catch(_){}
 }
 function updateSidebar(){
   if(!DATA.project) return;
@@ -4085,7 +4247,7 @@ function resolveColor(c){
     const v = getComputedStyle(document.body).getPropertyValue(m[1]).trim();
     return v || '#888';
   }
-  return c;
+  return pmSafeColor(c, '#888');
 }
 function drawDonut(canvas, rows, total, opts){
   if(!canvas) return;
@@ -4726,12 +4888,14 @@ async function _refInit(){
   if(!vp || !canvas) return;
   const view = _REF_STATE.view;
   const workingItems = _REF_STATE.workingItems;
-  /* 実データロード（非同期で終わったら再描画） */
+  /* 実データロード（非同期で終わったら再描画）。読み込んだプロジェクトを記録しておき、保存時に照合する。 */
   try{
+    const _pidAtLoad = storage.pid;
     const loaded = await storage.loadReferenceItems();
     if(Array.isArray(loaded) && loaded.length){
       workingItems.splice(0, workingItems.length, ...loaded);
     }
+    _REF_STATE.pid = _pidAtLoad;
   }catch(_){}
   let items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
   /* v.050：titleItems は rebuildToc 内で毎回動的計算（従来の外部キャプチャ版は廃止） */
@@ -4988,6 +5152,19 @@ async function _refInit(){
     }
   };
   rebuildToc();
+  /* プロジェクト切替時の読み直し（switchToProject から呼ぶ）。イベントの配線はそのまま、アイテムだけ入れ替える。 */
+  _REF_STATE.reload = async ()=>{
+    const pidNow = storage.pid;
+    let loaded = [];
+    try{ loaded = await storage.loadReferenceItems(); }catch(_){ loaded = []; }
+    if(storage.pid !== pidNow) return; /* 読み込み中にさらに切り替わった */
+    workingItems.splice(0, workingItems.length, ...(Array.isArray(loaded)?loaded:[]));
+    _REF_STATE.selection.clear();
+    _REF_STATE.pid = pidNow;
+    items = (!_REF_STATE.editMode && workingItems.length === 0) ? REF_MOCK_ITEMS : workingItems;
+    try{ renderVisible(); }catch(_){}
+    try{ rebuildToc(); }catch(_){}
+  };
   /* 保存スケジューラ */
   const _saveTimers = {};
   const scheduleItemSave = (it)=>{
