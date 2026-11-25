@@ -2887,7 +2887,9 @@ const storage={
       for(const r of results){if(r&&r.id)items.push(r)}
       return items;
     }
-    const ph=await this.projRoot(id);if(!ph)return [];
+    /* 【全解析修正】フォルダ未接続（権限待ち等）は「0 件」ではなく読み込み失敗（null）として返す。
+       資料タブは失敗なら読み込み済みにせず次回やり直す（0 件扱いだと接続後も空のまま表示されていた）。 */
+    const ph=await this.projRoot(id);if(!ph)return null;
     try{
       const refDir=await ph.getDirectoryHandle('reference');
       const itemsDir=await refDir.getDirectoryHandle('items');
@@ -3082,12 +3084,9 @@ const storage={
      ファイル形式：{v:1, shotId, status, updatedAt, updatedBy, source, history:[], _rev} */
   async loadStatus(pid,sid){
     if(this._backend(pid)==='r2')return null; /* R2 未対応：inline status（v:4）にフォールバック */
-    const ph=await this.projRoot(pid);if(!ph)return null;
-    try{
-      const dir=await ph.getDirectoryHandle('status');
-      const fh=await dir.getFileHandle(sid+'.json');
-      return JSON.parse(await (await fh.getFile()).text());
-    }catch(_){return null}
+    /* 【全解析修正】「無い」と「読めなかった」を区別する（_loadSplitFile と共通）。以前は読めなかった時も null で、
+       setStatus が「ファイル無し」とみなして history を空にして上書きしていた。読めなかった時は _writeStatusFile が書かずに再試行する。 */
+    return await this._loadSplitFile(pid,'status',sid,'status',null);
   },
   async saveStatus(pid,sid,data){
     if(this._backend(pid)==='r2')return false; /* R2 未対応 */
@@ -3130,10 +3129,14 @@ const storage={
       }else{
         for await(const name of dir.keys()){if(name.endsWith('.json'))names.push(name)}
       }
-      const files=await Promise.all(names.map(async name=>{
+      /* 【全解析修正】Google ドライブ等の競合コピー（`nd_xxx (1).json`・`nd_xxx 競合.json` など）や
+         ファイル名と中身の shotId が食い違うファイルは読まない（古い値で上書きされるのを防ぐ）。 */
+      const files=await Promise.all(names.filter(name=>/^[A-Za-z0-9_-]+\.json$/.test(name)).map(async name=>{
         try{
           const fh=await dir.getFileHandle(name);
-          return JSON.parse(await (await fh.getFile()).text());
+          const j=JSON.parse(await (await fh.getFile()).text());
+          if(!j||j.shotId!==name.replace(/\.json$/,''))return null;
+          return j;
         }catch(_){return null}
       }));
       return files.filter(f=>f&&f.shotId);
@@ -3475,6 +3478,8 @@ async function setStatus(node,newStatus,source){
 async function _writeStatusFile(job){
   try{
     const existing=await storage.loadStatus(job.pid,job.sid);
+    /* 【全解析修正】既存の status ファイルが読めなかったときは書かない（history を消さない）。呼び出し側が再試行する */
+    if(!existing&&storage._readFailed(job.pid,'status',job.sid))return false;
     if(!job.tries){
       job.baseRev=existing?(existing._rev|0):null;
     }else if(existing){
@@ -4584,7 +4589,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.25.039';
+const APP_VERSION='2026.11.25.040';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5691,7 +5696,8 @@ function subShowList(){
       if(v&&v.thumb)storage.getURL(v.thumb).then(u=>{if(u)th.style.backgroundImage='url("'+u+'")'});
       tc.appendChild(th);
       /* サムネイル下にショット番号（ショット名）バッジ。ショット無ければ工程名でフォールバック */
-      const lbl=(shot&&shot.name)||(n&&n.name)||'';
+      /* 【全解析修正】Simple B（ショット＝review ノード）では工程名とショット名を _shotStageLabel で解決（以前はショット名を工程、親フォルダをショットとして表示していた） */
+      const lbl=n?(_isLegacyStageReview(n)?((shot&&shot.name)||n.name):n.name)||'':'';
       if(lbl){const l=el('div','tc-lbl',lbl);l.title=lbl;tc.appendChild(l)}
       ths.appendChild(tc);
     }
@@ -8769,7 +8775,8 @@ function openPublishModal(root){
         nameRow.textContent=r.shotName;
         info2.appendChild(nameRow);
         const metaRow=el('div');metaRow.style.cssText='font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-        metaRow.textContent=(r.stageNode.name||'')+'  ·  '+(r.v.name||'(無名)');
+        /* 【全解析修正】Simple B（ショット＝review ノード）では工程名とショット名を _shotStageLabel で解決（以前はショット名を工程、親フォルダをショットとして表示していた） */
+        metaRow.textContent=(_shotStageLabel(r.stageNode,r.v).stage||'')+'  ·  '+(r.v.name||'(無名)');
         info2.appendChild(metaRow);
         row.appendChild(info2);
         /* ステータス色付きバッジ */
@@ -11445,7 +11452,8 @@ function switchStageInTab(newId){
 function fillReviewDrawer(){
   const back=$('#reviewDrawer');if(!back||!state.drawer||state.drawer.kind!=='review')return;
   const node=getNode(state.drawer.id);if(!node||node.type!=='review'){closeReviewDrawer();return}
-  const shot=(state.drawer.shotId&&getNode(state.drawer.shotId))||(node.parentId?getNode(node.parentId):null);
+  /* 【全解析修正】Simple B（ショット＝review ノード）では工程名とショット名を _shotStageLabel で解決（以前はショット名を工程、親フォルダをショットとして表示していた） */
+  const shot=_isLegacyStageReview(node)?((state.drawer.shotId&&getNode(state.drawer.shotId))||(node.parentId?getNode(node.parentId):null)):null;
   back._t.textContent=shot?shot.name:node.name;
   back._p.textContent=(shot?pathOf(shot.id).slice(1).map(x=>x.name).join(' / '):pathOf(node.id).slice(1,-1).map(x=>x.name).join(' / '))||rootOf(node).name;
   back._acts.innerHTML='';
@@ -11534,8 +11542,10 @@ function fillSubmitDrawer(){
     const tile=el('div','pm-tile'+(state.drawer.detailId===n.id?' sel':''));
     const th=el('div','th');if(v.thumb)storage.getURL(v.thumb).then(u=>{if(u)th.style.backgroundImage='url("'+u+'")'});else th.appendChild(thumbPh());
     tile.appendChild(th);
-    const bd=el('div','bd');bd.appendChild(el('div','nm',(shot&&shot.id!==sb.projectId?shot.name+' / ':'')+n.name));
-    const mt=el('div','mt');const badge=el('span','pm-badge',n.name);badge.style.background=stageBadgeColor(n);mt.appendChild(badge);mt.appendChild(el('span','pth',v.name));bd.appendChild(mt);
+    /* 【全解析修正】Simple B（ショット＝review ノード）では工程名とショット名を _shotStageLabel で解決（以前はショット名を工程、親フォルダをショットとして表示していた） */
+    const _lb=_shotStageLabel(n,v);
+    const bd=el('div','bd');bd.appendChild(el('div','nm',_isLegacyStageReview(n)?((shot&&shot.id!==sb.projectId?shot.name+' / ':'')+n.name):n.name));
+    const mt=el('div','mt');const badge=el('span','pm-badge',_lb.stage||'—');badge.style.background=_lb.color;mt.appendChild(badge);mt.appendChild(el('span','pth',v.name));bd.appendChild(mt);
     if(item.comment)bd.appendChild(el('div','pth',item.comment));
     tile.appendChild(bd);
     tile.onclick=()=>{state.drawer.detailId=n.id;tiles.forEach(t=>t.classList.remove('sel'));tile.classList.add('sel');showSubDetail();syncHash()}; /* タイル → その下にショットページを展開 */
@@ -19442,7 +19452,8 @@ async function exportRetimedAnnotated(node,v,opts){
   recorder.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data)};
   /* 進捗 UI（既存 exportAnnotated と同構成） */
   const ov=el('div');
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9600;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;gap:16px;padding:24px';
+  /* 【全解析修正】REEL 窓（z-index 9999）の裏に隠れて中断できなかったので前面に */
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:10050;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;gap:16px;padding:24px';
   const title=el('div');title.style.cssText='font-size:16px;font-weight:700';
   title.textContent='⬇ 書き出し中（リタイム反映'+(withAnnotations?'・アノテ込み':'・アノテ無し')+'） — '+((v&&v.name)||'');
   const status=el('div');status.style.cssText='font-size:13px;color:#aaa;font-family:var(--font-code)';
@@ -20840,7 +20851,8 @@ function openReel(){
         let shifted=false;for(const s of n.drawing){const L=s.layer||1;if(L>i){s.layer=L-1;shifted=true}}
         if(n.drawing.length!==before||shifted)committed=true;
       }
-      if(committed)vv.review.notes=vv.review.notes.filter(n=>n.kind||(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length));
+      /* 【全解析修正】添付画像だけのコメント（attachImg / imgShot）を消さない（アノテ窓側と同じ条件にそろえる） */
+      if(committed)vv.review.notes=vv.review.notes.filter(n=>n.kind||(n.text&&String(n.text).trim())||(n.drawing&&n.drawing.length)||n.attachImg||n.imgShot);
     }
     RV.layerVis.splice(i-1,1);RV.layerVis.push(true);
     if(RV.layerCount>1)RV.layerCount--;
@@ -22899,8 +22911,9 @@ function reelRender(){
     b.appendChild(ce(d,'div','du',fmtSec(c.dur)));
     const ops=ce(d,'div','ops');
     const mk=(lab,fn,tt)=>{const x=ce(d,'button',null,lab);x.title=tt;x.onclick=e=>{e.stopPropagation();fn()};ops.appendChild(x)};
-    mk('◀',()=>{if(i>0){[cs[i-1],cs[i]]=[cs[i],cs[i-1]];if(reelUI.cur===i)reelUI.cur--;else if(reelUI.cur===i-1)reelUI.cur++;reelRender();scheduleReelPersist()}},'左へ');
-    mk('▶',()=>{if(i<cs.length-1){[cs[i+1],cs[i]]=[cs[i],cs[i+1]];if(reelUI.cur===i)reelUI.cur++;else if(reelUI.cur===i+1)reelUI.cur--;reelRender();scheduleReelPersist()}},'右へ');
+    /* 【全解析修正】◀ ▶・ドラッグ並べ替えは openReel 内のローカル関数 scheduleReelPersist を直接呼んで ReferenceError になっていた → reelUI 経由で保存予約 */
+    mk('◀',()=>{if(i>0){[cs[i-1],cs[i]]=[cs[i],cs[i-1]];if(reelUI.cur===i)reelUI.cur--;else if(reelUI.cur===i-1)reelUI.cur++;reelRender();(typeof reelUI.schedulePersist==='function'&&reelUI.schedulePersist())}},'左へ');
+    mk('▶',()=>{if(i<cs.length-1){[cs[i+1],cs[i]]=[cs[i],cs[i+1]];if(reelUI.cur===i)reelUI.cur++;else if(reelUI.cur===i+1)reelUI.cur--;reelRender();(typeof reelUI.schedulePersist==='function'&&reelUI.schedulePersist())}},'右へ');
     mk('✕',()=>{
       /* R1 修正：このクリップの pending が動画側に埋め込まれている場合、外す前に警告して掃除する。
          「未保存でも即外す」の従来挙動は動画にゴミが残るのでダメ。 */
@@ -22952,7 +22965,7 @@ function reelRender(){
       if(newCur>=0)reelUI.cur=newCur;
       track.querySelectorAll('.clip').forEach(x=>{x.classList.remove('reel-drop-before');x.classList.remove('reel-drop-after')});
       reelRender();
-      scheduleReelPersist();
+      (typeof reelUI.schedulePersist==='function'&&reelUI.schedulePersist());
     });
     track.appendChild(b);
   });
@@ -24552,9 +24565,14 @@ function _wireSignals(){
 async function _maybeAutoAssignTenant(u){
   if(!u||!u.email) return;
   if(!window.__laynaFB||!window.__laynaFB.loadUserProfile||!window.__laynaFB.findUserTenants||!window.__laynaFB.saveUserProfile) return;
-  const profile = await window.__laynaFB.loadUserProfile(u.email);
+  /* 【全解析修正】読み込みに失敗したら何も書かない。以前は失敗を「未設定」とみなし、所属テナントの先頭を
+     tenantId に書き込んでいた（複数テナント所属の人の選択が上書きされ得た）。 */
+  let profile, memberships;
+  try{
+    profile = await window.__laynaFB.loadUserProfile(u.email,{strict:true});
+    memberships = await window.__laynaFB.findUserTenants(u.email,{strict:true});
+  }catch(_){ return; }
   const curTenant = profile && typeof profile.tenantId === 'string' ? profile.tenantId : null;
-  const memberships = await window.__laynaFB.findUserTenants(u.email);
   if(!Array.isArray(memberships) || !memberships.length){
     /* どのテナントにも所属していない：tenantId を更新しない（既存値も尊重）。
        Phase M2b のログイン判定でメンバーシップ有無が別途チェックされる。 */
@@ -24762,14 +24780,14 @@ initApp();
       }catch(_){}},
       /* マイページ用：ユーザーの個人プロフィールを Firestore(laycatUsers/{emailKey}) から読む。
          無ければ null。dev v2026.10.02 追加（Phase A：プロフィール/稼働時間帯/役職）。 */
-      loadUserProfile:async(email)=>{try{
+      loadUserProfile:async(email,opts)=>{try{
         if(!email)return null;
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);
         const key=String(email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         const snap=await m.getDoc(m.doc(fs,'laycatUsers',key));
         return snap.exists()?snap.data():null;
-      }catch(e){return null}},
+      }catch(e){if(opts&&opts.strict)throw e;return null}}, /* strict：読み込み失敗を「未設定」と区別したい呼び出し側用 */
       /* マイページ用：ユーザーの個人プロフィールを Firestore(laycatUsers/{emailKey}) に保存。
          merge:true で部分更新。他のフィールドを壊さない。成否を返す。 */
       saveUserProfile:async(email,data)=>{try{
