@@ -4612,7 +4612,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.25.043';
+const APP_VERSION='2026.11.26.001';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -10632,7 +10632,11 @@ function renderHome(s){
     const card=el('div','proj-card');
     const media=el('div','proj-media');
     const ev=projectUpdates(r.id)[0];
-    const thumbRef=r.thumbnail||(ev&&ev.v.thumb);
+    /* 最新の更新が「サブミット（提出）のまとめ」だと ev.v が無く、ev.v.thumb で例外 → ホームのタイルが 1 枚も出なかった。
+       まとめの場合は中の最新の動画のサムネを使う。 */
+    let evV=ev&&ev.v;
+    if(ev&&!evV&&Array.isArray(ev.items)){let bt=null;for(const it of ev.items){if(it&&it.v&&(bt===null||String(it.time||'')>bt)){evV=it.v;bt=String(it.time||'')}}}
+    const thumbRef=r.thumbnail||(evV&&evV.thumb);
     if(thumbRef){const img=el('img','proj-thumb');img.dataset.ref=thumbRef;if(r.thumbnail&&thumbRef===r.thumbnail&&r.thumbCrop)img.dataset.crop=JSON.stringify(r.thumbCrop);img.onload=()=>applyThumbCrop(img);media.appendChild(img)}
     else{media.classList.add('ph');media.appendChild(el('span','proj-initial',(r.name||'?').trim().charAt(0).toUpperCase()))}
     card.appendChild(media);
