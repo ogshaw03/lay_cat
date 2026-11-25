@@ -764,7 +764,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.11.25.002';
+const APP_VERSION='2026.11.25.003';
 /* v.082：デモモード（?demo=1） — LayCAT と同じ URL パラメータで PMB も試用可能に。
    ?tab=<X> で初期タブ（gantt / efforts / reference 等）に遷移。 */
 const DEMO_MODE = (()=>{try{return new URLSearchParams(location.search).get('demo')==='1'}catch(_){return false}})();
@@ -4023,23 +4023,49 @@ function _pmCurrentUserEmail(){
   }catch(_){}
   try{return (localStorage.getItem('laycat_userEmail')||'').trim().toLowerCase()}catch(_){return ''}
 }
+/* 【本体に揃える 2026-11-25】R2 プロジェクトのテナント ID（root.tid → LayCAT が書く registry／tid キャッシュの順）。 */
+function _pmProjectTid(root){
+  if(storage.backend!=='r2')return '';
+  return String((root&&root.tid)||(storage._r2&&storage._r2._resolveTid(storage.pid))||'');
+}
+function _pmIsCorpTid(tid){return !!tid&&!tid.startsWith('personal__')&&tid!=='operator'}
+/* 同じテナントの所属判定に使う所属テナント一覧を、必要なとき（法人テナントの R2 プロジェクト）だけ読み込む。
+   _pmLoadAccess は運営・招待者・認証オフのときに読み込まないため。読み込めなければ空のまま（＝この基準では許可しない）。 */
+let _pmUserTenantsLoaded=false;
+async function _pmEnsureUserTenants(){
+  if(_pmUserTenantsLoaded||(Array.isArray(_pmUserTenants)&&_pmUserTenants.length))return;
+  _pmUserTenantsLoaded=true;
+  const em=_pmCurrentUserEmail();
+  if(!em||!window.__laynaFB||!window.__laynaFB.findUserTenants)return;
+  try{const mems=await window.__laynaFB.findUserTenants(em);if(Array.isArray(mems))_pmUserTenants=mems}catch(_){}
+}
 function _pmIsMember(root){
   if(!root)return true;
   const list=Array.isArray(root.members)?root.members.filter(m=>m&&m.active!==false):[];
   if(!list.length)return true; /* members 未設定 → 互換で許可 */
   const em=_pmCurrentUserEmail();
   if(!em)return false;
+  /* 【本体に揃える 2026-11-25】LayCAT 本体と同じく、メンバー表に載っていなくても次の人は許可する：
+     ・プロジェクトのオーナー本人（root.owner）
+     ・運営（laynaAccess/config.operatorEmails）
+     ・法人テナントの R2 プロジェクトなら、同じテナントの所属者（本体の Worker が許可している範囲） */
+  if(root.owner&&String(root.owner).toLowerCase()===em)return true;
+  try{const ops=(_pmAccessCfg&&Array.isArray(_pmAccessCfg.operatorEmails))?_pmAccessCfg.operatorEmails:[];if(ops.map(x=>String(x||'').toLowerCase()).includes(em))return true}catch(_){}
+  const tid=_pmProjectTid(root);
+  if(_pmIsCorpTid(tid)&&Array.isArray(_pmUserTenants)&&_pmUserTenants.some(t=>t&&t.tenantId===tid))return true;
   for(const m of list){
     const cid=String(m.id||'').toLowerCase();
     if(cid && em===cid)return true;
   }
   return false;
 }
-function _pmCheckMemberAccess(){
+async function _pmCheckMemberAccess(){
   if(DEMO_MODE) return true; /* v.082：デモモードはメンバーチェックをスキップ */
   const nodes=(DATA.project&&Array.isArray(DATA.project.nodes))?DATA.project.nodes:[];
   const root=nodes.find(n=>n.id===(DATA.project&&DATA.project.id))||nodes.find(n=>!n.parentId);
   if(_pmIsMember(root))return true;
+  /* 法人テナントの R2 プロジェクトは、所属テナントを読み込んでからもう一度判定する */
+  if(_pmIsCorpTid(_pmProjectTid(root))){await _pmEnsureUserTenants();if(_pmIsMember(root))return true;}
   /* 拒否したのにデータがメモリに残っていると、検索欄・スケール切替・資料タブなどの操作で表示・編集できてしまっていた。
      読み込んだショット・予定・マイルストーン・資料を破棄する。 */
   try{
@@ -4178,7 +4204,7 @@ async function loadAndRender(){
   /* LayCAT のプロジェクトメンバー管理を継承。root.members が設定されていれば、
      `localStorage.laycat_userEmail` と照合し、非メンバーはアクセス拒否画面に。
      members が未設定・空配列のプロジェクトは従来通り誰でも閲覧可（互換）。 */
-  if(!_pmCheckMemberAccess()){return}
+  if(!(await _pmCheckMemberAccess())){return}
   /* カスタムスケジュール（オリジナル工程セット）も並列読み込み */
   await loadCustomSchedules();
   /* v.006：マイルストーン（milestones.json）を読み込み。ガント縦線描画に使う。 */
