@@ -1268,7 +1268,7 @@ textarea.form-input{height:70px;resize:vertical}
     <button class="btn btn-ghost" id="reelBtn" title="REEL — 動画を並べて順番に見るシーケンスプレイヤー（別ウィンドウ）"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2"/><path d="M10 3v3M10 14v3M3 10h3M14 10h3"/></svg>REEL</button>
     <button class="btn btn-ghost" id="submitBtn" title="サブミット — 複数ショットの提出をまとめてレビュー"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/></svg>サブミット</button>
     <!-- Beta（laycat.html）から dev 版の PM Board へ飛ばないよう、リンク先は実行中のファイル名から _appFile() で決める（既定は本番側） -->
-    <a class="btn btn-ghost" id="pmboardBtn" href="pmboard.html" target="_blank" rel="noopener" title="PM Board — このプロジェクトの進行管理ボード（スケジュール・工数・リテイク）を別タブで開く" style="text-decoration:none" onmousedown="try{var f=(typeof _appFile==='function')?_appFile('pmboard'):'pmboard.html';var p=(state&&state.currentId)?rootOfId(getNode(state.currentId)):(REG&&REG[0]&&REG[0].id);this.href=p?(f+'?pid='+encodeURIComponent(p)):f}catch(_){}"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="12" rx="1.2"/><path d="M7 8h6M7 11h4M7 14h5"/></svg>PM Board</a>
+    <a class="btn btn-ghost" id="pmboardBtn" href="pmboard.html" target="_blank" rel="noopener" title="PM Board — このプロジェクトの進行管理ボード（スケジュール・工数・リテイク）を別タブで開く" style="text-decoration:none"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="12" rx="1.2"/><path d="M7 8h6M7 11h4M7 14h5"/></svg>PM Board</a>
     <div class="folder-status" id="folderStatus" title="このプロジェクトの保存先 / クリックでプロジェクト設定"><span class="dot"></span><span id="folderName">ブラウザ内保存</span></div>
     <button class="hd-bell hidden" id="tenantBtn" title="テナント管理（契約者／管理者のみ）"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17V7l5-3 5 3v10"/><path d="M13 17V11l4 2v4"/><path d="M3 17h14"/><path d="M6 10h0M6 13h0M10 10h0M10 13h0"/></svg></button>
     <button class="hd-bell" id="calBtn" title="カレンダー（祝日・会社休日）"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="12" rx="1.5"/><path d="M3 8h14M7 2.5v3M13 2.5v3"/></svg></button>
@@ -2316,6 +2316,11 @@ async function idbDel(s,k){const d=await idbOpen();return new Promise((res,rej)=
    キー形式：`${pid}:${sid}`。プロジェクト再読込・削除時に該当エントリをクリアする（実装は setStatus/hydrate 側）。 */
 const _v5StatusShots=new Set();
 
+/* 【仕様変更 2026-11-25】メンテナンス中（運営以外）は共有先（フォルダ・R2）への書き込みを止める。
+   フラグは _maintOverlay が立てる（運営はオーバーレイを出さないので止まらない）。
+   止めた保存はメンテ終了時に流してから再読み込みする（_flushAfterMaint）。 */
+function _writesBlocked(){return window.__lcMaintBlock===true}
+
 /* ---------- ストレージ抽象化（folder / idb） ---------- */
 const storage={
   /* DB（layna_db.json 相当）は常にブラウザ内保存(IndexedDB)。
@@ -2436,6 +2441,7 @@ const storage={
 
     /* v.013：url は呼び出し元で _urlFor() で解決済みの絶対 URL を渡す。 */
     async _fetchUrl(method,url,body,contentType){
+      if(method!=='GET'&&_writesBlocked())throw new Error('メンテナンス中のため保存を停止しています');
       const tok=await this._token();if(!tok)throw new Error('未ログイン（R2 認証に必要）');
       const headers={authorization:'Bearer '+tok};
       if(body!=null&&contentType)headers['x-laycat-content-type']=contentType;
@@ -2587,6 +2593,7 @@ const storage={
      ・NoModificationAllowedError（同一ファイルの一時ロック）は短い待機で数回リトライ
      getDir: ディレクトリハンドルを返す関数（リトライ毎に再取得）／fn: ファイル名／data: 書き込む内容 */
   async _write(getDir,fn,data){
+    if(_writesBlocked())throw new Error('メンテナンス中のため保存を停止しています');
     let lastErr=null;
     for(let attempt=0;attempt<3;attempt++){
       let w=null;
@@ -4306,10 +4313,14 @@ let _persistChain=Promise.resolve();
 let _persistBusy=0;
 /* 【全解析修正】persist が 1 回終わるごとに進む世代番号（refreshFromFolders の競合検知用） */
 let _persistGen=0;
+/* メンテナンス中に persist を見送ったか（メンテ終了時に保存し直す） */
+let _maintSkippedPersist=false;
 function persist(){
   /* v.016：DEMO_MODE は書込一切なし（IndexedDB も触らない）。
      デモデータは in-memory のみでリロードで消える。これはデモの意図通り。 */
   if(DEMO_MODE) return Promise.resolve();
+  /* メンテナンス中は保存しない（変更はメモリに残り、メンテ終了時に _flushAfterMaint で保存される） */
+  if(_writesBlocked()){_maintSkippedPersist=true;return Promise.resolve()}
   _persistBusy++;
   _persistChain=_persistChain.then(()=>_persistNow()).catch(e=>{try{console.warn('persist failed',e)}catch(_){}}).finally(()=>{_persistBusy=Math.max(0,_persistBusy-1);_persistGen++});
   return _persistChain;
@@ -4589,7 +4600,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.25.040';
+const APP_VERSION='2026.11.25.041';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5372,6 +5383,8 @@ async function refreshFromFolders(){
       try{const sb=_revBucket(e.id).shots;for(const rsid of Object.keys(localShotRev))sb[rsid]=localShotRev[rsid]|0;}catch(_){}
       continue;
     }
+    /* 読み込みで記録された相手側のショット rev（下で退避値に戻す前に控えておく） */
+    const _remoteRevSnap=Object.assign({},(_revBucket(e.id)&&_revBucket(e.id).shots)||{});
     const before=JSON.stringify(projectData(e.id));
     /* 未保存変更が無ければ preferRemote：他ユーザーが変更した status / assignee / reviewer 等
        を確実に反映。未保存変更が残っていれば従来通り union のみで保守的に取り込む。 */
@@ -5419,6 +5432,47 @@ async function refreshFromFolders(){
        これで v071 の副作用（他ユーザーの status 変更が自動反映されない）が正常時のみ解消される
        ＝「rollback 時は守る、正常時は同期する」の両立。 */
     try{_unionRemoteIntoDB(e.id,remote,{preferRemote:clean,remoteAuthoritative:clean})}catch(_){}
+    /* 【仕様変更 2026-11-25】他の人が更新したショット（ショットファイルの rev が進んだもの）は、保存時と同じ
+       3-way マージ（基準＝前回の保存/読み込み時・手元・相手）で取り込み、画面にすぐ出す。
+       以前は版・コメントの追加と一部の項目しか取り込まず、工程（currentStage）・タグ・移動などは
+       自分が保存するかリロードするまで画面に出なかった。手元で変えた項目は手元を残す（保存時と同じ規則）。
+       自分の保存と読み込みが重なった回・読めなかったショット・基準が無いショットは見送る。
+       メモリだけの変更で、ここでは何も書き込まない。 */
+    if(_persistGen===_genAtStart&&!_persistBusy){
+      try{
+        const _sb=_revBucket(e.id).shots;
+        const _baseMap=(_saveCache.shot[e.id]=_saveCache.shot[e.id]||{});
+        const _stripS=n=>{const c=Object.assign({},n);if('status' in c)delete c.status;return c;};
+        const _rById=new Map();for(const rn of (remote.nodes||[]))if(rn&&rn.id)_rById.set(rn.id,rn);
+        let _applied=0;
+        for(const sid of Object.keys(_remoteRevSnap)){
+          const rRev=_remoteRevSnap[sid]|0;
+          if(!(rRev>(_sb[sid]|0))||!_baseMap[sid]||storage._readFailed(e.id,'shot',sid))continue;
+          const shotNode=DB.nodes.find(n=>n&&n.id===sid),rShot=_rById.get(sid);
+          if(!shotNode||!rShot||rootOfId(shotNode)!==e.id)continue;
+          let base=null;try{base=JSON.parse(_baseMap[sid])}catch(_){base=null}
+          if(!base)continue;
+          const kids=DB.nodes.filter(n=>n&&n.parentId===sid);
+          const ours=JSON.parse(JSON.stringify({v:1,shotId:sid,nodes:[_stripS(shotNode),...kids.map(_stripS)]}));
+          const theirs={v:1,shotId:sid,nodes:[_stripS(rShot),...(remote.nodes||[]).filter(n=>n&&n.parentId===sid).map(_stripS)]};
+          const merged=_mergeShotFile3(base,ours,theirs);
+          _applyShotFileIntoDB(e.id,merged);
+          /* 相手が消した項目（3-way の結果に無いキー）は手元からも消す（_deepMergeInPlace はキーを消さないため）。status は別管理なので触らない */
+          for(const mn of merged.nodes){
+            const ex=mn&&DB.nodes.find(n=>n.id===mn.id);if(!ex)continue;
+            for(const k of Object.keys(ex)){if(k!=='status'&&!(k in mn))delete ex[k]}
+          }
+          _applied++;
+          /* 手元がこのショットのファイルと完全に一致したら、rev と保存基準も進める（次の保存で無駄な書き込みをしない） */
+          const kids2=DB.nodes.filter(n=>n&&n.parentId===sid);
+          const memF={v:1,shotId:sid,nodes:[_stripS(shotNode),...kids2.map(_stripS)]};
+          /* キーの並び順は取り込みで変わる（新しいキーは末尾に付く）ので、順序に依存しない形で比べる */
+          const _canon=x=>JSON.stringify(x,(k,v)=>(v&&typeof v==='object'&&!Array.isArray(v))?Object.keys(v).sort().reduce((o,kk)=>(o[kk]=v[kk],o),{}):v);
+          if(_canon(memF)===_canon(theirs)){_sb[sid]=rRev;_baseMap[sid]=JSON.stringify(memF);}
+        }
+        if(_applied){try{normalizeNodes();invalidateRoleMemo()}catch(_){}}
+      }catch(err){try{console.warn('[laycat] refreshFromFolders: shot 3-way import failed',err)}catch(_){}}
+    }
     /* v.015 修正：他ユーザーが変更した status を DB に反映する。
        readProjectData 内で `_hydrateStatuses` が `remote.nodes[*].status` を最新 status.json で
        埋め直しているが、続く `_unionRemoteIntoDB` の scalar マージループは status キーを
@@ -13926,6 +13980,8 @@ function openRename(node){
     let _tplSnapshot=null;
     const _normTpls=(arr)=>(arr||[]).map(t=>({id:t.id||'',name:(t.name||'').trim()||'テンプレート',stages:(t.stages||[]).map(x=>String(x||'').trim()).filter(Boolean)})).filter(t=>t.stages.length);
     let stageColorsLocal=null;  /* v.006：工程色マップのローカル編集（工程テンプレ UI 内のピッカー）用 */
+    /* 【仕様変更 2026-11-25】工程名の変更を既存ショットに追随させるため、「今の名前 → 開いた時点の名前」を記録する */
+    const _stageOrigin=new Map();
     let secN=2;
     if(node.type==='section'){
       if(isProjectRoot){
@@ -13971,6 +14027,8 @@ function openRename(node){
                 inp.oninput=()=>{
                   const oldName=tpl.stages[i];
                   tpl.stages[i]=inp.value;
+                  /* 改名の追跡（保存時に既存ショットの現在工程などへ反映する） */
+                  {const _o=_stageOrigin.has(oldName)?_stageOrigin.get(oldName):oldName;_stageOrigin.delete(oldName);if(inp.value!==_o)_stageOrigin.set(inp.value,_o)}
                   /* 名前変更時に色マップのキーも引越し */
                   if(oldName&&oldName!==inp.value&&stageColorsLocal[oldName]!==undefined){
                     stageColorsLocal[inp.value]=stageColorsLocal[oldName];
@@ -14101,7 +14159,15 @@ function openRename(node){
           const downBtn=el('button','btn btn-ghost btn-sm','↓');downBtn.type='button';downBtn.title='下に移動';
           downBtn.disabled=(i===stArr.length-1);
           downBtn.onclick=()=>{if(i>=stArr.length-1)return;const t=stArr[i+1];stArr[i+1]=stArr[i];stArr[i]=t;redrawSt();};
-          const del=el('button','btn btn-danger btn-sm','削除');del.onclick=()=>{stArr.splice(i,1);redrawSt()};
+          /* 【仕様変更 2026-11-25】使用中のステータスを削除するときは件数を出して確認する
+             （削除すると、そのステータスのショットは「未設定」扱いの表示になる）。 */
+          const del=el('button','btn btn-danger btn-sm','削除');del.onclick=()=>{
+            const _sid=st2.id;
+            if(_sid){
+              let _cnt=0;for(const n of DB.nodes){if(n&&n.status===_sid&&rootOfId(n)===node.id)_cnt++}
+              if(_cnt&&!confirm('ステータス「'+(st2.label||'')+'」は '+_cnt+' 件で使われています。\n削除すると、これらは「未設定」として表示されます。\n（保存するまでは元に戻せます）\n\n削除しますか？'))return;
+            }
+            stArr.splice(i,1);redrawSt()};
           row.appendChild(color);row.appendChild(nm);row.appendChild(cwLabel);row.appendChild(clLabel);row.appendChild(upBtn);row.appendChild(downBtn);row.appendChild(del);stWrap.appendChild(row);
         });
       };
@@ -14181,7 +14247,7 @@ function openRename(node){
       }
       const memWrap=el('div');memWrap.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px';
       memWrap.appendChild(el('span','form-label','別ウィンドウで名前・メールアドレス・色を編集します。'));
-      const memBtn=el('button','btn btn-primary btn-sm','👥 メンバー管理を開く');memBtn.type='button';memBtn.onclick=()=>openMembersWindow(node);
+      const memBtn=el('button','btn btn-primary btn-sm',_canEditMembers(node)?'👥 メンバー管理を開く':'👥 メンバーを見る（編集はオーナーのみ）');memBtn.type='button';memBtn.onclick=()=>openMembersWindow(node);
       memWrap.appendChild(memBtn);
       inner.appendChild(memWrap);
       /* プロジェクトのパスワード保護（画面上のアクセス制限） */
@@ -14287,6 +14353,28 @@ function openRename(node){
           if(!_origFirst||_origFirst.id!==_first.id||JSON.stringify(_origFirst.stages)!==JSON.stringify(_first.stages))node.stages=_first.stages.slice();
         }
         else{delete node.stageTemplates}
+      }
+      /* 【仕様変更 2026-11-25】工程名を変えたら、このプロジェクトの既存ショットの現在工程（currentStage）・
+         版の工程タグ（v.stage）・コメントの工程タグ（c.stage）も新しい名前に揃える。
+         対象は「名前が変わり、どのテンプレートにも旧名が残っていない工程」だけ（同名を別テンプレートで使い続けている場合は変えない）。
+         書き込み境界：該当ショットの shots/{sid}.json と laycat.project.json（下の persist で保存）。 */
+      if(stageTemplatesArr!=null&&_stageOrigin.size){
+        const _stillUsed=new Set();for(const t of stageTemplatesArr)for(const x of (t.stages||[]))_stillUsed.add(String(x||'').trim());
+        const _ren=new Map();
+        for(const [cur,orig] of _stageOrigin){const c=String(cur||'').trim(),o=String(orig||'').trim();if(c&&o&&c!==o&&!_stillUsed.has(o)&&_stillUsed.has(c))_ren.set(o,c)}
+        if(_ren.size){
+          let _nShots=0;
+          for(const n of DB.nodes){
+            if(rootOfId(n)!==node.id)continue;
+            let touched=false;
+            /* 旧構造（工程が子ノードとして実在するショット）は子ノード名と合わなくなるので currentStage を変えない */
+            if(n.currentStage!=null&&_ren.has(n.currentStage)&&!childrenOf(n.id).some(k=>k&&k.name===n.currentStage)){n.currentStage=_ren.get(n.currentStage);touched=true}
+            for(const v of (n.versions||[]))if(v&&v.stage&&_ren.has(v.stage)){v.stage=_ren.get(v.stage);touched=true}
+            for(const c of (n.comments||[]))if(c&&c.stage&&_ren.has(c.stage)){c.stage=_ren.get(c.stage);touched=true}
+            if(touched)_nShots++;
+          }
+          if(_nShots)setTimeout(()=>{try{toast('工程名の変更を '+_nShots+' 件のショットに反映しました')}catch(_){}},300);
+        }
       }
       /* 工程バッジの手動色（工程名→色）をプロジェクトルートに保存。空（自動）は削除。 */
       /* v.006：工程色の保存。stageColorsLocal（工程テンプレ UI の各ピッカー）を node.stageColors に反映。
@@ -15307,8 +15395,17 @@ function renderProjectLock(s,root){
   setTimeout(()=>{try{inp.focus()}catch(_){}},0);
 }
 /* プロジェクト設定から別ウィンドウで開くメンバー管理UI */
+/* 【仕様変更 2026-11-25】メンバーの編集はプロジェクトのオーナー本人と運営（operator）だけ。
+   owner が未設定の旧プロジェクト（主にフォルダ運用の古いもの）は従来どおり誰でも編集できる。 */
+function _canEditMembers(root){
+  if(!root||!root.owner)return true;
+  const me=String((authUser&&authUser.email)||'').toLowerCase();
+  if(me&&String(root.owner).toLowerCase()===me)return true;
+  return !!(authUser&&authUser.role==='operator');
+}
 function openMembersWindow(root){
   if(!root||root.parentId){toast('メンバー管理はプロジェクト（ルート）で開いてください');return}
+  const _ro=!_canEditMembers(root);
   const w=window.open('','layna_members_'+root.id,'width=800,height=660');
   if(!w){toast('ポップアップがブロックされました。ブラウザで許可してください');return}
   const d=w.document;
@@ -15338,9 +15435,14 @@ function openMembersWindow(root){
   hd.appendChild(ce('div','sp'));
   const addB=ce('button','btn','＋ メンバー追加');
   const saveB=ce('button','btn primary','保存');
-  hd.appendChild(addB);hd.appendChild(saveB);
+  if(!_ro){hd.appendChild(addB);hd.appendChild(saveB);}
   d.body.appendChild(hd);
   const wrap=ce('div','wrap');d.body.appendChild(wrap);
+  if(_ro){
+    const roNote=ce('div',null,'🔒 メンバーの編集はプロジェクトのオーナー（'+String(root.owner||'')+'）だけが行えます。この画面は閲覧のみです。');
+    roNote.style.cssText='margin:0 0 10px;padding:9px 12px;background:rgba(242,200,107,.08);border:1px solid rgba(242,200,107,.35);border-radius:8px;color:#efe4c8;font-size:12px;line-height:1.6';
+    wrap.appendChild(roNote);
+  }
   wrap.appendChild(ce('div','muted','担当割り当て・メンション・ロールに使うプロジェクトのメンバー名簿です。共有フォルダの laycat.project.json に保存され、フォルダを共有する全員に反映されます。ID にはメールアドレス（認証と一致する安定ID）を推奨します。ロールはカンマ区切り（例: director, animator）。'));
   /* v.130：NAS パスヒント入力（任意）。参加側メンバーが NAS フォルダを探すときの道案内メモ。
      ここに入力した文字列は暗号化されてメンバーの laycatUserPrivate.folderProjects にも乗る。
@@ -15348,7 +15450,7 @@ function openMembersWindow(root){
   const phBox=ce('div');phBox.style.cssText='margin:10px 0 14px;padding:10px 12px;background:#15151a;border:1px solid #2a2a2f;border-radius:8px';
   phBox.appendChild(ce('div',null,'NAS パスヒント（任意・メンバーへの道案内）'));
   const phBoxLabel=phBox.firstChild;phBoxLabel.style.cssText='font-size:11px;color:#8a8a99;letter-spacing:.3px;margin-bottom:6px';
-  const phIn=d.createElement('input');phIn.type='text';phIn.value=String(root.pathHint||'');
+  const phIn=d.createElement('input');phIn.type='text';phIn.value=String(root.pathHint||'');if(_ro)phIn.readOnly=true;
   phIn.placeholder='例：\\\\nas01\\projects\\KaraokeMV_Ep3';
   phIn.style.cssText='width:100%;box-sizing:border-box;background:#1c1c1f;border:1px solid #2a2a2f;border-radius:6px;color:#e8e8ec;padding:6px 8px;font-size:12px;font-family:ui-monospace,"SF Mono",Menlo,monospace';
   phBox.appendChild(phIn);
@@ -15367,7 +15469,7 @@ function openMembersWindow(root){
   tenantWrap.appendChild(tnMuted);
   const tnList=ce('div');tnList.style.cssText='display:flex;flex-direction:column;gap:6px';
   tenantWrap.appendChild(tnList);
-  wrap.appendChild(tenantWrap);
+  if(!_ro)wrap.appendChild(tenantWrap);
 
   async function _refreshTenantMembers(){
     tnList.innerHTML='';
@@ -15448,7 +15550,7 @@ function openMembersWindow(root){
       tnList.appendChild(row);
     }
   }
-  _refreshTenantMembers();
+  if(!_ro)_refreshTenantMembers();
 
   /* v.134：未受理招待の可視化（Phase 3 #1）。
      自分が発行した招待のうち、相手がまだログインしていないもの一覧。失効も表示。
@@ -15460,7 +15562,7 @@ function openMembersWindow(root){
   pendWrap.appendChild(pendMuted);
   const pendList=ce('div');pendList.style.cssText='display:flex;flex-direction:column;gap:6px';
   pendWrap.appendChild(pendList);
-  wrap.appendChild(pendWrap);
+  if(!_ro)wrap.appendChild(pendWrap);
 
   async function _refreshPendingInvites(){
     pendList.innerHTML='';
@@ -15520,14 +15622,14 @@ function openMembersWindow(root){
       pendList.appendChild(row);
     }
   }
-  _refreshPendingInvites();
+  if(!_ro)_refreshPendingInvites();
 
   function redraw(){
     tbl.innerHTML='';
     const head=ce('tr');
     ['有効','名前','ID（メール）','ロール（カンマ区切り）','色',''].forEach(h=>head.appendChild(ce('th',null,h)));
     tbl.appendChild(head);
-    if(!work.length){const tr=ce('tr');const td=ce('td','empty','メンバーがいません。「＋ メンバー追加」で追加してください。');td.colSpan=6;tr.appendChild(td);tbl.appendChild(tr);return}
+    if(!work.length){const tr=ce('tr');const td=ce('td','empty',_ro?'メンバーがいません。':'メンバーがいません。「＋ メンバー追加」で追加してください。');td.colSpan=6;tr.appendChild(td);tbl.appendChild(tr);return}
     work.forEach((m,i)=>{
       const tr=ce('tr');
       const c0=ce('td');const ac=d.createElement('input');ac.type='checkbox';ac.checked=m.active;ac.onchange=()=>m.active=ac.checked;c0.appendChild(ac);tr.appendChild(c0);
@@ -15536,12 +15638,15 @@ function openMembersWindow(root){
       const c3=ce('td');const rl=d.createElement('input');rl.type='text';rl.value=m.roles;rl.placeholder='director, animator';rl.oninput=()=>m.roles=rl.value;c3.appendChild(rl);tr.appendChild(c3);
       const c4=ce('td');const cl=d.createElement('input');cl.type='color';cl.value=m.color;cl.oninput=()=>m.color=cl.value;c4.appendChild(cl);tr.appendChild(c4);
       const c5=ce('td');const del=ce('button','btn danger','削除');del.onclick=()=>{work.splice(i,1);redraw()};c5.appendChild(del);tr.appendChild(c5);
+      /* 閲覧のみ：入力を無効化し、削除ボタンは出さない */
+      if(_ro){ac.disabled=true;nm.readOnly=true;em.readOnly=true;rl.readOnly=true;cl.disabled=true;del.remove()}
       tbl.appendChild(tr);
     });
   }
   redraw();
-  addB.onclick=()=>{work.push({id:'',name:'',roles:'',color:'#4da6ff',active:true});redraw()};
+  addB.onclick=()=>{if(_ro)return;work.push({id:'',name:'',roles:'',color:'#4da6ff',active:true});redraw()};
   saveB.onclick=async()=>{
+    if(_ro||!_canEditMembers(root)){w.alert('メンバーの編集はプロジェクトのオーナーだけが行えます。');return}
     const seen=new Set(),out=[];
     for(const m of work){
       const id=String(m.id||'').trim().toLowerCase();
@@ -23307,7 +23412,13 @@ function triggerUpload(node){
    laycat_dev.html は laycat.html にそのままコピーされるため、ファイル名を固定で書くと Beta から dev へ飛んでしまう。
    例：_appFile('pmboard') → dev なら 'pmboard_dev.html'、本番なら 'pmboard.html' */
 function _appFile(base){let dev=false;try{dev=/_dev(\.html?)?$/i.test(location.pathname||'')}catch(_){}return base+(dev?'_dev':'')+'.html'}
-{const pb=document.getElementById('pmboardBtn');if(pb)pb.href=_appFile('pmboard')}
+{const pb=document.getElementById('pmboardBtn');if(pb){pb.href=_appFile('pmboard');
+  /* 【仕様変更 2026-11-25】開いているプロジェクトをそのまま PM Board で開く（?pid=。開いていなければ PM Board 側の前回のプロジェクト）。
+     以前は HTML 属性の onmousedown に書いていたが、属性内の「&REG」が文字参照（®）として解釈されて
+     ハンドラ全体が構文エラーになり、常に pid なしで開いていた。JS 側で設定する。 */
+  const _pbUpd=()=>{try{const f=_appFile('pmboard');const cur=(state&&state.currentId)?getNode(state.currentId):null;const p=cur?rootOfId(cur):null;pb.href=p?(f+'?pid='+encodeURIComponent(p)):f}catch(_){}};
+  pb.addEventListener('mousedown',_pbUpd);pb.addEventListener('click',_pbUpd);pb.addEventListener('focus',_pbUpd);
+}}
 /* v.020：LayCAT ヘッダーはマイルストーンを閲覧のみ表示する（追加／編集は PMB 側で行う）。
    本体は作業者ツール、PMB は PM ツール、という切り分け。 */
 window._milestoneCache={pid:null,items:[]};
@@ -24515,6 +24626,7 @@ async function _tmRemoveUser(em){
 let _maintActive=false, _signalsWired=false;
 function _maintOverlay(active,message){
   _maintActive=active;
+  window.__lcMaintBlock=!!active; /* メンテ中は共有先への保存を止める（_writesBlocked） */
   let ov=document.getElementById('maintOverlay');
   if(!active){if(ov)ov.remove();return}
   try{document.querySelectorAll('video').forEach(v=>{try{v.pause()}catch(_){}})}catch(_){}
@@ -24544,6 +24656,17 @@ function _showBroadcast(d){
   x.onclick=()=>{try{localStorage.setItem('laycat_bcast_dismissed',id)}catch(_){}bar.remove()};
   bar.appendChild(ic);bar.appendChild(sp);bar.appendChild(x);
 }
+/* メンテ中に止めていた保存（persist・ステータスの再試行）を流す。最大 15 秒で打ち切って再読み込みへ進む
+   （保存しきれなかった分は beforeunload の警告で知らせる）。 */
+async function _flushAfterMaint(){
+  try{
+    const work=(async()=>{
+      if(_maintSkippedPersist||_unsavedProj.size){_maintSkippedPersist=false;await persist()}
+      if(_statusRetry.size){if(_statusRetryTimer){clearTimeout(_statusRetryTimer);_statusRetryTimer=null}await _runStatusRetry()}
+    })();
+    await Promise.race([work,new Promise(r=>setTimeout(r,15000))]);
+  }catch(_){}
+}
 function _wireSignals(){
   if(_signalsWired||!window.__laynaFB||!window.__laynaFB.subscribeSignals)return;
   _signalsWired=true;
@@ -24551,7 +24674,12 @@ function _wireSignals(){
     d=>{const active=!!(d&&d.active),role=authUser&&authUser.role,msg=(d&&d.message)||'';
         /* v.017：メンテ中の閲覧許可は operator（運営）のみ。admin は一般と同じくオーバーレイ表示。 */
         if(role==='operator'){_operMaintBanner(active,msg);return}
-        if(_maintActive&&!active){/* メンテ終了時：キャッシュバスターで最新版を強制取得 */location.href=location.pathname+'?_='+Date.now();return}
+        if(_maintActive&&!active){
+          /* メンテ終了時：止めていた保存を先に流してから、キャッシュバスターで最新版を強制取得 */
+          _maintOverlay(false);
+          _flushAfterMaint().finally(()=>{location.href=location.pathname+'?_='+Date.now()});
+          return;
+        }
         _maintOverlay(active,msg);},
     d=>_showBroadcast(d||{})
   );
