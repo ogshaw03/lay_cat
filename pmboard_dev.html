@@ -764,7 +764,7 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 /* pmboard 版管理（LayCAT 本体と同じ運用）
    Dev（`pmboard_dev.html`）：日付ベース `YYYY.MM.DD.NNN` — dev コミットごとに +1
    Beta（`pmboard.html`）：`pmboard vX.Y.Z` — Beta 反映時のみ更新 */
-const APP_VERSION='2026.11.25.001';
+const APP_VERSION='2026.11.25.002';
 /* v.082：デモモード（?demo=1） — LayCAT と同じ URL パラメータで PMB も試用可能に。
    ?tab=<X> で初期タブ（gantt / efforts / reference 等）に遷移。 */
 const DEMO_MODE = (()=>{try{return new URLSearchParams(location.search).get('demo')==='1'}catch(_){return false}})();
@@ -1169,10 +1169,10 @@ const storage = {
     const scheduleFiles = {};
     const statusFiles = {}; /* v.082b：status/<id>.json。shot section と current review node に発行 */
     /* ガント用の日付：今日を起点に 1 ショット 10 日ぶん、連番で割り振る */
-    const base = new Date();
-    base.setHours(0,0,0,0);
-    const ymd = d => d.toISOString().slice(0,10);
-    const addDays = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+    /* 【日本時間に統一 2026-11-25】以前はローカル 0 時を toISOString（UTC）で日付化していたため、日本では前日になっていた */
+    const base = todayJstMidnight();
+    const ymd = d => isoDate(d);
+    const addDays = (d,n) => new Date(d.getTime()+n*86400000);
     /* root 骨格 */
     nodes.push({
       id: rootId, parentId: null, name: 'DEMO_プロジェクト', type: 'section',
@@ -1930,8 +1930,9 @@ async function loadHolidaysForTimeline(){
      ビュー範囲（DATA.timeline）だと scope が狭いと祝日が読み込まれない。 */
   const tl = DATA.dataTimeline || DATA.timeline;
   if(!tl || !tl.start || !tl.end) return;
-  const startY = tl.start.getFullYear();
-  const endY   = tl.end.getFullYear();
+  /* 【日本時間に統一 2026-11-25】年はローカル時刻ではなく日本時間で取る */
+  const startY = jstParts(tl.start).y;
+  const endY   = jstParts(tl.end).y;
   const years = [];
   for(let y = startY; y <= endY; y++) years.push(y);
   const [pubMap, coDoc] = await Promise.all([
@@ -2322,7 +2323,7 @@ function buildTimelineHdr(){
     dow.appendChild(d);
   }
   /* 週セル（月曜に align）：最初に表示される月曜から開始、7 日おきに次の月曜 */
-  const firstDow = (new Date(firstMid)).getDay(); /* 0=Sun,1=Mon,...,6=Sat */
+  const firstDow = jstParts(new Date(firstMid)).wk; /* 0=Sun,1=Mon,...,6=Sat（日本時間の曜日） */
   const toMon = (firstDow === 1) ? 0 : (firstDow === 0 ? 1 : 8 - firstDow);
   let wkMid = firstMid + toMon * 86400000;
   while(wkMid < viewEndMs){
@@ -3681,26 +3682,19 @@ function _distributeParallelByAssignee(intervalsByAssignee, outPerShotMs){
   }
 }
 /* workday 開始 (ms) を返す。timestamp が workday 境界より前なら前日に属する扱い。 */
+/* 【日本時間に統一 2026-11-25】日の境界・曜日・祝日の日付はすべて日本時間で判定する（以前はブラウザのローカル時刻） */
 function _workdayStartMs(tsMs, dayBoundaryHour){
-  const d = new Date(tsMs);
-  d.setHours(dayBoundaryHour, 0, 0, 0);
-  const bMs = d.getTime();
-  if(tsMs < bMs){
-    /* まだ今日の境界時刻より前 → "昨日の workday" に属する */
-    d.setDate(d.getDate() - 1);
-    return d.getTime();
-  }
-  return bMs;
+  const bMs = jstMidnightMs(tsMs) + dayBoundaryHour*3600000;
+  /* まだ今日の境界時刻より前 → "昨日の workday" に属する */
+  return (tsMs < bMs) ? bMs - 86400000 : bMs;
 }
 /* workday を "YYYY-MM-DD"（workday 開始日の日付）で返す。祝日判定に使う。 */
 function _workdayDateKey(wdStartMs){
-  const d = new Date(wdStartMs);
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return isoDate(new Date(wdStartMs));
 }
 /* workday が稼働日（平日かつ非祝日）か返す。 */
 function _isWorkday(wdStartMs, options){
-  const d = new Date(wdStartMs);
-  const dow = d.getDay();
+  const dow = jstParts(new Date(wdStartMs)).wk;
   if(options.excludeWeekend && (dow === 0 || dow === 6)) return false;
   if(options.holidays && options.holidays.length){
     if(options.holidays.includes(_workdayDateKey(wdStartMs))) return false;
@@ -5901,28 +5895,29 @@ const SCALE_PX = {day:40, week:20, month:8};
    - 3ヶ月：今日の 3 ヶ月前の月初 00:00（Today を含むように調整）
    - 半年：今日の 6 ヶ月前の月初 00:00 */
 function _todayAlignedStart(scale){
+  /* 【日本時間に統一 2026-11-25】以前はブラウザのローカル時刻で今日・曜日・月初を出していた */
   const now = new Date();
-  const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const p = jstParts(now);
+  const jstMonthStart = (y,m0) => Date.UTC(y, m0, 1) - JST_OFFSET_MS; /* m0 は 0 始まり（範囲外は Date.UTC が繰り上げ/繰り下げ） */
+  const todayMid = jstMidnightMs(now);
   if(scale==='day')  return todayMid;
   if(scale==='week'){
     /* 月曜開始に align（日曜なら 6 日前、月曜なら 0 日前） */
-    const dow = now.getDay(); /* 0=日,1=月,...6=土 */
+    const dow = p.wk; /* 0=日,1=月,...6=土 */
     const offset = (dow + 6) % 7; /* 月曜までの日数 */
     return todayMid - offset*86400000;
   }
   if(scale==='month'){
-    return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    return jstMonthStart(p.y, p.m-1);
   }
   if(scale==='3mo'){
     /* 今月を含む 3 ヶ月窓：今月 - 1 ヶ月を start に（過去 1 ヶ月+今月+未来 1 ヶ月）
        → 単純に「今日 × 90 日前の月初」ではなく、「今日を含む 3 ヶ月期間の開始」。
        実装：今月 1 日 - 60 日（約 2 ヶ月）前 → 月初に align */
-    const anchor = new Date(now.getFullYear(), now.getMonth()-1, 1);
-    return anchor.getTime();
+    return jstMonthStart(p.y, p.m-2);
   }
   if(scale==='6mo'){
-    const anchor = new Date(now.getFullYear(), now.getMonth()-2, 1);
-    return anchor.getTime();
+    return jstMonthStart(p.y, p.m-3);
   }
   return todayMid;
 }
