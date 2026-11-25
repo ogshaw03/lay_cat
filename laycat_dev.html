@@ -1267,7 +1267,8 @@ textarea.form-input{height:70px;resize:vertical}
   <div class="header-actions">
     <button class="btn btn-ghost" id="reelBtn" title="REEL — 動画を並べて順番に見るシーケンスプレイヤー（別ウィンドウ）"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2"/><path d="M10 3v3M10 14v3M3 10h3M14 10h3"/></svg>REEL</button>
     <button class="btn btn-ghost" id="submitBtn" title="サブミット — 複数ショットの提出をまとめてレビュー"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/></svg>サブミット</button>
-    <a class="btn btn-ghost" id="pmboardBtn" href="pmboard_dev.html" target="_blank" rel="noopener" title="PM Board — このプロジェクトの進行管理ボード（スケジュール・工数・リテイク）を別タブで開く" style="text-decoration:none" onmousedown="try{var p=(state&&state.currentId)?rootOfId(getNode(state.currentId)):(REG&&REG[0]&&REG[0].id);this.href=p?('pmboard_dev.html?pid='+encodeURIComponent(p)):'pmboard_dev.html'}catch(_){}"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="12" rx="1.2"/><path d="M7 8h6M7 11h4M7 14h5"/></svg>PM Board</a>
+    <!-- Beta（laycat.html）から dev 版の PM Board へ飛ばないよう、リンク先は実行中のファイル名から _appFile() で決める（既定は本番側） -->
+    <a class="btn btn-ghost" id="pmboardBtn" href="pmboard.html" target="_blank" rel="noopener" title="PM Board — このプロジェクトの進行管理ボード（スケジュール・工数・リテイク）を別タブで開く" style="text-decoration:none" onmousedown="try{var f=(typeof _appFile==='function')?_appFile('pmboard'):'pmboard.html';var p=(state&&state.currentId)?rootOfId(getNode(state.currentId)):(REG&&REG[0]&&REG[0].id);this.href=p?(f+'?pid='+encodeURIComponent(p)):f}catch(_){}"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="12" rx="1.2"/><path d="M7 8h6M7 11h4M7 14h5"/></svg>PM Board</a>
     <div class="folder-status" id="folderStatus" title="このプロジェクトの保存先 / クリックでプロジェクト設定"><span class="dot"></span><span id="folderName">ブラウザ内保存</span></div>
     <button class="hd-bell hidden" id="tenantBtn" title="テナント管理（契約者／管理者のみ）"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17V7l5-3 5 3v10"/><path d="M13 17V11l4 2v4"/><path d="M3 17h14"/><path d="M6 10h0M6 13h0M10 10h0M10 13h0"/></svg></button>
     <button class="hd-bell" id="calBtn" title="カレンダー（祝日・会社休日）"><svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="12" rx="1.5"/><path d="M3 8h14M7 2.5v3M13 2.5v3"/></svg></button>
@@ -1405,12 +1406,17 @@ async function getExrParsed(ref){
   const promise=(async()=>{
     const url=await storage.getURLRetry(ref);
     if(!url)throw new Error('EXR ファイルが取得できません');
-    const blob=await(await fetch(url)).blob();
+    /* HTTP エラー（404 等）のエラーページを EXR として読まないよう r.ok を確認する */
+    const r=await fetch(url);
+    if(!r.ok)throw new Error('EXR ファイルが取得できません（HTTP '+r.status+'）');
+    const blob=await r.blob();
     const [hdr,full]=await Promise.all([parseExrHeader(blob),parseExrFull(blob)]);
     return {hdr,full};
   })();
   const entry={promise};
   _exrParseCache.set(ref,entry);
+  /* 失敗した Promise がキャッシュに残ると、一時的な失敗でも同じ EXR が二度と開けなくなるため、失敗時はキャッシュから外す */
+  promise.catch(()=>{if(_exrParseCache.get(ref)===entry)_exrParseCache.delete(ref)});
   /* LRU 溢れは古いものから捨てる */
   while(_exrParseCache.size>_exrParseLruMax){
     const firstKey=_exrParseCache.keys().next().value;
@@ -1469,6 +1475,8 @@ async function parseExrHeader(blob){
     const name=readCStr();
     const type=readCStr();
     const size=readI32();
+    /* 壊れた／悪意のある EXR で size が負・ファイル外を指すと offset が戻って無限ループになるため、例外で打ち切る */
+    if(size<0||offset+size>buf.length)throw new Error('EXR ヘッダーが壊れています（属性 '+name+' のサイズが不正）');
     const valueStart=offset;
     if(name==='channels'&&type==='chlist'){attrs.channels=readChannelsList(size)}
     else if(name==='dataWindow'&&type==='box2i'){attrs.dataWindow={xMin:readI32(),yMin:readI32(),xMax:readI32(),yMax:readI32()}}
@@ -1602,6 +1610,8 @@ async function parseExrFull(blob,opts){
   while(offset<buf.length){
     if(buf[offset]===0){offset++;break}
     const name=readCStr();const type=readCStr();const size=readI32();
+    /* size が負・ファイル外を指すと offset が戻って無限ループになるため、例外で打ち切る */
+    if(size<0||offset+size>buf.length)throw new Error('EXR ヘッダーが壊れています（属性 '+name+' のサイズが不正）');
     const valStart=offset;
     if(name==='channels'&&type==='chlist')attrs.channels=readChannels(size);
     else if(name==='dataWindow'&&type==='box2i'){attrs.dataWindow={xMin:readI32(),yMin:readI32(),xMax:readI32(),yMax:readI32()}}
@@ -1622,6 +1632,12 @@ async function parseExrFull(blob,opts){
   const height=dw.yMax-dw.yMin+1;
   const compression=attrs.compression||0;
   const channels=attrs.channels||[];
+  /* dataWindow が巨大／不正だとチャンネルごとに巨大な Float32Array を確保してタブが落ちるため、
+     幅・高さ・チャンネル数・総確保量に上限を設けて例外で打ち切る（上限は 16K 四方・256ch・合計 2^29 要素 ≒ 2GB） */
+  const _EXR_MAX_DIM=16384,_EXR_MAX_CH=256,_EXR_MAX_TOTAL=Math.pow(2,29);
+  if(!(width>=1&&height>=1&&width<=_EXR_MAX_DIM&&height<=_EXR_MAX_DIM))throw new Error('EXR の画像サイズが不正または大きすぎます（'+width+'×'+height+'）');
+  if(channels.length>_EXR_MAX_CH)throw new Error('EXR のチャンネル数が多すぎます（'+channels.length+'）');
+  if(width*height*Math.max(1,channels.length)>_EXR_MAX_TOTAL)throw new Error('EXR が大きすぎて展開できません（'+width+'×'+height+'×'+channels.length+'ch）');
   /* チャンネルは strict ASCII（byte-wise）順で並んでいる（EXR 仕様）。
      ※ localeCompare だとロケール依存で大文字小文字順が入れ替わり、
         AOV を含む多チャンネル EXR でタイル内の読み位置がズレて色が壊れる（ピンク化）ため
@@ -4420,17 +4436,22 @@ async function _persistNow(){
          以前は「相手にしか無いリールを足すだけ」で、同じ id のリールは手元の古い版が勝っていたため、
          他の人が更新したリール（クリップの追加・並べ替え）を、自分の別リールの保存で古い内容に戻していた。
          マージ結果はメモリ（DB.reels）にも反映し、保存した内容と手元を一致させる。 */
-      let out=rls;
+      let out=rls,_skipReels=false;
       try{
         const remoteReels=await storage.loadReels(e.id);
+        let base=null;try{base=_saveCache.reels[e.id]?JSON.parse(_saveCache.reels[e.id]):null}catch(_){base=null}
         if(Array.isArray(remoteReels)){
-          let base=null;try{base=_saveCache.reels[e.id]?JSON.parse(_saveCache.reels[e.id]):null}catch(_){base=null}
           if(Array.isArray(base))out=_mergeById3(base,rls,remoteReels);
           else{const have=new Set(rls.map(r=>r&&r.id));out=rls.slice();for(const rr of remoteReels)if(rr&&rr.id&&!have.has(rr.id)){out.push(rr);have.add(rr.id)}}
+        }else if(Array.isArray(base)&&base.length){
+          /* 前回は読めていた reels.json が今回読めない＝読み込み失敗とみなし、手元だけで上書きしない（次回の保存で再試行） */
+          _skipReels=true;
         }
-      }catch(_){}
-      _replaceProjReels(e.id,out);
-      const ok=await storage.saveReels(e.id,out);if(ok!==false)_saveCache.reels[e.id]=JSON.stringify(out)
+      }catch(_){_skipReels=true}
+      if(!_skipReels){
+        _replaceProjReels(e.id,out);
+        const ok=await storage.saveReels(e.id,out);if(ok!==false)_saveCache.reels[e.id]=JSON.stringify(out)
+      }
     }
     /* R2 プロジェクトの _access.json 同期：owner または members が変わったら R2 側にも反映
        （フォルダ運用プロジェクトはスキップ。R2 の Worker 認可のためだけの機構） */
@@ -4563,7 +4584,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.25.036';
+const APP_VERSION='2026.11.25.037';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -4707,6 +4728,9 @@ function chrome(on){$('.header').style.display=on?'':'none';$('.app-body').style
 /* ============================================================
    起動
    ============================================================ */
+/* boot が「REG とプロジェクトの読み込み」まで終えたか。startAppFlow が boot の例外時に
+   ホームを描画してよいか（＝メモリが空の状態で保存が走らないか）の判定に使う。 */
+let _bootDataLoaded=false;
 async function boot(){
   const g=$('#gateScreen');if(g)g.remove();chrome(true);
   /* v.016：DEMO_MODE は IDB からの実データ読込を完全スキップ。
@@ -4715,6 +4739,7 @@ async function boot(){
   if(DEMO_MODE){
     DB={version:3,nodes:[],reels:[],notifications:[],submits:[]};
     REG=[];
+    _bootDataLoaded=true;
     return;
   }
   /* IndexedDB の永続化リクエスト：
@@ -4749,20 +4774,33 @@ async function boot(){
     }else{
       await storage.saveRegistry(REG);
     }
+    _bootDataLoaded=true; /* 読み込み完了（以降の例外ならホーム描画可） */
   }else{
     /* 各プロジェクトのデータ・リールを読み込んでマージ */
     _migrationNeeded=_migrationNeeded||new Set();
+    /* 1 プロジェクトの読み込み例外で boot 全体が止まり画面が空になるのを防ぐため、プロジェクトごとに try/catch で分離する。
+       失敗したプロジェクトは REG に残したまま（ルートノードが DB に無いので persist は projectData=null で保存を見送る）、
+       リールも「空」を基準値として種付けし、読めていないリールを空配列で上書き保存しないようにする。 */
+    const _bootFailed=[];
     for(const e of REG){
-      const data=await storage.loadProject(e.id);
-      if(data&&Array.isArray(data.nodes)){
-        for(const n of data.nodes)if(!DB.nodes.some(x=>x.id===n.id))DB.nodes.push(n);
-        if(Array.isArray(data.submits))for(const s of data.submits)if(!DB.submits.some(x=>x.id===s.id))DB.submits.push(s);
-        /* Phase 2 分割形式（v:4）でなければ移行対象マーク。暗号化スタブは data.enc===1 を持つのでスキップ。 */
-        if(!data.enc&&(!data.v||data.v<4))_migrationNeeded.add(e.id);
+      try{
+        const data=await storage.loadProject(e.id);
+        if(data&&Array.isArray(data.nodes)){
+          for(const n of data.nodes)if(!DB.nodes.some(x=>x.id===n.id))DB.nodes.push(n);
+          if(Array.isArray(data.submits))for(const s of data.submits)if(!DB.submits.some(x=>x.id===s.id))DB.submits.push(s);
+          /* Phase 2 分割形式（v:4）でなければ移行対象マーク。暗号化スタブは data.enc===1 を持つのでスキップ。 */
+          if(!data.enc&&(!data.v||data.v<4))_migrationNeeded.add(e.id);
+        }
+        const rls=await storage.loadReels(e.id);
+        if(Array.isArray(rls))for(const r of rls)if(!DB.reels.some(x=>x.id===r.id))DB.reels.push(r);
+      }catch(err){
+        console.error('[boot] プロジェクトの読み込みに失敗',e&&e.id,err);
+        _bootFailed.push((e&&(e.name||e.id))||'(不明なプロジェクト)');
+        try{if(!(e.id in _saveCache.reels))_saveCache.reels[e.id]='[]'}catch(_){}
       }
-      const rls=await storage.loadReels(e.id);
-      if(Array.isArray(rls))for(const r of rls)if(!DB.reels.some(x=>x.id===r.id))DB.reels.push(r);
     }
+    if(_bootFailed.length){setTimeout(()=>{try{toast('読み込みに失敗したプロジェクトがあります：'+_bootFailed.join('、')+'（再読み込みで再試行できます）')}catch(_){}},600)}
+    _bootDataLoaded=true; /* 読み込み完了（以降の例外ならホーム描画可） */
     /* 旧・localStorageのリール（layna_local.reels）を一度だけ取り込み（次回persistでフォルダへ移行） */
     if(local&&Array.isArray(local.reels))for(const r of local.reels)if(!DB.reels.some(x=>x.id===r.id))DB.reels.push(r);
     normalizeNodes();
@@ -4917,6 +4955,31 @@ async function grantProjectAccess(id){
    ============================================================ */
 function notifs(){if(!DB||!Array.isArray(DB.notifications))return [];return DB.notifications}
 function unreadNotif(){return notifs().filter(n=>!n.read).length}
+/* 通知だけを保存する。persist() は全 REG プロジェクトを保存するため、通知の追加・既読化だけで呼ぶと
+   不要な全プロジェクト書き込み（＋他者更新との 3-way マージ）が走る。通知は localStorage（layna_local）にしか
+   無いので、ここで直接保存し、_saveCache.local も更新して次の persist が同じ内容を二重に書かないようにする。 */
+function _saveNotifications(){
+  if(DEMO_MODE)return; /* デモは persist と同じく保存しない */
+  if(!DB)return;
+  const local={notifications:DB.notifications};
+  let ls='';try{ls=JSON.stringify(local)}catch(_){return}
+  if(ls===_saveCache.local)return;
+  Promise.resolve().then(()=>storage.saveLocal(local)).then(()=>{_saveCache.local=ls}).catch(e=>{try{console.warn('通知の保存に失敗',e)}catch(_){}});
+}
+/* 通知は最大 300 件。切り捨てたチェック依頼（rqKey）は「切り捨て済み」として localStorage に記録する。
+   これをしないと scanMentionsForMe の「DB に無い rq キーは seen から外して復活を許可」処理で、
+   既読のチェック依頼が切り捨て → 未読で復活 → 別の通知が切り捨て… を無限に繰り返す。 */
+const _NOTIF_MAX=300;
+function _rqTrimmedSet(){try{return new Set(JSON.parse(localStorage.getItem('layna.rqTrimmed')||'[]'))}catch(_){return new Set()}}
+function _trimNotifications(){
+  const list=DB&&DB.notifications;if(!Array.isArray(list)||list.length<=_NOTIF_MAX)return;
+  const dropped=list.slice(_NOTIF_MAX).map(n=>n&&n.rqKey).filter(Boolean);
+  list.length=_NOTIF_MAX;
+  if(dropped.length){
+    const t=_rqTrimmedSet();for(const k of dropped){t.delete(k);t.add(k)}
+    try{localStorage.setItem('layna.rqTrimmed',JSON.stringify([...t].slice(-3000)))}catch(_){}
+  }
+}
 /* 通知を追加。title 必須、text 任意。opts:{nodeId} で対象ページにジャンプ可能 */
 function notify(title,text,opts){
   opts=opts||{};
@@ -4924,8 +4987,8 @@ function notify(title,text,opts){
   if(!Array.isArray(DB.notifications))DB.notifications=[];
   const n={id:newId('ntf'),title:title||'通知',text:text||'',time:nowIso(),read:false,nodeId:opts.nodeId||null};
   DB.notifications.unshift(n);
-  if(DB.notifications.length>300)DB.notifications.length=300;
-  persist();updateNotifBadge();
+  _trimNotifications(); /* 切り捨てたチェック依頼が復活しないよう記録しつつ 300 件に詰める */
+  _saveNotifications();updateNotifBadge(); /* 全プロジェクト保存（persist）ではなく通知だけ保存 */
   const p=$('#notifPanel');if(p&&!p.classList.contains('hidden'))renderNotifPanel();
   return n;
 }
@@ -4935,9 +4998,10 @@ function updateNotifBadge(){
   b.textContent=c>99?'99+':String(c);
   b.classList.toggle('hidden',c<=0);
 }
-function markAllNotifRead(){for(const n of notifs())n.read=true;persist();updateNotifBadge();renderNotifPanel()}
+/* 既読化は通知だけの変更なので、全プロジェクト保存（persist）ではなく通知だけ保存する */
+function markAllNotifRead(){for(const n of notifs())n.read=true;_saveNotifications();updateNotifBadge();renderNotifPanel()}
 function openNotif(n){
-  n.read=true;persist();updateNotifBadge();
+  n.read=true;_saveNotifications();updateNotifBadge();
   $('#notifPanel').classList.add('hidden');
   if(n.nodeId&&getNode(n.nodeId))go(n.nodeId);else renderNotifPanel();
 }
@@ -5114,6 +5178,8 @@ function scanMentionsForMe(){
        生えるため気付きにくいが、チェック依頼は固定キーなので発症すると恒久的に静音化する）。 */
     const existingRq=new Set();
     for(const nn of (DB.notifications||[]))if(nn&&nn.rqKey)existingRq.add(nn.rqKey);
+    /* 300 件上限で切り捨てたチェック依頼は「既に通知済み」扱い（復活させない・seen からも外さない） */
+    const trimmedRq=_rqTrimmedSet();
     for(const sb of (DB.submits||[])){
       if(!sb||sb.projectId!==root.id||!Array.isArray(sb.items))continue;
       const sbEmail=String(sb.byEmail||'').toLowerCase();
@@ -5130,6 +5196,7 @@ function scanMentionsForMe(){
         if(!mineRev)continue; /* 自分がチェック担当のときのみ */
         const key='rq:'+selfTag+':'+sb.id+':'+it.nodeId;
         if(existingRq.has(key))continue;      /* 既に DB.notifications に入っている → スキップ */
+        if(trimmedRq.has(key))continue;       /* 300 件上限で切り捨て済み → 復活させない */
         if(seen.has(key)){continue}           /* 後方互換：旧 seen もチェック（読み込み時のみ有効・下で外す） */
         seen.add(key);
         pending.push({title:'チェック依頼',text:(sb.by||'誰か')+'：'+(shotOf(n)?shotOf(n)+' / ':'')+n.name+'（'+(sb.name||'サブミット')+'）',nodeId:it.nodeId,rqKey:key});
@@ -5137,7 +5204,8 @@ function scanMentionsForMe(){
     }
     /* 既存の DB.notifications に該当キーが無くて localStorage seen だけ残っているものは、
        次回以降のために seen 側からも取り除く（消えた通知を復活可能にする）。 */
-    for(const s of [...seen])if(s.startsWith('rq:')&&!existingRq.has(s)&&!pending.some(p=>p.rqKey===s))seen.delete(s);
+    /* 切り捨て済み（trimmedRq）のキーは seen から外さない（外すと次回の走査で復活してしまう） */
+    for(const s of [...seen])if(s.startsWith('rq:')&&!existingRq.has(s)&&!trimmedRq.has(s)&&!pending.some(p=>p.rqKey===s))seen.delete(s);
     /* ショットページ経由の直接アップロード（＝サブミットを作らない経路）でもチェック依頼通知を出す。
        各タスクの版を走査し、自分がチェック担当のタスクに他者がアップした新規版を検知する。
        重複抑止は上と同じで DB.notifications.rqKey ベース（'rq:v:...'）。 */
@@ -5160,19 +5228,21 @@ function scanMentionsForMe(){
         if(meEmail&&upperLc===meEmail)continue;
         const key='rq:v:'+selfTag+':'+n.id+':'+ver.id;
         if(existingRq.has(key))continue;
+        if(trimmedRq.has(key))continue; /* 300 件上限で切り捨て済み → 復活させない */
         if(seen.has(key))continue;
         seen.add(key);
         pending.push({title:'チェック依頼',text:(uploader||'誰か')+'：'+(shotOf(n)?shotOf(n)+' / ':'')+n.name+'（'+(ver.name||'新規版')+'）',nodeId:n.id,rqKey:key});
       }
     }
     /* 同じく旧 seen（rq:v:...）で DB に対応通知が無いキーは削除して復活を許可 */
-    for(const s of [...seen])if(s.startsWith('rq:v:')&&!existingRq.has(s)&&!pending.some(p=>p.rqKey===s))seen.delete(s);
+    for(const s of [...seen])if(s.startsWith('rq:v:')&&!existingRq.has(s)&&!trimmedRq.has(s)&&!pending.some(p=>p.rqKey===s))seen.delete(s);
   }
   _saveSeenMentions(seen);
   if(pending.length){if(!Array.isArray(DB.notifications))DB.notifications=[];
     for(const p of pending.reverse())DB.notifications.unshift({id:newId('ntf'),title:p.title,text:p.text,time:nowIso(),read:false,nodeId:p.nodeId||null,rqKey:p.rqKey||null});
-    if(DB.notifications.length>300)DB.notifications.length=300;
-    updateNotifBadge();persist(); /* 通知を localStorage に保存（次回読込でも保持） */
+    _trimNotifications(); /* 切り捨てたチェック依頼が復活しないよう記録しつつ 300 件に詰める */
+    /* 通知を localStorage に保存（次回読込でも保持）。全プロジェクト保存の persist ではなく通知だけ保存する */
+    updateNotifBadge();_saveNotifications();
     const pn=$('#notifPanel');if(pn&&!pn.classList.contains('hidden'))renderNotifPanel();
   }
   /* v.023：優先（急ぎ）版の未確認モーダル通知 */
@@ -5212,9 +5282,22 @@ function _collectPriorityForMe(){
   }
   return out;
 }
+/* 「あとで確認」で閉じた優先チェック依頼は 30 分間再表示しない（sessionStorage）。
+   render のたびに scanMentionsForMe → showPriorityModalIfAny が呼ばれるため、閉じても数秒で再表示されていた。
+   閉じた時点に無かった新しい優先版が届いた場合は、30 分以内でも表示する。 */
+const _PRIO_SNOOZE_MS=30*60*1000;
+function _prioSnoozed(items){
+  try{
+    const s=JSON.parse(sessionStorage.getItem('laycat_prioSnooze')||'null');
+    if(!s||!(Number(s.until)>Date.now())||!Array.isArray(s.ids))return false;
+    const ids=new Set(s.ids);return items.every(it=>ids.has(it.ver.id));
+  }catch(_){return false}
+}
+function _snoozePrio(items){try{sessionStorage.setItem('laycat_prioSnooze',JSON.stringify({until:Date.now()+_PRIO_SNOOZE_MS,ids:items.map(it=>it.ver.id)}))}catch(_){}}
 function showPriorityModalIfAny(){
   const items=_collectPriorityForMe();
   if(!items.length)return;
+  if(_prioSnoozed(items))return; /* 「あとで確認」から 30 分以内 */
   /* 既に開いている場合は重複表示しない */
   if(document.getElementById('priorityModal'))return;
   const back=el('div');back.id='priorityModal';
@@ -5256,7 +5339,7 @@ function showPriorityModalIfAny(){
   const dismissAll=el('button','btn btn-ghost btn-sm','すべて確認済みにする');
   dismissAll.onclick=()=>{const ack=_priorityAckSet();for(const it of items)ack.add(it.ver.id);_savePriorityAck(ack);back.remove()};
   const later=el('button','btn btn-primary btn-sm','あとで確認');
-  later.onclick=()=>back.remove();
+  later.onclick=()=>{_snoozePrio(items);back.remove()}; /* 30 分間は再表示しない */
   btns.appendChild(dismissAll);btns.appendChild(later);
   box.appendChild(btns);
   back.appendChild(box);
@@ -22506,6 +22589,11 @@ function triggerUpload(node){
   fi.click();
 }
 {const av=$('#appVer');if(av){av.textContent=APP_VERSION;av.title='クリックで更新情報を表示';av.onclick=()=>{try{openPatchNotes()}catch(_){}}}}
+/* Beta（laycat.html）が dev 版（*_dev.html）へリンクしないよう、実行中のファイル名から dev／本番のリンク先を組み立てる。
+   laycat_dev.html は laycat.html にそのままコピーされるため、ファイル名を固定で書くと Beta から dev へ飛んでしまう。
+   例：_appFile('pmboard') → dev なら 'pmboard_dev.html'、本番なら 'pmboard.html' */
+function _appFile(base){let dev=false;try{dev=/_dev(\.html?)?$/i.test(location.pathname||'')}catch(_){}return base+(dev?'_dev':'')+'.html'}
+{const pb=document.getElementById('pmboardBtn');if(pb)pb.href=_appFile('pmboard')}
 /* v.020：LayCAT ヘッダーはマイルストーンを閲覧のみ表示する（追加／編集は PMB 側で行う）。
    本体は作業者ツール、PMB は PM ツール、という切り分け。 */
 window._milestoneCache={pid:null,items:[]};
@@ -22535,8 +22623,9 @@ function _msRenderBar(){
   bar.style.display='inline-flex';
   const rest=(items.length>1)?(' ／ 他 '+(items.length-1)+' 件'):'';
   /* 📌 の色をグレースケール化して落ち着かせる */
+  /* _msFmtDate は日付形式でない値をそのまま返すため、innerHTML に入れる前にエスケープする（XSS 対策） */
   bar.innerHTML='<span style="filter:grayscale(1) contrast(.85);opacity:.75">📌</span><span style="font-family:var(--font-code);font-size:11px;color:var(--text3)">'+
-    (_msFmtDate(next&&next.date)||'')+'</span><span style="font-weight:600;color:var(--text)">'+
+    _msEsc(_msFmtDate(next&&next.date)||'')+'</span><span style="font-weight:600;color:var(--text)">'+
     _msEsc(next&&next.text||'（無題）')+'</span><span style="opacity:.5;font-size:11px">'+rest+'</span>';
   bar.onclick=()=>openMilestonesReadOnlyList(bar);
 }
@@ -22693,7 +22782,20 @@ document.addEventListener('keydown',e=>{
 async function startAppFlow(){
   /* 保存先はブラウザ内保存(IndexedDB)に固定。フォルダ管理はプロジェクト単位で行う。 */
   storage.useIdb();
-  try{await boot()}catch(e){console.error(e);toast('起動に失敗しました: '+e.message)}
+  try{await boot()}catch(e){
+    console.error(e);toast('起動に失敗しました: '+(e&&e.message));
+    /* boot の例外で画面が空のままになるのを防ぐ。
+       ・プロジェクトの読み込みまで終わっていれば、ホームを描画して使える状態にする。
+       ・読み込み途中（REG が空のまま等）なら、そのまま操作させると空のメモリで保存が走り得るため、
+         画面を閉じて原因と「再読み込み」ボタンだけを出す。 */
+    if(_bootDataLoaded){try{go(null)}catch(err2){console.error(err2)}}
+    else{try{authScreen(box=>{
+      box.innerHTML='<div class="gate-logo"><img class="gate-logo-img" src="'+LOGIN_LOGO+'"></div>';
+      box.appendChild(el('div','gate-sub','データの読み込みに失敗しました。'));
+      box.appendChild(el('div','gate-note',String((e&&e.message)||e||'')));
+      const acts=el('div','gate-actions');const rb=el('button','btn btn-primary','再読み込み');rb.onclick=()=>location.reload();acts.appendChild(rb);box.appendChild(acts);
+    })}catch(_){}}
+  }
   /* v.016：DEMO_MODE はブート完了後に docs/demo_project_inject.js を fetch → eval して注入し、
      ?page / ?id に応じて初期画面を切り替える。 */
   if(DEMO_MODE){
@@ -22789,7 +22891,8 @@ function _showDemoBanner(){
     const b = document.createElement('div');
     b.id='demoBanner';
     b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#F2986B,#F2C86B);color:#000;padding:6px 14px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,.3)';
-    b.innerHTML = '<span style="font-size:14px">🎬</span><span>LayCAT デモ版 — 保存操作は反映されません。本番は <a href="laycat_dev.html" style="color:#000;text-decoration:underline">こちら</a></span><button type="button" id="demoBannerClose" style="margin-left:auto;background:transparent;border:1px solid rgba(0,0,0,.4);color:#000;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px">閉じる ×</button>';
+    /* 「本番は こちら」のリンク先は実行中のファイル名から決める（Beta のデモから dev 版へ飛ばさない） */
+    b.innerHTML = '<span style="font-size:14px">🎬</span><span>LayCAT デモ版 — 保存操作は反映されません。本番は <a href="'+_appFile('laycat')+'" style="color:#000;text-decoration:underline">こちら</a></span><button type="button" id="demoBannerClose" style="margin-left:auto;background:transparent;border:1px solid rgba(0,0,0,.4);color:#000;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px">閉じる ×</button>';
     document.body.appendChild(b);
     /* バナー分だけ chrome を押し下げ */
     document.documentElement.style.setProperty('--demo-banner-h','28px');
@@ -22815,6 +22918,21 @@ function _showDemoBanner(){
 const DEMO_MODE = (()=>{try{return new URLSearchParams(location.search).get('demo')==='1'}catch(_){return false}})();
 const DEMO_PAGE = (()=>{try{return (new URLSearchParams(location.search).get('page')||'').toLowerCase()}catch(_){return ''}})();
 const DEMO_ID   = (()=>{try{return new URLSearchParams(location.search).get('id')||''}catch(_){return ''}})();
+/* デモモードで本物の localStorage を書き換えないための上書き層。
+   persist は止めていたが、storage.saveRegistry（layna_registry）・saveLoc（layna_loc）・laycat_userEmail・
+   通知の既読キー・テーマ等は localStorage へ直接書いており、デモを開くと本人の実データ（接続プロジェクト一覧や
+   最後に開いた画面）がデモの値で上書きされていた。
+   localStorage の setItem/removeItem をメモリ上の Map に向け、getItem はその Map を優先して読む
+   （デモ内の動作は変わらず、タブを閉じれば消える）。sessionStorage は対象外。 */
+if(DEMO_MODE){try{
+  const _realLS=window.localStorage,_P=Storage.prototype;
+  const _oGet=_P.getItem,_oSet=_P.setItem,_oRem=_P.removeItem,_oClr=_P.clear;
+  const _over=new Map(); /* key → 文字列（null は削除扱い） */
+  _P.getItem=function(k){if(this===_realLS){k=String(k);if(_over.has(k))return _over.get(k)}return _oGet.apply(this,arguments)};
+  _P.setItem=function(k,v){if(this===_realLS){_over.set(String(k),String(v));return}return _oSet.apply(this,arguments)};
+  _P.removeItem=function(k){if(this===_realLS){_over.set(String(k),null);return}return _oRem.apply(this,arguments)};
+  _P.clear=function(){if(this===_realLS){try{for(let i=0;i<_realLS.length;i++){const k=_realLS.key(i);if(k!=null)_over.set(k,null)}}catch(_){}for(const k of [..._over.keys()])_over.set(k,null);return}return _oClr.apply(this,arguments)};
+}catch(e){try{console.warn('demo localStorage shadow failed',e)}catch(_){}}}
 
 /* ===== 認証（Googleログイン + git許可リスト access.json）===== */
 let accessCfg=null,AUTH_ON=false;
@@ -22842,20 +22960,43 @@ function roleFor(email){
 function authScreen(build){chrome(false);let s=$('#authScreen');if(s)s.remove();s=el('div','gate');s.id='authScreen';const box=el('div','gate-box');build(box);s.appendChild(box);document.body.appendChild(s)}
 function clearAuthScreen(){const s=$('#authScreen');if(s)s.remove()}
 function renderAuthLoading(){authScreen(box=>{box.innerHTML='<div class="gate-logo"><img class="gate-logo-img" src="'+LOGIN_LOGO+'"></div><div class="spin"></div><div class="gate-sub">認証を確認しています…</div>'})}
-function renderLogin(msg){authScreen(box=>{
+/* opts.reload=true で「再読み込み」ボタンも出す（Firebase の初期化に失敗・時間切れのときの脱出口） */
+function renderLogin(msg,opts){authScreen(box=>{
   box.innerHTML='<div class="gate-logo"><img class="gate-logo-img" src="'+LOGIN_LOGO+'"></div>';
   box.appendChild(el('div','gate-sub','社内メンバー専用。Googleアカウントでログインしてください。'));
   const acts=el('div','gate-actions');const b=el('button','gbtn');b.innerHTML='<span class="gg">G</span> Google でログイン';
-  b.onclick=async()=>{if(window.__laynaFB){try{await window.__laynaFB.login()}catch(e){toast('ログイン失敗: '+e.message)}}else toast('認証を初期化中です。数秒後に再試行してください。')};
-  acts.appendChild(b);box.appendChild(acts);
+  /* Firebase の初期化に失敗している場合は「初期化中」と言い続けず、原因と再読み込みを案内する */
+  b.onclick=async()=>{if(window.__laynaFB){try{await window.__laynaFB.login()}catch(e){toast('ログイン失敗: '+e.message)}}else if(window.__laynaFBError){renderLogin(_fbInitErrorMsg(),{reload:true})}else toast('認証を初期化中です。数秒後に再試行してください。')};
+  acts.appendChild(b);
+  if(opts&&opts.reload){const rb=el('button','btn btn-ghost','再読み込み');rb.onclick=()=>location.reload();acts.appendChild(rb)}
+  box.appendChild(acts);
   if(msg)box.appendChild(el('div','gate-note',msg));
 })}
+/* Firebase（ログイン機能）の初期化失敗の案内文。原因（__laynaFBError）があれば添える。 */
+function _fbInitErrorMsg(){
+  const why=window.__laynaFBError?String(window.__laynaFBError):'';
+  return 'ログイン機能の読み込みに失敗しました'+(why?'（'+why+'）':'')+'。ネットワーク接続や、広告ブロック等のブラウザ拡張機能を確認してから「再読み込み」を押してください。';
+}
 function renderDenied(user){authScreen(box=>{
   box.innerHTML='<div class="gate-logo"><img class="gate-logo-img" src="'+LOGIN_LOGO+'"></div>';
   box.appendChild(el('div','gate-sub','このアカウントにはアクセス権がありません。'));
   box.appendChild(el('div','deny-email','ログイン中: '+(user.email||'')));
   const acts=el('div','gate-actions');const b=el('button','btn btn-ghost','別のアカウントでログイン');b.onclick=async()=>{if(window.__laynaFB)await window.__laynaFB.logout()};acts.appendChild(b);box.appendChild(acts);
-  box.appendChild(el('div','gate-note','管理者に access.json の allowedEmails への追加を依頼してください。'));
+  /* 実際の付与経路（テナントへのメンバー追加・運営による許可）に合わせた案内文に変更 */
+  box.appendChild(el('div','gate-note','所属チームの契約者または管理者に、テナントのメンバーとして追加するよう依頼してください。所属チームが無い場合は LayCAT 運営にお問い合わせください。'));
+})}
+/* アクセス権の確認（Firestore 読み込み）が通信エラー等で失敗したときの画面。
+   以前は失敗を「権限なし」と区別できず拒否画面を出していたため、許可済みのメンバーでも
+   一時的な通信エラーで「アクセス権がありません」になり、画面が表示されなくなっていた。 */
+function renderAuthLoadError(user){authScreen(box=>{
+  box.innerHTML='<div class="gate-logo"><img class="gate-logo-img" src="'+LOGIN_LOGO+'"></div>';
+  box.appendChild(el('div','gate-sub','サーバーに接続できませんでした。'));
+  box.appendChild(el('div','deny-email','ログイン中: '+((user&&user.email)||'')));
+  const acts=el('div','gate-actions');
+  const rb=el('button','btn btn-primary','再試行');rb.onclick=()=>location.reload();acts.appendChild(rb);
+  const lo=el('button','btn btn-ghost','別のアカウントでログイン');lo.onclick=async()=>{if(window.__laynaFB)await window.__laynaFB.logout()};acts.appendChild(lo);
+  box.appendChild(acts);
+  box.appendChild(el('div','gate-note','アクセス権の確認中に通信エラーが発生しました。ネットワーク接続を確認して「再試行」を押してください。'));
 })}
 function showAuthedHeader(){
   $('#nameField').classList.add('hidden');
@@ -23731,12 +23872,26 @@ async function _maybeAutoAssignTenant(u){
   if(ok){ authUser.tenantId = pickId; }
 }
 async function onAuthChanged(u){
-  if(!u){authUser=null;renderLogin();return}
+  if(!u){
+    /* ログイン済みからのログアウト：前のユーザーの復号鍵（state._projKeys）・DB・通知などがメモリに残るため、
+       ページを読み直して状態を完全に捨てる（次のユーザーに前のユーザーのデータが見えないように）。 */
+    if(authUser){location.reload();return}
+    authUser=null;
+    /* Firebase の初期化に失敗していたら、ログインボタンが永久に「初期化中」にならないよう原因と再読み込みを案内する */
+    if(window.__laynaFBError){renderLogin(_fbInitErrorMsg(),{reload:true});return}
+    renderLogin();return;
+  }
+  /* 読み込み失敗（通信エラー等）と「該当なし（権限なし）」を区別する。
+     以前は Firestore の読み込み失敗が null / [] で返り「権限なし」と同じ扱いになっていたため、
+     許可済みメンバーでも一時的な通信エラーで拒否画面になっていた。
+     {strict:true} を渡すと読み込み失敗は例外になる（permission-denied は従来通り「該当なし」）。 */
+  let loadFailed=false;
+  const _noteLoadFail=(what,e)=>{loadFailed=true;try{console.warn('[auth] '+what+' の読み込みに失敗',e)}catch(_){}};
   /* アクセス権のメール許可リストは Firebase(Firestore) 管理を優先。取得できれば access.json を上書き。
      取得失敗（未設定/オフライン）なら access.json のまま（＝安全なフォールバック）。 */
-  try{if(window.__laynaFB&&window.__laynaFB.loadAccess){const fsCfg=await window.__laynaFB.loadAccess();if(fsCfg&&typeof fsCfg==='object')accessCfg=Object.assign({},accessCfg||{},fsCfg)}}catch(_){}
+  try{if(window.__laynaFB&&window.__laynaFB.loadAccess){const fsCfg=await window.__laynaFB.loadAccess({strict:true});if(fsCfg&&typeof fsCfg==='object')accessCfg=Object.assign({},accessCfg||{},fsCfg)}}catch(e){_noteLoadFail('laynaAccess/config',e)}
   /* 招待リンク（承認不要URL）で参加済みのメンバー（laynaAccess/invited）も許可メンバーとして扱う */
-  try{if(window.__laynaFB&&window.__laynaFB.loadInvited){const inv=await window.__laynaFB.loadInvited();const em=inv&&inv.emails?Object.values(inv.emails).map(x=>x&&x.email).filter(Boolean):[];if(em.length){accessCfg=accessCfg||{};accessCfg.allowedEmails=[...(accessCfg.allowedEmails||[]),...em]}}}catch(_){}
+  try{if(window.__laynaFB&&window.__laynaFB.loadInvited){const inv=await window.__laynaFB.loadInvited({strict:true});const em=inv&&inv.emails?Object.values(inv.emails).map(x=>x&&x.email).filter(Boolean):[];if(em.length){accessCfg=accessCfg||{};accessCfg.allowedEmails=[...(accessCfg.allowedEmails||[]),...em]}}}catch(e){_noteLoadFail('laynaAccess/invited',e)}
   let role=roleFor(u.email);
   /* 承認不要URL: 未許可でも有効な招待トークンがあれば、承認なしで自動的にメンバー登録する */
   const tok=INVITE_TOKEN||(function(){try{return sessionStorage.getItem('layna_invite')}catch(_){return null}})();
@@ -23751,26 +23906,34 @@ async function onAuthChanged(u){
      契約者がライセンスを割り当てた直後からそのユーザーは LayCAT を使えるようになる。 */
   if(!role && window.__laynaFB && window.__laynaFB.findUserTenants){
     try{
-      const mems = await window.__laynaFB.findUserTenants(u.email);
+      const mems = await window.__laynaFB.findUserTenants(u.email,{strict:true});
       if(Array.isArray(mems) && mems.length){
         role = 'member'; /* 全体 role は常に member。テナント内の admin 権限は別軸で管理（refreshTenantAdminButton） */
       }
-    }catch(_){}
+    }catch(e){_noteLoadFail('tenants（所属テナント）',e)}
   }
   /* マルチテナント化 Phase M3b/M3c：まだ許可されていなければ、ドメインベース自己参加を試みる。
      - 自分のメールドメインが一致 かつ allowDomainAutoJoin=true のテナントがあれば自動参加
      - ライセンス枠に空きがあれば member として参加・LayCAT 使用可能に
      - 枠満杯なら参加できず、デフォルトで拒否（旧グローバル allowedDomains 経路は Phase M3c で廃止済み）  */
-  if(!role && window.__laynaFB && window.__laynaFB.tryJoinByDomain){
+  /* ここまでの読み込みが 1 つでも失敗していたら、ドメイン自己参加（Firestore への書き込み）は行わない。
+     所属テナントや許可リストを確認できていない状態で参加させると、既存メンバー（admin 等）の members ドキュメントを
+     role:'member' で上書きしたり、許可リスト経由のユーザーにライセンス枠を消費させたりし得るため。 */
+  if(!role && !loadFailed && window.__laynaFB && window.__laynaFB.tryJoinByDomain){
     try{
-      const joined = await window.__laynaFB.tryJoinByDomain(u.email);
+      const joined = await window.__laynaFB.tryJoinByDomain(u.email,{strict:true});
       if(joined){
         role = 'member';
         setTimeout(()=>{try{toast(`${joined.tenantName} にメンバーとして自動参加しました`)}catch(_){}}, 900);
       }
-    }catch(_){}
+    }catch(e){_noteLoadFail('tenants（ドメイン参加）',e)}
   }
-  if(!role){authUser=null;renderDenied(u);return}
+  if(!role){
+    authUser=null;
+    /* 読み込み失敗があれば「権限なし」ではなく「接続できませんでした＋再試行」を出す */
+    if(loadFailed){renderAuthLoadError(u);return}
+    renderDenied(u);return;
+  }
   authUser={name:u.displayName||u.email,email:u.email,photo:u.photoURL,role};
   try{if(window.__laynaFB&&window.__laynaFB.recordUser)window.__laynaFB.recordUser(authUser)}catch(_){} /* ログイン記録（ドメイン許可ユーザーの可視化用） */
   /* マルチテナント化 Phase M1：tenantId の自動判定＆書き込み。
@@ -23824,23 +23987,40 @@ async function initApp(){
     startAppFlow();
     return;
   }
-  try{accessCfg=await (await fetch('./access.json',{cache:'no-store'})).json()}catch(_){accessCfg=null}
-  AUTH_ON=!!(accessCfg&&accessCfg.authRequired)&&location.hostname==='ogshaw03.github.io';
+  /* access.json が読めない（404・通信断・JSON 破損）と以前は accessCfg=null → 本番でも認証オフになっていた。
+     本番ホストでは読み込み失敗を「認証必須」として扱う（失敗したら閉じる）。読み込めた場合は従来通り authRequired に従う。 */
+  let _accessJsonFailed=false;
+  try{
+    const r=await fetch('./access.json',{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    accessCfg=await r.json();
+    if(!accessCfg||typeof accessCfg!=='object')throw new Error('access.json の形式が不正');
+  }catch(e){accessCfg=null;_accessJsonFailed=true;try{console.warn('[auth] access.json の読み込みに失敗',e)}catch(_){}}
+  AUTH_ON=(_accessJsonFailed||!!(accessCfg&&accessCfg.authRequired))&&location.hostname==='ogshaw03.github.io';
   if(!AUTH_ON){startAppFlow();return}       // exe/ローカル/プレビューは自動的に認証オフ
   window.__laynaAuthChanged=onAuthChanged;
   renderAuthLoading();
   if(window.__laynaFBUser!==undefined)onAuthChanged(window.__laynaFBUser);
-  setTimeout(()=>{if(AUTH_ON&&!authUser&&!window.__laynaFB)renderLogin('認証の初期化に時間がかかっています。ネットワークをご確認ください。')},6000);
+  /* 6 秒経っても Firebase が使えない場合：初期化エラーがあれば原因を、無ければ時間切れを案内し、再読み込みボタンを出す */
+  setTimeout(()=>{if(AUTH_ON&&!authUser&&!window.__laynaFB)renderLogin(window.__laynaFBError?_fbInitErrorMsg():'認証の初期化に時間がかかっています。ネットワークをご確認のうえ「再読み込み」を押してください。',{reload:true})},6000);
 }
 initApp();
 </script>
-<script type="module">
+<!-- Firebase SDK（gstatic）の取得自体に失敗するとこのモジュールは実行されず、ログイン画面が「初期化中」のまま進めなくなるため、
+     error イベントで原因を記録してログイン画面に再読み込みを案内させる -->
+<script type="module" onerror="try{window.__laynaFBError=window.__laynaFBError||'Firebase SDK を取得できませんでした';if(window.__laynaFBUser===undefined)window.__laynaFBUser=null;if(window.__laynaAuthChanged)window.__laynaAuthChanged(null)}catch(_){}">
   // Googleログイン用（LayCAT 専用 Firebase プロジェクト laycat-54ee4。承認済みドメインに ogshaw03.github.io を追加すること）
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   const firebaseConfig={apiKey:"AIzaSyBn9TFT7lMdEVcatGo6v_qzIPXeDay5Cvw",authDomain:"laycat-54ee4.firebaseapp.com",projectId:"laycat-54ee4",storageBucket:"laycat-54ee4.firebasestorage.app",messagingSenderId:"1016486781774",appId:"1:1016486781774:web:f41f9546fd47e73774b41f"};
   window.__laynaFBUser=undefined;
-  try{
+  /* 読み込み失敗と「該当なし」を区別するための判定。permission-denied（ルールで読めない＝権限なし）は従来通り
+     「該当なし」として扱い、それ以外（通信断・タイムアウト・SDK 取得失敗など）を「読み込み失敗」とする。 */
+  const _fsDenied=e=>{const c=String((e&&e.code)||'');return c==='permission-denied'||c.endsWith('/permission-denied')};
+  /* デモモード（?demo=1）は Firebase を初期化しない（本番の認証・Firestore に一切触れない）。 */
+  const _laycatDemo=(()=>{try{return new URLSearchParams(location.search).get('demo')==='1'}catch(_){return false}})();
+  if(_laycatDemo){window.__laynaFBUser=null}
+  else try{
     const app=initializeApp(firebaseConfig);const auth=getAuth(app);const provider=new GoogleAuthProvider();
     window.__laynaFB={login:()=>signInWithPopup(auth,provider),logout:()=>signOut(auth),
       /* R2 プロキシ Worker へのリクエストで Authorization に載せる ID トークンを取得。
@@ -23848,12 +24028,13 @@ initApp();
          呼び出し側は毎回叩いて OK（レイテンシは通常キャッシュで数ms）。 */
       getIdToken:async()=>{try{const u=auth.currentUser;if(!u)return null;return await u.getIdToken(false)}catch(_){return null}},
       /* アクセス権設定を Firestore(laynaAccess/config) から読む。失敗時は null（access.json にフォールバック）。
-         Firestore は動的 import なので、CDN 取得に失敗しても認証本体は壊れない。 */
-      loadAccess:async()=>{try{
+         Firestore は動的 import なので、CDN 取得に失敗しても認証本体は壊れない。
+         opts.strict=true のときは読み込み失敗（permission-denied 以外）を例外で返す（ログイン判定で「権限なし」と区別するため）。 */
+      loadAccess:async(opts)=>{try{
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);const snap=await m.getDoc(m.doc(fs,'laynaAccess','config'));
         return snap.exists()?snap.data():null;
-      }catch(e){return null}},
+      }catch(e){if(opts&&opts.strict&&!_fsDenied(e))throw e;return null}},
       /* ログインしたユーザー（email→表示名/写真）を Firestore(laynaAccess/loggedUsers) に記録。
          アクセス管理コンソールが「ドメイン許可でログイン中のアカウント」や名前を表示するために使用。 */
       recordUser:async(u)=>{try{
@@ -23863,12 +24044,13 @@ initApp();
         const key=String(u.email).toLowerCase().replace(/[.@#$/\[\]]/g,'_');
         await m.setDoc(m.doc(fs,'laynaAccess','loggedUsers'),{users:{[key]:{email:u.email,displayName:u.name||u.displayName||u.email,photoURL:u.photo||u.photoURL||'',lastSeen:new Date().toISOString()}}},{merge:true});
       }catch(e){}},
-      /* 招待リンク（承認不要URL）で参加済みのメンバー一覧を読む（本体のアクセス判定に統合）。 */
-      loadInvited:async()=>{try{
+      /* 招待リンク（承認不要URL）で参加済みのメンバー一覧を読む（本体のアクセス判定に統合）。
+         opts.strict=true のときは読み込み失敗（permission-denied 以外）を例外で返す。 */
+      loadInvited:async(opts)=>{try{
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);const snap=await m.getDoc(m.doc(fs,'laynaAccess','invited'));
         return snap.exists()?snap.data():null;
-      }catch(e){return null}},
+      }catch(e){if(opts&&opts.strict&&!_fsDenied(e))throw e;return null}},
       /* メンテナンス/全体お知らせを購読（laynaAccess/maintenance・broadcast）。運営コンソールからの制御を全メンバーに反映。 */
       subscribeSignals:(onMaint,onBcast)=>{try{
         import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js").then(m=>{
@@ -24074,8 +24256,12 @@ initApp();
          - 自分のメールドメインが一致 かつ allowDomainAutoJoin=true のテナントを探す
          - ライセンス枠に空きがあればそのテナントの members に自分を role='member' で追加
          - 枠満杯なら参加失敗（nullを返す）
-         戻り値：{tenantId, tenantName} / null */
-      tryJoinByDomain:async(email)=>{try{
+         戻り値：{tenantId, tenantName} / null
+         opts.strict=true のときは、参加できず かつ 途中で読み込み失敗（permission-denied 以外）があった場合に例外を投げる
+         （「該当テナントなし」と「通信エラーで確認できなかった」を区別するため）。 */
+      tryJoinByDomain:async(email,opts)=>{
+        const strict=!!(opts&&opts.strict);let softErr=null;
+        try{
         if(!email)return null;
         const emailLc=String(email).toLowerCase();
         const atIdx=emailLc.indexOf('@');
@@ -24095,7 +24281,7 @@ initApp();
           try{
             const msnap=await m.getDocs(m.collection(fs,'tenants',td.id,'members'));
             used=msnap.size;
-          }catch(_){ continue; }
+          }catch(e2){ if(!_fsDenied(e2))softErr=e2; continue; }
           const limit=(typeof data.licenseLimit==='number')?data.licenseLimit:0;
           if(limit>0 && used>=limit){
             console.warn(`tryJoinByDomain: tenant ${td.id} license full (${used}/${limit})`);
@@ -24122,19 +24308,31 @@ initApp();
             return {tenantId:td.id, tenantName:data.name||td.id};
           }catch(e){
             console.warn('tryJoinByDomain: write failed for',td.id,e.message);
+            if(!_fsDenied(e))softErr=e;
             continue;
           }
         }
+        }catch(e){
+          console.error('tryJoinByDomain failed',e);
+          if(strict&&!_fsDenied(e))throw e;
+          return null;
+        }
+        /* 参加できなかった：途中に通信エラー等があった場合、strict なら「確認できなかった」として例外にする */
+        if(strict&&softErr)throw softErr;
         return null;
-      }catch(e){console.error('tryJoinByDomain failed',e);return null}},
+      },
       /* マルチテナント化 Phase M2：指定メールが所属している全テナントを探す。
          実装：全テナントを列挙 → それぞれの members/{emailKey} の存在を確認。
          Phase M3a 修正：**保険として ownerEmail マッチも対象に含める**。
            通常は access-console 側で owner を自動的に members に追加するが、万一 members が
            未登録のまま ownerEmail だけ設定された状態でも契約者が LayCAT にログインできる。
          テナント数が多くなるまでは実用的（通常 1 桁）。
-         戻り値：[{tenantId, role}, ...] / 失敗時 []。role は members 優先、無ければ ownerEmail なら 'admin'。 */
-      findUserTenants:async(email)=>{try{
+         戻り値：[{tenantId, role}, ...] / 失敗時 []。role は members 優先、無ければ ownerEmail なら 'admin'。
+         opts.strict=true のときは、所属が 1 件も見つからず かつ 読み込み失敗（permission-denied 以外）があった場合に例外を投げる
+         （「どこにも所属していない」と「通信エラーで確認できなかった」を区別するため。所属が見つかればそれを返す）。 */
+      findUserTenants:async(email,opts)=>{
+        const strict=!!(opts&&opts.strict);let softErr=null;
+        try{
         if(!email)return [];
         const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
         const fs=m.getFirestore(app);
@@ -24148,13 +24346,15 @@ initApp();
           try{
             const msnap=await m.getDoc(m.doc(fs,'tenants',td.id,'members',key));
             if(msnap.exists()){ role=msnap.data().role||'member'; }
-          }catch(_){}
+          }catch(e2){ if(!_fsDenied(e2))softErr=e2; }
           /* 保険：ownerEmail 一致で admin 扱い（members 未登録でもログイン可能に） */
           if(!role && String(data.ownerEmail||'').toLowerCase()===emailLc){ role='admin'; }
           if(role) results.push({tenantId:td.id, role});
         }
+        if(strict&&!results.length&&softErr)throw softErr;
         return results;
-      }catch(e){return []}},
+        }catch(e){if(strict&&!_fsDenied(e))throw e;return []}
+      },
       /* マルチテナント化 Phase M1：単一テナントドキュメントを読む。tenants/{id}。
          戻り値：{id, name, description, domains, ...} / 存在しなければ null。 */
       loadTenant:async(id)=>{try{
