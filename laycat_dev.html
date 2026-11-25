@@ -2716,9 +2716,15 @@ const storage={
        （JSON 化・比較には出ない）。_w の無いファイルは null。 */
     const _wMap={};
     try{Object.defineProperty(parsed,'_shotW',{value:_wMap,enumerable:false,configurable:true,writable:true})}catch(_){}
+    /* 読めたショットファイルの中身（status を除いた形の JSON）と rev。取り込み後の rev・保存基準の更新
+       （_syncShotRevAndCacheFromRemote）で、同じファイルをもう一度読み直さずに済ませるため（列挙されない属性） */
+    const _rawJ={};
+    try{Object.defineProperty(parsed,'_shotRawJ',{value:_rawJ,enumerable:false,configurable:true,writable:true})}catch(_){}
+    const _stripRaw=n=>{const c=Object.assign({},n);if('status' in c)delete c.status;return c;};
     for(const shot of shots){
       if(!shot||!Array.isArray(shot.nodes))continue;
       if(shot.shotId)_wMap[shot.shotId]=(typeof shot._w==='string')?shot._w:null;
+      if(shot.shotId&&shot._rev!=null){try{_rawJ[shot.shotId]={rev:shot._rev|0,j:JSON.stringify({v:1,shotId:shot.shotId,nodes:shot.nodes.map(_stripRaw)})}}catch(_){}}
       /* Phase 3：ショットファイル毎の _rev（読込時点）を保持。recordRev=false なら再読時に上書きしない。 */
       if(bucket&&shot.shotId)bucket[shot.shotId]=(shot._rev|0);
       if(shot.shotId)_seedIds.push(shot.shotId);
@@ -2782,11 +2788,15 @@ const storage={
        他の readProjectData 呼び出し口（_persistNow 等）は opts.recordShotRev を指定しないので
        従来通り false のまま bucket を触らない（副作用なし）。 */
     const recShotRev=!!(opts&&opts.recordShotRev);
-    if(parsed.enc){const key=projKey(id);if(!key)return null;try{const iv=_unhex(parsed.iv);const buf=await self.crypto.subtle.decrypt({name:'AES-GCM',iv},key,_unb64(parsed.ct));const decrypted=JSON.parse(new TextDecoder().decode(buf));if(!skelOnly){await this._hydrateShots(id,decrypted,{recordRev:recShotRev});await this._hydrateSubmits(id,decrypted,{recordRev:false});await this._hydrateStatuses(id,decrypted);}return decrypted}catch(e){return null}}
+    /* opts.skipStatuses：status/*.json の上書きを呼び出し側（refreshFromFolders）で行う */
+    const skipSt=!!(opts&&opts.skipStatuses);
+    if(parsed.enc){const key=projKey(id);if(!key)return null;try{const iv=_unhex(parsed.iv);const buf=await self.crypto.subtle.decrypt({name:'AES-GCM',iv},key,_unb64(parsed.ct));const decrypted=JSON.parse(new TextDecoder().decode(buf));if(!skelOnly){await this._hydrateShots(id,decrypted,{recordRev:recShotRev});await this._hydrateSubmits(id,decrypted,{recordRev:false});if(!skipSt)await this._hydrateStatuses(id,decrypted);}return decrypted}catch(e){return null}}
     if(!skelOnly){
+      /* 読んだ骨格ファイルそのもの（展開前）を控える：取り込みの「骨格が前回と同じか」の比較用（列挙されない属性） */
+      try{Object.defineProperty(parsed,'_skelJ',{value:JSON.stringify(parsed),enumerable:false,configurable:true,writable:true})}catch(_){}
       await this._hydrateShots(id,parsed,{recordRev:recShotRev});
       await this._hydrateSubmits(id,parsed,{recordRev:false});
-      await this._hydrateStatuses(id,parsed);
+      if(!skipSt)await this._hydrateStatuses(id,parsed);
     }
     return parsed;
   },
@@ -3152,6 +3162,7 @@ const storage={
      status/{taskId}.json が読み込まれず、v:5 分離が実質無効化されていた。
      このヘルパで disk 上に実在する status.json を全部読めば、
      どの node id で書かれていても漏れなく hydrate に反映できる。 */
+  _statusFileCache:{}, /* pid → Map(ファイル名 → {sig:'更新時刻:サイズ', txt}) */
   async listAllStatusFiles(pid){
     if(this._backend(pid)==='r2')return [];
     const ph=await this.projRoot(pid);if(!ph)return [];
@@ -3170,14 +3181,31 @@ const storage={
       }
       /* 【全解析修正】Google ドライブ等の競合コピー（`nd_xxx (1).json`・`nd_xxx 競合.json` など）や
          ファイル名と中身の shotId が食い違うファイルは読まない（古い値で上書きされるのを防ぐ）。 */
-      const files=await Promise.all(names.filter(name=>/^[A-Za-z0-9_-]+\.json$/.test(name)).map(async name=>{
+      /* 【取り込みの負荷軽減】更新時刻とサイズが前回読んだときと同じファイルは、中身を読まずに前回の内容を使う。
+         同じ秒に 2 回書かれると更新時刻で区別できないことがあるので、更新から 10 秒以上たったファイルだけ覚える
+         （最近書かれたファイルは毎回読む）。 */
+      const cache=(this._statusFileCache[pid]=this._statusFileCache[pid]||new Map());
+      const valid=names.filter(name=>/^[A-Za-z0-9_-]+\.json$/.test(name));
+      const now=Date.now();
+      const files=await Promise.all(valid.map(async name=>{
         try{
           const fh=await dir.getFileHandle(name);
-          const j=JSON.parse(await (await fh.getFile()).text());
+          const file=await fh.getFile();
+          const sig=file.lastModified+':'+file.size;
+          const hit=cache.get(name);
+          let txt;
+          if(hit&&hit.sig===sig){txt=hit.txt}
+          else{
+            txt=await file.text();
+            if(now-file.lastModified>10000)cache.set(name,{sig,txt});else cache.delete(name);
+          }
+          const j=JSON.parse(txt);
           if(!j||j.shotId!==name.replace(/\.json$/,''))return null;
           return j;
-        }catch(_){return null}
+        }catch(_){cache.delete(name);return null}
       }));
+      /* 消えたファイルの記憶は捨てる */
+      const live=new Set(valid);for(const k of [...cache.keys()])if(!live.has(k))cache.delete(k);
       return files.filter(f=>f&&f.shotId);
     }catch(_){return []}
   },
@@ -4671,7 +4699,7 @@ const PROJ_BADGE={active:{label:'進行中',color:'#5a9bff'},done:{label:'完了
 function projBadge(root){const ov=root&&root.statusOverride;if(ov==='active'||ov==='done')return PROJ_BADGE[ov];return projectDone(root)?PROJ_BADGE.done:PROJ_BADGE.active;}
 
 /* アプリのバージョン（更新確認用。更新のたびにここを上げる） */
-const APP_VERSION='2026.11.26.003';
+const APP_VERSION='2026.11.26.004';
 /* mannequin_3d.html は dev/beta 共有ファイル。APP_VERSION と独立にキャッシュ破棄したい
    （beta のバージョンを据え置いたまま mannequin だけ更新するケース）。
    mannequin_3d.html を触るたびに末尾を +1 してキャッシュを破棄する。 */
@@ -5096,7 +5124,7 @@ function renderNotifPanel(){
   const p=$('#notifPanel');if(!p)return;p.innerHTML='';
   const hd=el('div','notif-hd');hd.appendChild(el('div','t','通知'));
   const rf=el('button','clr','🗘 最新');rf.title='フォルダから最新の通知（チェック依頼など）を取得';
-  rf.onclick=async e=>{e.stopPropagation();const o=rf.textContent;rf.textContent='取得中…';try{await refreshFromFolders();scanMentionsForMe();}catch(_){}try{renderNotifPanel();render();resolveThumbs()}catch(_){}};hd.appendChild(rf);
+  rf.onclick=async e=>{e.stopPropagation();const o=rf.textContent;rf.textContent='取得中…';try{await refreshFromFolders({full:true});scanMentionsForMe();}catch(_){}try{renderNotifPanel();render();resolveThumbs()}catch(_){}};hd.appendChild(rf);
   const clr=el('button','clr','すべて既読');clr.onclick=e=>{e.stopPropagation();markAllNotifRead()};hd.appendChild(clr);
   p.appendChild(hd);
   const list=notifs();
@@ -5435,10 +5463,56 @@ function showPriorityModalIfAny(){
 /* ライブ同期ではないため、他者の新着（サブミット＝チェック依頼・アノテ等）は
    フォルダを読み直すまで手元の DB に入らない。通知ベルを開いた時などにこれを呼び、
    接続中プロジェクトのフォルダを読み直して union で取り込む（ローカルの未保存は消えない）。 */
-async function refreshFromFolders(){
+/* 【取り込みの負荷軽減・段階 2】前回ショット・サブミットまで全部読んだときの内容（ステータス適用前）を
+   プロジェクトごとに覚えておく。次の取り込みでは骨格（laycat.project.json）だけを読み、前回と同じ内容なら
+   「その間に誰もこのプロジェクトを保存していない」＝ショット・サブミットのファイルも変わっていないので、
+   全部を読み直さずに前回の内容を使う（保存は必ず骨格も書き直すため、骨格が同じならショット等も同じ）。
+   ステータス（status/*.json）は骨格を書かずに変わるので毎回見る（中身は更新時刻が変わったものだけ読む）。
+   念のため _REFRESH_FULL_MS ごとには全部読み直す。暗号化プロジェクト・読めないファイルがあった回は覚えない。
+   読み込みだけの変更で、書き込みは一切しない。 */
+const _refreshCache={}; /* pid → {skelJ, at, preJ, shotW, shotRawJ, shotRevs} */
+const _REFRESH_FULL_MS=10*60*1000;
+async function _readRemoteForRefresh(pid,opts){
+  const full=!!(opts&&opts.full);
+  const c=_refreshCache[pid];
+  let encrypted=false;try{encrypted=!!projectIsEncrypted(pid)}catch(_){}
+  if(!full&&c&&!encrypted&&(Date.now()-c.at)<_REFRESH_FULL_MS){
+    let skel=null;try{skel=await storage.readProjectData(pid,{skeletonOnly:true})}catch(_){skel=null}
+    if(skel&&JSON.stringify(skel)===c.skelJ){
+      let remote=null;try{remote=JSON.parse(c.preJ)}catch(_){remote=null}
+      if(remote&&Array.isArray(remote.nodes)){
+        try{Object.defineProperty(remote,'_shotW',{value:Object.assign({},c.shotW),enumerable:false,configurable:true,writable:true})}catch(_){}
+        try{Object.defineProperty(remote,'_shotRawJ',{value:c.shotRawJ,enumerable:false,configurable:true,writable:true})}catch(_){}
+        /* 全部読んだときと同じく、ショットの rev 記録を相手側の値にする（呼び出し側が退避値に戻す） */
+        try{const sb=_revBucket(pid).shots;for(const sid of Object.keys(c.shotRevs))sb[sid]=c.shotRevs[sid]}catch(_){}
+        await storage._hydrateStatuses(pid,remote);
+        return {remote,light:true};
+      }
+    }
+  }
+  let remote=null;try{remote=await storage.readProjectData(pid,{recordShotRev:true,skipStatuses:true})}catch(_){remote=null}
+  if(!remote||!Array.isArray(remote.nodes)){delete _refreshCache[pid];return {remote:null,light:false}}
+  /* 次回の軽い確認用に覚える（暗号化・読めないファイルがあった回は覚えない） */
+  delete _refreshCache[pid];
+  if(!encrypted&&!remote.enc&&!storage._hasReadErr(pid)&&typeof remote._skelJ==='string'){
+    try{
+      const sw=remote._shotW||{},rawJ=remote._shotRawJ||{};
+      const sb=_revBucket(pid).shots,shotRevs={};
+      for(const sid of Object.keys(sw))shotRevs[sid]=sb[sid]|0;
+      /* skelJ：今回読んだ骨格ファイルそのもの（readProjectData が展開前に控えたもの）。次回は骨格だけ読んでこれと比べる */
+      _refreshCache[pid]={skelJ:remote._skelJ,at:Date.now(),preJ:JSON.stringify(remote),shotW:Object.assign({},sw),shotRawJ:rawJ,shotRevs};
+    }catch(_){delete _refreshCache[pid]}
+  }
+  await storage._hydrateStatuses(pid,remote);
+  return {remote,light:false};
+}
+async function refreshFromFolders(opts){
   if(!DB)return false;
+  opts=opts||{};
   let changed=false;
   for(const e of REG){
+    /* 【段階 1】定期の取り込みは開いているプロジェクトだけ（opts.only）。ほかは開いたとき・通知ベル・数分ごとの見回りで取り込む */
+    if(opts.only&&e.id!==opts.only)continue;
     if(typeof projEncLocked==='function'&&projEncLocked(e.id))continue;
     /* 【恒久対策 v072-1 + v073 実効化 + v074 復元】local baseline の shot._rev を退避してから
        readProjectData を呼ぶ。readProjectData には opts.recordShotRev:true を渡す（v073）。
@@ -5448,7 +5522,7 @@ async function refreshFromFolders(){
     try{const b=(_revBucket(e.id)&&_revBucket(e.id).shots)||{};for(const sid of Object.keys(b))localShotRev[sid]=b[sid]|0}catch(_){}
     /* 【全解析修正】読み込み中に自分の保存が完了したかを見るための世代番号（persist ごとに進む） */
     const _genAtStart=_persistGen;
-    let remote=null;try{remote=await storage.readProjectData(e.id,{recordShotRev:true})}catch(_){}
+    let remote=null;try{remote=(await _readRemoteForRefresh(e.id,{full:!!opts.full})).remote}catch(_){remote=null}
     if(!remote||!Array.isArray(remote.nodes)){
       /* 読めなかった回も rev の記録は退避値に戻す */
       try{const sb=_revBucket(e.id).shots;for(const rsid of Object.keys(localShotRev))sb[rsid]=localShotRev[rsid]|0;}catch(_){}
@@ -5681,7 +5755,7 @@ async function refreshFromFolders(){
            preferRemote 時に別途 remote のショット/サブミット _rev と shot cache を最新化する。
            これをしないと次回 save で無駄な merge が走り、旧 `_mergeShotFileInto`（union-fill）に
            戻ってしまう経路があり、相手の scalar 変更が失われる恐れがある。 */
-        try{await _syncShotRevAndCacheFromRemote(e.id)}catch(_){}
+        try{await _syncShotRevAndCacheFromRemote(e.id,remote._shotRawJ,remote.submits)}catch(_){}
       }
     }
   }
@@ -5689,7 +5763,7 @@ async function refreshFromFolders(){
 }
 /* refresh 後の後始末：remote 側の shot/submit の _rev と保存 baseline を最新化する。
    preferRemote で local が remote と同じ状態になった直後に呼ぶこと。 */
-async function _syncShotRevAndCacheFromRemote(pid){
+async function _syncShotRevAndCacheFromRemote(pid,rawMap,remoteSubs){
   _saveCache.shot[pid]=_saveCache.shot[pid]||{};
   _saveCache.submit[pid]=_saveCache.submit[pid]||{};
   const shotBucket=_revBucket(pid).shots;
@@ -5698,6 +5772,21 @@ async function _syncShotRevAndCacheFromRemote(pid){
   const shotIds=allNodes.filter(n=>_isShotNodeForSave(n, allNodes)&&rootOfId(n)===pid).map(n=>n.id);
   await Promise.all(shotIds.map(async sid=>{
     try{
+      /* 【取り込みの負荷軽減】直前の取り込みで読んだショットファイルの内容（rawMap）があればそれを使い、読み直さない */
+      const pre=rawMap&&rawMap[sid];
+      if(pre&&typeof pre.j==='string'){
+        const nr=pre.rev|0,cur=shotBucket[sid]|0;
+        if(nr>cur){
+          const shotNode=allNodes.find(n=>n.id===sid);
+          if(shotNode){
+            const kids=allNodes.filter(n=>n.parentId===sid);
+            const _stripS=n=>{const c=Object.assign({},n);if('status' in c)delete c.status;return c;};
+            const memJ=JSON.stringify({v:1,shotId:sid,nodes:[_stripS(shotNode),...kids.map(_stripS)]});
+            if(memJ===pre.j){shotBucket[sid]=nr;_saveCache.shot[pid][sid]=memJ;}
+          }
+        }
+        return;
+      }
       const raw=await storage.loadShot(pid, sid);
       if(raw&&raw._rev!=null){
         /* 【v.048 恒久対策】rev 逆行ガード。remote の _rev が既知 rev より小さい／同値のときは
@@ -5725,9 +5814,11 @@ async function _syncShotRevAndCacheFromRemote(pid){
     }catch(_){}
   }));
   const subs=(DB.submits||[]).filter(s=>s&&s.projectId===pid);
+  /* 直前の取り込みで読んだサブミット（remoteSubs）があればそれを使い、読み直さない */
+  const _rsMap=new Map();if(Array.isArray(remoteSubs))for(const rs of remoteSubs)if(rs&&rs.id)_rsMap.set(rs.id,rs);
   await Promise.all(subs.map(async s=>{
     try{
-      const raw=await storage.loadSubmit(pid, s.id);
+      const raw=_rsMap.has(s.id)?_rsMap.get(s.id):await storage.loadSubmit(pid, s.id);
       if(raw&&raw._rev!=null){
         subBucket[s.id]=(raw._rev|0);
         /* 【修正 v.042】保存側と同じ指紋（_rev を除く）で記録する。以前は _rev 込みの JSON だったため
@@ -5741,6 +5832,9 @@ async function _syncShotRevAndCacheFromRemote(pid){
    ・編集中（アノテ窓・モーダル・入力中）は割り込まない
    ・5秒スロットルで過剰なフォルダ読込を防ぐ */
 let _autoRefreshAt=0,_autoRefreshBusy=false;
+/* 段階 1：直前に取り込んだ「開いているプロジェクト」と、全プロジェクト見回りの時刻・間隔 */
+let _autoRefreshPid=null,_autoSweepAt=0;try{_autoSweepAt=Date.now()}catch(_){}
+const _SWEEP_MS=3*60*1000;
 function _editingNow(){
   if(state.reviewOpen)return true;
   if($('#fbOverlay')||$('#submitOverlay'))return true;
@@ -5765,9 +5859,16 @@ async function autoRefresh(force){
      以前は最も頻繁な復帰経路で編集中判定が効かず、アノテ窓・リマップ編集中に他人の更新が流れ込んでいた。 */
   if(_editingNow())return;
   let now=0;try{now=Date.now()}catch(_){}
-  if(!force&&now-_autoRefreshAt<5000)return;
-  _autoRefreshAt=now;_autoRefreshBusy=true;
-  try{const ch=await refreshFromFolders();if(ch){try{scanMentionsForMe()}catch(_){}render();resolveThumbs();}}
+  /* 【取り込みの負荷軽減・段階 1】定期・タブ復帰の取り込みは「開いているプロジェクト」だけ。
+     ほかのプロジェクトは、開いたとき・通知ベルを開いたとき・_SWEEP_MS ごとの見回り（全プロジェクト）で取り込む。
+     開いているプロジェクトが変わった直後は 5 秒の間引きをしない（開いたらすぐ最新にする）。 */
+  let curPid=null;try{curPid=(state&&state.currentId)?projectIdOf(state.currentId):null}catch(_){curPid=null}
+  if(!force&&now-_autoRefreshAt<5000&&curPid===_autoRefreshPid)return;
+  const sweep=(now-_autoSweepAt)>=_SWEEP_MS;
+  if(!sweep&&!curPid)return; /* ホーム画面などプロジェクト外：見回りの時だけ */
+  _autoRefreshAt=now;_autoRefreshPid=curPid;if(sweep)_autoSweepAt=now;
+  _autoRefreshBusy=true;
+  try{const ch=await refreshFromFolders(sweep?{}:{only:curPid});if(ch){try{scanMentionsForMe()}catch(_){}render();resolveThumbs();}}
   catch(_){}finally{_autoRefreshBusy=false;}
 }
 /* 他タブから戻った時・ウィンドウにフォーカスした時・一定間隔で最新を取り込む。
@@ -6430,6 +6531,7 @@ async function disconnectProject(id){
      「読み込み済み」と誤認した保存経路に入り、未読込のサブミットを削除する原因になっていた） */
   delete _saveCache.shot[id];delete _saveCache.submit[id];delete _saveCache.access[id];delete _loadedRev[id];
   delete _myShotWrite[id];delete _mySubWrite[id];
+  delete _refreshCache[id];try{delete storage._statusFileCache[id]}catch(_){}
   storage.projHandles.delete(id);
   /* REG から外した後の保存は registry だけ（このプロジェクトのフォルダには書かない） */
   await persist();
