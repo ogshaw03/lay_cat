@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>LayCAT testenv console</title>
+<style>
+  :root{--bg:#141414;--bg2:#1c1c1c;--bg3:#262626;--text:#e8e8e8;--text2:#aaa;--text3:#777;--accent:#ffd54a;--red:#ff7a6a;--green:#7ad27a;--border:#333}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:13px system-ui,-apple-system,'Segoe UI','Noto Sans JP',sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:2}
+  header h1{font-size:15px;margin:0}
+  .pill{background:var(--accent);color:#111;border-radius:999px;padding:2px 10px;font-weight:700;font-size:11px}
+  main{display:grid;grid-template-columns:minmax(320px,420px) 1fr;gap:14px;padding:14px 18px}
+  @media (max-width:900px){main{grid-template-columns:1fr}}
+  section{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px}
+  h2{font-size:13px;margin:0 0 8px}
+  .muted{color:var(--text3);font-size:11px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--text2);font-weight:600}
+  td.path{font-family:ui-monospace,Consolas,monospace;word-break:break-all}
+  a{color:#9cf}
+  button,select,input{font:inherit;color:var(--text);background:var(--bg3);border:1px solid #444;border-radius:6px;padding:5px 9px}
+  button{cursor:pointer}
+  button.primary{background:var(--text);color:#111;border-color:var(--text)}
+  button.danger{border-color:var(--red);color:var(--red)}
+  .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+  .row label{color:var(--text2);font-size:11px}
+  input.w{width:100%}
+  .tag{display:inline-block;padding:0 6px;border-radius:4px;font-size:11px;background:var(--bg3)}
+  .tag.nas{background:#244}.tag.r2{background:#423}.tag.fs{background:#334}
+  .fault{color:var(--red);font-weight:700}
+  .logwrap{max-height:calc(100vh - 220px);overflow:auto}
+  code{font-family:ui-monospace,Consolas,monospace;font-size:11px}
+</style>
+</head>
+<body>
+<header>
+  <span class="pill">🧪 TESTENV</span><h1>LayCAT 検証環境コンソール</h1>
+  <span class="muted" id="dataDir"></span>
+</header>
+<main>
+  <div>
+    <section>
+      <h2>ユーザー別に開く</h2>
+      <div class="muted" style="margin-bottom:6px">ポートが違う＝ブラウザ内保存が別（別 PC 相当）。同じポートでユーザーを替えると「同じ PC でアカウント切替」相当。</div>
+      <table id="links"></table>
+    </section>
+    <section>
+      <h2>障害注入</h2>
+      <div class="row">
+        <select id="fArea"><option value="any">全部</option><option value="nas">偽 NAS</option><option value="r2">偽 R2</option><option value="fs">偽 Firestore</option><option value="static">静的ファイル</option></select>
+        <select id="fMethod"><option value="">全メソッド</option><option>GET</option><option>PUT</option><option>POST</option><option>DELETE</option></select>
+        <select id="fOp" title="操作の種類（NAS：read=中身の読み込み／stat=存在確認／list=一覧／write=保存／mkdir／touch／delete。R2：get／put／list／delete。Firestore：get／query／set／update／delete）"><option value="">全操作</option><option>read</option><option>stat</option><option>list</option><option>write</option><option>get</option><option>put</option><option>query</option><option>set</option><option>update</option><option>delete</option></select>
+        <input id="fUser" placeholder="ユーザー（部分一致・任意）" style="width:150px">
+      </div>
+      <div class="row"><input id="fPath" class="w" placeholder="パス（正規表現・任意） 例: /status/.*\.json$"></div>
+      <div class="row">
+        <label>遅延ms</label><input id="fDelay" type="number" value="0" style="width:80px">
+        <select id="fPhase" title="before：処理の前に待つ／after：処理（読み書き）は即時に済ませて返答だけ遅らせる＝古い内容を掴んだまま遅れて届く"><option value="before">処理前に待つ</option><option value="after">返答だけ遅らせる</option></select>
+        <label>失敗率</label><input id="fRate" type="number" step="0.1" min="0" max="1" value="0" style="width:70px">
+        <label>エラー名</label>
+        <select id="fErr"><option>InvalidStateError</option><option>NoModificationAllowedError</option><option>NotReadableError</option><option>NotFoundError</option><option>NotAllowedError</option></select>
+        <label>回数</label><input id="fTimes" type="number" placeholder="無制限" style="width:70px">
+      </div>
+      <div class="row"><button class="primary" id="fAdd">追加</button><button class="danger" id="fClear">全部解除</button></div>
+      <div class="row">
+        <span class="muted">プリセット：</span>
+        <button data-preset="slowStatus">status 読込を 3 秒遅延</button>
+        <button data-preset="failStatusWrite">status 保存を 50% 失敗</button>
+        <button data-preset="slowNas">NAS 全体 300〜800ms</button>
+      </div>
+      <table id="faults"></table>
+    </section>
+    <section>
+      <h2>データ</h2>
+      <div class="row">
+        <input id="snapName" placeholder="スナップショット名" style="width:160px">
+        <button id="snapSave">保存</button><button id="snapRestore">復元</button>
+      </div>
+      <div class="muted" id="snaps" style="margin-bottom:8px"></div>
+      <div class="row"><button class="danger" id="reset">testenv/data を初期化</button><span class="muted">偽 NAS・偽 R2・偽 Firestore を種データに戻す（スナップショットは残る）</span></div>
+    </section>
+  </div>
+  <div>
+    <section>
+      <h2>書き込みログ <span class="muted" id="logCount"></span></h2>
+      <div class="row">
+        <select id="lArea"><option value="">全部</option><option value="nas">偽 NAS</option><option value="r2">偽 R2</option><option value="fs">偽 Firestore</option></select>
+        <input id="lUser" placeholder="ユーザー" style="width:140px">
+        <input id="lPath" placeholder="パスを含む" style="width:220px">
+        <label><input type="checkbox" id="lReads"> 読み込みも記録</label>
+        <button id="lClearView">表示をクリア</button>
+      </div>
+      <div class="logwrap"><table id="log"><thead><tr><th>#</th><th>時刻</th><th>ポート</th><th>ユーザー</th><th>場所</th><th>操作</th><th>パス</th><th>結果</th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const api=async(m,sub,body)=>{const r=await fetch('/__testenv/'+sub,{method:m,headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined});return r.json()};
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let info=null,logSeq=0,logRows=[],viewFrom=0;
+async function loadInfo(){
+  info=await api('GET','info');
+  $('#dataDir').textContent='data: '+info.dataDir;
+  $('#lReads').checked=!!info.logReads;
+  const users=info.users||[];
+  let h='<tr><th>ユーザー</th>'+info.ports.map(p=>'<th>:'+p+'</th>').join('')+'</tr>';
+  for(const u of users){
+    h+='<tr><td><b>'+esc(u.name)+'</b><div class="muted">'+esc(u.email)+'</div></td>'+info.ports.map(p=>{
+      const o='http://127.0.0.1:'+p;
+      return '<td><a href="'+o+'/laycat_dev.html?as='+u.id+'" target="_blank">LayCAT</a> · <a href="'+o+'/pmboard_dev.html?as='+u.id+'" target="_blank">pmboard</a></td>';
+    }).join('')+'</tr>';
+  }
+  $('#links').innerHTML=h;
+  $('#snaps').textContent=(info.snapshots||[]).length?'保存済み: '+info.snapshots.join(', '):'保存済みスナップショットなし';
+  drawFaults(info.faults||[]);
+}
+function drawFaults(fs){
+  if(!fs.length){$('#faults').innerHTML='<tr><td class="muted">障害注入なし</td></tr>';return}
+  $('#faults').innerHTML='<tr><th>id</th><th>条件</th><th>内容</th><th>当たり</th><th></th></tr>'+fs.map(f=>
+    '<tr><td>'+esc(f.id)+'</td><td><span class="tag '+esc(f.area)+'">'+esc(f.area||'any')+'</span> '+esc(f.method||'*')+(f.op?' '+esc([].concat(f.op).join('/')):'')+' <code>'+esc(f.path||'*')+'</code>'+(f.user?' user~'+esc(f.user):'')+'</td><td>'+
+    (f.delayMs?(f.delayPhase==='after'?'返答遅延 ':'遅延 ')+f.delayMs+'ms'+(f.jitterMs?'+0〜'+f.jitterMs:'')+' ':'')+(f.failRate?'失敗 '+Math.round(f.failRate*100)+'% ('+esc(f.error)+')':'')+(f.times!=null?' 残'+f.times+'回':'')+'</td><td>'+(f.hits||0)+'</td><td><button data-del="'+esc(f.id)+'">解除</button></td></tr>').join('');
+}
+$('#faults').onclick=async e=>{const id=e.target.dataset&&e.target.dataset.del;if(!id)return;const r=await api('DELETE','faults?id='+encodeURIComponent(id));drawFaults(r.faults)};
+$('#fAdd').onclick=async()=>{
+  const rule={area:$('#fArea').value,path:$('#fPath').value.trim()||undefined,delayMs:+$('#fDelay').value||0,failRate:+$('#fRate').value||0,error:$('#fErr').value};
+  if($('#fPhase').value==='after')rule.delayPhase='after';
+  if($('#fOp').value)rule.op=$('#fOp').value;
+  if($('#fMethod').value)rule.method=$('#fMethod').value;
+  if($('#fUser').value.trim())rule.user=$('#fUser').value.trim();
+  if($('#fTimes').value!=='')rule.times=+$('#fTimes').value;
+  const r=await api('POST','faults',{rule});drawFaults(r.faults);
+};
+$('#fClear').onclick=async()=>{const r=await api('DELETE','faults');drawFaults(r.faults)};
+const PRESETS={
+  slowStatus:{area:'nas',op:'read',path:'/status/[^/]+\\.json$',delayMs:3000,delayPhase:'after'},
+  failStatusWrite:{area:'nas',op:'write',path:'/status/[^/]+\\.json$',failRate:0.5,error:'NoModificationAllowedError'},
+  slowNas:{area:'nas',delayMs:300,jitterMs:500},
+};
+document.querySelectorAll('[data-preset]').forEach(b=>b.onclick=async()=>{const r=await api('POST','faults',{rule:{...PRESETS[b.dataset.preset]}});drawFaults(r.faults)});
+$('#reset').onclick=async()=>{if(!confirm('testenv/data（偽 NAS・偽 R2・偽 Firestore）を初期化します。よろしいですか？\n※本番データには影響しません。各ブラウザのタブは再読み込みしてください。'))return;await api('POST','reset');logRows=[];drawLog();loadInfo()};
+$('#snapSave').onclick=async()=>{const n=$('#snapName').value.trim();if(!n)return;await api('POST','snapshot',{name:n});loadInfo()};
+$('#snapRestore').onclick=async()=>{const n=$('#snapName').value.trim();if(!n)return;if(!confirm('スナップショット「'+n+'」を復元します（現在の testenv/data は上書き）'))return;const r=await api('POST','snapshot',{name:n,restore:true});if(!r.ok)alert('見つかりません');loadInfo()};
+$('#lReads').onchange=async()=>{await api('POST','config',{logReads:$('#lReads').checked})};
+$('#lClearView').onclick=()=>{viewFrom=logSeq;drawLog()};
+['#lArea','#lUser','#lPath'].forEach(s=>$(s).oninput=drawLog);
+function drawLog(){
+  const a=$('#lArea').value,u=$('#lUser').value.trim().toLowerCase(),p=$('#lPath').value.trim();
+  const rows=logRows.filter(e=>e.seq>viewFrom&&(!a||e.area===a)&&(!u||String(e.user||'').toLowerCase().includes(u))&&(!p||String(e.path).includes(p)));
+  $('#logCount').textContent=rows.length+' 件';
+  $('#log tbody').innerHTML=rows.slice(-400).reverse().map(e=>'<tr><td>'+e.seq+'</td><td>'+esc(String(e.t).slice(11,23))+'</td><td>'+esc(e.port)+'</td><td>'+esc(e.user||'-')+'</td><td><span class="tag '+esc(e.area)+'">'+esc(e.area)+'</span></td><td>'+esc(e.op)+'</td><td class="path">'+esc(e.path)+'</td><td'+(e.fault?' class="fault"':'')+'>'+esc(e.status)+(e.fault?' 注入':'')+(e.bytes!=null?' '+e.bytes+'B':'')+(e.delayMs?' +'+e.delayMs+'ms':'')+(e.denied?' '+esc(e.denied):'')+'</td></tr>').join('');
+}
+async function pollLog(){
+  try{const r=await api('GET','log?since='+logSeq);if(r.entries&&r.entries.length){logRows.push(...r.entries);if(logRows.length>5000)logRows=logRows.slice(-4000);drawLog()}logSeq=r.seq;}catch(_){}
+  setTimeout(pollLog,1000);
+}
+loadInfo();pollLog();setInterval(async()=>{try{const r=await api('GET','faults');drawFaults(r.faults)}catch(_){}},3000);
+</script>
+</body>
+</html>

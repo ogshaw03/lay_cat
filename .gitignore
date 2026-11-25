@@ -4,3 +4,6 @@ package-lock.json
 
 # wrangler のビルド／ログキャッシュ（デプロイ再現には不要）
 worker/.wrangler/
+
+# testenv（ローカル検証環境）の実行時データ：偽 NAS・偽 R2・偽 Firestore・書き込みログ
+testenv/data/

@@ -1,0 +1,11 @@
+{
+  "_comment": "testenv のテストユーザー。?as=<id> で切り替える。id に @ が無ければ <id>@laycat.test になる。",
+  "users": [
+    {"id": "alice", "email": "alice@laycat.test", "name": "Alice", "note": "テナント t_test の管理者（プロジェクト作成者役）"},
+    {"id": "bob",   "email": "bob@laycat.test",   "name": "Bob",   "note": "テナント t_test のメンバー"},
+    {"id": "carol", "email": "carol@laycat.test", "name": "Carol", "note": "テナント t_test のメンバー"},
+    {"id": "guest", "email": "guest@other.test",  "name": "Guest", "note": "許可リストのみ・テナント無所属（R2 は個人テナント）"},
+    {"id": "op",    "email": "op@laycat.test",    "name": "Operator", "note": "運営（operatorEmails）"},
+    {"id": "denied","email": "denied@laycat.test","name": "Denied", "note": "どこにも許可されていない（拒否画面の確認用）"}
+  ]
+}

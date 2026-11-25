@@ -1,0 +1,25 @@
+{
+ "laynaAccess/config": {
+  "authRequired": true,
+  "operatorEmails": ["op@laycat.test"],
+  "allowedEmails": ["alice@laycat.test", "bob@laycat.test", "carol@laycat.test", "guest@other.test"]
+ },
+ "laynaAccess/invited": {"emails": {}},
+ "laynaAccess/maintenance": {"active": false},
+ "laynaAccess/broadcast": {},
+ "tenants/t_test": {
+  "name": "テストスタジオ",
+  "ownerEmail": "alice@laycat.test",
+  "licenseLimit": 20,
+  "allowDomainAutoJoin": false,
+  "domains": ["laycat.test"],
+  "coreHours": {"start": "10:00", "end": "19:00"}
+ },
+ "tenants/t_test/members/alice_laycat_test": {"email": "alice@laycat.test", "name": "Alice", "role": "admin", "assignedBy": "seed", "assignedAt": "2026-11-25T00:00:00.000Z"},
+ "tenants/t_test/members/bob_laycat_test": {"email": "bob@laycat.test", "name": "Bob", "role": "member", "assignedBy": "seed", "assignedAt": "2026-11-25T00:00:00.000Z"},
+ "tenants/t_test/members/carol_laycat_test": {"email": "carol@laycat.test", "name": "Carol", "role": "member", "assignedBy": "seed", "assignedAt": "2026-11-25T00:00:00.000Z"},
+ "laycatUsers/alice_laycat_test": {"tenantId": "t_test", "profile": {"displayName": "Alice", "email": "alice@laycat.test"}},
+ "laycatUsers/bob_laycat_test": {"tenantId": "t_test", "profile": {"displayName": "Bob", "email": "bob@laycat.test"}},
+ "laycatUsers/carol_laycat_test": {"tenantId": "t_test", "profile": {"displayName": "Carol", "email": "carol@laycat.test"}},
+ "laycatUsers/guest_other_test": {"profile": {"displayName": "Guest", "email": "guest@other.test"}}
+}
