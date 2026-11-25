@@ -737,3 +737,18 @@ LayCAT 本体 v.086〜v.089 と pmboard v.042〜v.045 で資料タブ（PureRef 
 ### 4. 会社休日カレンダーのテナント分離（中）
 - 会社休日は全テナント共通の `companyHolidays/default` に保存されている。テナントごとに分ける場合、既存の default データの移行と、Firestore ルール（owner/admin の書き込み権限）を合わせて決める必要がある。
 - 参照：全解析 auth#13。
+
+### 5. Worker / Firestore ルールのセキュリティ修正（要デプロイ・高）
+- 直すには Cloudflare Worker と Firestore ルールの変更＋本番デプロイが必要なため保留（2026-11-25 ユーザー判断）。
+- 主な項目：
+  - R2 トークンの送出先：ユーザー設定の r2Endpoint にそのまま Firebase の ID トークンを送っている（別の宛先に送られ得る）。pmboard の顧客 R2 対応も同じ論点（全解析 W#1・auth#4・pm#10）。
+  - tenantId の自己書き換え：自分のユーザー文書の tenantId を書き換えて他テナントに入れる余地（W#2・auth#3）。
+  - 招待（laynaAccess/invited）への自己登録（auth#2）、email_verified を見ていない（W#4）。
+  - purge・_access.json の書き換えを owner に限定していない（Worker 側。画面側は v.036 で owner 限定済み）（W#5・modal#1）。
+  - memberships の pid 衝突（W#6）、顧客 Worker のブートストラップ（W#7）、監査ログの汚染（W#8・#9）、キャッシュ（W#10）、サイズ上限（W#11）、キー衝突（W#12）。
+  - loggedUsers の偽装・読み取り範囲（W#13・auth#5）、CORS と専用ドメイン（W#14）、ライセンス枠（auth#14）。
+- 着手時：リポジトリ上で Worker／ルールの変更を用意 → テスト環境で確認 → デプロイはユーザーが行う。
+
+### 6. byo_r2_setup.html の秘密鍵の扱い（高）
+- 顧客 R2 のセットアップ手順で、サービスアカウントの秘密鍵を渡す手順になっている（全解析 W#3）。
+- 対応案：ページの非公開化（または手順の差し替え）と、既に渡した鍵の失効を確認する。2026-11-25 ユーザー判断で保留。
